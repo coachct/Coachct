@@ -71,6 +71,7 @@ export function perfLabel(ocupacaoPct: number): { txt: string; color: string } {
 }
 
 export const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+
 export const HORARIOS = [
   '05:30','06:00','06:30','07:00','07:30','08:00','08:30',
   '09:00','09:30','10:00','10:30','11:00','11:30','12:00',
