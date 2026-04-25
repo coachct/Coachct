@@ -8,6 +8,7 @@ const nav = [
   { label: 'Pagamentos', href: '/admin/relatorios/pagamentos' },
   { label: 'Horários populares', href: '/admin/horarios' },
   { label: 'Frequência de alunos', href: '/admin/relatorios/frequencia' },
+  { label: 'Trocar senha', href: '/trocar-senha' },
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
