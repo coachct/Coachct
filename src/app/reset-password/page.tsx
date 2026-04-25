@@ -14,11 +14,26 @@ export default function ResetPasswordPage() {
   const supabase = createClient()
 
   useEffect(() => {
-    supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY') {
-        setPronto(true)
-      }
-    })
+    // Pega o token da URL (#access_token=...&type=recovery)
+    const hash = window.location.hash
+    const params = new URLSearchParams(hash.replace('#', ''))
+    const accessToken = params.get('access_token')
+    const type = params.get('type')
+
+    if (accessToken && type === 'recovery') {
+      supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: params.get('refresh_token') || '',
+      }).then(({ error }) => {
+        if (!error) setPronto(true)
+        else setErro('Link inválido ou expirado.')
+      })
+    } else {
+      // Tenta via evento do Supabase
+      supabase.auth.onAuthStateChange((event) => {
+        if (event === 'PASSWORD_RECOVERY') setPronto(true)
+      })
+    }
   }, [])
 
   async function handleSalvar() {
@@ -37,8 +52,8 @@ export default function ResetPasswordPage() {
     if (error) {
       setErro('Erro: ' + error.message)
     } else {
-      setMsg('Senha alterada! Redirecionando...')
-      setTimeout(() => router.push('/'), 2000)
+      setMsg('Senha alterada com sucesso! Redirecionando...')
+      setTimeout(() => router.push('/login'), 2000)
     }
     setLoading(false)
   }
@@ -51,7 +66,12 @@ export default function ResetPasswordPage() {
           <p className="text-gray-500 text-sm">Redefinir senha</p>
         </div>
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-          {!pronto ? (
+          {erro && !pronto ? (
+            <div className="text-center py-4">
+              <p className="text-sm text-red-600">{erro}</p>
+              <button onClick={() => router.push('/login')} className="btn btn-primary mt-4 w-full">Voltar ao login</button>
+            </div>
+          ) : !pronto ? (
             <div className="text-center py-4">
               <div className="w-8 h-8 border-4 border-primary-400 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
               <p className="text-sm text-gray-500">Verificando link...</p>
