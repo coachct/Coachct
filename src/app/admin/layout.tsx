@@ -1,0 +1,15 @@
+import SidebarLayout from '@/components/layout/SidebarLayout'
+
+const nav = [
+  { label: 'Dashboard', href: '/admin/dashboard' },
+  { label: 'Faturamento & Margem', href: '/admin/financeiro' },
+  { label: 'Coaches', href: '/admin/coaches' },
+  { label: 'Custo × Retorno', href: '/admin/relatorios/custo' },
+  { label: 'Pagamentos', href: '/admin/relatorios/pagamentos' },
+  { label: 'Horários populares', href: '/admin/horarios' },
+  { label: 'Frequência de alunos', href: '/admin/relatorios/frequencia' },
+]
+
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  return <SidebarLayout navItems={nav} role="admin">{children}</SidebarLayout>
+}
