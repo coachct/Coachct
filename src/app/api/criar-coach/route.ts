@@ -6,7 +6,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { nome, email, senha, cpf, contrato, salario_fixo, adicional_por_aula, valor_cliente_aula } = body
 
-    if if (!nome || !email || !senha) {
+    if  (!nome || !email || !senha) {
       return NextResponse.json({ error: 'Campos obrigatórios faltando.' }, { status: 400 })
     }
 
