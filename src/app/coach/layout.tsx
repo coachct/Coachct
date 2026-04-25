@@ -5,6 +5,7 @@ const nav = [
   { label: 'Alunos', href: '/coach/alunos' },
   { label: 'Registrar aula', href: '/coach/treino' },
   { label: 'Histórico', href: '/coach/historico' },
+  { label: 'Trocar senha', href: '/trocar-senha' },
 ]
 
 export default function CoachLayout({ children }: { children: React.ReactNode }) {
