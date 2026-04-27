@@ -37,6 +37,7 @@ export default function JuMontarPage() {
   })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState<number[]>([])
+  const [msgSucesso, setMsgSucesso] = useState('')
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
 
@@ -66,7 +67,6 @@ export default function JuMontarPage() {
       }
       return { ...s, exercicios: [...s.exercicios, novoEx] }
     }))
-    // Expandir automaticamente para preencher séries
     setExExpandido(ex.id + '-' + slotAtivo)
   }
 
@@ -91,30 +91,48 @@ export default function JuMontarPage() {
   function addSlot() {
     const idx = slots.length
     setSlots(prev => [...prev, { nome: `Treino ${LETRAS[idx] || idx+1}`, descricao: '', exercicios: [] }])
+    setSlotAtivo(slots.length)
   }
 
   async function publicarSlot(slotIdx: number) {
     const slot = slots[slotIdx]
-    if (slot.exercicios.length === 0) { alert('Adicione pelo menos um exercício.'); return }
+    if (slot.exercicios.length === 0) {
+      alert('Adicione pelo menos um exercício antes de publicar.')
+      return
+    }
     setSaving(true)
-    const { data: treino } = await supabase.from('treinos').insert({
-      nome: slot.nome,
-      descricao: slot.descricao || null,
-      mes, ano, publicado: true,
-    }).select().single()
+    setMsgSucesso('')
+    try {
+      const { data: treino, error } = await supabase.from('treinos').insert({
+        nome: slot.nome,
+        descricao: slot.descricao || null,
+        mes, ano,
+        publicado: true,
+      }).select().single()
 
-    if (treino) {
-      const rows = slot.exercicios.map((ex, ordem) => ({
-        treino_id: treino.id,
-        exercicio_id: ex.id,
-        ordem,
-        series_override: parseInt(ex.series) || 3,
-        reps_override: ex.reps || '12',
-        descanso_override: parseInt(ex.descanso) || 60,
-        observacoes_override: ex.obs_treino || null,
-      }))
-      await supabase.from('treino_exercicios').insert(rows)
-      setSaved(prev => [...prev, slotIdx])
+      if (error) {
+        alert('Erro ao publicar: ' + error.message)
+        setSaving(false)
+        return
+      }
+
+      if (treino) {
+        const rows = slot.exercicios.map((ex, ordem) => ({
+          treino_id: treino.id,
+          exercicio_id: ex.id,
+          ordem,
+          series_override: parseInt(ex.series) || 3,
+          reps_override: ex.reps || '12',
+          descanso_override: parseInt(ex.descanso) || 60,
+          observacoes_override: ex.obs_treino || null,
+        }))
+        await supabase.from('treino_exercicios').insert(rows)
+        setSaved(prev => [...prev, slotIdx])
+        setMsgSucesso(`✅ ${slot.nome} publicado com sucesso!`)
+        setTimeout(() => setMsgSucesso(''), 4000)
+      }
+    } catch (e: any) {
+      alert('Erro: ' + e.message)
     }
     setSaving(false)
   }
@@ -133,6 +151,12 @@ export default function JuMontarPage() {
         title="Montar treinos do mês"
         subtitle="Selecione os exercícios, defina séries, reps e descanso para este mês"
       />
+
+      {msgSucesso && (
+        <div className="bg-green-50 text-green-800 px-4 py-3 rounded-xl text-sm font-medium mb-4">
+          {msgSucesso} Veja em <a href="/ju/treinos" className="underline">Treinos do mês</a>.
+        </div>
+      )}
 
       <div className="flex flex-col md:flex-row gap-4">
         {/* Biblioteca lateral */}
@@ -166,7 +190,7 @@ export default function JuMontarPage() {
                       )}
                     </div>
                     <button
-                      onClick={() => jaAdicionado ? null : addExToSlot(ex)}
+                      onClick={() => !jaAdicionado && addExToSlot(ex)}
                       disabled={!!jaAdicionado}
                       className={`w-6 h-6 rounded-full border flex items-center justify-center text-base flex-shrink-0 leading-none transition-colors ${jaAdicionado ? 'bg-primary-100 border-primary-300 text-primary-600 cursor-default' : 'border-primary-200 text-primary-600 hover:bg-primary-50'}`}>
                       {jaAdicionado ? '✓' : '+'}
@@ -205,6 +229,7 @@ export default function JuMontarPage() {
                 {slot.exercicios.length > 0 && (
                   <span className="ml-1 text-xs opacity-70">({slot.exercicios.length})</span>
                 )}
+                {saved.includes(si) && <span className="ml-1">✓</span>}
               </button>
             ))}
           </div>
@@ -214,26 +239,34 @@ export default function JuMontarPage() {
             <div className="card">
               <div className="flex items-center gap-3 mb-4 flex-wrap">
                 <input
-                  className="text-base font-semibold text-gray-900 border-none outline-none bg-transparent flex-1"
+                  className="text-base font-semibold text-gray-900 border-none outline-none bg-transparent flex-1 min-w-0"
                   value={slots[slotAtivo].nome}
                   onChange={e => setSlots(prev => prev.map((s,i) => i===slotAtivo ? {...s, nome:e.target.value} : s))}
                   placeholder="Nome do treino..."
                 />
                 <input
-                  className="text-xs text-gray-400 border-none outline-none bg-transparent flex-1"
+                  className="text-xs text-gray-400 border-none outline-none bg-transparent flex-1 min-w-0"
                   value={slots[slotAtivo].descricao}
                   onChange={e => setSlots(prev => prev.map((s,i) => i===slotAtivo ? {...s, descricao:e.target.value} : s))}
                   placeholder="Grupos musculares... ex: Peito + Tríceps"
                 />
                 <div className="flex gap-2 flex-shrink-0">
                   {saved.includes(slotAtivo) ? (
-                    <span className="flex items-center gap-1 text-xs text-primary-600 font-medium"><CheckCircle size={14} />Publicado</span>
+                    <span className="flex items-center gap-1 text-xs text-primary-600 font-medium">
+                      <CheckCircle size={14} />Publicado
+                    </span>
                   ) : (
                     <button onClick={() => publicarSlot(slotAtivo)} disabled={saving} className="btn btn-primary btn-sm gap-1">
-                      <Save size={12} />Publicar
+                      <Save size={12} />{saving ? 'Publicando...' : 'Publicar'}
                     </button>
                   )}
-                  <button onClick={() => setSlots(prev => prev.filter((_,i) => i!==slotAtivo))} className="btn btn-sm text-red-400 hover:bg-red-50">
+                  <button
+                    onClick={() => {
+                      if (slots.length === 1) return
+                      setSlots(prev => prev.filter((_,i) => i !== slotAtivo))
+                      setSlotAtivo(Math.max(0, slotAtivo - 1))
+                    }}
+                    className="btn btn-sm text-red-400 hover:bg-red-50 p-1.5">
                     <X size={14} />
                   </button>
                 </div>
@@ -250,19 +283,23 @@ export default function JuMontarPage() {
                     const isOpen = exExpandido === expandKey
                     return (
                       <div key={ex.id} className="border border-gray-100 rounded-xl overflow-hidden">
-                        {/* Header do exercício */}
                         <div className="flex items-center gap-3 px-4 py-3 bg-gray-50">
+                          <div className="w-6 h-6 rounded-full bg-primary-100 text-primary-800 text-xs font-semibold flex items-center justify-center flex-shrink-0">
+                            {ei + 1}
+                          </div>
                           <div className="flex-1 min-w-0">
                             <div className="text-sm font-medium text-gray-900">{ex.nome}</div>
-                            {ex.numero_maquina && (
-                              <span className="text-xs text-blue-600">{ex.numero_maquina}</span>
-                            )}
-                            {!isOpen && (ex.series || ex.reps) && (
-                              <div className="text-xs text-gray-400 mt-0.5">
-                                {ex.series}× · {ex.reps} reps · {ex.descanso}s
-                                {ex.obs_treino && <span className="ml-1 italic">· {ex.obs_treino.slice(0,30)}{ex.obs_treino.length>30?'...':''}</span>}
-                              </div>
-                            )}
+                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                              {ex.numero_maquina && (
+                                <span className="text-xs text-blue-600">{ex.numero_maquina}</span>
+                              )}
+                              {!isOpen && (
+                                <span className="text-xs text-gray-400">
+                                  {ex.series}× · {ex.reps} reps · {ex.descanso}s
+                                  {ex.obs_treino && ` · "${ex.obs_treino.slice(0,25)}${ex.obs_treino.length>25?'...':''}"`}
+                                </span>
+                              )}
+                            </div>
                           </div>
                           <div className="flex items-center gap-1 flex-shrink-0">
                             <button onClick={() => setExExpandido(isOpen ? null : expandKey)}
@@ -276,9 +313,8 @@ export default function JuMontarPage() {
                           </div>
                         </div>
 
-                        {/* Campos expandidos */}
                         {isOpen && (
-                          <div className="px-4 py-3 grid grid-cols-2 md:grid-cols-4 gap-3">
+                          <div className="px-4 py-3 grid grid-cols-2 md:grid-cols-3 gap-3">
                             <div>
                               <label className="label">Séries</label>
                               <input className="input text-center" placeholder="3" value={ex.series}
@@ -286,19 +322,15 @@ export default function JuMontarPage() {
                             </div>
                             <div>
                               <label className="label">Reps</label>
-                              <input className="input text-center" placeholder="12" value={ex.reps}
+                              <input className="input text-center" placeholder="12 ou 8-12 ou Falha" value={ex.reps}
                                 onChange={e => updateExSlot(slotAtivo, ex.id, 'reps', e.target.value)} />
                             </div>
                             <div>
-                              <label className="label">Descanso (s)</label>
+                              <label className="label">Descanso (seg)</label>
                               <input className="input text-center" placeholder="60" value={ex.descanso}
                                 onChange={e => updateExSlot(slotAtivo, ex.id, 'descanso', e.target.value)} />
                             </div>
-                            <div>
-                              <label className="label">Ordem</label>
-                              <input className="input text-center" type="number" value={ei + 1} disabled style={{opacity:0.6}} />
-                            </div>
-                            <div className="col-span-2 md:col-span-4">
+                            <div className="col-span-2 md:col-span-3">
                               <label className="label">Observação deste exercício neste mês</label>
                               <textarea className="input resize-none" rows={2}
                                 placeholder="Ex: atenção ao ângulo do banco, aumentar carga progressivamente..."
