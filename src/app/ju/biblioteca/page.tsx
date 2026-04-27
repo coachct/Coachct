@@ -3,11 +3,10 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { Categoria, Exercicio } from '@/types'
 import { PageHeader, Spinner, EmptyState } from '@/components/ui'
-import { Plus, Save, Pencil, Trash2 } from 'lucide-react'
+import { Save, Pencil, Trash2 } from 'lucide-react'
 
 const EMPTY_EX = {
-  nome: '', numero_maquina: '', series_padrao: 3,
-  reps_padrao: '12', descanso_segundos: 60, observacoes: ''
+  nome: '', numero_maquina: '', observacoes: ''
 }
 
 interface Maquina { id: string; numero: number; nome: string }
@@ -42,7 +41,15 @@ export default function JuBibliotecaPage() {
   async function saveExercicio() {
     if (!catSel || !form.nome) return
     setSaving(true)
-    const payload = { ...form, categoria_id: catSel }
+    const payload = {
+      nome: form.nome,
+      numero_maquina: form.numero_maquina || null,
+      observacoes: form.observacoes || null,
+      categoria_id: catSel,
+      series_padrao: 3,
+      reps_padrao: '12',
+      descanso_segundos: 60,
+    }
     if (editId) {
       await supabase.from('exercicios').update(payload).eq('id', editId)
     } else {
@@ -68,13 +75,15 @@ export default function JuBibliotecaPage() {
 
   return (
     <div>
-      <PageHeader title="Biblioteca de exercícios" subtitle="Organize por categoria, defina máquina e instruções" />
+      <PageHeader
+        title="Biblioteca de exercícios"
+        subtitle="Cadastre os exercícios por grupo muscular. As séries são definidas ao montar o treino do mês."
+      />
 
       <div className="flex flex-col md:flex-row gap-4">
-        {/* Sidebar categorias */}
         <div className="w-full md:w-44 flex-shrink-0">
           <div className="card p-2">
-            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-2 py-1 mb-1">Categorias</div>
+            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-2 py-1 mb-1">Grupos musculares</div>
             {categorias.map(cat => {
               const count = exercicios.filter(e => e.categoria_id === cat.id).length
               return (
@@ -89,17 +98,17 @@ export default function JuBibliotecaPage() {
         </div>
 
         <div className="flex-1 min-w-0">
-          {/* Form novo/editar */}
           <div className="card mb-4">
-            <h2 className="text-sm font-semibold text-gray-900 mb-3">
+            <h2 className="text-sm font-semibold text-gray-900 mb-1">
               {editId ? 'Editar exercício' : `Novo exercício — ${catAtual?.nome}`}
             </h2>
+            <p className="text-xs text-gray-400 mb-3">Séries, reps e descanso são definidos ao montar o treino do mês.</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
               <div className="md:col-span-2">
-                <label className="label">Nome do exercício</label>
+                <label className="label">Nome do exercício *</label>
                 <input className="input" placeholder="Ex: Supino reto com barra" value={form.nome} onChange={e => setForm((f: any) => ({...f, nome: e.target.value}))} />
               </div>
-              <div>
+              <div className="md:col-span-2">
                 <label className="label">Máquina</label>
                 <select className="input" value={form.numero_maquina} onChange={e => setForm((f: any) => ({...f, numero_maquina: e.target.value}))}>
                   <option value="">Selecionar máquina...</option>
@@ -110,18 +119,6 @@ export default function JuBibliotecaPage() {
                     </option>
                   ))}
                 </select>
-              </div>
-              <div>
-                <label className="label">Descanso (segundos)</label>
-                <input className="input" type="number" value={form.descanso_segundos} onChange={e => setForm((f: any) => ({...f, descanso_segundos: +e.target.value}))} />
-              </div>
-              <div>
-                <label className="label">Séries padrão</label>
-                <input className="input" type="number" value={form.series_padrao} onChange={e => setForm((f: any) => ({...f, series_padrao: +e.target.value}))} />
-              </div>
-              <div>
-                <label className="label">Reps padrão</label>
-                <input className="input" placeholder="12 ou 8-12 ou Falha" value={form.reps_padrao} onChange={e => setForm((f: any) => ({...f, reps_padrao: e.target.value}))} />
               </div>
               <div className="md:col-span-2">
                 <label className="label">Observações / Instruções para coaches</label>
@@ -138,10 +135,9 @@ export default function JuBibliotecaPage() {
             </div>
           </div>
 
-          {/* Lista exercícios */}
           <div className="card">
             <h2 className="text-sm font-semibold text-gray-900 mb-3">
-              Exercícios — {catAtual?.nome} ({exsFiltrados.length})
+              {catAtual?.nome} — {exsFiltrados.length} exercício{exsFiltrados.length !== 1 ? 's' : ''}
             </h2>
             {exsFiltrados.length === 0 && <EmptyState message="Nenhum exercício nesta categoria ainda." />}
             <div className="divide-y divide-gray-100">
@@ -149,21 +145,18 @@ export default function JuBibliotecaPage() {
                 <div key={ex.id} className="py-3 flex items-start gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-sm text-gray-900">{ex.nome}</div>
-                    <div className="text-xs text-gray-400 mt-0.5">
-                      {ex.series_padrao}× · {ex.reps_padrao} reps · {ex.descanso_segundos}s
-                      {ex.numero_maquina && (
-                        <span className="ml-2 bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
-                          {ex.numero_maquina}
-                        </span>
-                      )}
-                    </div>
+                    {ex.numero_maquina && (
+                      <span className="inline-block mt-1 text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
+                        {ex.numero_maquina}
+                      </span>
+                    )}
                     {ex.observacoes && (
                       <div className="text-xs text-gray-500 italic mt-1">📌 {ex.observacoes}</div>
                     )}
                   </div>
                   <div className="flex gap-1 flex-shrink-0">
                     <button onClick={() => { setForm(ex); setEditId(ex.id) }} className="btn btn-sm p-1.5"><Pencil size={12} /></button>
-                    <button onClick={() => deleteExercicio(ex.id)} className="btn btn-sm p-1.5 text-danger-600 hover:bg-danger-50"><Trash2 size={12} /></button>
+                    <button onClick={() => deleteExercicio(ex.id)} className="btn btn-sm p-1.5 text-red-500 hover:bg-red-50"><Trash2 size={12} /></button>
                   </div>
                 </div>
               ))}
