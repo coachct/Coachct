@@ -8,5 +8,5 @@ const nav = [
 ]
 
 export default function JuLayout({ children }: { children: React.ReactNode }) {
-  return <SidebarLayout navItems={nav} role="coordenadora">{children}</SidebarLayout>
+  return <SidebarLayout navItems={nav} role="admin">{children}</SidebarLayout>
 }
