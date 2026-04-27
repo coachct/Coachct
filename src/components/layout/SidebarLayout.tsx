@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
-import { Menu, X, LogOut } from 'lucide-react'
+import { Menu, X, LogOut, Home } from 'lucide-react'
 
 interface NavItem { label: string; href: string }
 
@@ -16,6 +16,7 @@ interface SidebarLayoutProps {
 
 const roleLabel = { admin: 'Admin', coach: 'Coach', coordenadora: 'Coordenadora' }
 const roleColor = { admin: 'bg-primary-400', coach: 'bg-blue-500', coordenadora: 'bg-purple-500' }
+const homeHref = { admin: '/admin/dashboard', coach: '/coach/painel', coordenadora: '/ju/biblioteca' }
 
 export default function SidebarLayout({ children, navItems, role }: SidebarLayoutProps) {
   const pathname = usePathname()
@@ -28,9 +29,25 @@ export default function SidebarLayout({ children, navItems, role }: SidebarLayou
     router.push('/login')
   }
 
+  const home = homeHref[role]
+
   const NavLinks = () => (
     <nav className="flex-1 px-2 py-4 space-y-0.5">
-      {navItems.map(item => (
+      {/* Home fixo no topo */}
+      <Link
+        href={home}
+        onClick={() => setOpen(false)}
+        className={cn(
+          'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors mb-2 border-b border-gray-100 pb-3',
+          pathname === home
+            ? 'bg-primary-50 text-primary-800 font-medium border-l-2 border-primary-400 rounded-l-none'
+            : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+        )}
+      >
+        <Home size={14} className="flex-shrink-0" />
+        Dashboard
+      </Link>
+      {navItems.filter(item => item.href !== home).map(item => (
         <Link
           key={item.href}
           href={item.href}
@@ -53,7 +70,9 @@ export default function SidebarLayout({ children, navItems, role }: SidebarLayou
       {/* Sidebar desktop */}
       <aside className="hidden md:flex w-56 flex-col bg-white border-r border-gray-100 shrink-0">
         <div className="px-4 py-4 border-b border-gray-100">
-          <div className="text-primary-800 font-semibold text-sm tracking-wider">● COACH CT</div>
+          <Link href={home} className="text-primary-800 font-semibold text-sm tracking-wider hover:text-primary-600 transition-colors">
+            ● COACH CT
+          </Link>
           <div className="flex items-center gap-2 mt-3">
             <span className={cn('w-2 h-2 rounded-full', roleColor[role])} />
             <span className="text-xs text-gray-500">{roleLabel[role]}</span>
@@ -77,7 +96,10 @@ export default function SidebarLayout({ children, navItems, role }: SidebarLayou
 
       {/* Mobile topbar */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-primary-900 h-14 flex items-center justify-between px-4">
-        <span className="text-primary-200 font-semibold text-sm tracking-wider">● COACH CT</span>
+        <Link href={home} className="text-primary-200 font-semibold text-sm tracking-wider flex items-center gap-2">
+          <Home size={16} />
+          ● COACH CT
+        </Link>
         <button onClick={() => setOpen(!open)} className="text-primary-200 p-1">
           {open ? <X size={20} /> : <Menu size={20} />}
         </button>
