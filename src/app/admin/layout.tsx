@@ -8,6 +8,9 @@ const nav = [
   { label: 'Pagamentos', href: '/admin/relatorios/pagamentos' },
   { label: 'Horários populares', href: '/admin/horarios' },
   { label: 'Frequência de alunos', href: '/admin/relatorios/frequencia' },
+  { label: 'Biblioteca de exercícios', href: '/ju/biblioteca' },
+  { label: 'Montar treinos', href: '/ju/montar' },
+  { label: 'Treinos do mês', href: '/ju/treinos' },
   { label: 'Trocar senha', href: '/trocar-senha' },
 ]
 
