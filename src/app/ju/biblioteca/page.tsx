@@ -5,29 +5,34 @@ import { Categoria, Exercicio } from '@/types'
 import { PageHeader, Spinner, EmptyState } from '@/components/ui'
 import { Plus, Save, Pencil, Trash2 } from 'lucide-react'
 
-const EMPTY_EX: Partial<Exercicio> = {
+const EMPTY_EX = {
   nome: '', numero_maquina: '', series_padrao: 3,
   reps_padrao: '12', descanso_segundos: 60, observacoes: ''
 }
 
+interface Maquina { id: string; numero: number; nome: string }
+
 export default function JuBibliotecaPage() {
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [exercicios, setExercicios] = useState<Exercicio[]>([])
+  const [maquinas, setMaquinas] = useState<Maquina[]>([])
   const [catSel, setCatSel] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [form, setForm] = useState<Partial<Exercicio>>(EMPTY_EX)
+  const [form, setForm] = useState<any>(EMPTY_EX)
   const [editId, setEditId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const supabase = createClient()
 
   useEffect(() => {
     async function load() {
-      const [{ data: cats }, { data: exs }] = await Promise.all([
+      const [{ data: cats }, { data: exs }, { data: maqs }] = await Promise.all([
         supabase.from('categorias').select('*').order('ordem'),
         supabase.from('exercicios').select('*, categorias(nome)').eq('ativo', true).order('nome'),
+        supabase.from('maquinas').select('*').eq('ativo', true).order('numero'),
       ])
       setCategorias(cats || [])
       setExercicios(exs || [])
+      setMaquinas(maqs || [])
       if (cats && cats.length > 0) setCatSel(cats[0].id)
       setLoading(false)
     }
@@ -38,14 +43,11 @@ export default function JuBibliotecaPage() {
     if (!catSel || !form.nome) return
     setSaving(true)
     const payload = { ...form, categoria_id: catSel }
-
     if (editId) {
       await supabase.from('exercicios').update(payload).eq('id', editId)
     } else {
       await supabase.from('exercicios').insert(payload)
     }
-
-    // Reload
     const { data } = await supabase.from('exercicios').select('*, categorias(nome)').eq('ativo', true).order('nome')
     setExercicios(data || [])
     setForm(EMPTY_EX)
@@ -95,29 +97,37 @@ export default function JuBibliotecaPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
               <div className="md:col-span-2">
                 <label className="label">Nome do exercício</label>
-                <input className="input" placeholder="Ex: Supino reto com barra" value={form.nome} onChange={e => setForm(f=>({...f,nome:e.target.value}))} />
+                <input className="input" placeholder="Ex: Supino reto com barra" value={form.nome} onChange={e => setForm((f: any) => ({...f, nome: e.target.value}))} />
               </div>
               <div>
-                <label className="label">Número / nome da máquina</label>
-                <input className="input" placeholder="Ex: 03 · Polia alta · Rack" value={form.numero_maquina || ''} onChange={e => setForm(f=>({...f,numero_maquina:e.target.value}))} />
+                <label className="label">Máquina</label>
+                <select className="input" value={form.numero_maquina} onChange={e => setForm((f: any) => ({...f, numero_maquina: e.target.value}))}>
+                  <option value="">Selecionar máquina...</option>
+                  <option value="Livre">Livre (sem máquina)</option>
+                  {maquinas.map(m => (
+                    <option key={m.id} value={`${m.numero} - ${m.nome}`}>
+                      {m.numero} - {m.nome}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="label">Descanso (segundos)</label>
-                <input className="input" type="number" value={form.descanso_segundos} onChange={e => setForm(f=>({...f,descanso_segundos:+e.target.value}))} />
+                <input className="input" type="number" value={form.descanso_segundos} onChange={e => setForm((f: any) => ({...f, descanso_segundos: +e.target.value}))} />
               </div>
               <div>
                 <label className="label">Séries padrão</label>
-                <input className="input" type="number" value={form.series_padrao} onChange={e => setForm(f=>({...f,series_padrao:+e.target.value}))} />
+                <input className="input" type="number" value={form.series_padrao} onChange={e => setForm((f: any) => ({...f, series_padrao: +e.target.value}))} />
               </div>
               <div>
                 <label className="label">Reps padrão</label>
-                <input className="input" placeholder="12 ou 8-12 ou Falha" value={form.reps_padrao} onChange={e => setForm(f=>({...f,reps_padrao:e.target.value}))} />
+                <input className="input" placeholder="12 ou 8-12 ou Falha" value={form.reps_padrao} onChange={e => setForm((f: any) => ({...f, reps_padrao: e.target.value}))} />
               </div>
               <div className="md:col-span-2">
                 <label className="label">Observações / Instruções para coaches</label>
                 <textarea className="input resize-none" rows={2}
-                  placeholder="Ex: manter escápulas retraídas, controlar descida em 3s, cotovelos fixos..."
-                  value={form.observacoes || ''} onChange={e => setForm(f=>({...f,observacoes:e.target.value}))} />
+                  placeholder="Ex: manter escápulas retraídas, controlar descida em 3s..."
+                  value={form.observacoes || ''} onChange={e => setForm((f: any) => ({...f, observacoes: e.target.value}))} />
               </div>
             </div>
             <div className="flex gap-2">
@@ -128,10 +138,12 @@ export default function JuBibliotecaPage() {
             </div>
           </div>
 
-          {/* Lista exercícios da categoria */}
+          {/* Lista exercícios */}
           <div className="card">
-            <h2 className="text-sm font-semibold text-gray-900 mb-3">Exercícios — {catAtual?.nome}</h2>
-            {exsFiltrados.length === 0 && <EmptyState message="Nenhum exercício nesta categoria." />}
+            <h2 className="text-sm font-semibold text-gray-900 mb-3">
+              Exercícios — {catAtual?.nome} ({exsFiltrados.length})
+            </h2>
+            {exsFiltrados.length === 0 && <EmptyState message="Nenhum exercício nesta categoria ainda." />}
             <div className="divide-y divide-gray-100">
               {exsFiltrados.map(ex => (
                 <div key={ex.id} className="py-3 flex items-start gap-3">
@@ -139,7 +151,11 @@ export default function JuBibliotecaPage() {
                     <div className="font-medium text-sm text-gray-900">{ex.nome}</div>
                     <div className="text-xs text-gray-400 mt-0.5">
                       {ex.series_padrao}× · {ex.reps_padrao} reps · {ex.descanso_segundos}s
-                      {ex.numero_maquina && <span className="ml-2 bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">Máq. {ex.numero_maquina}</span>}
+                      {ex.numero_maquina && (
+                        <span className="ml-2 bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
+                          {ex.numero_maquina}
+                        </span>
+                      )}
                     </div>
                     {ex.observacoes && (
                       <div className="text-xs text-gray-500 italic mt-1">📌 {ex.observacoes}</div>
