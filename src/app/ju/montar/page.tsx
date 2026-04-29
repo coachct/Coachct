@@ -18,7 +18,6 @@ interface TreinoCompleto extends Treino {
   treino_exercicios?: any[]
 }
 
-const LETRAS = ['A','B','C','D','E','F','G','H','I','J']
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 
 export default function JuMontarPage() {
@@ -35,6 +34,8 @@ export default function JuMontarPage() {
   const [descEdit, setDescEdit] = useState('')
   const [exsEdit, setExsEdit] = useState<ExercicioComSeries[]>([])
   const [modalPublicar, setModalPublicar] = useState<string | null>(null)
+  const [modalNovo, setModalNovo] = useState(false)
+  const [nomeNovo, setNomeNovo] = useState('')
   const [pubMes, setPubMes] = useState(new Date().getMonth() + 1)
   const [pubAno, setPubAno] = useState(new Date().getFullYear())
   const supabase = createClient()
@@ -75,15 +76,16 @@ export default function JuMontarPage() {
   }
 
   async function criarNovo() {
-    const idx = treinos.length
-    const nome = `Treino ${LETRAS[idx] || idx+1}`
+    if (!nomeNovo.trim()) return
     const { data } = await supabase.from('treinos').insert({
-      nome, descricao: '', mes: 1, ano: 2025, publicado: false
+      nome: nomeNovo.trim(), descricao: '', mes: 1, ano: 2025, publicado: false
     }).select().single()
     if (data) {
       setTreinos(prev => [...prev, { ...data, treino_exercicios: [] }])
       abrirEdicao({ ...data, treino_exercicios: [] })
     }
+    setModalNovo(false)
+    setNomeNovo('')
   }
 
   async function duplicar(treino: TreinoCompleto) {
@@ -123,9 +125,7 @@ export default function JuMontarPage() {
   async function salvarEdicao() {
     if (!editandoId) return
     setSaving(true)
-    // Salva nome e descrição
     await supabase.from('treinos').update({ nome: nomeEdit, descricao: descEdit }).eq('id', editandoId)
-    // Deleta todos e reinsere com ordem correta (só no salvar explícito)
     await supabase.from('treino_exercicios').delete().eq('treino_id', editandoId)
     if (exsEdit.length > 0) {
       const rows = exsEdit.map((ex, i) => ({
@@ -139,7 +139,6 @@ export default function JuMontarPage() {
         conjugado: ex.conjugado || false,
       }))
       const { data: novosRows } = await supabase.from('treino_exercicios').insert(rows).select()
-      // Atualiza te_ids no estado
       if (novosRows) {
         setExsEdit(prev => prev.map((ex, i) => ({ ...ex, te_id: novosRows[i]?.id })))
       }
@@ -177,11 +176,8 @@ export default function JuMontarPage() {
   }
 
   async function removeEx(exId: string) {
-    // Acha o exercício pelo id
     const ex = exsEdit.find(e => e.id === exId)
     if (!ex) return
-
-    // Se tem te_id, deleta só essa linha no banco
     if (ex.te_id) {
       const { error } = await supabase.from('treino_exercicios').delete().eq('id', ex.te_id)
       if (error) {
@@ -190,12 +186,9 @@ export default function JuMontarPage() {
         return
       }
     }
-
-    // Atualiza estado local sem fechar o editor
     setExsEdit(prev => {
       const idx = prev.findIndex(e => e.id === exId)
       const updated = prev.filter(e => e.id !== exId)
-      // Desconjuga o anterior se necessário
       if (idx > 0 && updated[idx-1]?.conjugado) {
         updated[idx-1] = { ...updated[idx-1], conjugado: false }
       }
@@ -387,10 +380,13 @@ export default function JuMontarPage() {
       )}
 
       <div className="flex flex-col md:flex-row gap-4">
+        {/* Lista de treinos */}
         <div className="w-full md:w-64 flex-shrink-0">
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm font-semibold text-gray-700">Treinos ({treinos.length})</span>
-            <button onClick={criarNovo} className="btn btn-primary btn-sm gap-1"><Plus size={12} />Novo</button>
+            <button onClick={() => setModalNovo(true)} className="btn btn-primary btn-sm gap-1">
+              <Plus size={12} />Novo
+            </button>
           </div>
           <div className="space-y-2">
             {treinos.length === 0 && <EmptyState message="Nenhum treino criado ainda." />}
@@ -407,7 +403,7 @@ export default function JuMontarPage() {
                   <div className="flex gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
                     <button onClick={() => setModalPublicar(t.id)} className="btn btn-sm p-1.5 text-primary-600" title="Publicar"><Calendar size={13} /></button>
                     <button onClick={() => duplicar(t)} className="btn btn-sm p-1.5 text-gray-400" title="Duplicar"><Copy size={13} /></button>
-                    <button onClick={() => deletarTreino(t.id)} className="btn btn-sm p-1.5 text-red-400 hover:bg-red-50" title="Remover treino"><X size={13} /></button>
+                    <button onClick={() => deletarTreino(t.id)} className="btn btn-sm p-1.5 text-red-400 hover:bg-red-50" title="Remover"><X size={13} /></button>
                   </div>
                 </div>
               </div>
@@ -415,6 +411,7 @@ export default function JuMontarPage() {
           </div>
         </div>
 
+        {/* Editor */}
         <div className="flex-1 min-w-0">
           {!editandoId ? (
             <div className="card flex items-center justify-center py-16 text-gray-400 text-sm italic">
@@ -480,7 +477,7 @@ export default function JuMontarPage() {
                     <div className="space-y-2">
                       {renderExercicios()}
                       <div className="text-xs text-gray-400 pt-2 italic">
-                        💡 Use ↑↓ para reordenar · 🔗 para conjugar dois exercícios · Clique em Salvar para confirmar alterações
+                        💡 Use ↑↓ para reordenar · 🔗 para conjugar · Salvar para confirmar
                       </div>
                     </div>
                   )}
@@ -491,6 +488,34 @@ export default function JuMontarPage() {
         </div>
       </div>
 
+      {/* Modal novo treino */}
+      {modalNovo && (
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
+            <h2 className="text-base font-semibold text-gray-900 mb-2">Novo treino</h2>
+            <p className="text-sm text-gray-500 mb-4">Dê um nome descritivo para identificar facilmente este treino.</p>
+            <div className="mb-4">
+              <label className="label">Nome do treino</label>
+              <input
+                className="input"
+                placeholder="Ex: Treino A - Maio, Treino B Pernas..."
+                value={nomeNovo}
+                onChange={e => setNomeNovo(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && criarNovo()}
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={criarNovo} disabled={!nomeNovo.trim()} className="btn btn-primary flex-1">
+                Criar treino
+              </button>
+              <button onClick={() => { setModalNovo(false); setNomeNovo('') }} className="btn flex-1">Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal publicar */}
       {modalPublicar && (
         <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
