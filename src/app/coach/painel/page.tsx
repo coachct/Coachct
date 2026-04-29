@@ -4,19 +4,24 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { fmt } from '@/lib/utils'
-import { Users, ClipboardList, BarChart2, Tag } from 'lucide-react'
+import { Users, ClipboardList, BarChart2, Tag, TrendingUp, TrendingDown, Clock } from 'lucide-react'
+
+const DIAS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
+const TURNOS = [
+  { label: 'Manhã', horas: ['05:30','06:00','06:30','07:00','07:30','08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30'] },
+  { label: 'Tarde', horas: ['12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30'] },
+  { label: 'Noite', horas: ['18:00','18:30','19:00','19:30','20:00'] },
+]
 
 export default function CoachPainelPage() {
   const { perfil } = useAuth()
   const router = useRouter()
   const [coach, setCoach] = useState<any>(null)
-  const [stats, setStats] = useState({
-    aulasHoje: 0,
-    aulasMes: 0,
-    slotsSemana: 0,
-    aulasMesPassado: 0,
-  })
+  const [stats, setStats] = useState({ aulasHoje: 0, aulasMes: 0, slotsSemana: 0, aulasMesPassado: 0 })
   const [ultimasAulas, setUltimasAulas] = useState<any[]>([])
+  const [alunosFieis, setAlunosFieis] = useState<any[]>([])
+  const [alunosSumidos, setAlunosSumidos] = useState<any[]>([])
+  const [heatmap, setHeatmap] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
 
@@ -25,22 +30,15 @@ export default function CoachPainelPage() {
   const ano = hoje.getFullYear()
   const mesNome = hoje.toLocaleDateString('pt-BR', { month: 'long' })
   const diaSemana = hoje.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
-
   const mesPassado = mes === 1 ? 12 : mes - 1
   const anoMesPassado = mes === 1 ? ano - 1 : ano
+  const mesesNomes = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 
-  useEffect(() => {
-    if (perfil?.id) loadData()
-  }, [perfil])
+  useEffect(() => { if (perfil?.id) loadData() }, [perfil])
 
   async function loadData() {
-    // Busca dados do coach
     const { data: coachData } = await supabase
-      .from('coaches')
-      .select('*')
-      .eq('user_id', perfil!.id)
-      .single()
-
+      .from('coaches').select('*').eq('user_id', perfil!.id).single()
     if (!coachData) { setLoading(false); return }
     setCoach(coachData)
 
@@ -50,6 +48,7 @@ export default function CoachPainelPage() {
     const fimMesPassado = `${anoMesPassado}-${String(mesPassado).padStart(2,'0')}-31`
     const inicioHoje = hoje.toISOString().split('T')[0]
     const fimHoje = inicioHoje + 'T23:59:59'
+    const ha2semanas = new Date(hoje); ha2semanas.setDate(hoje.getDate() - 14)
 
     const [
       { count: aulasHoje },
@@ -57,45 +56,70 @@ export default function CoachPainelPage() {
       { count: aulasMesPassado },
       { data: horarios },
       { data: ultimas },
+      { data: todasAulas },
     ] = await Promise.all([
       supabase.from('aulas').select('*', { count: 'exact', head: true })
-        .eq('coach_id', coachData.id)
-        .eq('status', 'finalizada')
-        .gte('horario_agendado', inicioHoje)
-        .lte('horario_agendado', fimHoje),
+        .eq('coach_id', coachData.id).eq('status', 'finalizada')
+        .gte('horario_agendado', inicioHoje).lte('horario_agendado', fimHoje),
       supabase.from('aulas').select('*', { count: 'exact', head: true })
-        .eq('coach_id', coachData.id)
-        .eq('status', 'finalizada')
-        .gte('horario_agendado', inicioMes)
-        .lte('horario_agendado', fimMes),
+        .eq('coach_id', coachData.id).eq('status', 'finalizada')
+        .gte('horario_agendado', inicioMes).lte('horario_agendado', fimMes),
       supabase.from('aulas').select('*', { count: 'exact', head: true })
-        .eq('coach_id', coachData.id)
-        .eq('status', 'finalizada')
-        .gte('horario_agendado', inicioMesPassado)
-        .lte('horario_agendado', fimMesPassado),
+        .eq('coach_id', coachData.id).eq('status', 'finalizada')
+        .gte('horario_agendado', inicioMesPassado).lte('horario_agendado', fimMesPassado),
       supabase.from('coach_horarios').select('*')
-        .eq('coach_id', coachData.id)
-        .eq('ativo', true),
+        .eq('coach_id', coachData.id).eq('ativo', true),
       supabase.from('aulas').select('*, alunos(nome), treinos(nome)')
-        .eq('coach_id', coachData.id)
-        .eq('status', 'finalizada')
-        .order('finalizada_em', { ascending: false })
-        .limit(5),
+        .eq('coach_id', coachData.id).eq('status', 'finalizada')
+        .order('finalizada_em', { ascending: false }).limit(5),
+      supabase.from('aulas').select('*, alunos(id, nome)')
+        .eq('coach_id', coachData.id).eq('status', 'finalizada')
+        .order('horario_agendado', { ascending: false }),
     ])
 
-    // Calcula slots disponíveis na semana atual
-    const diaSemanaHoje = hoje.getDay() // 0=dom, 1=seg...
+    const diaSemanaHoje = hoje.getDay()
     const slotsSemana = (horarios || []).filter(h => h.dia_semana >= diaSemanaHoje).length
 
-    setStats({
-      aulasHoje: aulasHoje || 0,
-      aulasMes: aulasMes || 0,
-      slotsSemana,
-      aulasMesPassado: aulasMesPassado || 0,
-    })
+    // Alunos fiéis — conta aulas por aluno
+    const contagemAlunos: Record<string, { nome: string; count: number; ultima: string }> = {}
+    for (const aula of (todasAulas || [])) {
+      const id = aula.alunos?.id
+      const nome = aula.alunos?.nome
+      if (!id || !nome) continue
+      if (!contagemAlunos[id]) contagemAlunos[id] = { nome, count: 0, ultima: aula.horario_agendado }
+      contagemAlunos[id].count++
+      if (aula.horario_agendado > contagemAlunos[id].ultima) {
+        contagemAlunos[id].ultima = aula.horario_agendado
+      }
+    }
+    const sorted = Object.values(contagemAlunos).sort((a, b) => b.count - a.count)
+    setAlunosFieis(sorted.slice(0, 3))
+
+    // Alunos sumidos — última aula há mais de 2 semanas
+    const sumidos = Object.values(contagemAlunos)
+      .filter(a => new Date(a.ultima) < ha2semanas)
+      .sort((a, b) => new Date(a.ultima).getTime() - new Date(b.ultima).getTime())
+      .slice(0, 3)
+    setAlunosSumidos(sumidos)
+
+    // Heatmap — dia × turno
+    const hm: Record<string, number> = {}
+    for (const aula of (todasAulas || [])) {
+      const d = new Date(aula.horario_agendado)
+      const dia = d.getDay()
+      const hora = d.getHours()
+      const turno = hora < 12 ? 'Manhã' : hora < 18 ? 'Tarde' : 'Noite'
+      const key = `${dia}-${turno}`
+      hm[key] = (hm[key] || 0) + 1
+    }
+    setHeatmap(hm)
+
+    setStats({ aulasHoje: aulasHoje || 0, aulasMes: aulasMes || 0, slotsSemana, aulasMesPassado: aulasMesPassado || 0 })
     setUltimasAulas(ultimas || [])
     setLoading(false)
   }
+
+  const maxHeatmap = Math.max(1, ...Object.values(heatmap))
 
   if (loading) return (
     <div className="flex items-center justify-center h-40">
@@ -104,29 +128,20 @@ export default function CoachPainelPage() {
   )
 
   if (!coach) return (
-    <div className="text-center py-16 text-gray-400">
-      <p className="text-sm">Coach não encontrado. Contate o administrador.</p>
-    </div>
+    <div className="text-center py-16 text-gray-400 text-sm">Coach não encontrado. Contate o administrador.</div>
   )
 
-  const bonus = (stats.aulasMes * (coach.adicional_por_aula || 0))
-  const totalSlotsGrade = stats.slotsSemana
-  const aproveitamento = totalSlotsGrade > 0
-    ? Math.round((stats.aulasHoje / totalSlotsGrade) * 100)
-    : 0
-
-  const mesesNomes = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
+  const bonus = stats.aulasMes * (coach.adicional_por_aula || 0)
 
   return (
     <div>
-      {/* Header */}
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-gray-900">Olá, {coach.nome.split(' ')[0]}! 👋</h1>
         <p className="text-sm text-gray-400 capitalize">{diaSemana}</p>
       </div>
 
       {/* Cards principais */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
         <div className="card text-center">
           <div className="text-xs text-gray-400 mb-1">Aulas hoje</div>
           <div className="text-2xl font-bold text-gray-900">{stats.aulasHoje}</div>
@@ -153,7 +168,7 @@ export default function CoachPainelPage() {
       </div>
 
       {/* Atalhos */}
-      <div className="grid grid-cols-2 gap-3 mb-6">
+      <div className="grid grid-cols-2 gap-3 mb-5">
         <button onClick={() => router.push('/coach/alunos')}
           className="card flex items-center gap-3 hover:border-primary-200 transition-colors text-left">
           <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center flex-shrink-0">
@@ -195,13 +210,121 @@ export default function CoachPainelPage() {
         </div>
       </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+        {/* Alunos fiéis */}
+        <div className="card">
+          <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <TrendingUp size={14} className="text-green-600" /> Alunos mais fiéis
+          </h2>
+          {alunosFieis.length === 0 ? (
+            <div className="text-xs text-gray-400 italic text-center py-3">Nenhum dado ainda</div>
+          ) : (
+            <div className="space-y-2">
+              {alunosFieis.map((a, i) => (
+                <div key={a.nome} className="flex items-center gap-3">
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${i===0?'bg-yellow-100 text-yellow-700':i===1?'bg-gray-100 text-gray-600':'bg-orange-100 text-orange-700'}`}>
+                    {i+1}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900 truncate">{a.nome}</div>
+                    <div className="text-xs text-gray-400">{a.count} aulas no total</div>
+                  </div>
+                  <div className="text-xs text-green-600 font-medium flex-shrink-0">{a.count}×</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Alunos sumidos */}
+        <div className="card">
+          <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <TrendingDown size={14} className="text-red-500" /> Alunos sumidos
+          </h2>
+          {alunosSumidos.length === 0 ? (
+            <div className="text-xs text-gray-400 italic text-center py-3">Nenhum aluno sumido 🎉</div>
+          ) : (
+            <div className="space-y-2">
+              {alunosSumidos.map(a => {
+                const dias = Math.floor((hoje.getTime() - new Date(a.ultima).getTime()) / (1000*60*60*24))
+                return (
+                  <div key={a.nome} className="flex items-center gap-3">
+                    <div className="w-6 h-6 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                      <TrendingDown size={12} className="text-red-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-900 truncate">{a.nome}</div>
+                      <div className="text-xs text-gray-400">última aula há {dias} dias</div>
+                    </div>
+                    <div className="text-xs text-red-500 font-medium flex-shrink-0">{dias}d</div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Heatmap dias × turnos */}
+      <div className="card mb-5">
+        <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+          <Clock size={14} className="text-blue-600" /> Seus horários mais movimentados
+        </h2>
+        <div className="overflow-x-auto">
+          <table className="text-xs w-full">
+            <thead>
+              <tr>
+                <th className="text-gray-400 font-normal text-left pb-2 pr-3 w-16">Turno</th>
+                {DIAS.slice(1).map(d => (
+                  <th key={d} className="text-gray-400 font-normal text-center pb-2 px-1">{d}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {TURNOS.map(turno => (
+                <tr key={turno.label}>
+                  <td className="text-gray-500 py-1 pr-3 font-medium">{turno.label}</td>
+                  {[1,2,3,4,5,6].map(dia => {
+                    const val = heatmap[`${dia}-${turno.label}`] || 0
+                    const intensity = val / maxHeatmap
+                    const bg = val === 0 ? 'bg-gray-50' :
+                      intensity < 0.33 ? 'bg-primary-100' :
+                      intensity < 0.66 ? 'bg-primary-200' : 'bg-primary-400'
+                    const txt = intensity >= 0.66 ? 'text-white' : 'text-primary-800'
+                    return (
+                      <td key={dia} className="px-1 py-1">
+                        <div className={`h-8 rounded flex items-center justify-center text-xs font-medium ${bg} ${val > 0 ? txt : 'text-gray-300'}`}>
+                          {val > 0 ? val : ''}
+                        </div>
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex items-center gap-2 mt-2 text-xs text-gray-400">
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded bg-gray-50 border border-gray-200" /> Nenhuma
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded bg-primary-100" /> Poucas
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded bg-primary-200" /> Médio
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded bg-primary-400" /> Muito
+          </div>
+        </div>
+      </div>
+
       {/* Últimas aulas */}
       <div className="card">
         <h2 className="text-sm font-semibold text-gray-900 mb-3">Últimas aulas registradas</h2>
         {ultimasAulas.length === 0 ? (
-          <div className="text-sm text-gray-400 text-center py-6 italic">
-            Nenhuma aula registrada ainda este mês.
-          </div>
+          <div className="text-sm text-gray-400 text-center py-6 italic">Nenhuma aula registrada ainda.</div>
         ) : (
           <div className="divide-y divide-gray-100">
             {ultimasAulas.map(aula => (
