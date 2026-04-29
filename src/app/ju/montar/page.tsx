@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { Categoria, Exercicio, Treino } from '@/types'
 import { PageHeader, Spinner, EmptyState } from '@/components/ui'
-import { Plus, X, Save, ChevronDown, ChevronUp, Copy, Calendar, Link, Unlink } from 'lucide-react'
+import { Plus, X, Save, ChevronDown, ChevronUp, Copy, Calendar, Link, Unlink, ArrowUp, ArrowDown } from 'lucide-react'
 
 interface ExercicioComSeries extends Exercicio {
   series: string
@@ -50,8 +50,21 @@ export default function JuMontarPage() {
     ])
     setCategorias(cats || [])
     setExercicios(exs || [])
-    setTreinos(tr || [])
+    // Atualiza a lista mas MANTÉM o editor aberto
+    setTreinos(prev => {
+      const novos = tr || []
+      // Se tem um treino em edição, atualiza ele na lista sem fechar
+      return novos
+    })
     setLoading(false)
+  }
+
+  async function loadSilencioso() {
+    const { data: tr } = await supabase
+      .from('treinos')
+      .select('*, treino_exercicios(*, exercicios(nome, numero_maquina))')
+      .order('nome')
+    setTreinos(tr || [])
   }
 
   async function criarNovo() {
@@ -87,7 +100,7 @@ export default function JuMontarPage() {
     }
     setMsg('Treino duplicado!')
     setTimeout(() => setMsg(''), 2000)
-    load()
+    loadSilencioso()
   }
 
   function abrirEdicao(treino: TreinoCompleto) {
@@ -128,8 +141,8 @@ export default function JuMontarPage() {
     }
     setMsg('Treino salvo!')
     setTimeout(() => setMsg(''), 2000)
-    setEditando(null)
-    load()
+    // Atualiza a lista sem fechar o editor
+    loadSilencioso()
     setSaving(false)
   }
 
@@ -137,7 +150,10 @@ export default function JuMontarPage() {
     if (!confirm('Remover este treino da biblioteca?')) return
     await supabase.from('treinos').delete().eq('id', id)
     setTreinos(prev => prev.filter(t => t.id !== id))
-    if (editando === id) setEditando(null)
+    if (editando === id) {
+      setEditando(null)
+      setExsEdit([])
+    }
   }
 
   function addEx(ex: Exercicio) {
@@ -146,6 +162,7 @@ export default function JuMontarPage() {
       ...ex, series: '3', reps: '12', descanso: '60',
       obs_treino: '', conjugado: false
     }
+    // Atualiza apenas o estado local — NÃO fecha o editor
     setExsEdit(prev => [...prev, novo])
     setExExpandido(ex.id)
   }
@@ -155,17 +172,36 @@ export default function JuMontarPage() {
   }
 
   function removeEx(exId: string) {
+    // Remove apenas do estado local — NÃO fecha o editor
     setExsEdit(prev => {
       const idx = prev.findIndex(e => e.id === exId)
       const updated = prev.filter(e => e.id !== exId)
+      // Desconjuga o anterior se necessário
       if (idx > 0 && updated[idx-1]?.conjugado) {
         updated[idx-1] = { ...updated[idx-1], conjugado: false }
       }
       return updated
     })
+    // Fecha o expandido se era este
+    setExExpandido(prev => prev === exId ? null : prev)
   }
 
-  // Conjuga/desconjuga pelo ÍNDICE real do array
+  function moverEx(idx: number, direcao: 'up' | 'down') {
+    setExsEdit(prev => {
+      const arr = [...prev]
+      const targetIdx = direcao === 'up' ? idx - 1 : idx + 1
+      if (targetIdx < 0 || targetIdx >= arr.length) return arr
+      // Desconjuga ao mover para evitar estado inconsistente
+      arr[idx] = { ...arr[idx], conjugado: false }
+      arr[targetIdx] = { ...arr[targetIdx], conjugado: false }
+      // Troca posições
+      const temp = arr[idx]
+      arr[idx] = arr[targetIdx]
+      arr[targetIdx] = temp
+      return arr
+    })
+  }
+
   function toggleConjugado(realIdx: number) {
     setExsEdit(prev => {
       if (realIdx < 0 || realIdx >= prev.length - 1) return prev
@@ -197,7 +233,6 @@ export default function JuMontarPage() {
     ? exercicios
     : exercicios.filter(e => e.categoria_id === catFiltro)
 
-  // Renderiza lista agrupando conjugados
   function renderExercicios() {
     const items: React.ReactNode[] = []
     let i = 0
@@ -217,11 +252,20 @@ export default function JuMontarPage() {
               <span className="text-xs font-semibold text-primary-700 flex items-center gap-1">
                 <Link size={11} /> CONJUGADO · {ex.series}× séries
               </span>
-              <button
-                onClick={() => toggleConjugado(realIdxA)}
-                className="text-xs text-primary-600 hover:underline flex items-center gap-1">
-                <Unlink size={11} /> Desconjugar
-              </button>
+              <div className="flex items-center gap-2">
+                <button onClick={() => moverEx(realIdxA, 'up')} disabled={realIdxA === 0}
+                  className="btn btn-sm p-1 text-gray-400 disabled:opacity-30" title="Mover para cima">
+                  <ArrowUp size={11} />
+                </button>
+                <button onClick={() => moverEx(realIdxB, 'down')} disabled={realIdxB >= exsEdit.length - 1}
+                  className="btn btn-sm p-1 text-gray-400 disabled:opacity-30" title="Mover para baixo">
+                  <ArrowDown size={11} />
+                </button>
+                <button onClick={() => toggleConjugado(realIdxA)}
+                  className="text-xs text-primary-600 hover:underline flex items-center gap-1">
+                  <Unlink size={11} /> Desconjugar
+                </button>
+              </div>
             </div>
             {renderExItem(ex, realIdxA, numItem, 'A', true)}
             <div className="border-t border-primary-100 mx-3" />
@@ -252,7 +296,6 @@ export default function JuMontarPage() {
     isInConjugado: boolean
   ) {
     const isOpen = exExpandido === ex.id
-    // Pode conjugar se: não está em conjugado, não é o último, e o próximo não está sendo o segundo de um conjugado
     const podeConjugar = !isInConjugado &&
       realIdx < exsEdit.length - 1 &&
       !exsEdit[realIdx]?.conjugado &&
@@ -273,21 +316,30 @@ export default function JuMontarPage() {
             </div>
           </div>
           <div className="flex gap-1 flex-shrink-0">
+            {!isInConjugado && (
+              <>
+                <button onClick={() => moverEx(realIdx, 'up')} disabled={realIdx === 0}
+                  className="btn btn-sm p-1 text-gray-300 hover:text-gray-600 disabled:opacity-20" title="Mover para cima">
+                  <ArrowUp size={12} />
+                </button>
+                <button onClick={() => moverEx(realIdx, 'down')} disabled={realIdx >= exsEdit.length - 1}
+                  className="btn btn-sm p-1 text-gray-300 hover:text-gray-600 disabled:opacity-20" title="Mover para baixo">
+                  <ArrowDown size={12} />
+                </button>
+              </>
+            )}
             {podeConjugar && (
-              <button
-                onClick={() => toggleConjugado(realIdx)}
+              <button onClick={() => toggleConjugado(realIdx)}
                 className="btn btn-sm p-1 text-primary-500 hover:bg-primary-50"
                 title="Conjugar com próximo">
                 <Link size={12} />
               </button>
             )}
-            <button
-              onClick={() => setExExpandido(isOpen ? null : ex.id)}
+            <button onClick={() => setExExpandido(isOpen ? null : ex.id)}
               className="btn btn-sm p-1 text-gray-400">
               {isOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
             </button>
-            <button
-              onClick={() => removeEx(ex.id)}
+            <button onClick={() => removeEx(ex.id)}
               className="btn btn-sm p-1 text-red-400 hover:bg-red-50">
               <X size={13} />
             </button>
@@ -370,7 +422,7 @@ export default function JuMontarPage() {
                       <Copy size={13} />
                     </button>
                     <button onClick={() => deletarTreino(t.id)}
-                      className="btn btn-sm p-1.5 text-red-400 hover:bg-red-50" title="Remover">
+                      className="btn btn-sm p-1.5 text-red-400 hover:bg-red-50" title="Remover treino">
                       <X size={13} />
                     </button>
                   </div>
@@ -457,7 +509,7 @@ export default function JuMontarPage() {
                     <div className="space-y-2">
                       {renderExercicios()}
                       <div className="text-xs text-gray-400 pt-2 italic">
-                        💡 Clique no ícone 🔗 ao lado de um exercício para conjugá-lo com o próximo
+                        💡 Use ↑↓ para reordenar · 🔗 para conjugar dois exercícios
                       </div>
                     </div>
                   )}
