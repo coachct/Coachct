@@ -142,7 +142,10 @@ export default function JuMontarPage() {
 
   function addEx(ex: Exercicio) {
     if (exsEdit.find(e => e.id === ex.id)) return
-    const novo: ExercicioComSeries = { ...ex, series: '3', reps: '12', descanso: '60', obs_treino: '', conjugado: false }
+    const novo: ExercicioComSeries = {
+      ...ex, series: '3', reps: '12', descanso: '60',
+      obs_treino: '', conjugado: false
+    }
     setExsEdit(prev => [...prev, novo])
     setExExpandido(ex.id)
   }
@@ -155,19 +158,20 @@ export default function JuMontarPage() {
     setExsEdit(prev => {
       const idx = prev.findIndex(e => e.id === exId)
       const updated = prev.filter(e => e.id !== exId)
-      // Se o anterior estava conjugado com este, desconjugar
-      if (idx > 0 && prev[idx-1].conjugado) {
+      if (idx > 0 && updated[idx-1]?.conjugado) {
         updated[idx-1] = { ...updated[idx-1], conjugado: false }
       }
       return updated
     })
   }
 
-  function toggleConjugado(exId: string) {
+  // Conjuga/desconjuga pelo ÍNDICE real do array
+  function toggleConjugado(realIdx: number) {
     setExsEdit(prev => {
-      const idx = prev.findIndex(e => e.id === exId)
-      if (idx === -1 || idx === prev.length - 1) return prev
-      return prev.map((e, i) => i === idx ? { ...e, conjugado: !e.conjugado } : e)
+      if (realIdx < 0 || realIdx >= prev.length - 1) return prev
+      return prev.map((e, i) =>
+        i === realIdx ? { ...e, conjugado: !e.conjugado } : e
+      )
     })
   }
 
@@ -189,9 +193,11 @@ export default function JuMontarPage() {
     setSaving(false)
   }
 
-  const exsFiltrados = catFiltro === 'todos' ? exercicios : exercicios.filter(e => e.categoria_id === catFiltro)
+  const exsFiltrados = catFiltro === 'todos'
+    ? exercicios
+    : exercicios.filter(e => e.categoria_id === catFiltro)
 
-  // Renderiza exercícios agrupando conjugados
+  // Renderiza lista agrupando conjugados
   function renderExercicios() {
     const items: React.ReactNode[] = []
     let i = 0
@@ -201,31 +207,25 @@ export default function JuMontarPage() {
       const ex = exsEdit[i]
       const proximo = exsEdit[i + 1]
       const isConjugado = ex.conjugado && proximo
+      const realIdxA = i
+      const realIdxB = i + 1
 
       if (isConjugado) {
-        // Renderiza par conjugado
         items.push(
           <div key={`conj-${ex.id}`} className="border-2 border-primary-200 rounded-xl overflow-hidden">
-            {/* Header conjugado */}
             <div className="bg-primary-50 px-3 py-1.5 flex items-center justify-between">
               <span className="text-xs font-semibold text-primary-700 flex items-center gap-1">
                 <Link size={11} /> CONJUGADO · {ex.series}× séries
               </span>
-              <button onClick={() => toggleConjugado(ex.id)} className="text-xs text-primary-600 hover:underline flex items-center gap-1">
+              <button
+                onClick={() => toggleConjugado(realIdxA)}
+                className="text-xs text-primary-600 hover:underline flex items-center gap-1">
                 <Unlink size={11} /> Desconjugar
               </button>
             </div>
-
-            {/* Exercício A */}
-            {renderExItem(ex, i, numItem, 'A', true)}
-
-            {/* Divisor */}
+            {renderExItem(ex, realIdxA, numItem, 'A', true)}
             <div className="border-t border-primary-100 mx-3" />
-
-            {/* Exercício B */}
-            {renderExItem(proximo, i+1, numItem, 'B', true)}
-
-            {/* Descanso do conjugado */}
+            {renderExItem(proximo, realIdxB, numItem, 'B', true)}
             <div className="px-3 py-2 bg-primary-50/50 flex items-center gap-2">
               <span className="text-xs text-gray-500 flex-shrink-0">Descanso após o par:</span>
               <input className="input text-center w-20 text-xs py-1" value={ex.descanso}
@@ -236,7 +236,7 @@ export default function JuMontarPage() {
         )
         i += 2
       } else {
-        items.push(renderExItem(ex, i, numItem, undefined, false))
+        items.push(renderExItem(ex, realIdxA, numItem, undefined, false))
         i += 1
       }
       numItem++
@@ -244,9 +244,19 @@ export default function JuMontarPage() {
     return items
   }
 
-  function renderExItem(ex: ExercicioComSeries, idx: number, numItem: number, letra: string | undefined, isInConjugado: boolean) {
+  function renderExItem(
+    ex: ExercicioComSeries,
+    realIdx: number,
+    numItem: number,
+    letra: string | undefined,
+    isInConjugado: boolean
+  ) {
     const isOpen = exExpandido === ex.id
-    const podeConjugar = !isInConjugado && idx < exsEdit.length - 1 && !exsEdit[idx + 1]?.conjugado
+    // Pode conjugar se: não está em conjugado, não é o último, e o próximo não está sendo o segundo de um conjugado
+    const podeConjugar = !isInConjugado &&
+      realIdx < exsEdit.length - 1 &&
+      !exsEdit[realIdx]?.conjugado &&
+      !(realIdx > 0 && exsEdit[realIdx - 1]?.conjugado)
 
     return (
       <div key={ex.id} className={`${isInConjugado ? '' : 'border border-gray-100 rounded-xl overflow-hidden'}`}>
@@ -264,35 +274,45 @@ export default function JuMontarPage() {
           </div>
           <div className="flex gap-1 flex-shrink-0">
             {podeConjugar && (
-              <button onClick={() => toggleConjugado(ex.id)}
-                className="btn btn-sm p-1 text-primary-500 hover:bg-primary-50" title="Conjugar com próximo">
+              <button
+                onClick={() => toggleConjugado(realIdx)}
+                className="btn btn-sm p-1 text-primary-500 hover:bg-primary-50"
+                title="Conjugar com próximo">
                 <Link size={12} />
               </button>
             )}
-            <button onClick={() => setExExpandido(isOpen ? null : ex.id)} className="btn btn-sm p-1 text-gray-400">
+            <button
+              onClick={() => setExExpandido(isOpen ? null : ex.id)}
+              className="btn btn-sm p-1 text-gray-400">
               {isOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
             </button>
-            <button onClick={() => removeEx(ex.id)} className="btn btn-sm p-1 text-red-400 hover:bg-red-50">
+            <button
+              onClick={() => removeEx(ex.id)}
+              className="btn btn-sm p-1 text-red-400 hover:bg-red-50">
               <X size={13} />
             </button>
           </div>
         </div>
+
         {isOpen && (
           <div className="px-3 py-3 grid grid-cols-3 gap-2">
             {!isInConjugado && (
               <div>
                 <label className="label">Séries</label>
-                <input className="input text-center" value={ex.series} onChange={e => updateEx(ex.id, 'series', e.target.value)} />
+                <input className="input text-center" value={ex.series}
+                  onChange={e => updateEx(ex.id, 'series', e.target.value)} />
               </div>
             )}
-            <div className={isInConjugado ? 'col-span-2' : ''}>
+            <div className={isInConjugado ? 'col-span-3' : ''}>
               <label className="label">Reps</label>
-              <input className="input text-center" value={ex.reps} onChange={e => updateEx(ex.id, 'reps', e.target.value)} />
+              <input className="input text-center" value={ex.reps}
+                onChange={e => updateEx(ex.id, 'reps', e.target.value)} />
             </div>
             {!isInConjugado && (
               <div>
                 <label className="label">Descanso (s)</label>
-                <input className="input text-center" value={ex.descanso} onChange={e => updateEx(ex.id, 'descanso', e.target.value)} />
+                <input className="input text-center" value={ex.descanso}
+                  onChange={e => updateEx(ex.id, 'descanso', e.target.value)} />
               </div>
             )}
             <div className="col-span-3">
@@ -322,7 +342,9 @@ export default function JuMontarPage() {
         <div className="w-full md:w-64 flex-shrink-0">
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm font-semibold text-gray-700">Treinos ({treinos.length})</span>
-            <button onClick={criarNovo} className="btn btn-primary btn-sm gap-1"><Plus size={12} />Novo</button>
+            <button onClick={criarNovo} className="btn btn-primary btn-sm gap-1">
+              <Plus size={12} />Novo
+            </button>
           </div>
           <div className="space-y-2">
             {treinos.length === 0 && <EmptyState message="Nenhum treino criado ainda." />}
@@ -334,16 +356,21 @@ export default function JuMontarPage() {
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-sm text-gray-900 truncate">{t.nome}</div>
                     {t.descricao && <div className="text-xs text-gray-400 truncate">{t.descricao}</div>}
-                    <div className="text-xs text-gray-400 mt-0.5">{(t.treino_exercicios?.length || 0)} exercícios</div>
+                    <div className="text-xs text-gray-400 mt-0.5">
+                      {(t.treino_exercicios?.length || 0)} exercícios
+                    </div>
                   </div>
                   <div className="flex gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
-                    <button onClick={() => setModalPublicar(t.id)} className="btn btn-sm p-1.5 text-primary-600" title="Publicar">
+                    <button onClick={() => setModalPublicar(t.id)}
+                      className="btn btn-sm p-1.5 text-primary-600" title="Publicar">
                       <Calendar size={13} />
                     </button>
-                    <button onClick={() => duplicar(t)} className="btn btn-sm p-1.5 text-gray-400" title="Duplicar">
+                    <button onClick={() => duplicar(t)}
+                      className="btn btn-sm p-1.5 text-gray-400" title="Duplicar">
                       <Copy size={13} />
                     </button>
-                    <button onClick={() => deletarTreino(t.id)} className="btn btn-sm p-1.5 text-red-400 hover:bg-red-50" title="Remover">
+                    <button onClick={() => deletarTreino(t.id)}
+                      className="btn btn-sm p-1.5 text-red-400 hover:bg-red-50" title="Remover">
                       <X size={13} />
                     </button>
                   </div>
@@ -353,7 +380,7 @@ export default function JuMontarPage() {
           </div>
         </div>
 
-        {/* Editor do treino */}
+        {/* Editor */}
         <div className="flex-1 min-w-0">
           {!editando ? (
             <div className="card flex items-center justify-center py-16 text-gray-400 text-sm italic">
@@ -362,15 +389,20 @@ export default function JuMontarPage() {
           ) : (
             <div className="card">
               <div className="flex items-center gap-3 mb-4 flex-wrap">
-                <input className="text-base font-semibold text-gray-900 border-none outline-none bg-transparent flex-1 min-w-0"
-                  value={nomeEdit} onChange={e => setNomeEdit(e.target.value)} placeholder="Nome do treino..." />
-                <input className="text-xs text-gray-400 border-none outline-none bg-transparent flex-1 min-w-0"
-                  value={descEdit} onChange={e => setDescEdit(e.target.value)} placeholder="Grupos musculares... ex: Peito + Tríceps" />
+                <input
+                  className="text-base font-semibold text-gray-900 border-none outline-none bg-transparent flex-1 min-w-0"
+                  value={nomeEdit} onChange={e => setNomeEdit(e.target.value)}
+                  placeholder="Nome do treino..." />
+                <input
+                  className="text-xs text-gray-400 border-none outline-none bg-transparent flex-1 min-w-0"
+                  value={descEdit} onChange={e => setDescEdit(e.target.value)}
+                  placeholder="Grupos musculares... ex: Peito + Tríceps" />
                 <div className="flex gap-2 flex-shrink-0">
                   <button onClick={salvarEdicao} disabled={saving} className="btn btn-primary btn-sm gap-1">
                     <Save size={12} />{saving ? 'Salvando...' : 'Salvar'}
                   </button>
-                  <button onClick={() => setModalPublicar(editando)} className="btn btn-sm gap-1 text-primary-600 border-primary-200">
+                  <button onClick={() => setModalPublicar(editando)}
+                    className="btn btn-sm gap-1 text-primary-600 border-primary-200">
                     <Calendar size={12} />Publicar
                   </button>
                 </div>
@@ -400,7 +432,9 @@ export default function JuMontarPage() {
                           <div key={ex.id} className="py-1.5 flex items-center gap-2">
                             <div className="flex-1 min-w-0">
                               <div className="text-xs font-medium text-gray-800 truncate">{ex.nome}</div>
-                              {ex.numero_maquina && <div className="text-xs text-blue-500">{ex.numero_maquina}</div>}
+                              {ex.numero_maquina && (
+                                <div className="text-xs text-blue-500">{ex.numero_maquina}</div>
+                              )}
                             </div>
                             <button onClick={() => !ja && addEx(ex)} disabled={!!ja}
                               className={`w-5 h-5 rounded-full border flex items-center justify-center text-xs flex-shrink-0 ${ja?'bg-primary-100 border-primary-300 text-primary-600 cursor-default':'border-primary-200 text-primary-600 hover:bg-primary-50'}`}>
@@ -413,10 +447,12 @@ export default function JuMontarPage() {
                   </div>
                 </div>
 
-                {/* Lista de exercícios */}
+                {/* Lista exercícios */}
                 <div className="flex-1 min-w-0">
                   {exsEdit.length === 0 ? (
-                    <div className="text-sm text-gray-400 text-center py-8 italic">← Adicione exercícios da biblioteca</div>
+                    <div className="text-sm text-gray-400 text-center py-8 italic">
+                      ← Adicione exercícios da biblioteca
+                    </div>
                   ) : (
                     <div className="space-y-2">
                       {renderExercicios()}
@@ -437,7 +473,9 @@ export default function JuMontarPage() {
         <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
             <h2 className="text-base font-semibold text-gray-900 mb-2">Publicar treino</h2>
-            <p className="text-sm text-gray-500 mb-4">Escolha o mês em que este treino ficará disponível para os coaches.</p>
+            <p className="text-sm text-gray-500 mb-4">
+              Escolha o mês em que este treino ficará disponível para os coaches.
+            </p>
             <div className="grid grid-cols-2 gap-3 mb-5">
               <div>
                 <label className="label">Mês</label>
