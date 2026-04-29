@@ -30,7 +30,7 @@ export default function JuMontarPage() {
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState('')
-  const [editando, setEditando] = useState<string | null>(null)
+  const [editandoId, setEditandoId] = useState<string | null>(null)
   const [nomeEdit, setNomeEdit] = useState('')
   const [descEdit, setDescEdit] = useState('')
   const [exsEdit, setExsEdit] = useState<ExercicioComSeries[]>([])
@@ -50,12 +50,7 @@ export default function JuMontarPage() {
     ])
     setCategorias(cats || [])
     setExercicios(exs || [])
-    // Atualiza a lista mas MANTÉM o editor aberto
-    setTreinos(prev => {
-      const novos = tr || []
-      // Se tem um treino em edição, atualiza ele na lista sem fechar
-      return novos
-    })
+    setTreinos(tr || [])
     setLoading(false)
   }
 
@@ -65,6 +60,23 @@ export default function JuMontarPage() {
       .select('*, treino_exercicios(*, exercicios(nome, numero_maquina))')
       .order('nome')
     setTreinos(tr || [])
+  }
+
+  async function salvarExsNoBanco(treinoId: string, exs: ExercicioComSeries[]) {
+    await supabase.from('treino_exercicios').delete().eq('treino_id', treinoId)
+    if (exs.length > 0) {
+      const rows = exs.map((ex, i) => ({
+        treino_id: treinoId,
+        exercicio_id: ex.id,
+        ordem: i,
+        series_override: parseInt(ex.series) || 3,
+        reps_override: ex.reps || '12',
+        descanso_override: parseInt(ex.descanso) || 60,
+        observacoes_override: ex.obs_treino || null,
+        conjugado: ex.conjugado || false,
+      }))
+      await supabase.from('treino_exercicios').insert(rows)
+    }
   }
 
   async function criarNovo() {
@@ -104,7 +116,7 @@ export default function JuMontarPage() {
   }
 
   function abrirEdicao(treino: TreinoCompleto) {
-    setEditando(treino.id)
+    setEditandoId(treino.id)
     setNomeEdit(treino.nome)
     setDescEdit(treino.descricao || '')
     setExsEdit((treino.treino_exercicios || [])
@@ -122,26 +134,12 @@ export default function JuMontarPage() {
   }
 
   async function salvarEdicao() {
-    if (!editando) return
+    if (!editandoId) return
     setSaving(true)
-    await supabase.from('treinos').update({ nome: nomeEdit, descricao: descEdit }).eq('id', editando)
-    await supabase.from('treino_exercicios').delete().eq('treino_id', editando)
-    if (exsEdit.length > 0) {
-      const rows = exsEdit.map((ex, i) => ({
-        treino_id: editando,
-        exercicio_id: ex.id,
-        ordem: i,
-        series_override: parseInt(ex.series) || 3,
-        reps_override: ex.reps || '12',
-        descanso_override: parseInt(ex.descanso) || 60,
-        observacoes_override: ex.obs_treino || null,
-        conjugado: ex.conjugado || false,
-      }))
-      await supabase.from('treino_exercicios').insert(rows)
-    }
+    await supabase.from('treinos').update({ nome: nomeEdit, descricao: descEdit }).eq('id', editandoId)
+    await salvarExsNoBanco(editandoId, exsEdit)
     setMsg('Treino salvo!')
     setTimeout(() => setMsg(''), 2000)
-    // Atualiza a lista sem fechar o editor
     loadSilencioso()
     setSaving(false)
   }
@@ -150,8 +148,8 @@ export default function JuMontarPage() {
     if (!confirm('Remover este treino da biblioteca?')) return
     await supabase.from('treinos').delete().eq('id', id)
     setTreinos(prev => prev.filter(t => t.id !== id))
-    if (editando === id) {
-      setEditando(null)
+    if (editandoId === id) {
+      setEditandoId(null)
       setExsEdit([])
     }
   }
@@ -162,7 +160,6 @@ export default function JuMontarPage() {
       ...ex, series: '3', reps: '12', descanso: '60',
       obs_treino: '', conjugado: false
     }
-    // Atualiza apenas o estado local — NÃO fecha o editor
     setExsEdit(prev => [...prev, novo])
     setExExpandido(ex.id)
   }
@@ -171,19 +168,36 @@ export default function JuMontarPage() {
     setExsEdit(prev => prev.map(e => e.id === exId ? { ...e, [field]: value } : e))
   }
 
-  function removeEx(exId: string) {
-    // Remove apenas do estado local — NÃO fecha o editor
-    setExsEdit(prev => {
-      const idx = prev.findIndex(e => e.id === exId)
-      const updated = prev.filter(e => e.id !== exId)
-      // Desconjuga o anterior se necessário
-      if (idx > 0 && updated[idx-1]?.conjugado) {
-        updated[idx-1] = { ...updated[idx-1], conjugado: false }
-      }
-      return updated
+  async function removeEx(exId: string) {
+    if (!editandoId) return
+    const novosExs = exsEdit.filter(e => {
+      if (e.id === exId) return false
+      return true
+    }).map((e, i, arr) => {
+      const idx = arr.findIndex(x => x.id === e.id)
+      if (idx > 0 && arr[idx-1] && !arr[idx-1].conjugado) return e
+      return e
     })
-    // Fecha o expandido se era este
+
+    // Desconjuga se necessário
+    const idxRemovido = exsEdit.findIndex(e => e.id === exId)
+    const novosExsLimpos = exsEdit
+      .filter(e => e.id !== exId)
+      .map((e, i, arr) => {
+        if (idxRemovido > 0 && i === idxRemovido - 1) {
+          return { ...e, conjugado: false }
+        }
+        return e
+      })
+
+    // Atualiza estado local imediatamente
+    setExsEdit(novosExsLimpos)
     setExExpandido(prev => prev === exId ? null : prev)
+
+    // Salva no banco sem fechar o editor
+    await salvarExsNoBanco(editandoId, novosExsLimpos)
+    setMsg('Exercício removido!')
+    setTimeout(() => setMsg(''), 1500)
   }
 
   function moverEx(idx: number, direcao: 'up' | 'down') {
@@ -191,10 +205,8 @@ export default function JuMontarPage() {
       const arr = [...prev]
       const targetIdx = direcao === 'up' ? idx - 1 : idx + 1
       if (targetIdx < 0 || targetIdx >= arr.length) return arr
-      // Desconjuga ao mover para evitar estado inconsistente
       arr[idx] = { ...arr[idx], conjugado: false }
       arr[targetIdx] = { ...arr[targetIdx], conjugado: false }
-      // Troca posições
       const temp = arr[idx]
       arr[idx] = arr[targetIdx]
       arr[targetIdx] = temp
@@ -254,13 +266,9 @@ export default function JuMontarPage() {
               </span>
               <div className="flex items-center gap-2">
                 <button onClick={() => moverEx(realIdxA, 'up')} disabled={realIdxA === 0}
-                  className="btn btn-sm p-1 text-gray-400 disabled:opacity-30" title="Mover para cima">
-                  <ArrowUp size={11} />
-                </button>
+                  className="btn btn-sm p-1 text-gray-400 disabled:opacity-30"><ArrowUp size={11} /></button>
                 <button onClick={() => moverEx(realIdxB, 'down')} disabled={realIdxB >= exsEdit.length - 1}
-                  className="btn btn-sm p-1 text-gray-400 disabled:opacity-30" title="Mover para baixo">
-                  <ArrowDown size={11} />
-                </button>
+                  className="btn btn-sm p-1 text-gray-400 disabled:opacity-30"><ArrowDown size={11} /></button>
                 <button onClick={() => toggleConjugado(realIdxA)}
                   className="text-xs text-primary-600 hover:underline flex items-center gap-1">
                   <Unlink size={11} /> Desconjugar
@@ -319,19 +327,14 @@ export default function JuMontarPage() {
             {!isInConjugado && (
               <>
                 <button onClick={() => moverEx(realIdx, 'up')} disabled={realIdx === 0}
-                  className="btn btn-sm p-1 text-gray-300 hover:text-gray-600 disabled:opacity-20" title="Mover para cima">
-                  <ArrowUp size={12} />
-                </button>
+                  className="btn btn-sm p-1 text-gray-300 hover:text-gray-600 disabled:opacity-20"><ArrowUp size={12} /></button>
                 <button onClick={() => moverEx(realIdx, 'down')} disabled={realIdx >= exsEdit.length - 1}
-                  className="btn btn-sm p-1 text-gray-300 hover:text-gray-600 disabled:opacity-20" title="Mover para baixo">
-                  <ArrowDown size={12} />
-                </button>
+                  className="btn btn-sm p-1 text-gray-300 hover:text-gray-600 disabled:opacity-20"><ArrowDown size={12} /></button>
               </>
             )}
             {podeConjugar && (
               <button onClick={() => toggleConjugado(realIdx)}
-                className="btn btn-sm p-1 text-primary-500 hover:bg-primary-50"
-                title="Conjugar com próximo">
+                className="btn btn-sm p-1 text-primary-500 hover:bg-primary-50" title="Conjugar com próximo">
                 <Link size={12} />
               </button>
             )}
@@ -390,7 +393,6 @@ export default function JuMontarPage() {
       )}
 
       <div className="flex flex-col md:flex-row gap-4">
-        {/* Lista de treinos */}
         <div className="w-full md:w-64 flex-shrink-0">
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm font-semibold text-gray-700">Treinos ({treinos.length})</span>
@@ -402,15 +404,13 @@ export default function JuMontarPage() {
             {treinos.length === 0 && <EmptyState message="Nenhum treino criado ainda." />}
             {treinos.map(t => (
               <div key={t.id}
-                className={`card p-3 cursor-pointer transition-all ${editando === t.id ? 'border-primary-400 ring-1 ring-primary-200' : 'hover:border-gray-200'}`}
+                className={`card p-3 cursor-pointer transition-all ${editandoId === t.id ? 'border-primary-400 ring-1 ring-primary-200' : 'hover:border-gray-200'}`}
                 onClick={() => abrirEdicao(t)}>
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-sm text-gray-900 truncate">{t.nome}</div>
                     {t.descricao && <div className="text-xs text-gray-400 truncate">{t.descricao}</div>}
-                    <div className="text-xs text-gray-400 mt-0.5">
-                      {(t.treino_exercicios?.length || 0)} exercícios
-                    </div>
+                    <div className="text-xs text-gray-400 mt-0.5">{(t.treino_exercicios?.length || 0)} exercícios</div>
                   </div>
                   <div className="flex gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
                     <button onClick={() => setModalPublicar(t.id)}
@@ -432,28 +432,23 @@ export default function JuMontarPage() {
           </div>
         </div>
 
-        {/* Editor */}
         <div className="flex-1 min-w-0">
-          {!editando ? (
+          {!editandoId ? (
             <div className="card flex items-center justify-center py-16 text-gray-400 text-sm italic">
               ← Selecione um treino para editar ou crie um novo
             </div>
           ) : (
             <div className="card">
               <div className="flex items-center gap-3 mb-4 flex-wrap">
-                <input
-                  className="text-base font-semibold text-gray-900 border-none outline-none bg-transparent flex-1 min-w-0"
-                  value={nomeEdit} onChange={e => setNomeEdit(e.target.value)}
-                  placeholder="Nome do treino..." />
-                <input
-                  className="text-xs text-gray-400 border-none outline-none bg-transparent flex-1 min-w-0"
-                  value={descEdit} onChange={e => setDescEdit(e.target.value)}
-                  placeholder="Grupos musculares... ex: Peito + Tríceps" />
+                <input className="text-base font-semibold text-gray-900 border-none outline-none bg-transparent flex-1 min-w-0"
+                  value={nomeEdit} onChange={e => setNomeEdit(e.target.value)} placeholder="Nome do treino..." />
+                <input className="text-xs text-gray-400 border-none outline-none bg-transparent flex-1 min-w-0"
+                  value={descEdit} onChange={e => setDescEdit(e.target.value)} placeholder="Grupos musculares..." />
                 <div className="flex gap-2 flex-shrink-0">
                   <button onClick={salvarEdicao} disabled={saving} className="btn btn-primary btn-sm gap-1">
                     <Save size={12} />{saving ? 'Salvando...' : 'Salvar'}
                   </button>
-                  <button onClick={() => setModalPublicar(editando)}
+                  <button onClick={() => setModalPublicar(editandoId)}
                     className="btn btn-sm gap-1 text-primary-600 border-primary-200">
                     <Calendar size={12} />Publicar
                   </button>
@@ -461,7 +456,6 @@ export default function JuMontarPage() {
               </div>
 
               <div className="flex flex-col md:flex-row gap-4">
-                {/* Biblioteca lateral */}
                 <div className="w-full md:w-52 flex-shrink-0">
                   <div className="bg-gray-50 rounded-xl p-3">
                     <div className="text-xs font-semibold text-gray-500 mb-2">Adicionar exercício</div>
@@ -484,9 +478,7 @@ export default function JuMontarPage() {
                           <div key={ex.id} className="py-1.5 flex items-center gap-2">
                             <div className="flex-1 min-w-0">
                               <div className="text-xs font-medium text-gray-800 truncate">{ex.nome}</div>
-                              {ex.numero_maquina && (
-                                <div className="text-xs text-blue-500">{ex.numero_maquina}</div>
-                              )}
+                              {ex.numero_maquina && <div className="text-xs text-blue-500">{ex.numero_maquina}</div>}
                             </div>
                             <button onClick={() => !ja && addEx(ex)} disabled={!!ja}
                               className={`w-5 h-5 rounded-full border flex items-center justify-center text-xs flex-shrink-0 ${ja?'bg-primary-100 border-primary-300 text-primary-600 cursor-default':'border-primary-200 text-primary-600 hover:bg-primary-50'}`}>
@@ -499,12 +491,9 @@ export default function JuMontarPage() {
                   </div>
                 </div>
 
-                {/* Lista exercícios */}
                 <div className="flex-1 min-w-0">
                   {exsEdit.length === 0 ? (
-                    <div className="text-sm text-gray-400 text-center py-8 italic">
-                      ← Adicione exercícios da biblioteca
-                    </div>
+                    <div className="text-sm text-gray-400 text-center py-8 italic">← Adicione exercícios da biblioteca</div>
                   ) : (
                     <div className="space-y-2">
                       {renderExercicios()}
@@ -520,14 +509,11 @@ export default function JuMontarPage() {
         </div>
       </div>
 
-      {/* Modal publicar */}
       {modalPublicar && (
         <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
             <h2 className="text-base font-semibold text-gray-900 mb-2">Publicar treino</h2>
-            <p className="text-sm text-gray-500 mb-4">
-              Escolha o mês em que este treino ficará disponível para os coaches.
-            </p>
+            <p className="text-sm text-gray-500 mb-4">Escolha o mês em que este treino ficará disponível para os coaches.</p>
             <div className="grid grid-cols-2 gap-3 mb-5">
               <div>
                 <label className="label">Mês</label>
