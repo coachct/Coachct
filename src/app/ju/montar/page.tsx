@@ -46,7 +46,7 @@ export default function JuMontarPage() {
     const [{ data: cats }, { data: exs }, { data: tr }] = await Promise.all([
       supabase.from('categorias').select('*').order('ordem'),
       supabase.from('exercicios').select('*, categorias(nome)').eq('ativo', true).order('nome'),
-      supabase.from('treinos').select('*, treino_exercicios(*, exercicios(nome, numero_maquina))').order('nome'),
+      supabase.from('treinos').select('*, treino_exercicios(id, exercicio_id, ordem, series_override, reps_override, descanso_override, observacoes_override, conjugado, exercicios(id, nome, numero_maquina, categoria_id))').order('nome'),
     ])
     setCategorias(cats || [])
     setExercicios(exs || [])
@@ -57,25 +57,20 @@ export default function JuMontarPage() {
   async function loadSilencioso() {
     const { data: tr } = await supabase
       .from('treinos')
-      .select('*, treino_exercicios(*, exercicios(nome, numero_maquina))')
+      .select('*, treino_exercicios(id, exercicio_id, ordem, series_override, reps_override, descanso_override, observacoes_override, conjugado, exercicios(id, nome, numero_maquina, categoria_id))')
       .order('nome')
     setTreinos(tr || [])
   }
 
-  async function salvarExsNoBanco(treinoId: string, exs: ExercicioComSeries[]) {
-    await supabase.from('treino_exercicios').delete().eq('treino_id', treinoId)
-    if (exs.length > 0) {
-      const rows = exs.map((ex, i) => ({
-        treino_id: treinoId,
-        exercicio_id: ex.id,
-        ordem: i,
-        series_override: parseInt(ex.series) || 3,
-        reps_override: ex.reps || '12',
-        descanso_override: parseInt(ex.descanso) || 60,
-        observacoes_override: ex.obs_treino || null,
-        conjugado: ex.conjugado || false,
-      }))
-      await supabase.from('treino_exercicios').insert(rows)
+  function teToEx(te: any): ExercicioComSeries {
+    return {
+      ...te.exercicios,
+      te_id: te.id,
+      series: String(te.series_override || 3),
+      reps: te.reps_override || '12',
+      descanso: String(te.descanso_override || 60),
+      obs_treino: te.observacoes_override || '',
+      conjugado: te.conjugado || false,
     }
   }
 
@@ -121,23 +116,36 @@ export default function JuMontarPage() {
     setDescEdit(treino.descricao || '')
     setExsEdit((treino.treino_exercicios || [])
       .sort((a: any, b: any) => (a.ordem ?? 0) - (b.ordem ?? 0))
-      .map((te: any) => ({
-        ...te.exercicios,
-        te_id: te.id,
-        series: String(te.series_override || 3),
-        reps: te.reps_override || '12',
-        descanso: String(te.descanso_override || 60),
-        obs_treino: te.observacoes_override || '',
-        conjugado: te.conjugado || false,
-      })))
+      .map(teToEx))
     setExExpandido(null)
   }
 
   async function salvarEdicao() {
     if (!editandoId) return
     setSaving(true)
+    // Salva nome e descrição
     await supabase.from('treinos').update({ nome: nomeEdit, descricao: descEdit }).eq('id', editandoId)
-    await salvarExsNoBanco(editandoId, exsEdit)
+    // Deleta todos e reinsere com ordem correta (só no salvar explícito)
+    await supabase.from('treino_exercicios').delete().eq('treino_id', editandoId)
+    if (exsEdit.length > 0) {
+      const rows = exsEdit.map((ex, i) => ({
+        treino_id: editandoId,
+        exercicio_id: ex.id,
+        ordem: i,
+        series_override: parseInt(ex.series) || 3,
+        reps_override: ex.reps || '12',
+        descanso_override: parseInt(ex.descanso) || 60,
+        observacoes_override: ex.obs_treino || null,
+        conjugado: ex.conjugado || false,
+      }))
+      const { data: novosRows } = await supabase.from('treino_exercicios').insert(rows).select()
+      // Atualiza te_ids no estado
+      if (novosRows) {
+        setExsEdit(prev => prev.map((ex, i) => ({ ...ex, te_id: novosRows[i]?.id })))
+      }
+    } else {
+      setExsEdit([])
+    }
     setMsg('Treino salvo!')
     setTimeout(() => setMsg(''), 2000)
     loadSilencioso()
@@ -158,7 +166,7 @@ export default function JuMontarPage() {
     if (exsEdit.find(e => e.id === ex.id)) return
     const novo: ExercicioComSeries = {
       ...ex, series: '3', reps: '12', descanso: '60',
-      obs_treino: '', conjugado: false
+      obs_treino: '', conjugado: false, te_id: undefined
     }
     setExsEdit(prev => [...prev, novo])
     setExExpandido(ex.id)
@@ -169,33 +177,31 @@ export default function JuMontarPage() {
   }
 
   async function removeEx(exId: string) {
-    if (!editandoId) return
-    const novosExs = exsEdit.filter(e => {
-      if (e.id === exId) return false
-      return true
-    }).map((e, i, arr) => {
-      const idx = arr.findIndex(x => x.id === e.id)
-      if (idx > 0 && arr[idx-1] && !arr[idx-1].conjugado) return e
-      return e
+    // Acha o exercício pelo id
+    const ex = exsEdit.find(e => e.id === exId)
+    if (!ex) return
+
+    // Se tem te_id, deleta só essa linha no banco
+    if (ex.te_id) {
+      const { error } = await supabase.from('treino_exercicios').delete().eq('id', ex.te_id)
+      if (error) {
+        setMsg('Erro ao remover: ' + error.message)
+        setTimeout(() => setMsg(''), 3000)
+        return
+      }
+    }
+
+    // Atualiza estado local sem fechar o editor
+    setExsEdit(prev => {
+      const idx = prev.findIndex(e => e.id === exId)
+      const updated = prev.filter(e => e.id !== exId)
+      // Desconjuga o anterior se necessário
+      if (idx > 0 && updated[idx-1]?.conjugado) {
+        updated[idx-1] = { ...updated[idx-1], conjugado: false }
+      }
+      return updated
     })
-
-    // Desconjuga se necessário
-    const idxRemovido = exsEdit.findIndex(e => e.id === exId)
-    const novosExsLimpos = exsEdit
-      .filter(e => e.id !== exId)
-      .map((e, i, arr) => {
-        if (idxRemovido > 0 && i === idxRemovido - 1) {
-          return { ...e, conjugado: false }
-        }
-        return e
-      })
-
-    // Atualiza estado local imediatamente
-    setExsEdit(novosExsLimpos)
     setExExpandido(prev => prev === exId ? null : prev)
-
-    // Salva no banco sem fechar o editor
-    await salvarExsNoBanco(editandoId, novosExsLimpos)
     setMsg('Exercício removido!')
     setTimeout(() => setMsg(''), 1500)
   }
@@ -249,14 +255,12 @@ export default function JuMontarPage() {
     const items: React.ReactNode[] = []
     let i = 0
     let numItem = 1
-
     while (i < exsEdit.length) {
       const ex = exsEdit[i]
       const proximo = exsEdit[i + 1]
       const isConjugado = ex.conjugado && proximo
       const realIdxA = i
       const realIdxB = i + 1
-
       if (isConjugado) {
         items.push(
           <div key={`conj-${ex.id}`} className="border-2 border-primary-200 rounded-xl overflow-hidden">
@@ -296,13 +300,7 @@ export default function JuMontarPage() {
     return items
   }
 
-  function renderExItem(
-    ex: ExercicioComSeries,
-    realIdx: number,
-    numItem: number,
-    letra: string | undefined,
-    isInConjugado: boolean
-  ) {
+  function renderExItem(ex: ExercicioComSeries, realIdx: number, numItem: number, letra: string | undefined, isInConjugado: boolean) {
     const isOpen = exExpandido === ex.id
     const podeConjugar = !isInConjugado &&
       realIdx < exsEdit.length - 1 &&
@@ -338,36 +336,30 @@ export default function JuMontarPage() {
                 <Link size={12} />
               </button>
             )}
-            <button onClick={() => setExExpandido(isOpen ? null : ex.id)}
-              className="btn btn-sm p-1 text-gray-400">
+            <button onClick={() => setExExpandido(isOpen ? null : ex.id)} className="btn btn-sm p-1 text-gray-400">
               {isOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
             </button>
-            <button onClick={() => removeEx(ex.id)}
-              className="btn btn-sm p-1 text-red-400 hover:bg-red-50">
+            <button onClick={() => removeEx(ex.id)} className="btn btn-sm p-1 text-red-400 hover:bg-red-50">
               <X size={13} />
             </button>
           </div>
         </div>
-
         {isOpen && (
           <div className="px-3 py-3 grid grid-cols-3 gap-2">
             {!isInConjugado && (
               <div>
                 <label className="label">Séries</label>
-                <input className="input text-center" value={ex.series}
-                  onChange={e => updateEx(ex.id, 'series', e.target.value)} />
+                <input className="input text-center" value={ex.series} onChange={e => updateEx(ex.id, 'series', e.target.value)} />
               </div>
             )}
             <div className={isInConjugado ? 'col-span-3' : ''}>
               <label className="label">Reps</label>
-              <input className="input text-center" value={ex.reps}
-                onChange={e => updateEx(ex.id, 'reps', e.target.value)} />
+              <input className="input text-center" value={ex.reps} onChange={e => updateEx(ex.id, 'reps', e.target.value)} />
             </div>
             {!isInConjugado && (
               <div>
                 <label className="label">Descanso (s)</label>
-                <input className="input text-center" value={ex.descanso}
-                  onChange={e => updateEx(ex.id, 'descanso', e.target.value)} />
+                <input className="input text-center" value={ex.descanso} onChange={e => updateEx(ex.id, 'descanso', e.target.value)} />
               </div>
             )}
             <div className="col-span-3">
@@ -389,16 +381,16 @@ export default function JuMontarPage() {
       <PageHeader title="Biblioteca de treinos" subtitle="Crie, edite e publique os treinos por mês" />
 
       {msg && (
-        <div className="bg-green-50 text-green-800 px-4 py-3 rounded-xl text-sm font-medium mb-4">{msg}</div>
+        <div className={`px-4 py-3 rounded-xl text-sm font-medium mb-4 ${msg.startsWith('Erro') ? 'bg-red-50 text-red-800' : 'bg-green-50 text-green-800'}`}>
+          {msg}
+        </div>
       )}
 
       <div className="flex flex-col md:flex-row gap-4">
         <div className="w-full md:w-64 flex-shrink-0">
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm font-semibold text-gray-700">Treinos ({treinos.length})</span>
-            <button onClick={criarNovo} className="btn btn-primary btn-sm gap-1">
-              <Plus size={12} />Novo
-            </button>
+            <button onClick={criarNovo} className="btn btn-primary btn-sm gap-1"><Plus size={12} />Novo</button>
           </div>
           <div className="space-y-2">
             {treinos.length === 0 && <EmptyState message="Nenhum treino criado ainda." />}
@@ -413,18 +405,9 @@ export default function JuMontarPage() {
                     <div className="text-xs text-gray-400 mt-0.5">{(t.treino_exercicios?.length || 0)} exercícios</div>
                   </div>
                   <div className="flex gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
-                    <button onClick={() => setModalPublicar(t.id)}
-                      className="btn btn-sm p-1.5 text-primary-600" title="Publicar">
-                      <Calendar size={13} />
-                    </button>
-                    <button onClick={() => duplicar(t)}
-                      className="btn btn-sm p-1.5 text-gray-400" title="Duplicar">
-                      <Copy size={13} />
-                    </button>
-                    <button onClick={() => deletarTreino(t.id)}
-                      className="btn btn-sm p-1.5 text-red-400 hover:bg-red-50" title="Remover treino">
-                      <X size={13} />
-                    </button>
+                    <button onClick={() => setModalPublicar(t.id)} className="btn btn-sm p-1.5 text-primary-600" title="Publicar"><Calendar size={13} /></button>
+                    <button onClick={() => duplicar(t)} className="btn btn-sm p-1.5 text-gray-400" title="Duplicar"><Copy size={13} /></button>
+                    <button onClick={() => deletarTreino(t.id)} className="btn btn-sm p-1.5 text-red-400 hover:bg-red-50" title="Remover treino"><X size={13} /></button>
                   </div>
                 </div>
               </div>
@@ -448,8 +431,7 @@ export default function JuMontarPage() {
                   <button onClick={salvarEdicao} disabled={saving} className="btn btn-primary btn-sm gap-1">
                     <Save size={12} />{saving ? 'Salvando...' : 'Salvar'}
                   </button>
-                  <button onClick={() => setModalPublicar(editandoId)}
-                    className="btn btn-sm gap-1 text-primary-600 border-primary-200">
+                  <button onClick={() => setModalPublicar(editandoId)} className="btn btn-sm gap-1 text-primary-600 border-primary-200">
                     <Calendar size={12} />Publicar
                   </button>
                 </div>
@@ -498,7 +480,7 @@ export default function JuMontarPage() {
                     <div className="space-y-2">
                       {renderExercicios()}
                       <div className="text-xs text-gray-400 pt-2 italic">
-                        💡 Use ↑↓ para reordenar · 🔗 para conjugar dois exercícios
+                        💡 Use ↑↓ para reordenar · 🔗 para conjugar dois exercícios · Clique em Salvar para confirmar alterações
                       </div>
                     </div>
                   )}
