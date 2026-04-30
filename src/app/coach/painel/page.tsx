@@ -47,7 +47,7 @@ export default function CoachPainelPage() {
     // Verifica aula em andamento
     const { data: aulaPendente } = await supabase
       .from('aulas')
-      .select('*, alunos(nome), treinos(nome)')
+      .select('*, treinos(nome)')
       .eq('coach_id', coachData.id)
       .eq('status', 'em_andamento')
       .order('iniciada_em', { ascending: false })
@@ -55,7 +55,10 @@ export default function CoachPainelPage() {
       .single()
 
     if (aulaPendente) {
-      setAulaAberta(aulaPendente)
+      // Busca nome do aluno separadamente
+      const { data: alunoData } = await supabase
+        .from('alunos').select('nome').eq('id', aulaPendente.aluno_id).single()
+      setAulaAberta({ ...aulaPendente, alunos: alunoData })
       setLoading(false)
       return
     }
@@ -87,10 +90,10 @@ export default function CoachPainelPage() {
         .gte('horario_agendado', inicioMesPassado).lte('horario_agendado', fimMesPassado),
       supabase.from('coach_horarios').select('*')
         .eq('coach_id', coachData.id).eq('ativo', true),
-      supabase.from('aulas').select('*, alunos(nome), treinos(nome)')
+      supabase.from('aulas').select('*, treinos(nome)')
         .eq('coach_id', coachData.id).eq('status', 'finalizada')
         .order('finalizada_em', { ascending: false }).limit(5),
-      supabase.from('aulas').select('*, alunos(id, nome)')
+      supabase.from('aulas').select('aluno_id, horario_agendado, finalizada_em')
         .eq('coach_id', coachData.id).eq('status', 'finalizada')
         .order('horario_agendado', { ascending: false }),
     ])
@@ -98,11 +101,29 @@ export default function CoachPainelPage() {
     const diaSemanaHoje = hoje.getDay()
     const slotsSemana = (horarios || []).filter(h => h.dia_semana >= diaSemanaHoje).length
 
+    // Busca nomes dos alunos das últimas aulas
+    const alunoIds = [...new Set((ultimas || []).map(a => a.aluno_id))]
+    const { data: alunosUltimas } = await supabase
+      .from('alunos').select('id, nome').in('id', alunoIds)
+    const alunosMap: Record<string, string> = {}
+    for (const a of (alunosUltimas || [])) alunosMap[a.id] = a.nome
+
+    const ultimasComNome = (ultimas || []).map(a => ({
+      ...a, alunos: { nome: alunosMap[a.aluno_id] || 'Aluno' }
+    }))
+    setUltimasAulas(ultimasComNome)
+
+    // Alunos fiéis e sumidos
+    const todosAlunoIds = [...new Set((todasAulas || []).map((a: any) => a.aluno_id))]
+    const { data: todosAlunos } = await supabase
+      .from('alunos').select('id, nome').in('id', todosAlunoIds)
+    const todosAlunosMap: Record<string, string> = {}
+    for (const a of (todosAlunos || [])) todosAlunosMap[a.id] = a.nome
+
     const contagemAlunos: Record<string, { nome: string; count: number; ultima: string }> = {}
     for (const aula of (todasAulas || [])) {
-      const id = aula.alunos?.id
-      const nome = aula.alunos?.nome
-      if (!id || !nome) continue
+      const id = aula.aluno_id
+      const nome = todosAlunosMap[id] || 'Aluno'
       if (!contagemAlunos[id]) contagemAlunos[id] = { nome, count: 0, ultima: aula.horario_agendado }
       contagemAlunos[id].count++
       if (aula.horario_agendado > contagemAlunos[id].ultima) contagemAlunos[id].ultima = aula.horario_agendado
@@ -116,19 +137,18 @@ export default function CoachPainelPage() {
       .slice(0, 3)
     setAlunosSumidos(sumidos)
 
+    // Heatmap
     const hm: Record<string, number> = {}
     for (const aula of (todasAulas || [])) {
       const d = new Date(aula.horario_agendado)
       const dia = d.getDay()
       const hora = d.getHours()
       const turno = hora < 12 ? 'Manhã' : hora < 18 ? 'Tarde' : 'Noite'
-      const key = `${dia}-${turno}`
-      hm[key] = (hm[key] || 0) + 1
+      hm[`${dia}-${turno}`] = (hm[`${dia}-${turno}`] || 0) + 1
     }
     setHeatmap(hm)
 
     setStats({ aulasHoje: aulasHoje || 0, aulasMes: aulasMes || 0, slotsSemana, aulasMesPassado: aulasMesPassado || 0 })
-    setUltimasAulas(ultimas || [])
     setLoading(false)
   }
 
@@ -153,7 +173,7 @@ export default function CoachPainelPage() {
     </div>
   )
 
-  // TELA BLOQUEADA — aula em andamento
+  // TELA BLOQUEADA
   if (aulaAberta) return (
     <div className="fixed inset-0 bg-gray-50 z-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
@@ -164,7 +184,6 @@ export default function CoachPainelPage() {
           <h1 className="text-lg font-bold text-gray-900">Aula em andamento!</h1>
           <p className="text-sm text-gray-500 mt-1">Você tem uma aula não finalizada.</p>
         </div>
-
         <div className="card mb-4 text-center">
           <div className="text-xs text-gray-400 mb-1">Aluno</div>
           <div className="font-semibold text-gray-900">{aulaAberta.alunos?.nome}</div>
@@ -173,17 +192,11 @@ export default function CoachPainelPage() {
             Iniciada às {new Date(aulaAberta.iniciada_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
           </div>
         </div>
-
         <div className="space-y-2">
-          <button
-            onClick={() => router.push('/coach/treino')}
-            className="btn btn-primary w-full gap-2 py-3">
+          <button onClick={() => router.push('/coach/treino')} className="btn btn-primary w-full gap-2 py-3">
             <PlayCircle size={16} /> Continuar aula
           </button>
-          <button
-            onClick={cancelarAula}
-            disabled={cancelando}
-            className="btn w-full text-red-500 hover:bg-red-50">
+          <button onClick={cancelarAula} disabled={cancelando} className="btn w-full text-red-500 hover:bg-red-50">
             {cancelando ? 'Cancelando...' : 'Cancelar esta aula'}
           </button>
         </div>
@@ -201,8 +214,7 @@ export default function CoachPainelPage() {
       </div>
 
       {/* Botão iniciar treino */}
-      <button
-        onClick={() => router.push('/coach/treino')}
+      <button onClick={() => router.push('/coach/treino')}
         className="w-full mb-5 bg-primary-400 hover:bg-primary-500 text-white rounded-2xl p-5 flex items-center gap-4 transition-colors shadow-sm">
         <div className="w-14 h-14 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
           <PlayCircle size={32} className="text-white" />
