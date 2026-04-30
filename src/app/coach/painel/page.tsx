@@ -6,11 +6,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { fmt } from '@/lib/utils'
 import { Users, BarChart2, TrendingUp, TrendingDown, Clock, PlayCircle, AlertTriangle } from 'lucide-react'
 
-const TURNOS = [
-  { label: 'Manhã' },
-  { label: 'Tarde' },
-  { label: 'Noite' },
-]
+const TURNOS = [{ label: 'Manhã' }, { label: 'Tarde' }, { label: 'Noite' }]
 const DIAS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
 
 export default function CoachPainelPage() {
@@ -55,7 +51,6 @@ export default function CoachPainelPage() {
       .single()
 
     if (aulaPendente) {
-      // Busca nome do aluno separadamente
       const { data: alunoData } = await supabase
         .from('alunos').select('nome').eq('id', aulaPendente.aluno_id).single()
       setAulaAberta({ ...aulaPendente, alunos: alunoData })
@@ -63,13 +58,15 @@ export default function CoachPainelPage() {
       return
     }
 
-    const inicioMes = `${ano}-${String(mes).padStart(2,'0')}-01`
-    const fimMes = `${ano}-${String(mes).padStart(2,'0')}-31`
-    const inicioMesPassado = `${anoMesPassado}-${String(mesPassado).padStart(2,'0')}-01`
-    const fimMesPassado = `${anoMesPassado}-${String(mesPassado).padStart(2,'0')}-31`
-    const inicioHoje = hoje.toISOString().split('T')[0]
-    const fimHoje = inicioHoje + 'T23:59:59'
-    const ha2semanas = new Date(hoje); ha2semanas.setDate(hoje.getDate() - 14)
+    // Datas calculadas corretamente
+    const inicioMes = new Date(ano, mes - 1, 1).toISOString()
+    const fimMes = new Date(ano, mes, 0, 23, 59, 59).toISOString()
+    const inicioMesPassado = new Date(anoMesPassado, mesPassado - 1, 1).toISOString()
+    const fimMesPassado = new Date(anoMesPassado, mesPassado, 0, 23, 59, 59).toISOString()
+    const inicioHoje = new Date(ano, mes - 1, hoje.getDate()).toISOString()
+    const fimHoje = new Date(ano, mes - 1, hoje.getDate(), 23, 59, 59).toISOString()
+    const ha2semanas = new Date(hoje)
+    ha2semanas.setDate(hoje.getDate() - 14)
 
     const [
       { count: aulasHoje },
@@ -101,13 +98,14 @@ export default function CoachPainelPage() {
     const diaSemanaHoje = hoje.getDay()
     const slotsSemana = (horarios || []).filter(h => h.dia_semana >= diaSemanaHoje).length
 
-    // Busca nomes dos alunos das últimas aulas
+    // Nomes dos alunos das últimas aulas
     const alunoIds = [...new Set((ultimas || []).map(a => a.aluno_id))]
-    const { data: alunosUltimas } = await supabase
-      .from('alunos').select('id, nome').in('id', alunoIds)
     const alunosMap: Record<string, string> = {}
-    for (const a of (alunosUltimas || [])) alunosMap[a.id] = a.nome
-
+    if (alunoIds.length > 0) {
+      const { data: alunosUltimas } = await supabase
+        .from('alunos').select('id, nome').in('id', alunoIds)
+      for (const a of (alunosUltimas || [])) alunosMap[a.id] = a.nome
+    }
     const ultimasComNome = (ultimas || []).map(a => ({
       ...a, alunos: { nome: alunosMap[a.aluno_id] || 'Aluno' }
     }))
@@ -115,10 +113,12 @@ export default function CoachPainelPage() {
 
     // Alunos fiéis e sumidos
     const todosAlunoIds = [...new Set((todasAulas || []).map((a: any) => a.aluno_id))]
-    const { data: todosAlunos } = await supabase
-      .from('alunos').select('id, nome').in('id', todosAlunoIds)
     const todosAlunosMap: Record<string, string> = {}
-    for (const a of (todosAlunos || [])) todosAlunosMap[a.id] = a.nome
+    if (todosAlunoIds.length > 0) {
+      const { data: todosAlunos } = await supabase
+        .from('alunos').select('id, nome').in('id', todosAlunoIds)
+      for (const a of (todosAlunos || [])) todosAlunosMap[a.id] = a.nome
+    }
 
     const contagemAlunos: Record<string, { nome: string; count: number; ultima: string }> = {}
     for (const aula of (todasAulas || [])) {
@@ -173,7 +173,6 @@ export default function CoachPainelPage() {
     </div>
   )
 
-  // TELA BLOQUEADA
   if (aulaAberta) return (
     <div className="fixed inset-0 bg-gray-50 z-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
@@ -213,7 +212,6 @@ export default function CoachPainelPage() {
         <p className="text-sm text-gray-400 capitalize">{diaSemana}</p>
       </div>
 
-      {/* Botão iniciar treino */}
       <button onClick={() => router.push('/coach/treino')}
         className="w-full mb-5 bg-primary-400 hover:bg-primary-500 text-white rounded-2xl p-5 flex items-center gap-4 transition-colors shadow-sm">
         <div className="w-14 h-14 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
@@ -225,7 +223,6 @@ export default function CoachPainelPage() {
         </div>
       </button>
 
-      {/* Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
         <div className="card text-center">
           <div className="text-xs text-gray-400 mb-1">Aulas hoje</div>
@@ -252,7 +249,6 @@ export default function CoachPainelPage() {
         </div>
       </div>
 
-      {/* Atalhos */}
       <div className="grid grid-cols-2 gap-3 mb-5">
         <button onClick={() => router.push('/coach/alunos')}
           className="card flex items-center gap-3 hover:border-primary-200 transition-colors text-left">
@@ -271,12 +267,11 @@ export default function CoachPainelPage() {
           </div>
           <div>
             <div className="font-medium text-sm text-gray-900">Histórico</div>
-            <div className="text-xs text-gray-400">Evolução de cargas</div>
+            <div className="text-xs text-gray-400">Minhas aulas</div>
           </div>
         </button>
       </div>
 
-      {/* Alunos fiéis e sumidos */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
         <div className="card">
           <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
@@ -295,7 +290,7 @@ export default function CoachPainelPage() {
                     <div className="text-sm font-medium text-gray-900 truncate">{a.nome}</div>
                     <div className="text-xs text-gray-400">{a.count} aulas no total</div>
                   </div>
-                  <div className="text-xs text-green-600 font-medium flex-shrink-0">{a.count}×</div>
+                  <div className="text-xs text-green-600 font-medium">{a.count}×</div>
                 </div>
               ))}
             </div>
@@ -321,7 +316,7 @@ export default function CoachPainelPage() {
                       <div className="text-sm font-medium text-gray-900 truncate">{a.nome}</div>
                       <div className="text-xs text-gray-400">última aula há {dias} dias</div>
                     </div>
-                    <div className="text-xs text-red-500 font-medium flex-shrink-0">{dias}d</div>
+                    <div className="text-xs text-red-500 font-medium">{dias}d</div>
                   </div>
                 )
               })}
@@ -330,7 +325,6 @@ export default function CoachPainelPage() {
         </div>
       </div>
 
-      {/* Heatmap */}
       <div className="card mb-5">
         <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
           <Clock size={14} className="text-blue-600" /> Seus horários mais movimentados
@@ -377,7 +371,6 @@ export default function CoachPainelPage() {
         </div>
       </div>
 
-      {/* Últimas aulas */}
       <div className="card">
         <h2 className="text-sm font-semibold text-gray-900 mb-3">Últimas aulas registradas</h2>
         {ultimasAulas.length === 0 ? (
