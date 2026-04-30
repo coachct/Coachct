@@ -32,6 +32,7 @@ export default function CoachTreinoPage() {
   const [treinos, setTreinos] = useState<any[]>([])
   const [treinoSel, setTreinoSel] = useState<any>(null)
   const [aulaId, setAulaId] = useState<string | null>(null)
+  const aulaIdRef = useRef<string | null>(null) // ✅ ref síncrono
 
   const [exercicios, setExercicios] = useState<any[]>([])
   const [cargas, setCargas] = useState<Record<string, string[]>>({})
@@ -165,6 +166,7 @@ export default function CoachTreinoPage() {
     const fim = calcularFimSlot(inicio)
     setFimSlot(fim)
     setTempoRestante(Math.floor((fim.getTime() - new Date().getTime()) / 1000))
+    aulaIdRef.current = aula.id // ✅
     setAulaId(aula.id)
     setEtapa('registrando')
   }
@@ -232,21 +234,25 @@ export default function CoachTreinoPage() {
     ])
 
     setUltimasCargas(maxCargas)
-    if (aulaRes.data) setAulaId(aulaRes.data.id)
+    if (aulaRes.data) {
+      aulaIdRef.current = aulaRes.data.id // ✅ síncrono — disponível imediatamente
+      setAulaId(aulaRes.data.id)
+    }
   }
 
   async function salvarCarga(teId: string, serieIdx: number, valor: string) {
     const novas = [...(cargas[teId] || [])]
     novas[serieIdx] = valor
     setCargas(prev => ({ ...prev, [teId]: novas }))
-    if (!aulaId || !valor) return
+    const idAtual = aulaIdRef.current ?? aulaId
+    if (!idAtual || !valor) return
     const ex = exercicios.find(e => e.id === teId)
     if (!ex) return
     setSalvando(teId)
     const cargaNum = parseFloat(valor.replace(',', '.'))
     if (isNaN(cargaNum)) { setSalvando(null); return }
     await supabase.from('registros_carga').upsert({
-      aula_id: aulaId,
+      aula_id: idAtual,
       exercicio_id: ex.exercicio_id,
       maquina: ex.exercicios?.numero_maquina || '',
       carga_kg: cargaNum,
@@ -372,11 +378,12 @@ export default function CoachTreinoPage() {
   }
 
   async function finalizarAula() {
-    if (!aulaId) return
+    // ✅ usa ref síncrono — sempre tem o valor mais atual
+    const aulaIdAtual = aulaIdRef.current ?? aulaId
+    if (!aulaIdAtual) return
 
     const agora = new Date()
     const foraPrazo = fimSlot ? agora > fimSlot : false
-    const aulaIdAtual = aulaId
     const alunoIdAtual = alunoSel?.id
 
     if (timerRef.current) clearInterval(timerRef.current)
@@ -393,6 +400,7 @@ export default function CoachTreinoPage() {
   }
 
   function resetar() {
+    aulaIdRef.current = null
     setEtapa('buscar_aluno')
     setAlunoSel(null); setTreinoSel(null); setAulaId(null)
     setExercicios([]); setCargas({}); setBusca(''); setAlunos([])
@@ -533,9 +541,9 @@ export default function CoachTreinoPage() {
 
     return (
       <div>
-        {/* DEBUG TEMPORÁRIO — remove depois */}
+        {/* DEBUG — remove depois de confirmar que funciona */}
         <div className="text-xs bg-red-100 text-red-600 p-2 mb-2 rounded">
-          DEBUG — aulaId: {aulaId ?? 'NULL'}
+          DEBUG — aulaId: {aulaIdRef.current ?? aulaId ?? 'NULL'}
         </div>
 
         {alertaAtivo && (
