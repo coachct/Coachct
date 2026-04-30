@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { fmt } from '@/lib/utils'
-import { Users, ClipboardList, BarChart2, Tag, TrendingUp, TrendingDown, Clock } from 'lucide-react'
+import { Users, BarChart2, TrendingUp, TrendingDown, Clock, PlayCircle } from 'lucide-react'
 
 const DIAS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
 const TURNOS = [
@@ -80,7 +80,6 @@ export default function CoachPainelPage() {
     const diaSemanaHoje = hoje.getDay()
     const slotsSemana = (horarios || []).filter(h => h.dia_semana >= diaSemanaHoje).length
 
-    // Alunos fiéis — conta aulas por aluno
     const contagemAlunos: Record<string, { nome: string; count: number; ultima: string }> = {}
     for (const aula of (todasAulas || [])) {
       const id = aula.alunos?.id
@@ -88,21 +87,17 @@ export default function CoachPainelPage() {
       if (!id || !nome) continue
       if (!contagemAlunos[id]) contagemAlunos[id] = { nome, count: 0, ultima: aula.horario_agendado }
       contagemAlunos[id].count++
-      if (aula.horario_agendado > contagemAlunos[id].ultima) {
-        contagemAlunos[id].ultima = aula.horario_agendado
-      }
+      if (aula.horario_agendado > contagemAlunos[id].ultima) contagemAlunos[id].ultima = aula.horario_agendado
     }
     const sorted = Object.values(contagemAlunos).sort((a, b) => b.count - a.count)
     setAlunosFieis(sorted.slice(0, 3))
 
-    // Alunos sumidos — última aula há mais de 2 semanas
     const sumidos = Object.values(contagemAlunos)
       .filter(a => new Date(a.ultima) < ha2semanas)
       .sort((a, b) => new Date(a.ultima).getTime() - new Date(b.ultima).getTime())
       .slice(0, 3)
     setAlunosSumidos(sumidos)
 
-    // Heatmap — dia × turno
     const hm: Record<string, number> = {}
     for (const aula of (todasAulas || [])) {
       const d = new Date(aula.horario_agendado)
@@ -135,10 +130,25 @@ export default function CoachPainelPage() {
 
   return (
     <div>
-      <div className="mb-6">
+      {/* Header */}
+      <div className="mb-5">
         <h1 className="text-xl font-semibold text-gray-900">Olá, {coach.nome.split(' ')[0]}! 👋</h1>
         <p className="text-sm text-gray-400 capitalize">{diaSemana}</p>
       </div>
+
+      {/* BOTÃO INICIAR TREINO — destaque total */}
+      <button
+        onClick={() => router.push('/coach/treino')}
+        className="w-full mb-5 bg-primary-400 hover:bg-primary-500 text-white rounded-2xl p-5 flex items-center gap-4 transition-colors shadow-sm"
+      >
+        <div className="w-14 h-14 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+          <PlayCircle size={32} className="text-white" />
+        </div>
+        <div className="text-left">
+          <div className="text-lg font-bold text-white">Iniciar treino</div>
+          <div className="text-sm text-white/80">Buscar aluno e registrar aula agora</div>
+        </div>
+      </button>
 
       {/* Cards principais */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
@@ -167,7 +177,7 @@ export default function CoachPainelPage() {
         </div>
       </div>
 
-      {/* Atalhos */}
+      {/* Atalhos secundários */}
       <div className="grid grid-cols-2 gap-3 mb-5">
         <button onClick={() => router.push('/coach/alunos')}
           className="card flex items-center gap-3 hover:border-primary-200 transition-colors text-left">
@@ -177,16 +187,6 @@ export default function CoachPainelPage() {
           <div>
             <div className="font-medium text-sm text-gray-900">Alunos</div>
             <div className="text-xs text-gray-400">Buscar ou cadastrar</div>
-          </div>
-        </button>
-        <button onClick={() => router.push('/coach/treino')}
-          className="card flex items-center gap-3 hover:border-primary-200 transition-colors text-left">
-          <div className="w-10 h-10 rounded-xl bg-orange-100 flex items-center justify-center flex-shrink-0">
-            <ClipboardList size={18} className="text-orange-700" />
-          </div>
-          <div>
-            <div className="font-medium text-sm text-gray-900">Registrar aula</div>
-            <div className="text-xs text-gray-400">Iniciar agora</div>
           </div>
         </button>
         <button onClick={() => router.push('/coach/historico')}
@@ -199,15 +199,6 @@ export default function CoachPainelPage() {
             <div className="text-xs text-gray-400">Evolução de cargas</div>
           </div>
         </button>
-        <div className="card flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-yellow-100 flex items-center justify-center flex-shrink-0">
-            <Tag size={18} className="text-yellow-700" />
-          </div>
-          <div>
-            <div className="font-medium text-sm text-gray-900">Treinos ativos</div>
-            <div className="text-xs text-gray-400 capitalize">{mesNome}</div>
-          </div>
-        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
@@ -265,7 +256,7 @@ export default function CoachPainelPage() {
         </div>
       </div>
 
-      {/* Heatmap dias × turnos */}
+      {/* Heatmap */}
       <div className="card mb-5">
         <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
           <Clock size={14} className="text-blue-600" /> Seus horários mais movimentados
@@ -304,19 +295,11 @@ export default function CoachPainelPage() {
             </tbody>
           </table>
         </div>
-        <div className="flex items-center gap-2 mt-2 text-xs text-gray-400">
-          <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded bg-gray-50 border border-gray-200" /> Nenhuma
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded bg-primary-100" /> Poucas
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded bg-primary-200" /> Médio
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded bg-primary-400" /> Muito
-          </div>
+        <div className="flex items-center gap-3 mt-2 text-xs text-gray-400 flex-wrap">
+          <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-gray-50 border border-gray-200" /> Nenhuma</div>
+          <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-primary-100" /> Poucas</div>
+          <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-primary-200" /> Médio</div>
+          <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-primary-400" /> Muito</div>
         </div>
       </div>
 
