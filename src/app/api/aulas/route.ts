@@ -11,6 +11,52 @@ export async function GET(req: NextRequest) {
   const aluno_id = searchParams.get('aluno_id')
   const aluno_info = searchParams.get('aluno_info')
   const lista_alunos = searchParams.get('lista_alunos')
+  const insights = searchParams.get('insights')
+  const aula_id = searchParams.get('aula_id')
+
+  // Insights do aluno
+  if (insights && aluno_id && aula_id) {
+    const hoje = new Date()
+    const ha7dias = new Date(hoje); ha7dias.setDate(hoje.getDate() - 7)
+    const inicioSemana = new Date(hoje); inicioSemana.setDate(hoje.getDate() - hoje.getDay())
+    const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1)
+
+    const [
+      { data: aulasRecentes },
+      { data: aulasMes },
+      { data: aulasSemana },
+      { data: cargasHoje },
+      { data: cargasAnteriores },
+    ] = await Promise.all([
+      supabase.from('aulas').select('*, treinos(nome, descricao)')
+        .eq('aluno_id', aluno_id).eq('status', 'finalizada')
+        .gte('finalizada_em', ha7dias.toISOString())
+        .order('finalizada_em', { ascending: false }),
+      supabase.from('aulas').select('id')
+        .eq('aluno_id', aluno_id).eq('status', 'finalizada')
+        .gte('finalizada_em', inicioMes.toISOString()),
+      supabase.from('aulas').select('id')
+        .eq('aluno_id', aluno_id).eq('status', 'finalizada')
+        .gte('finalizada_em', inicioSemana.toISOString()),
+      supabase.from('registros_carga').select('exercicio_id, carga_kg')
+        .eq('aula_id', aula_id),
+      supabase.from('registros_carga')
+        .select('exercicio_id, carga_kg, aulas!inner(aluno_id, status)')
+        .eq('aulas.aluno_id', aluno_id)
+        .eq('aulas.status', 'finalizada')
+        .neq('aula_id', aula_id),
+    ])
+
+    return NextResponse.json({
+      data: {
+        aulasRecentes: aulasRecentes || [],
+        aulasMes: aulasMes || [],
+        aulasSemana: aulasSemana || [],
+        cargasHoje: cargasHoje || [],
+        cargasAnteriores: cargasAnteriores || [],
+      }
+    })
+  }
 
   // Lista todos os alunos com suas aulas
   if (lista_alunos) {
@@ -91,11 +137,4 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const body = await req.json()
-  const { id, ...updates } = body
-
-  const { data, error } = await supabase.from('aulas').update(updates).eq('id', id).select().maybeSingle()
-
-  if (error) return NextResponse.json({ error }, { status: 400 })
-  return NextResponse.json({ data })
-}
+  const body = await
