@@ -29,7 +29,6 @@ export default function CoachPainelPage() {
   const mesNome = hoje.toLocaleDateString('pt-BR', { month: 'long' })
   const diaSemana = hoje.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
   const mesPassado = mes === 1 ? 12 : mes - 1
-  const anoMesPassado = mes === 1 ? ano - 1 : ano
   const mesesNomes = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 
   useEffect(() => {
@@ -42,89 +41,34 @@ export default function CoachPainelPage() {
     try {
       const { data: coachData } = await supabase
         .from('coaches').select('*').eq('user_id', perfil!.id).maybeSingle()
-
       if (!coachData) return
       setCoach(coachData)
 
-      const { data: aulaPendente } = await supabase
-        .from('aulas')
-        .select('*, treinos(nome)')
-        .eq('coach_id', coachData.id)
-        .eq('status', 'em_andamento')
-        .order('iniciada_em', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+      // ✅ usa API route — bypassa RLS
+      const res = await fetch(`/api/aulas?painel=1&coach_id=${coachData.id}`)
+      const json = await res.json()
+      const {
+        aulasHoje, aulasMes, aulasMesPassado,
+        horarios, ultimas, todasAulas, alunosMap, aulaPendente
+      } = json.data
 
       if (aulaPendente) {
-        const { data: alunoData } = await supabase
-          .from('alunos').select('nome').eq('id', aulaPendente.aluno_id).maybeSingle()
-        setAulaAberta({ ...aulaPendente, alunos: alunoData })
+        setAulaAberta(aulaPendente)
         return
       }
 
-      const inicioMes = new Date(ano, mes - 1, 1).toISOString()
-      const fimMes = new Date(ano, mes, 0, 23, 59, 59).toISOString()
-      const inicioMesPassado = new Date(anoMesPassado, mesPassado - 1, 1).toISOString()
-      const fimMesPassado = new Date(anoMesPassado, mesPassado, 0, 23, 59, 59).toISOString()
-      const inicioHoje = new Date(ano, mes - 1, hoje.getDate()).toISOString()
-      const fimHoje = new Date(ano, mes - 1, hoje.getDate(), 23, 59, 59).toISOString()
+      const diaSemanaHoje = hoje.getDay()
+      const slotsSemana = (horarios || []).filter((h: any) => h.dia_semana >= diaSemanaHoje).length
+
+      setUltimasAulas(ultimas || [])
+
       const ha2semanas = new Date(hoje)
       ha2semanas.setDate(hoje.getDate() - 14)
-
-      const [
-        { count: aulasHoje },
-        { count: aulasMes },
-        { count: aulasMesPassado },
-        { data: horarios },
-        { data: ultimas },
-        { data: todasAulas },
-      ] = await Promise.all([
-        supabase.from('aulas').select('*', { count: 'exact', head: true })
-          .eq('coach_id', coachData.id).eq('status', 'finalizada')
-          .gte('horario_agendado', inicioHoje).lte('horario_agendado', fimHoje),
-        supabase.from('aulas').select('*', { count: 'exact', head: true })
-          .eq('coach_id', coachData.id).eq('status', 'finalizada')
-          .gte('horario_agendado', inicioMes).lte('horario_agendado', fimMes),
-        supabase.from('aulas').select('*', { count: 'exact', head: true })
-          .eq('coach_id', coachData.id).eq('status', 'finalizada')
-          .gte('horario_agendado', inicioMesPassado).lte('horario_agendado', fimMesPassado),
-        supabase.from('coach_horarios').select('*')
-          .eq('coach_id', coachData.id).eq('ativo', true),
-        supabase.from('aulas').select('*, treinos(nome)')
-          .eq('coach_id', coachData.id).eq('status', 'finalizada')
-          .order('finalizada_em', { ascending: false }).limit(5),
-        supabase.from('aulas').select('aluno_id, horario_agendado, finalizada_em')
-          .eq('coach_id', coachData.id).eq('status', 'finalizada')
-          .order('horario_agendado', { ascending: false }),
-      ])
-
-      const diaSemanaHoje = hoje.getDay()
-      const slotsSemana = (horarios || []).filter(h => h.dia_semana >= diaSemanaHoje).length
-
-      const alunoIds = [...new Set((ultimas || []).map(a => a.aluno_id))]
-      const alunosMap: Record<string, string> = {}
-      if (alunoIds.length > 0) {
-        const { data: alunosUltimas } = await supabase
-          .from('alunos').select('id, nome').in('id', alunoIds)
-        for (const a of (alunosUltimas || [])) alunosMap[a.id] = a.nome
-      }
-      const ultimasComNome = (ultimas || []).map(a => ({
-        ...a, alunos: { nome: alunosMap[a.aluno_id] || 'Aluno' }
-      }))
-      setUltimasAulas(ultimasComNome)
-
-      const todosAlunoIds = [...new Set((todasAulas || []).map((a: any) => a.aluno_id))]
-      const todosAlunosMap: Record<string, string> = {}
-      if (todosAlunoIds.length > 0) {
-        const { data: todosAlunos } = await supabase
-          .from('alunos').select('id, nome').in('id', todosAlunoIds)
-        for (const a of (todosAlunos || [])) todosAlunosMap[a.id] = a.nome
-      }
 
       const contagemAlunos: Record<string, { nome: string; count: number; ultima: string }> = {}
       for (const aula of (todasAulas || [])) {
         const id = aula.aluno_id
-        const nome = todosAlunosMap[id] || 'Aluno'
+        const nome = alunosMap[id] || 'Aluno'
         if (!contagemAlunos[id]) contagemAlunos[id] = { nome, count: 0, ultima: aula.horario_agendado }
         contagemAlunos[id].count++
         if (aula.horario_agendado > contagemAlunos[id].ultima) contagemAlunos[id].ultima = aula.horario_agendado
@@ -148,7 +92,7 @@ export default function CoachPainelPage() {
       }
       setHeatmap(hm)
 
-      setStats({ aulasHoje: aulasHoje || 0, aulasMes: aulasMes || 0, slotsSemana, aulasMesPassado: aulasMesPassado || 0 })
+      setStats({ aulasHoje, aulasMes, slotsSemana, aulasMesPassado })
 
     } catch (err) {
       console.error('Erro no painel:', err)
@@ -160,11 +104,16 @@ export default function CoachPainelPage() {
   async function cancelarAula() {
     if (!aulaAberta) return
     setCancelando(true)
-    await supabase.from('aulas').update({
-      status: 'cancelada',
-      finalizada_em: new Date().toISOString(),
-      observacoes: 'cancelada_pelo_coach',
-    }).eq('id', aulaAberta.id)
+    await fetch('/api/aulas', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: aulaAberta.id,
+        status: 'cancelada',
+        finalizada_em: new Date().toISOString(),
+        observacoes: 'cancelada_pelo_coach',
+      })
+    })
     setAulaAberta(null)
     setCancelando(false)
     loadData()
