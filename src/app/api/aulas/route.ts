@@ -14,7 +14,6 @@ export async function GET(req: NextRequest) {
   const insights = searchParams.get('insights')
   const aula_id = searchParams.get('aula_id')
 
-  // Insights do aluno
   if (insights && aluno_id && aula_id) {
     const hoje = new Date()
     const ha7dias = new Date(hoje); ha7dias.setDate(hoje.getDate() - 7)
@@ -58,7 +57,6 @@ export async function GET(req: NextRequest) {
     })
   }
 
-  // Lista todos os alunos com suas aulas
   if (lista_alunos) {
     const { data: alunos, error: alunosError } = await supabase
       .from('alunos')
@@ -93,7 +91,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ data: resultado })
   }
 
-  // Info do aluno
   if (aluno_info && aluno_id) {
     const { data, error } = await supabase
       .from('alunos').select('*').eq('id', aluno_id).single()
@@ -101,7 +98,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ data })
   }
 
-  // Histórico de aulas do aluno
   if (aluno_id) {
     const { data, error } = await supabase
       .from('aulas')
@@ -137,4 +133,11 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const body = await
+  const body = await req.json()
+  const { id, ...updates } = body
+
+  const { data, error } = await supabase.from('aulas').update(updates).eq('id', id).select().maybeSingle()
+
+  if (error) return NextResponse.json({ error }, { status: 400 })
+  return NextResponse.json({ data })
+}
