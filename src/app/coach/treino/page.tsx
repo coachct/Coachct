@@ -371,7 +371,6 @@ export default function CoachTreinoPage() {
     setLoadingInsights(false)
   }
 
-  // ✅ FIX MOBILE: muda de tela imediatamente, awaits em background
   async function finalizarAula() {
     if (!aulaId) return
 
@@ -431,7 +430,8 @@ export default function CoachTreinoPage() {
                   key={a.id}
                   role="button"
                   tabIndex={0}
-                  onPointerUp={() => selecionarAluno(a)}
+                  onTouchStart={() => selecionarAluno(a)}
+                  onClick={() => selecionarAluno(a)}
                   onKeyDown={e => e.key === 'Enter' && selecionarAluno(a)}
                   className="w-full flex items-center gap-3 px-4 py-3 active:bg-gray-50 text-left cursor-pointer select-none"
                   style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
@@ -493,7 +493,8 @@ export default function CoachTreinoPage() {
               key={pub.id}
               role="button"
               tabIndex={0}
-              onPointerUp={() => selecionarTreino(pub, alunoSel)}
+              onTouchStart={() => selecionarTreino(pub, alunoSel)}
+              onClick={() => selecionarTreino(pub, alunoSel)}
               onKeyDown={e => e.key === 'Enter' && selecionarTreino(pub, alunoSel)}
               className="card w-full text-left border-2 border-transparent active:border-primary-300 active:bg-primary-50 transition-colors cursor-pointer select-none"
               style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
