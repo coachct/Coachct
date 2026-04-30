@@ -2,134 +2,107 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
-import { Aluno, Exercicio } from '@/types'
 import { PageHeader, Spinner, EmptyState } from '@/components/ui'
 
 export default function CoachHistoricoPage() {
-  const { user } = useAuth()
-  const supabase = createClient()
-  const [alunos, setAlunos] = useState<Aluno[]>([])
-  const [exercicios, setExercicios] = useState<Exercicio[]>([])
-  const [alunoSel, setAlunoSel] = useState('')
-  const [exSel, setExSel] = useState('')
-  const [historico, setHistorico] = useState<any[]>([])
+  const { perfil } = useAuth()
+  const [coach, setCoach] = useState<any>(null)
+  const [aulas, setAulas] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [searching, setSearching] = useState(false)
+  const [alunoFiltro, setAlunoFiltro] = useState('')
+  const supabase = createClient()
 
   useEffect(() => {
-    async function load() {
-      const [{ data: al }, { data: ex }] = await Promise.all([
-        supabase.from('alunos').select('*').eq('ativo', true).order('nome'),
-        supabase.from('exercicios').select('*, categorias(nome)').eq('ativo', true).order('nome'),
-      ])
-      setAlunos(al || [])
-      setExercicios(ex || [])
-      setLoading(false)
-    }
-    load()
-  }, [])
+    if (perfil?.id) loadData()
+  }, [perfil])
 
-  async function buscar() {
-    if (!alunoSel) return
-    setSearching(true)
-    let query = supabase
-      .from('registros_carga')
-      .select('*, exercicios(nome, numero_maquina), aulas!inner(horario_agendado, aluno_id, coaches(nome))')
-      .eq('aulas.aluno_id', alunoSel)
-      .order('aulas.horario_agendado', { ascending: false })
+  async function loadData() {
+    const { data: coachData } = await supabase
+      .from('coaches').select('*').eq('user_id', perfil!.id).single()
+    if (!coachData) { setLoading(false); return }
+    setCoach(coachData)
+
+    const { data } = await supabase
+      .from('aulas')
+      .select(`
+        id, status, iniciada_em, finalizada_em,
+        alunos ( id, nome ),
+        treinos ( nome ),
+        registros_carga ( id, maquina, carga_kg, reps_realizadas, observacoes,
+          exercicios ( nome )
+        )
+      `)
+      .eq('coach_id', coachData.id)
+      .eq('status', 'finalizada')
+      .order('finalizada_em', { ascending: false })
       .limit(50)
 
-    if (exSel) query = query.eq('exercicio_id', exSel)
-
-    const { data } = await query
-    setHistorico(data || [])
-    setSearching(false)
+    setAulas(data || [])
+    setLoading(false)
   }
+
+  const aulasFiltradas = alunoFiltro
+    ? aulas.filter(a => a.alunos?.nome?.toLowerCase().includes(alunoFiltro.toLowerCase()))
+    : aulas
 
   if (loading) return <Spinner />
 
-  const progresso = historico.length >= 2
-    ? (historico[0]?.carga_kg || 0) - (historico[historico.length - 1]?.carga_kg || 0)
-    : null
-
   return (
     <div>
-      <PageHeader title="Histórico de treinos" subtitle="Evolução de cargas por aluno e exercício" />
+      <PageHeader title="Histórico de aulas" subtitle="Suas aulas registradas e cargas por aluno" />
 
-      <div className="card mb-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-          <div>
-            <label className="label">Aluno</label>
-            <select className="input" value={alunoSel} onChange={e => setAlunoSel(e.target.value)}>
-              <option value="">Selecionar aluno...</option>
-              {alunos.map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="label">Exercício (opcional)</label>
-            <select className="input" value={exSel} onChange={e => setExSel(e.target.value)}>
-              <option value="">Todos os exercícios</option>
-              {exercicios.map(e => <option key={e.id} value={e.id}>{e.nome}{e.numero_maquina ? ` · Máq.${e.numero_maquina}` : ''}</option>)}
-            </select>
-          </div>
-          <div className="flex items-end">
-            <button onClick={buscar} disabled={!alunoSel || searching} className="btn btn-primary w-full">
-              {searching ? 'Buscando...' : 'Buscar histórico'}
-            </button>
-          </div>
-        </div>
+      <div className="mb-4 max-w-sm">
+        <input
+          className="input"
+          placeholder="Filtrar por nome do aluno..."
+          value={alunoFiltro}
+          onChange={e => setAlunoFiltro(e.target.value)}
+        />
       </div>
 
-      {historico.length > 0 && (
-        <>
-          {progresso !== null && (
-            <div className={`rounded-xl px-4 py-3 mb-4 text-sm font-medium ${progresso > 0 ? 'bg-primary-50 text-primary-800' : progresso < 0 ? 'bg-danger-50 text-danger-700' : 'bg-gray-50 text-gray-600'}`}>
-              {progresso > 0 ? `↑ Progresso de +${progresso} kg no período` : progresso < 0 ? `↓ Redução de ${Math.abs(progresso)} kg no período` : '→ Carga estável no período'}
-            </div>
-          )}
+      {aulasFiltradas.length === 0 && (
+        <EmptyState message="Nenhuma aula finalizada ainda." />
+      )}
 
-          <div className="card">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-xs text-gray-400 uppercase tracking-wide border-b border-gray-100">
-                    <th className="text-left pb-3 pr-4">Data</th>
-                    <th className="text-left pb-3 pr-4">Exercício</th>
-                    <th className="text-left pb-3 pr-4">Máquina</th>
-                    <th className="text-left pb-3 pr-4">Coach</th>
-                    <th className="text-right pb-3 pr-4">Carga</th>
-                    <th className="text-right pb-3 pr-4">Reps</th>
-                    <th className="text-left pb-3">Obs.</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {historico.map((r, i) => (
-                    <tr key={r.id} className={i === 0 ? 'font-medium' : ''}>
-                      <td className="py-2.5 pr-4 text-gray-500 text-xs">
-                        {new Date((r.aulas as any).horario_agendado).toLocaleDateString('pt-BR')}
-                      </td>
-                      <td className="py-2.5 pr-4 text-gray-900">{r.exercicios?.nome || '—'}</td>
-                      <td className="py-2.5 pr-4 text-xs">
-                        {r.maquina ? <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">Máq.{r.maquina}</span> : <span className="text-gray-400">—</span>}
-                      </td>
-                      <td className="py-2.5 pr-4 text-xs text-gray-500">{(r.aulas as any).coaches?.nome?.split(' ')[0] || '—'}</td>
-                      <td className="py-2.5 pr-4 text-right font-semibold text-gray-900">
-                        {r.carga_kg ? `${r.carga_kg} kg` : '—'}
-                      </td>
-                      <td className="py-2.5 pr-4 text-right text-gray-500">{r.reps_realizadas || '—'}</td>
-                      <td className="py-2.5 text-xs text-gray-400 max-w-[120px] truncate">{r.observacoes || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      <div className="space-y-4 max-w-2xl">
+        {aulasFiltradas.map(aula => (
+          <div key={aula.id} className="card">
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <div>
+                <div className="font-semibold text-sm text-gray-900">{aula.alunos?.nome}</div>
+                <div className="text-xs text-gray-400">
+                  {aula.treinos?.nome} · {new Date(aula.finalizada_em).toLocaleDateString('pt-BR', {
+                    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                  })}
+                </div>
+              </div>
+              <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">
+                {aula.registros_carga?.length || 0} registros
+              </span>
             </div>
+
+            {(aula.registros_carga || []).length > 0 && (
+              <div className="divide-y divide-gray-50">
+                {(aula.registros_carga || []).map((r: any) => (
+                  <div key={r.id} className="py-2 flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-medium text-gray-800">{r.exercicios?.nome}</div>
+                      {r.maquina && <div className="text-xs text-blue-500">{r.maquina}</div>}
+                      {r.observacoes && <div className="text-xs text-gray-400">{r.observacoes}</div>}
+                    </div>
+                    <div className="text-sm font-bold text-primary-700 flex-shrink-0">
+                      {r.carga_kg}kg
+                    </div>
+                    <div className="text-xs text-gray-400 flex-shrink-0">
+                      {r.reps_realizadas} reps
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        </>
-      )}
-
-      {historico.length === 0 && !searching && alunoSel && (
-        <EmptyState message="Nenhum registro encontrado para este aluno." />
-      )}
+        ))}
+      </div>
     </div>
   )
 }
