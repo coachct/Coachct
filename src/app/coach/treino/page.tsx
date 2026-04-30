@@ -204,33 +204,38 @@ export default function CoachTreinoPage() {
     setEtapa('escolher_treino')
   }
 
+  // ✅ FIX MOBILE: setEtapa e estados síncronos ANTES de qualquer await
   async function selecionarTreino(pub: any, alunoAtual: any) {
-    setTreinoSel(pub)
     const exs = (pub.treinos?.treino_exercicios || [])
       .sort((a: any, b: any) => (a.ordem ?? 0) - (b.ordem ?? 0))
-    setExercicios(exs)
 
     const cargasIniciais: Record<string, string[]> = {}
     for (const ex of exs) {
       cargasIniciais[ex.id] = Array(ex.series_override || 3).fill('')
     }
-    setCargas(cargasIniciais)
-
-    const maxCargas = await buscarUltimasCargas(alunoAtual.id)
-    setUltimasCargas(maxCargas)
 
     const agora = new Date()
     const fim = calcularFimSlot(agora)
+
+    // tudo síncrono primeiro — mobile não cancela o evento
+    setTreinoSel(pub)
+    setExercicios(exs)
+    setCargas(cargasIniciais)
     setFimSlot(fim)
     setTempoRestante(Math.floor((fim.getTime() - agora.getTime()) / 1000))
+    setEtapa('registrando') // ← muda de tela imediatamente
 
-    const { data: aula } = await supabase.from('aulas').insert({
-      coach_id: coach.id, aluno_id: alunoAtual.id, treino_id: pub.treinos?.id,
-      horario_agendado: agora.toISOString(), iniciada_em: agora.toISOString(), status: 'em_andamento',
-    }).select().maybeSingle()
+    // awaits depois — rodam em background sem bloquear a navegação
+    const [maxCargas, aulaRes] = await Promise.all([
+      buscarUltimasCargas(alunoAtual.id),
+      supabase.from('aulas').insert({
+        coach_id: coach.id, aluno_id: alunoAtual.id, treino_id: pub.treinos?.id,
+        horario_agendado: agora.toISOString(), iniciada_em: agora.toISOString(), status: 'em_andamento',
+      }).select().maybeSingle()
+    ])
 
-    if (aula) setAulaId(aula.id)
-    setEtapa('registrando')
+    setUltimasCargas(maxCargas)
+    if (aulaRes.data) setAulaId(aulaRes.data.id)
   }
 
   async function salvarCarga(teId: string, serieIdx: number, valor: string) {
