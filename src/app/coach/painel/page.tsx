@@ -32,120 +32,129 @@ export default function CoachPainelPage() {
   const anoMesPassado = mes === 1 ? ano - 1 : ano
   const mesesNomes = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 
-  useEffect(() => { if (perfil?.id) loadData() }, [perfil])
+  useEffect(() => {
+    if (perfil?.id) loadData()
+    const timeout = setTimeout(() => setLoading(false), 5000)
+    return () => clearTimeout(timeout)
+  }, [perfil])
 
   async function loadData() {
-    const { data: coachData } = await supabase
-      .from('coaches').select('*').eq('user_id', perfil!.id).single()
-    if (!coachData) { setLoading(false); return }
-    setCoach(coachData)
+    try {
+      const { data: coachData } = await supabase
+        .from('coaches').select('*').eq('user_id', perfil!.id).maybeSingle()
 
-    // Verifica aula em andamento — maybeSingle não dá 406 quando não há resultado
-    const { data: aulaPendente } = await supabase
-      .from('aulas')
-      .select('*, treinos(nome)')
-      .eq('coach_id', coachData.id)
-      .eq('status', 'em_andamento')
-      .order('iniciada_em', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+      if (!coachData) return
+      setCoach(coachData)
 
-    if (aulaPendente) {
-      const { data: alunoData } = await supabase
-        .from('alunos').select('nome').eq('id', aulaPendente.aluno_id).maybeSingle()
-      setAulaAberta({ ...aulaPendente, alunos: alunoData })
+      const { data: aulaPendente } = await supabase
+        .from('aulas')
+        .select('*, treinos(nome)')
+        .eq('coach_id', coachData.id)
+        .eq('status', 'em_andamento')
+        .order('iniciada_em', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (aulaPendente) {
+        const { data: alunoData } = await supabase
+          .from('alunos').select('nome').eq('id', aulaPendente.aluno_id).maybeSingle()
+        setAulaAberta({ ...aulaPendente, alunos: alunoData })
+        return
+      }
+
+      const inicioMes = new Date(ano, mes - 1, 1).toISOString()
+      const fimMes = new Date(ano, mes, 0, 23, 59, 59).toISOString()
+      const inicioMesPassado = new Date(anoMesPassado, mesPassado - 1, 1).toISOString()
+      const fimMesPassado = new Date(anoMesPassado, mesPassado, 0, 23, 59, 59).toISOString()
+      const inicioHoje = new Date(ano, mes - 1, hoje.getDate()).toISOString()
+      const fimHoje = new Date(ano, mes - 1, hoje.getDate(), 23, 59, 59).toISOString()
+      const ha2semanas = new Date(hoje)
+      ha2semanas.setDate(hoje.getDate() - 14)
+
+      const [
+        { count: aulasHoje },
+        { count: aulasMes },
+        { count: aulasMesPassado },
+        { data: horarios },
+        { data: ultimas },
+        { data: todasAulas },
+      ] = await Promise.all([
+        supabase.from('aulas').select('*', { count: 'exact', head: true })
+          .eq('coach_id', coachData.id).eq('status', 'finalizada')
+          .gte('horario_agendado', inicioHoje).lte('horario_agendado', fimHoje),
+        supabase.from('aulas').select('*', { count: 'exact', head: true })
+          .eq('coach_id', coachData.id).eq('status', 'finalizada')
+          .gte('horario_agendado', inicioMes).lte('horario_agendado', fimMes),
+        supabase.from('aulas').select('*', { count: 'exact', head: true })
+          .eq('coach_id', coachData.id).eq('status', 'finalizada')
+          .gte('horario_agendado', inicioMesPassado).lte('horario_agendado', fimMesPassado),
+        supabase.from('coach_horarios').select('*')
+          .eq('coach_id', coachData.id).eq('ativo', true),
+        supabase.from('aulas').select('*, treinos(nome)')
+          .eq('coach_id', coachData.id).eq('status', 'finalizada')
+          .order('finalizada_em', { ascending: false }).limit(5),
+        supabase.from('aulas').select('aluno_id, horario_agendado, finalizada_em')
+          .eq('coach_id', coachData.id).eq('status', 'finalizada')
+          .order('horario_agendado', { ascending: false }),
+      ])
+
+      const diaSemanaHoje = hoje.getDay()
+      const slotsSemana = (horarios || []).filter(h => h.dia_semana >= diaSemanaHoje).length
+
+      const alunoIds = [...new Set((ultimas || []).map(a => a.aluno_id))]
+      const alunosMap: Record<string, string> = {}
+      if (alunoIds.length > 0) {
+        const { data: alunosUltimas } = await supabase
+          .from('alunos').select('id, nome').in('id', alunoIds)
+        for (const a of (alunosUltimas || [])) alunosMap[a.id] = a.nome
+      }
+      const ultimasComNome = (ultimas || []).map(a => ({
+        ...a, alunos: { nome: alunosMap[a.aluno_id] || 'Aluno' }
+      }))
+      setUltimasAulas(ultimasComNome)
+
+      const todosAlunoIds = [...new Set((todasAulas || []).map((a: any) => a.aluno_id))]
+      const todosAlunosMap: Record<string, string> = {}
+      if (todosAlunoIds.length > 0) {
+        const { data: todosAlunos } = await supabase
+          .from('alunos').select('id, nome').in('id', todosAlunoIds)
+        for (const a of (todosAlunos || [])) todosAlunosMap[a.id] = a.nome
+      }
+
+      const contagemAlunos: Record<string, { nome: string; count: number; ultima: string }> = {}
+      for (const aula of (todasAulas || [])) {
+        const id = aula.aluno_id
+        const nome = todosAlunosMap[id] || 'Aluno'
+        if (!contagemAlunos[id]) contagemAlunos[id] = { nome, count: 0, ultima: aula.horario_agendado }
+        contagemAlunos[id].count++
+        if (aula.horario_agendado > contagemAlunos[id].ultima) contagemAlunos[id].ultima = aula.horario_agendado
+      }
+      const sorted = Object.values(contagemAlunos).sort((a, b) => b.count - a.count)
+      setAlunosFieis(sorted.slice(0, 3))
+
+      const sumidos = Object.values(contagemAlunos)
+        .filter(a => new Date(a.ultima) < ha2semanas)
+        .sort((a, b) => new Date(a.ultima).getTime() - new Date(b.ultima).getTime())
+        .slice(0, 3)
+      setAlunosSumidos(sumidos)
+
+      const hm: Record<string, number> = {}
+      for (const aula of (todasAulas || [])) {
+        const d = new Date(aula.horario_agendado)
+        const dia = d.getDay()
+        const hora = d.getHours()
+        const turno = hora < 12 ? 'Manhã' : hora < 18 ? 'Tarde' : 'Noite'
+        hm[`${dia}-${turno}`] = (hm[`${dia}-${turno}`] || 0) + 1
+      }
+      setHeatmap(hm)
+
+      setStats({ aulasHoje: aulasHoje || 0, aulasMes: aulasMes || 0, slotsSemana, aulasMesPassado: aulasMesPassado || 0 })
+
+    } catch (err) {
+      console.error('Erro no painel:', err)
+    } finally {
       setLoading(false)
-      return
     }
-
-    const inicioMes = new Date(ano, mes - 1, 1).toISOString()
-    const fimMes = new Date(ano, mes, 0, 23, 59, 59).toISOString()
-    const inicioMesPassado = new Date(anoMesPassado, mesPassado - 1, 1).toISOString()
-    const fimMesPassado = new Date(anoMesPassado, mesPassado, 0, 23, 59, 59).toISOString()
-    const inicioHoje = new Date(ano, mes - 1, hoje.getDate()).toISOString()
-    const fimHoje = new Date(ano, mes - 1, hoje.getDate(), 23, 59, 59).toISOString()
-    const ha2semanas = new Date(hoje)
-    ha2semanas.setDate(hoje.getDate() - 14)
-
-    const [
-      { count: aulasHoje },
-      { count: aulasMes },
-      { count: aulasMesPassado },
-      { data: horarios },
-      { data: ultimas },
-      { data: todasAulas },
-    ] = await Promise.all([
-      supabase.from('aulas').select('*', { count: 'exact', head: true })
-        .eq('coach_id', coachData.id).eq('status', 'finalizada')
-        .gte('horario_agendado', inicioHoje).lte('horario_agendado', fimHoje),
-      supabase.from('aulas').select('*', { count: 'exact', head: true })
-        .eq('coach_id', coachData.id).eq('status', 'finalizada')
-        .gte('horario_agendado', inicioMes).lte('horario_agendado', fimMes),
-      supabase.from('aulas').select('*', { count: 'exact', head: true })
-        .eq('coach_id', coachData.id).eq('status', 'finalizada')
-        .gte('horario_agendado', inicioMesPassado).lte('horario_agendado', fimMesPassado),
-      supabase.from('coach_horarios').select('*')
-        .eq('coach_id', coachData.id).eq('ativo', true),
-      supabase.from('aulas').select('*, treinos(nome)')
-        .eq('coach_id', coachData.id).eq('status', 'finalizada')
-        .order('finalizada_em', { ascending: false }).limit(5),
-      supabase.from('aulas').select('aluno_id, horario_agendado, finalizada_em')
-        .eq('coach_id', coachData.id).eq('status', 'finalizada')
-        .order('horario_agendado', { ascending: false }),
-    ])
-
-    const diaSemanaHoje = hoje.getDay()
-    const slotsSemana = (horarios || []).filter(h => h.dia_semana >= diaSemanaHoje).length
-
-    const alunoIds = [...new Set((ultimas || []).map(a => a.aluno_id))]
-    const alunosMap: Record<string, string> = {}
-    if (alunoIds.length > 0) {
-      const { data: alunosUltimas } = await supabase
-        .from('alunos').select('id, nome').in('id', alunoIds)
-      for (const a of (alunosUltimas || [])) alunosMap[a.id] = a.nome
-    }
-    const ultimasComNome = (ultimas || []).map(a => ({
-      ...a, alunos: { nome: alunosMap[a.aluno_id] || 'Aluno' }
-    }))
-    setUltimasAulas(ultimasComNome)
-
-    const todosAlunoIds = [...new Set((todasAulas || []).map((a: any) => a.aluno_id))]
-    const todosAlunosMap: Record<string, string> = {}
-    if (todosAlunoIds.length > 0) {
-      const { data: todosAlunos } = await supabase
-        .from('alunos').select('id, nome').in('id', todosAlunoIds)
-      for (const a of (todosAlunos || [])) todosAlunosMap[a.id] = a.nome
-    }
-
-    const contagemAlunos: Record<string, { nome: string; count: number; ultima: string }> = {}
-    for (const aula of (todasAulas || [])) {
-      const id = aula.aluno_id
-      const nome = todosAlunosMap[id] || 'Aluno'
-      if (!contagemAlunos[id]) contagemAlunos[id] = { nome, count: 0, ultima: aula.horario_agendado }
-      contagemAlunos[id].count++
-      if (aula.horario_agendado > contagemAlunos[id].ultima) contagemAlunos[id].ultima = aula.horario_agendado
-    }
-    const sorted = Object.values(contagemAlunos).sort((a, b) => b.count - a.count)
-    setAlunosFieis(sorted.slice(0, 3))
-
-    const sumidos = Object.values(contagemAlunos)
-      .filter(a => new Date(a.ultima) < ha2semanas)
-      .sort((a, b) => new Date(a.ultima).getTime() - new Date(b.ultima).getTime())
-      .slice(0, 3)
-    setAlunosSumidos(sumidos)
-
-    const hm: Record<string, number> = {}
-    for (const aula of (todasAulas || [])) {
-      const d = new Date(aula.horario_agendado)
-      const dia = d.getDay()
-      const hora = d.getHours()
-      const turno = hora < 12 ? 'Manhã' : hora < 18 ? 'Tarde' : 'Noite'
-      hm[`${dia}-${turno}`] = (hm[`${dia}-${turno}`] || 0) + 1
-    }
-    setHeatmap(hm)
-
-    setStats({ aulasHoje: aulasHoje || 0, aulasMes: aulasMes || 0, slotsSemana, aulasMesPassado: aulasMesPassado || 0 })
-    setLoading(false)
   }
 
   async function cancelarAula() {
