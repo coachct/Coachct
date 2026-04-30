@@ -4,14 +4,14 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { fmt } from '@/lib/utils'
-import { Users, BarChart2, TrendingUp, TrendingDown, Clock, PlayCircle } from 'lucide-react'
+import { Users, BarChart2, TrendingUp, TrendingDown, Clock, PlayCircle, AlertTriangle } from 'lucide-react'
 
-const DIAS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
 const TURNOS = [
-  { label: 'Manhã', horas: ['05:30','06:00','06:30','07:00','07:30','08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30'] },
-  { label: 'Tarde', horas: ['12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30'] },
-  { label: 'Noite', horas: ['18:00','18:30','19:00','19:30','20:00'] },
+  { label: 'Manhã' },
+  { label: 'Tarde' },
+  { label: 'Noite' },
 ]
+const DIAS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
 
 export default function CoachPainelPage() {
   const { perfil } = useAuth()
@@ -23,6 +23,8 @@ export default function CoachPainelPage() {
   const [alunosSumidos, setAlunosSumidos] = useState<any[]>([])
   const [heatmap, setHeatmap] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
+  const [aulaAberta, setAulaAberta] = useState<any>(null)
+  const [cancelando, setCancelando] = useState(false)
   const supabase = createClient()
 
   const hoje = new Date()
@@ -41,6 +43,22 @@ export default function CoachPainelPage() {
       .from('coaches').select('*').eq('user_id', perfil!.id).single()
     if (!coachData) { setLoading(false); return }
     setCoach(coachData)
+
+    // Verifica aula em andamento
+    const { data: aulaPendente } = await supabase
+      .from('aulas')
+      .select('*, alunos(nome), treinos(nome)')
+      .eq('coach_id', coachData.id)
+      .eq('status', 'em_andamento')
+      .order('iniciada_em', { ascending: false })
+      .limit(1)
+      .single()
+
+    if (aulaPendente) {
+      setAulaAberta(aulaPendente)
+      setLoading(false)
+      return
+    }
 
     const inicioMes = `${ano}-${String(mes).padStart(2,'0')}-01`
     const fimMes = `${ano}-${String(mes).padStart(2,'0')}-31`
@@ -114,6 +132,19 @@ export default function CoachPainelPage() {
     setLoading(false)
   }
 
+  async function cancelarAula() {
+    if (!aulaAberta) return
+    setCancelando(true)
+    await supabase.from('aulas').update({
+      status: 'cancelada',
+      finalizada_em: new Date().toISOString(),
+      observacoes: 'cancelada_pelo_coach',
+    }).eq('id', aulaAberta.id)
+    setAulaAberta(null)
+    setCancelando(false)
+    loadData()
+  }
+
   const maxHeatmap = Math.max(1, ...Object.values(heatmap))
 
   if (loading) return (
@@ -122,25 +153,57 @@ export default function CoachPainelPage() {
     </div>
   )
 
-  if (!coach) return (
-    <div className="text-center py-16 text-gray-400 text-sm">Coach não encontrado. Contate o administrador.</div>
+  // TELA BLOQUEADA — aula em andamento
+  if (aulaAberta) return (
+    <div className="fixed inset-0 bg-gray-50 z-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-sm">
+        <div className="text-center mb-6">
+          <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center mx-auto mb-3">
+            <AlertTriangle size={32} className="text-orange-500" />
+          </div>
+          <h1 className="text-lg font-bold text-gray-900">Aula em andamento!</h1>
+          <p className="text-sm text-gray-500 mt-1">Você tem uma aula não finalizada.</p>
+        </div>
+
+        <div className="card mb-4 text-center">
+          <div className="text-xs text-gray-400 mb-1">Aluno</div>
+          <div className="font-semibold text-gray-900">{aulaAberta.alunos?.nome}</div>
+          <div className="text-xs text-gray-400 mt-1">{aulaAberta.treinos?.nome}</div>
+          <div className="text-xs text-gray-400 mt-1">
+            Iniciada às {new Date(aulaAberta.iniciada_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <button
+            onClick={() => router.push('/coach/treino')}
+            className="btn btn-primary w-full gap-2 py-3">
+            <PlayCircle size={16} /> Continuar aula
+          </button>
+          <button
+            onClick={cancelarAula}
+            disabled={cancelando}
+            className="btn w-full text-red-500 hover:bg-red-50">
+            {cancelando ? 'Cancelando...' : 'Cancelar esta aula'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 
-  const bonus = stats.aulasMes * (coach.adicional_por_aula || 0)
+  const bonus = stats.aulasMes * (coach?.adicional_por_aula || 0)
 
   return (
     <div>
-      {/* Header */}
       <div className="mb-5">
-        <h1 className="text-xl font-semibold text-gray-900">Olá, {coach.nome.split(' ')[0]}! 👋</h1>
+        <h1 className="text-xl font-semibold text-gray-900">Olá, {coach?.nome.split(' ')[0]}! 👋</h1>
         <p className="text-sm text-gray-400 capitalize">{diaSemana}</p>
       </div>
 
-      {/* BOTÃO INICIAR TREINO — destaque total */}
+      {/* Botão iniciar treino */}
       <button
         onClick={() => router.push('/coach/treino')}
-        className="w-full mb-5 bg-primary-400 hover:bg-primary-500 text-white rounded-2xl p-5 flex items-center gap-4 transition-colors shadow-sm"
-      >
+        className="w-full mb-5 bg-primary-400 hover:bg-primary-500 text-white rounded-2xl p-5 flex items-center gap-4 transition-colors shadow-sm">
         <div className="w-14 h-14 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
           <PlayCircle size={32} className="text-white" />
         </div>
@@ -150,7 +213,7 @@ export default function CoachPainelPage() {
         </div>
       </button>
 
-      {/* Cards principais */}
+      {/* Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
         <div className="card text-center">
           <div className="text-xs text-gray-400 mb-1">Aulas hoje</div>
@@ -168,7 +231,7 @@ export default function CoachPainelPage() {
         <div className="card text-center">
           <div className="text-xs text-gray-400 mb-1">Bônus no mês</div>
           <div className="text-2xl font-bold text-primary-700">{fmt(bonus)}</div>
-          <div className="text-xs text-gray-400 mt-1">R${coach.adicional_por_aula}/aula</div>
+          <div className="text-xs text-gray-400 mt-1">R${coach?.adicional_por_aula}/aula</div>
         </div>
         <div className="card text-center">
           <div className="text-xs text-gray-400 mb-1">Slots restantes</div>
@@ -177,7 +240,7 @@ export default function CoachPainelPage() {
         </div>
       </div>
 
-      {/* Atalhos secundários */}
+      {/* Atalhos */}
       <div className="grid grid-cols-2 gap-3 mb-5">
         <button onClick={() => router.push('/coach/alunos')}
           className="card flex items-center gap-3 hover:border-primary-200 transition-colors text-left">
@@ -201,8 +264,8 @@ export default function CoachPainelPage() {
         </button>
       </div>
 
+      {/* Alunos fiéis e sumidos */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
-        {/* Alunos fiéis */}
         <div className="card">
           <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
             <TrendingUp size={14} className="text-green-600" /> Alunos mais fiéis
@@ -227,7 +290,6 @@ export default function CoachPainelPage() {
           )}
         </div>
 
-        {/* Alunos sumidos */}
         <div className="card">
           <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
             <TrendingDown size={14} className="text-red-500" /> Alunos sumidos
