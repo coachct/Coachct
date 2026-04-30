@@ -3,9 +3,16 @@ import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { PageHeader, Spinner } from '@/components/ui'
-import { Search, Plus, ChevronRight, CheckCircle, Link, AlertTriangle, Clock } from 'lucide-react'
+import { Search, Plus, ChevronRight, CheckCircle, Link, AlertTriangle, Clock, Trophy, Flame, Calendar, BarChart2 } from 'lucide-react'
 
 type Etapa = 'buscar_aluno' | 'escolher_treino' | 'registrando' | 'finalizado'
+
+interface Insight {
+  icon: string
+  titulo: string
+  descricao: string
+  cor: 'green' | 'blue' | 'orange' | 'red' | 'purple'
+}
 
 export default function CoachTreinoPage() {
   const { perfil } = useAuth()
@@ -37,6 +44,9 @@ export default function CoachTreinoPage() {
   const [alertaAtivo, setAlertaAtivo] = useState(false)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
 
+  const [insights, setInsights] = useState<Insight[]>([])
+  const [loadingInsights, setLoadingInsights] = useState(false)
+
   const supabase = createClient()
   const mes = new Date().getMonth() + 1
   const ano = new Date().getFullYear()
@@ -61,11 +71,8 @@ export default function CoachTreinoPage() {
   function calcularFimSlot(inicio: Date): Date {
     const minutos = inicio.getMinutes()
     const slotBase = new Date(inicio)
-    if (minutos < 30) {
-      slotBase.setMinutes(0, 0, 0)
-    } else {
-      slotBase.setMinutes(30, 0, 0)
-    }
+    if (minutos < 30) slotBase.setMinutes(0, 0, 0)
+    else slotBase.setMinutes(30, 0, 0)
     const fim = new Date(slotBase)
     fim.setHours(fim.getHours() + 1)
     return fim
@@ -84,19 +91,11 @@ export default function CoachTreinoPage() {
     if (!coachData) { setLoading(false); return }
     setCoach(coachData)
 
-    // Verifica se tem aula em andamento e carrega direto
     const { data: aulaPendente } = await supabase
       .from('aulas')
-      .select(`
-        *, 
-        alunos(id, nome, cpf),
-        treinos(id, nome, descricao,
-          treino_exercicios(
-            id, exercicio_id, ordem, series_override, reps_override, descanso_override, observacoes_override, conjugado,
-            exercicios(id, nome, numero_maquina, observacoes)
-          )
-        )
-      `)
+      .select(`*, alunos(id, nome, cpf), treinos(id, nome, descricao,
+        treino_exercicios(id, exercicio_id, ordem, series_override, reps_override, descanso_override, observacoes_override, conjugado,
+          exercicios(id, nome, numero_maquina, observacoes)))`)
       .eq('coach_id', coachData.id)
       .eq('status', 'em_andamento')
       .order('iniciada_em', { ascending: false })
@@ -107,70 +106,52 @@ export default function CoachTreinoPage() {
       await continuarAula(aulaPendente, coachData)
       return
     }
-
     setLoading(false)
   }
 
   async function continuarAula(aula: any, coachData?: any) {
-    // Seta aluno
     setAlunoSel(aula.alunos)
-
-    // Seta treino
     setTreinoSel({ treinos: aula.treinos })
-
-    // Seta exercícios
     const exs = (aula.treinos?.treino_exercicios || [])
       .sort((a: any, b: any) => (a.ordem ?? 0) - (b.ordem ?? 0))
     setExercicios(exs)
 
-    // Inicializa cargas
     const cargasIniciais: Record<string, string[]> = {}
     for (const ex of exs) {
-      const series = ex.series_override || 3
-      cargasIniciais[ex.id] = Array(series).fill('')
+      cargasIniciais[ex.id] = Array(ex.series_override || 3).fill('')
     }
 
-    // Carrega cargas já registradas desta aula
     const { data: registros } = await supabase
-      .from('registros_carga')
-      .select('*')
-      .eq('aula_id', aula.id)
+      .from('registros_carga').select('*').eq('aula_id', aula.id)
 
     for (const r of (registros || [])) {
       const ex = exs.find((e: any) => e.exercicio_id === r.exercicio_id)
       if (!ex) continue
-      const obs = r.observacoes || ''
-      const match = obs.match(/Série (\d+)/)
+      const match = (r.observacoes || '').match(/Série (\d+)/)
       if (match) {
-        const serieIdx = parseInt(match[1]) - 1
+        const idx = parseInt(match[1]) - 1
         if (!cargasIniciais[ex.id]) cargasIniciais[ex.id] = Array(ex.series_override || 3).fill('')
-        cargasIniciais[ex.id][serieIdx] = String(r.carga_kg)
+        cargasIniciais[ex.id][idx] = String(r.carga_kg)
       }
     }
     setCargas(cargasIniciais)
 
-    // Busca últimas cargas do aluno
     const { data: hist } = await supabase
-      .from('registros_carga')
-      .select('*, aulas!inner(aluno_id)')
+      .from('registros_carga').select('*, aulas!inner(aluno_id)')
       .eq('aulas.aluno_id', aula.alunos?.id)
 
     const maxCargas: Record<string, number> = {}
     for (const r of (hist || [])) {
-      const maq = r.maquina
-      if (!maq) continue
-      if (!maxCargas[maq] || r.carga_kg > maxCargas[maq]) maxCargas[maq] = r.carga_kg
+      if (!r.maquina) continue
+      if (!maxCargas[r.maquina] || r.carga_kg > maxCargas[r.maquina]) maxCargas[r.maquina] = r.carga_kg
     }
     setUltimasCargas(maxCargas)
 
-    // Timer baseado no início original da aula
     const inicio = new Date(aula.iniciada_em)
     const fim = calcularFimSlot(inicio)
     setInicioAula(inicio)
     setFimSlot(fim)
-    const diff = Math.floor((fim.getTime() - new Date().getTime()) / 1000)
-    setTempoRestante(diff)
-
+    setTempoRestante(Math.floor((fim.getTime() - new Date().getTime()) / 1000))
     setAulaId(aula.id)
     setEtapa('registrando')
     setLoading(false)
@@ -181,9 +162,7 @@ export default function CoachTreinoPage() {
     if (q.length < 2) { setAlunos([]); return }
     setBuscando(true)
     const { data } = await supabase.from('alunos')
-      .select('*')
-      .or(`nome.ilike.%${q}%,cpf.ilike.%${q}%`)
-      .limit(10)
+      .select('*').or(`nome.ilike.%${q}%,cpf.ilike.%${q}%`).limit(10)
     setAlunos(data || [])
     setBuscando(false)
   }
@@ -192,9 +171,7 @@ export default function CoachTreinoPage() {
     if (!novoNome.trim()) return
     setSalvandoAluno(true)
     const { data } = await supabase.from('alunos').insert({
-      nome: novoNome.trim(),
-      cpf: novoCPF.trim() || null,
-      cadastrado_por: coach?.id,
+      nome: novoNome.trim(), cpf: novoCPF.trim() || null, cadastrado_por: coach?.id,
     }).select().single()
     if (data) await selecionarAluno(data)
     setSalvandoAluno(false)
@@ -207,19 +184,10 @@ export default function CoachTreinoPage() {
     setAlunos([])
     const { data } = await supabase
       .from('treino_publicacoes')
-      .select(`
-        id, mes, ano, publicado,
-        treinos (
-          id, nome, descricao,
-          treino_exercicios (
-            id, exercicio_id, ordem, series_override, reps_override, descanso_override, observacoes_override, conjugado,
-            exercicios ( id, nome, numero_maquina, observacoes )
-          )
-        )
-      `)
-      .eq('mes', mes)
-      .eq('ano', ano)
-      .eq('publicado', true)
+      .select(`id, mes, ano, publicado, treinos(id, nome, descricao,
+        treino_exercicios(id, exercicio_id, ordem, series_override, reps_override, descanso_override, observacoes_override, conjugado,
+          exercicios(id, nome, numero_maquina, observacoes)))`)
+      .eq('mes', mes).eq('ano', ano).eq('publicado', true)
     setTreinos(data || [])
     setEtapa('escolher_treino')
   }
@@ -232,21 +200,18 @@ export default function CoachTreinoPage() {
 
     const cargasIniciais: Record<string, string[]> = {}
     for (const ex of exs) {
-      const series = ex.series_override || 3
-      cargasIniciais[ex.id] = Array(series).fill('')
+      cargasIniciais[ex.id] = Array(ex.series_override || 3).fill('')
     }
     setCargas(cargasIniciais)
 
     const { data: hist } = await supabase
-      .from('registros_carga')
-      .select('*, aulas!inner(aluno_id)')
+      .from('registros_carga').select('*, aulas!inner(aluno_id)')
       .eq('aulas.aluno_id', alunoAtual.id)
 
     const maxCargas: Record<string, number> = {}
     for (const r of (hist || [])) {
-      const maq = r.maquina
-      if (!maq) continue
-      if (!maxCargas[maq] || r.carga_kg > maxCargas[maq]) maxCargas[maq] = r.carga_kg
+      if (!r.maquina) continue
+      if (!maxCargas[r.maquina] || r.carga_kg > maxCargas[r.maquina]) maxCargas[r.maquina] = r.carga_kg
     }
     setUltimasCargas(maxCargas)
 
@@ -254,16 +219,11 @@ export default function CoachTreinoPage() {
     const fim = calcularFimSlot(agora)
     setInicioAula(agora)
     setFimSlot(fim)
-    const diffInicial = Math.floor((fim.getTime() - agora.getTime()) / 1000)
-    setTempoRestante(diffInicial)
+    setTempoRestante(Math.floor((fim.getTime() - agora.getTime()) / 1000))
 
     const { data: aula } = await supabase.from('aulas').insert({
-      coach_id: coach.id,
-      aluno_id: alunoAtual.id,
-      treino_id: pub.treinos?.id,
-      horario_agendado: agora.toISOString(),
-      iniciada_em: agora.toISOString(),
-      status: 'em_andamento',
+      coach_id: coach.id, aluno_id: alunoAtual.id, treino_id: pub.treinos?.id,
+      horario_agendado: agora.toISOString(), iniciada_em: agora.toISOString(), status: 'em_andamento',
     }).select().single()
 
     if (aula) setAulaId(aula.id)
@@ -281,14 +241,146 @@ export default function CoachTreinoPage() {
     const cargaNum = parseFloat(valor.replace(',', '.'))
     if (isNaN(cargaNum)) { setSalvando(null); return }
     await supabase.from('registros_carga').upsert({
-      aula_id: aulaId,
-      exercicio_id: ex.exercicio_id,
+      aula_id: aulaId, exercicio_id: ex.exercicio_id,
       maquina: ex.exercicios?.numero_maquina || '',
-      carga_kg: cargaNum,
-      reps_realizadas: ex.reps_override || '12',
+      carga_kg: cargaNum, reps_realizadas: ex.reps_override || '12',
       observacoes: `Série ${serieIdx + 1}`,
     }, { onConflict: 'aula_id,exercicio_id,observacoes' })
     setSalvando(null)
+  }
+
+  async function gerarInsights(alunoId: string) {
+    setLoadingInsights(true)
+    const insights: Insight[] = []
+    const hoje = new Date()
+    const ha7dias = new Date(hoje); ha7dias.setDate(hoje.getDate() - 7)
+    const inicioSemana = new Date(hoje); inicioSemana.setDate(hoje.getDate() - hoje.getDay())
+    const inicioMes = new Date(ano, mes - 1, 1)
+
+    const { data: aulasRecentes } = await supabase
+      .from('aulas')
+      .select('*, treinos(nome, descricao)')
+      .eq('aluno_id', alunoId)
+      .eq('status', 'finalizada')
+      .gte('finalizada_em', ha7dias.toISOString())
+      .order('finalizada_em', { ascending: false })
+
+    const { data: aulasMes } = await supabase
+      .from('aulas')
+      .select('id')
+      .eq('aluno_id', alunoId)
+      .eq('status', 'finalizada')
+      .gte('finalizada_em', inicioMes.toISOString())
+
+    const { data: aulasSemana } = await supabase
+      .from('aulas')
+      .select('id')
+      .eq('aluno_id', alunoId)
+      .eq('status', 'finalizada')
+      .gte('finalizada_em', inicioSemana.toISOString())
+
+    // Cargas desta aula vs histórico
+    const { data: cargasHoje } = await supabase
+      .from('registros_carga')
+      .select('maquina, carga_kg')
+      .eq('aula_id', aulaId!)
+
+    const { data: cargasAnteriores } = await supabase
+      .from('registros_carga')
+      .select('maquina, carga_kg, aulas!inner(aluno_id, status)')
+      .eq('aulas.aluno_id', alunoId)
+      .eq('aulas.status', 'finalizada')
+      .neq('aula_id', aulaId!)
+
+    // Records batidos hoje
+    const maxAnterior: Record<string, number> = {}
+    for (const r of (cargasAnteriores || [])) {
+      if (!maxAnterior[r.maquina] || r.carga_kg > maxAnterior[r.maquina]) {
+        maxAnterior[r.maquina] = r.carga_kg
+      }
+    }
+    const records = (cargasHoje || []).filter(r =>
+      r.maquina && maxAnterior[r.maquina] && r.carga_kg > maxAnterior[r.maquina]
+    )
+
+    // Sequência de dias
+    let sequencia = 1
+    const diasTreinados = [...new Set((aulasRecentes || []).map(a =>
+      new Date(a.finalizada_em).toDateString()
+    ))]
+    for (let d = 1; d < diasTreinados.length; d++) {
+      const diff = (new Date(diasTreinados[d-1]).getTime() - new Date(diasTreinados[d]).getTime()) / (1000*60*60*24)
+      if (diff <= 1) sequencia++
+      else break
+    }
+
+    // Insights
+    if (records.length > 0) {
+      insights.push({
+        icon: '🏆', titulo: 'Recorde batido!',
+        descricao: `${records.length} carga${records.length > 1 ? 's' : ''} máxima${records.length > 1 ? 's' : ''} superada${records.length > 1 ? 's' : ''} hoje! Continue progredindo!`,
+        cor: 'purple'
+      })
+    }
+
+    if (sequencia >= 3) {
+      insights.push({
+        icon: '🔥', titulo: `${sequencia} treinos seguidos!`,
+        descricao: 'Que sequência incrível! Consistência é o segredo do resultado.',
+        cor: 'orange'
+      })
+    }
+
+    const totalSemana = aulasSemana?.length || 0
+    if (totalSemana >= 4) {
+      insights.push({
+        icon: '💪', titulo: `${totalSemana} treinos essa semana!`,
+        descricao: 'Semana muito produtiva! Lembre-se de descansar bem para recuperação.',
+        cor: 'green'
+      })
+    } else if (totalSemana === 1) {
+      insights.push({
+        icon: '📅', titulo: 'Primeiro treino da semana!',
+        descricao: 'Ótimo começo! Tente manter pelo menos 3 treinos por semana para melhores resultados.',
+        cor: 'blue'
+      })
+    }
+
+    const totalMes = aulasMes?.length || 0
+    insights.push({
+      icon: '📊', titulo: `${totalMes} treino${totalMes !== 1 ? 's' : ''} em ${mesNome}`,
+      descricao: totalMes >= 12
+        ? 'Excelente frequência no mês! Você está no caminho certo.'
+        : totalMes >= 8
+        ? 'Boa frequência! Continue assim.'
+        : 'Tente aumentar a frequência para resultados mais rápidos.',
+      cor: totalMes >= 12 ? 'green' : totalMes >= 8 ? 'blue' : 'orange'
+    })
+
+    // Grupos musculares treinados
+    const descricoes = (aulasRecentes || []).map(a => (a.treinos?.descricao || a.treinos?.nome || '').toLowerCase())
+    const gruposFeitos = {
+      perna: descricoes.some(d => d.includes('perna') || d.includes('glút') || d.includes('leg')),
+      peito: descricoes.some(d => d.includes('peito') || d.includes('chest')),
+      costas: descricoes.some(d => d.includes('costas') || d.includes('back')),
+      braco: descricoes.some(d => d.includes('bícep') || d.includes('trícep') || d.includes('braço')),
+      ombro: descricoes.some(d => d.includes('ombro') || d.includes('deltóide')),
+    }
+
+    const faltando = Object.entries(gruposFeitos)
+      .filter(([_, feito]) => !feito)
+      .map(([grupo]) => grupo)
+
+    if (faltando.length > 0 && faltando.length <= 2) {
+      insights.push({
+        icon: '⚠️', titulo: 'Grupos musculares em falta',
+        descricao: `Nos últimos 7 dias não treinou: ${faltando.join(', ')}. Considere incluir na próxima semana!`,
+        cor: 'red'
+      })
+    }
+
+    setInsights(insights)
+    setLoadingInsights(false)
   }
 
   async function finalizarAula() {
@@ -301,25 +393,27 @@ export default function CoachTreinoPage() {
       observacoes: foraPrazo ? 'fora_do_prazo' : null,
     }).eq('id', aulaId)
     if (timerRef.current) clearInterval(timerRef.current)
+
+    // Gera insights do aluno
+    if (alunoSel?.id) await gerarInsights(alunoSel.id)
     setEtapa('finalizado')
   }
 
   function resetar() {
     setEtapa('buscar_aluno')
-    setAlunoSel(null)
-    setTreinoSel(null)
-    setAulaId(null)
-    setExercicios([])
-    setCargas({})
-    setBusca('')
-    setAlunos([])
-    setNovoNome('')
-    setNovoCPF('')
-    setShowCadastro(false)
-    setInicioAula(null)
-    setFimSlot(null)
-    setTempoRestante(0)
-    setAlertaAtivo(false)
+    setAlunoSel(null); setTreinoSel(null); setAulaId(null)
+    setExercicios([]); setCargas({}); setBusca([]); setAlunos([])
+    setNovoNome(''); setNovoCPF(''); setShowCadastro(false)
+    setInicioAula(null); setFimSlot(null); setTempoRestante(0)
+    setAlertaAtivo(false); setInsights([])
+  }
+
+  const corMap = {
+    green: 'bg-green-50 border-green-200 text-green-800',
+    blue: 'bg-blue-50 border-blue-200 text-blue-800',
+    orange: 'bg-orange-50 border-orange-200 text-orange-800',
+    red: 'bg-red-50 border-red-200 text-red-800',
+    purple: 'bg-purple-50 border-purple-200 text-purple-800',
   }
 
   if (loading) return <Spinner />
@@ -420,14 +514,11 @@ export default function CoachTreinoPage() {
     let i = 0
     while (i < exercicios.length) {
       if (exercicios[i].conjugado && exercicios[i+1]) {
-        itens.push([exercicios[i], exercicios[i+1]])
-        i += 2
+        itens.push([exercicios[i], exercicios[i+1]]); i += 2
       } else {
-        itens.push([exercicios[i]])
-        i++
+        itens.push([exercicios[i]]); i++
       }
     }
-
     const foraPrazo = tempoRestante <= 0 && fimSlot !== null
     const corTimer = foraPrazo ? 'text-red-600' : alertaAtivo ? 'text-orange-500' : 'text-gray-500'
 
@@ -436,13 +527,13 @@ export default function CoachTreinoPage() {
         {alertaAtivo && (
           <div className="fixed top-0 left-0 right-0 z-50 bg-orange-500 text-white px-4 py-3 flex items-center gap-3 animate-pulse">
             <AlertTriangle size={18} />
-            <span className="font-semibold text-sm">Atenção! Faltam {formatarTempo(tempoRestante)} para encerrar o slot desta aula!</span>
+            <span className="font-semibold text-sm">Atenção! Faltam {formatarTempo(tempoRestante)} para encerrar o slot!</span>
           </div>
         )}
         {foraPrazo && (
           <div className="fixed top-0 left-0 right-0 z-50 bg-red-600 text-white px-4 py-3 flex items-center gap-3">
             <AlertTriangle size={18} />
-            <span className="font-semibold text-sm">⚠️ Tempo do slot encerrado! Finalize a aula agora.</span>
+            <span className="font-semibold text-sm">⚠️ Tempo encerrado! Finalize a aula agora.</span>
           </div>
         )}
 
@@ -492,25 +583,13 @@ export default function CoachTreinoPage() {
                         <div className="flex-1">
                           <div className="font-semibold text-sm text-gray-900">{ex.exercicios?.nome}</div>
                           <div className="flex flex-wrap items-center gap-2 mt-0.5">
-                            {maquina && (
-                              <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{maquina}</span>
-                            )}
+                            {maquina && <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{maquina}</span>}
                             <span className="text-xs text-gray-400">{series} séries × {reps} reps</span>
-                            {!isConj && ex.descanso_override && (
-                              <span className="text-xs text-gray-400">· {ex.descanso_override}s descanso</span>
-                            )}
+                            {!isConj && ex.descanso_override && <span className="text-xs text-gray-400">· {ex.descanso_override}s descanso</span>}
                           </div>
-                          {ultimaCarga && (
-                            <div className="text-xs text-primary-600 mt-1 font-medium">
-                              📊 Última carga máxima nesta máquina: {ultimaCarga}kg
-                            </div>
-                          )}
-                          {ex.observacoes_override && (
-                            <div className="text-xs text-gray-500 italic mt-1">📌 {ex.observacoes_override}</div>
-                          )}
-                          {ex.exercicios?.observacoes && (
-                            <div className="text-xs text-gray-400 italic mt-0.5">💡 {ex.exercicios.observacoes}</div>
-                          )}
+                          {ultimaCarga && <div className="text-xs text-primary-600 mt-1 font-medium">📊 Última carga máxima: {ultimaCarga}kg</div>}
+                          {ex.observacoes_override && <div className="text-xs text-gray-500 italic mt-1">📌 {ex.observacoes_override}</div>}
+                          {ex.exercicios?.observacoes && <div className="text-xs text-gray-400 italic mt-0.5">💡 {ex.exercicios.observacoes}</div>}
                         </div>
                       </div>
 
@@ -519,14 +598,8 @@ export default function CoachTreinoPage() {
                           <div key={si}>
                             <div className="text-xs text-gray-400 text-center mb-1">Série {si+1}</div>
                             <div className="relative">
-                              <input
-                                className="input text-center pr-7"
-                                type="number"
-                                step="0.5"
-                                placeholder="0"
-                                value={cargasEx[si] || ''}
-                                onChange={e => salvarCarga(ex.id, si, e.target.value)}
-                              />
+                              <input className="input text-center pr-7" type="number" step="0.5" placeholder="0"
+                                value={cargasEx[si] || ''} onChange={e => salvarCarga(ex.id, si, e.target.value)} />
                               <span className="absolute right-2 top-2.5 text-xs text-gray-400">kg</span>
                             </div>
                           </div>
@@ -553,16 +626,45 @@ export default function CoachTreinoPage() {
     )
   }
 
+  // TELA FINALIZADO COM INSIGHTS
   return (
-    <div className="max-w-lg mx-auto text-center py-12">
-      <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
-        <CheckCircle size={32} className="text-green-600" />
+    <div className="max-w-lg mx-auto py-8">
+      <div className="text-center mb-6">
+        <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-3">
+          <CheckCircle size={32} className="text-green-600" />
+        </div>
+        <h1 className="text-xl font-semibold text-gray-900">Aula finalizada! 🎉</h1>
+        <p className="text-sm text-gray-400 mt-1">Treino de <strong>{alunoSel?.nome}</strong> registrado com sucesso.</p>
       </div>
-      <h1 className="text-xl font-semibold text-gray-900 mb-2">Aula finalizada! 🎉</h1>
-      <p className="text-sm text-gray-400 mb-6">Treino de {alunoSel?.nome} registrado com sucesso.</p>
-      <div className="flex gap-3 justify-center">
-        <button onClick={resetar} className="btn btn-primary">Nova aula</button>
-        <button onClick={() => window.location.href = '/coach/painel'} className="btn">Ir ao painel</button>
+
+      {/* Insights */}
+      {loadingInsights ? (
+        <div className="text-center py-4">
+          <div className="w-6 h-6 border-4 border-primary-400 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+          <p className="text-xs text-gray-400">Gerando insights do aluno...</p>
+        </div>
+      ) : insights.length > 0 && (
+        <div className="mb-6">
+          <h2 className="text-sm font-semibold text-gray-700 mb-3">💬 Compartilhe com {alunoSel?.nome?.split(' ')[0]}:</h2>
+          <div className="space-y-3">
+            {insights.map((insight, i) => (
+              <div key={i} className={`border rounded-xl p-4 ${corMap[insight.cor]}`}>
+                <div className="flex items-start gap-3">
+                  <span className="text-xl flex-shrink-0">{insight.icon}</span>
+                  <div>
+                    <div className="font-semibold text-sm">{insight.titulo}</div>
+                    <div className="text-xs mt-0.5 opacity-80">{insight.descricao}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex gap-3">
+        <button onClick={resetar} className="btn btn-primary flex-1">Nova aula</button>
+        <button onClick={() => window.location.href = '/coach/painel'} className="btn flex-1">Ir ao painel</button>
       </div>
     </div>
   )
