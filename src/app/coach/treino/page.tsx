@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { PageHeader, Spinner } from '@/components/ui'
-import { Search, Plus, ChevronRight, CheckCircle, Link, AlertTriangle, Clock, Trophy, Flame, Calendar, BarChart2 } from 'lucide-react'
+import { Search, Plus, ChevronRight, CheckCircle, Link, AlertTriangle, Clock } from 'lucide-react'
 
 type Etapa = 'buscar_aluno' | 'escolher_treino' | 'registrando' | 'finalizado'
 
@@ -38,7 +38,6 @@ export default function CoachTreinoPage() {
   const [salvando, setSalvando] = useState<string | null>(null)
   const [ultimasCargas, setUltimasCargas] = useState<Record<string, number>>({})
 
-  const [inicioAula, setInicioAula] = useState<Date | null>(null)
   const [fimSlot, setFimSlot] = useState<Date | null>(null)
   const [tempoRestante, setTempoRestante] = useState<number>(0)
   const [alertaAtivo, setAlertaAtivo] = useState(false)
@@ -103,13 +102,13 @@ export default function CoachTreinoPage() {
       .single()
 
     if (aulaPendente) {
-      await continuarAula(aulaPendente, coachData)
+      await continuarAula(aulaPendente)
       return
     }
     setLoading(false)
   }
 
-  async function continuarAula(aula: any, coachData?: any) {
+  async function continuarAula(aula: any) {
     setAlunoSel(aula.alunos)
     setTreinoSel({ treinos: aula.treinos })
     const exs = (aula.treinos?.treino_exercicios || [])
@@ -149,7 +148,6 @@ export default function CoachTreinoPage() {
 
     const inicio = new Date(aula.iniciada_em)
     const fim = calcularFimSlot(inicio)
-    setInicioAula(inicio)
     setFimSlot(fim)
     setTempoRestante(Math.floor((fim.getTime() - new Date().getTime()) / 1000))
     setAulaId(aula.id)
@@ -217,7 +215,6 @@ export default function CoachTreinoPage() {
 
     const agora = new Date()
     const fim = calcularFimSlot(agora)
-    setInicioAula(agora)
     setFimSlot(fim)
     setTempoRestante(Math.floor((fim.getTime() - agora.getTime()) / 1000))
 
@@ -251,135 +248,121 @@ export default function CoachTreinoPage() {
 
   async function gerarInsights(alunoId: string) {
     setLoadingInsights(true)
-    const insights: Insight[] = []
+    const insightsGerados: Insight[] = []
     const hoje = new Date()
     const ha7dias = new Date(hoje); ha7dias.setDate(hoje.getDate() - 7)
     const inicioSemana = new Date(hoje); inicioSemana.setDate(hoje.getDate() - hoje.getDay())
     const inicioMes = new Date(ano, mes - 1, 1)
 
-    const { data: aulasRecentes } = await supabase
-      .from('aulas')
-      .select('*, treinos(nome, descricao)')
-      .eq('aluno_id', alunoId)
-      .eq('status', 'finalizada')
-      .gte('finalizada_em', ha7dias.toISOString())
-      .order('finalizada_em', { ascending: false })
+    const [
+      { data: aulasRecentes },
+      { data: aulasMes },
+      { data: aulasSemana },
+      { data: cargasHoje },
+      { data: cargasAnteriores },
+    ] = await Promise.all([
+      supabase.from('aulas').select('*, treinos(nome, descricao)')
+        .eq('aluno_id', alunoId).eq('status', 'finalizada')
+        .gte('finalizada_em', ha7dias.toISOString())
+        .order('finalizada_em', { ascending: false }),
+      supabase.from('aulas').select('id')
+        .eq('aluno_id', alunoId).eq('status', 'finalizada')
+        .gte('finalizada_em', inicioMes.toISOString()),
+      supabase.from('aulas').select('id')
+        .eq('aluno_id', alunoId).eq('status', 'finalizada')
+        .gte('finalizada_em', inicioSemana.toISOString()),
+      supabase.from('registros_carga').select('maquina, carga_kg')
+        .eq('aula_id', aulaId!),
+      supabase.from('registros_carga')
+        .select('maquina, carga_kg, aulas!inner(aluno_id, status)')
+        .eq('aulas.aluno_id', alunoId)
+        .eq('aulas.status', 'finalizada')
+        .neq('aula_id', aulaId!),
+    ])
 
-    const { data: aulasMes } = await supabase
-      .from('aulas')
-      .select('id')
-      .eq('aluno_id', alunoId)
-      .eq('status', 'finalizada')
-      .gte('finalizada_em', inicioMes.toISOString())
-
-    const { data: aulasSemana } = await supabase
-      .from('aulas')
-      .select('id')
-      .eq('aluno_id', alunoId)
-      .eq('status', 'finalizada')
-      .gte('finalizada_em', inicioSemana.toISOString())
-
-    // Cargas desta aula vs histórico
-    const { data: cargasHoje } = await supabase
-      .from('registros_carga')
-      .select('maquina, carga_kg')
-      .eq('aula_id', aulaId!)
-
-    const { data: cargasAnteriores } = await supabase
-      .from('registros_carga')
-      .select('maquina, carga_kg, aulas!inner(aluno_id, status)')
-      .eq('aulas.aluno_id', alunoId)
-      .eq('aulas.status', 'finalizada')
-      .neq('aula_id', aulaId!)
-
-    // Records batidos hoje
+    // Records batidos
     const maxAnterior: Record<string, number> = {}
     for (const r of (cargasAnteriores || [])) {
-      if (!maxAnterior[r.maquina] || r.carga_kg > maxAnterior[r.maquina]) {
-        maxAnterior[r.maquina] = r.carga_kg
-      }
+      if (!maxAnterior[r.maquina] || r.carga_kg > maxAnterior[r.maquina]) maxAnterior[r.maquina] = r.carga_kg
     }
     const records = (cargasHoje || []).filter(r =>
       r.maquina && maxAnterior[r.maquina] && r.carga_kg > maxAnterior[r.maquina]
     )
-
-    // Sequência de dias
-    let sequencia = 1
-    const diasTreinados = [...new Set((aulasRecentes || []).map(a =>
-      new Date(a.finalizada_em).toDateString()
-    ))]
-    for (let d = 1; d < diasTreinados.length; d++) {
-      const diff = (new Date(diasTreinados[d-1]).getTime() - new Date(diasTreinados[d]).getTime()) / (1000*60*60*24)
-      if (diff <= 1) sequencia++
-      else break
-    }
-
-    // Insights
     if (records.length > 0) {
-      insights.push({
+      insightsGerados.push({
         icon: '🏆', titulo: 'Recorde batido!',
         descricao: `${records.length} carga${records.length > 1 ? 's' : ''} máxima${records.length > 1 ? 's' : ''} superada${records.length > 1 ? 's' : ''} hoje! Continue progredindo!`,
         cor: 'purple'
       })
     }
 
+    // Sequência
+    const diasTreinados = [...new Set((aulasRecentes || []).map((a: any) =>
+      new Date(a.finalizada_em).toDateString()
+    ))]
+    let sequencia = diasTreinados.length > 0 ? 1 : 0
+    for (let d = 1; d < diasTreinados.length; d++) {
+      const diff = (new Date(diasTreinados[d-1]).getTime() - new Date(diasTreinados[d]).getTime()) / (1000*60*60*24)
+      if (diff <= 1) sequencia++
+      else break
+    }
     if (sequencia >= 3) {
-      insights.push({
+      insightsGerados.push({
         icon: '🔥', titulo: `${sequencia} treinos seguidos!`,
         descricao: 'Que sequência incrível! Consistência é o segredo do resultado.',
         cor: 'orange'
       })
     }
 
+    // Treinos na semana
     const totalSemana = aulasSemana?.length || 0
     if (totalSemana >= 4) {
-      insights.push({
+      insightsGerados.push({
         icon: '💪', titulo: `${totalSemana} treinos essa semana!`,
         descricao: 'Semana muito produtiva! Lembre-se de descansar bem para recuperação.',
         cor: 'green'
       })
     } else if (totalSemana === 1) {
-      insights.push({
+      insightsGerados.push({
         icon: '📅', titulo: 'Primeiro treino da semana!',
         descricao: 'Ótimo começo! Tente manter pelo menos 3 treinos por semana para melhores resultados.',
         cor: 'blue'
       })
     }
 
+    // Treinos no mês
     const totalMes = aulasMes?.length || 0
-    insights.push({
+    insightsGerados.push({
       icon: '📊', titulo: `${totalMes} treino${totalMes !== 1 ? 's' : ''} em ${mesNome}`,
-      descricao: totalMes >= 12
-        ? 'Excelente frequência no mês! Você está no caminho certo.'
-        : totalMes >= 8
-        ? 'Boa frequência! Continue assim.'
+      descricao: totalMes >= 12 ? 'Excelente frequência no mês! Você está no caminho certo.'
+        : totalMes >= 8 ? 'Boa frequência! Continue assim.'
         : 'Tente aumentar a frequência para resultados mais rápidos.',
       cor: totalMes >= 12 ? 'green' : totalMes >= 8 ? 'blue' : 'orange'
     })
 
-    // Grupos musculares treinados
-    const descricoes = (aulasRecentes || []).map(a => (a.treinos?.descricao || a.treinos?.nome || '').toLowerCase())
+    // Grupos musculares
+    const descricoes = (aulasRecentes || []).map((a: any) =>
+      (a.treinos?.descricao || a.treinos?.nome || '').toLowerCase()
+    )
     const gruposFeitos = {
-      perna: descricoes.some(d => d.includes('perna') || d.includes('glút') || d.includes('leg')),
-      peito: descricoes.some(d => d.includes('peito') || d.includes('chest')),
-      costas: descricoes.some(d => d.includes('costas') || d.includes('back')),
-      braco: descricoes.some(d => d.includes('bícep') || d.includes('trícep') || d.includes('braço')),
-      ombro: descricoes.some(d => d.includes('ombro') || d.includes('deltóide')),
+      perna: descricoes.some((d: string) => d.includes('perna') || d.includes('glút') || d.includes('leg')),
+      peito: descricoes.some((d: string) => d.includes('peito')),
+      costas: descricoes.some((d: string) => d.includes('costas')),
+      braço: descricoes.some((d: string) => d.includes('bícep') || d.includes('trícep') || d.includes('braço')),
+      ombro: descricoes.some((d: string) => d.includes('ombro')),
     }
-
     const faltando = Object.entries(gruposFeitos)
-      .filter(([_, feito]) => !feito)
-      .map(([grupo]) => grupo)
+      .filter(([_, feito]) => !feito).map(([grupo]) => grupo)
 
-    if (faltando.length > 0 && faltando.length <= 2) {
-      insights.push({
+    if (faltando.length > 0 && faltando.length <= 3) {
+      insightsGerados.push({
         icon: '⚠️', titulo: 'Grupos musculares em falta',
         descricao: `Nos últimos 7 dias não treinou: ${faltando.join(', ')}. Considere incluir na próxima semana!`,
         cor: 'red'
       })
     }
 
-    setInsights(insights)
+    setInsights(insightsGerados)
     setLoadingInsights(false)
   }
 
@@ -393,8 +376,6 @@ export default function CoachTreinoPage() {
       observacoes: foraPrazo ? 'fora_do_prazo' : null,
     }).eq('id', aulaId)
     if (timerRef.current) clearInterval(timerRef.current)
-
-    // Gera insights do aluno
     if (alunoSel?.id) await gerarInsights(alunoSel.id)
     setEtapa('finalizado')
   }
@@ -402,13 +383,13 @@ export default function CoachTreinoPage() {
   function resetar() {
     setEtapa('buscar_aluno')
     setAlunoSel(null); setTreinoSel(null); setAulaId(null)
-    setExercicios([]); setCargas({}); setBusca([]); setAlunos([])
+    setExercicios([]); setCargas({}); setBusca(''); setAlunos([])
     setNovoNome(''); setNovoCPF(''); setShowCadastro(false)
-    setInicioAula(null); setFimSlot(null); setTempoRestante(0)
+    setFimSlot(null); setTempoRestante(0)
     setAlertaAtivo(false); setInsights([])
   }
 
-  const corMap = {
+  const corMap: Record<string, string> = {
     green: 'bg-green-50 border-green-200 text-green-800',
     blue: 'bg-blue-50 border-blue-200 text-blue-800',
     orange: 'bg-orange-50 border-orange-200 text-orange-800',
@@ -626,7 +607,6 @@ export default function CoachTreinoPage() {
     )
   }
 
-  // TELA FINALIZADO COM INSIGHTS
   return (
     <div className="max-w-lg mx-auto py-8">
       <div className="text-center mb-6">
@@ -634,10 +614,11 @@ export default function CoachTreinoPage() {
           <CheckCircle size={32} className="text-green-600" />
         </div>
         <h1 className="text-xl font-semibold text-gray-900">Aula finalizada! 🎉</h1>
-        <p className="text-sm text-gray-400 mt-1">Treino de <strong>{alunoSel?.nome}</strong> registrado com sucesso.</p>
+        <p className="text-sm text-gray-400 mt-1">
+          Treino de <strong>{alunoSel?.nome}</strong> registrado com sucesso.
+        </p>
       </div>
 
-      {/* Insights */}
       {loadingInsights ? (
         <div className="text-center py-4">
           <div className="w-6 h-6 border-4 border-primary-400 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
@@ -645,7 +626,9 @@ export default function CoachTreinoPage() {
         </div>
       ) : insights.length > 0 && (
         <div className="mb-6">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">💬 Compartilhe com {alunoSel?.nome?.split(' ')[0]}:</h2>
+          <h2 className="text-sm font-semibold text-gray-700 mb-3">
+            💬 Compartilhe com {alunoSel?.nome?.split(' ')[0]}:
+          </h2>
           <div className="space-y-3">
             {insights.map((insight, i) => (
               <div key={i} className={`border rounded-xl p-4 ${corMap[insight.cor]}`}>
