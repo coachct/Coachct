@@ -1,7 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase'
 import { PageHeader, Spinner, EmptyState } from '@/components/ui'
 import { ArrowLeft } from 'lucide-react'
 
@@ -12,32 +11,24 @@ export default function AlunoHistoricoPage() {
   const [aulas, setAulas] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [expandido, setExpandido] = useState<string | null>(null)
-  const supabase = createClient()
 
   useEffect(() => {
     if (id) loadData()
   }, [id])
 
   async function loadData() {
-    const [{ data: alunoData }, { data: aulasData }] = await Promise.all([
-      supabase.from('alunos').select('*').eq('id', id).single(),
-      supabase.from('aulas')
-        .select(`
-          id, finalizada_em, observacoes,
-          treinos ( nome, descricao ),
-          registros_carga (
-            id, carga_kg, reps_realizadas, observacoes,
-            exercicios ( nome, numero_maquina )
-          )
-        `)
-        .eq('aluno_id', id)
-        .eq('status', 'finalizada')
-        .order('finalizada_em', { ascending: false })
-        .limit(30)
-    ])
-    setAluno(alunoData)
-    setAulas(aulasData || [])
-    setLoading(false)
+    try {
+      const [alunoRes, aulasRes] = await Promise.all([
+        fetch(`/api/aulas?aluno_id=${id}&aluno_info=1`).then(r => r.json()),
+        fetch(`/api/aulas?aluno_id=${id}`).then(r => r.json()),
+      ])
+      setAluno(alunoRes.data)
+      setAulas(aulasRes.data || [])
+    } catch (err) {
+      console.error('Erro ao carregar histórico:', err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   if (loading) return <Spinner />
