@@ -22,7 +22,7 @@ export default function JuTreinosPage() {
       .select('*, treinos(*, treino_exercicios(*, exercicios(nome, numero_maquina)))')
       .eq('mes', mes)
       .eq('ano', ano)
-      .order('publicado_em')
+      .order('nome', { referencedTable: 'treinos', ascending: true })
     setPublicacoes(data || [])
     setLoading(false)
   }
