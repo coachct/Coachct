@@ -13,7 +13,6 @@ export default function CoachTreinoPage() {
   const [etapa, setEtapa] = useState<Etapa>('buscar_aluno')
   const [loading, setLoading] = useState(true)
 
-  // Aluno
   const [busca, setBusca] = useState('')
   const [alunos, setAlunos] = useState<any[]>([])
   const [buscando, setBuscando] = useState(false)
@@ -23,12 +22,10 @@ export default function CoachTreinoPage() {
   const [novoCPF, setNovoCPF] = useState('')
   const [salvandoAluno, setSalvandoAluno] = useState(false)
 
-  // Treino
   const [treinos, setTreinos] = useState<any[]>([])
   const [treinoSel, setTreinoSel] = useState<any>(null)
   const [aulaId, setAulaId] = useState<string | null>(null)
 
-  // Exercícios
   const [exercicios, setExercicios] = useState<any[]>([])
   const [cargas, setCargas] = useState<Record<string, string[]>>({})
   const [salvando, setSalvando] = useState<string | null>(null)
@@ -69,7 +66,7 @@ export default function CoachTreinoPage() {
       cpf: novoCPF.trim() || null,
       cadastrado_por: coach?.id,
     }).select().single()
-    if (data) selecionarAluno(data)
+    if (data) await selecionarAluno(data)
     setSalvandoAluno(false)
     setShowCadastro(false)
   }
@@ -78,7 +75,6 @@ export default function CoachTreinoPage() {
     setAlunoSel(aluno)
     setBusca('')
     setAlunos([])
-    // Carrega treinos publicados do mês
     const { data } = await supabase
       .from('treino_publicacoes')
       .select('*, treinos(*, treino_exercicios(*, exercicios(nome, numero_maquina, observacoes)))')
@@ -95,7 +91,6 @@ export default function CoachTreinoPage() {
       .sort((a: any, b: any) => (a.ordem ?? 0) - (b.ordem ?? 0))
     setExercicios(exs)
 
-    // Inicializa cargas vazias para cada série
     const cargasIniciais: Record<string, string[]> = {}
     for (const ex of exs) {
       const series = ex.series_override || 3
@@ -103,28 +98,19 @@ export default function CoachTreinoPage() {
     }
     setCargas(cargasIniciais)
 
-    // Busca últimas cargas máximas do aluno por máquina
-    if (alunoSel?.id) {
-      const maquinas = exs.map((e: any) => e.exercicios?.numero_maquina).filter(Boolean)
-      if (maquinas.length > 0) {
-        const { data: hist } = await supabase
-          .from('registros_carga')
-          .select('*, aulas!inner(aluno_id)')
-          .eq('aulas.aluno_id', alunoSel.id)
-        
-        const maxCargas: Record<string, number> = {}
-        for (const r of (hist || [])) {
-          const maq = r.maquina
-          if (!maq) continue
-          if (!maxCargas[maq] || r.carga_kg > maxCargas[maq]) {
-            maxCargas[maq] = r.carga_kg
-          }
-        }
-        setUltimasCargas(maxCargas)
-      }
-    }
+    const { data: hist } = await supabase
+      .from('registros_carga')
+      .select('*, aulas!inner(aluno_id)')
+      .eq('aulas.aluno_id', aluno: any.id)
 
-    // Cria a aula no banco
+    const maxCargas: Record<string, number> = {}
+    for (const r of (hist || [])) {
+      const maq = r.maquina
+      if (!maq) continue
+      if (!maxCargas[maq] || r.carga_kg > maxCargas[maq]) maxCargas[maq] = r.carga_kg
+    }
+    setUltimasCargas(maxCargas)
+
     const { data: aula } = await supabase.from('aulas').insert({
       coach_id: coach.id,
       aluno_id: alunoSel.id,
@@ -142,16 +128,12 @@ export default function CoachTreinoPage() {
     const novas = [...(cargas[teId] || [])]
     novas[serieIdx] = valor
     setCargas(prev => ({ ...prev, [teId]: novas }))
-
     if (!aulaId || !valor) return
     const ex = exercicios.find(e => e.id === teId)
     if (!ex) return
-
     setSalvando(teId)
     const cargaNum = parseFloat(valor.replace(',', '.'))
     if (isNaN(cargaNum)) { setSalvando(null); return }
-
-    // Upsert no banco por aula + exercicio + série
     await supabase.from('registros_carga').upsert({
       aula_id: aulaId,
       exercicio_id: ex.exercicio_id,
@@ -160,7 +142,6 @@ export default function CoachTreinoPage() {
       reps_realizadas: ex.reps_override || '12',
       observacoes: `Série ${serieIdx + 1}`,
     }, { onConflict: 'aula_id,exercicio_id,observacoes' })
-
     setSalvando(null)
   }
 
@@ -173,9 +154,22 @@ export default function CoachTreinoPage() {
     setEtapa('finalizado')
   }
 
+  function resetar() {
+    setEtapa('buscar_aluno')
+    setAlunoSel(null)
+    setTreinoSel(null)
+    setAulaId(null)
+    setExercicios([])
+    setCargas({})
+    setBusca('')
+    setAlunos([])
+    setNovoNome('')
+    setNovoCPF('')
+    setShowCadastro(false)
+  }
+
   if (loading) return <Spinner />
 
-  // ---- ETAPA: Buscar aluno ----
   if (etapa === 'buscar_aluno') return (
     <div>
       <PageHeader title="Registrar aula" subtitle="Busque o aluno ou cadastre um novo" />
@@ -184,16 +178,10 @@ export default function CoachTreinoPage() {
           <label className="label">Buscar aluno por nome ou CPF</label>
           <div className="relative">
             <Search size={14} className="absolute left-3 top-3 text-gray-400" />
-            <input
-              className="input pl-9"
-              placeholder="Digite o nome ou CPF..."
-              value={busca}
-              onChange={e => buscarAlunos(e.target.value)}
-            />
+            <input className="input pl-9" placeholder="Digite o nome ou CPF..."
+              value={busca} onChange={e => buscarAlunos(e.target.value)} />
           </div>
-
           {buscando && <div className="text-xs text-gray-400 mt-2">Buscando...</div>}
-
           {alunos.length > 0 && (
             <div className="mt-2 divide-y divide-gray-100 border border-gray-100 rounded-xl overflow-hidden">
               {alunos.map(a => (
@@ -211,17 +199,13 @@ export default function CoachTreinoPage() {
               ))}
             </div>
           )}
-
           {busca.length >= 2 && alunos.length === 0 && !buscando && (
             <div className="text-sm text-gray-400 mt-3 text-center">Nenhum aluno encontrado.</div>
           )}
         </div>
-
-        <button onClick={() => setShowCadastro(!showCadastro)}
-          className="btn btn-sm gap-2 w-full">
+        <button onClick={() => setShowCadastro(!showCadastro)} className="btn btn-sm gap-2 w-full">
           <Plus size={13} /> Cadastrar novo aluno
         </button>
-
         {showCadastro && (
           <div className="card mt-3">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Novo aluno</h3>
@@ -234,8 +218,7 @@ export default function CoachTreinoPage() {
                 <label className="label">CPF</label>
                 <input className="input" value={novoCPF} onChange={e => setNovoCPF(e.target.value)} placeholder="000.000.000-00 (opcional)" />
               </div>
-              <button onClick={cadastrarAluno} disabled={salvandoAluno || !novoNome.trim()}
-                className="btn btn-primary w-full">
+              <button onClick={cadastrarAluno} disabled={salvandoAluno || !novoNome.trim()} className="btn btn-primary w-full">
                 {salvandoAluno ? 'Cadastrando...' : 'Cadastrar e continuar'}
               </button>
             </div>
@@ -245,13 +228,9 @@ export default function CoachTreinoPage() {
     </div>
   )
 
-  // ---- ETAPA: Escolher treino ----
   if (etapa === 'escolher_treino') return (
     <div>
-      <PageHeader
-        title="Escolher treino"
-        subtitle={`Aluno: ${alunoSel?.nome} · Treinos de ${mesNome}`}
-      />
+      <PageHeader title="Escolher treino" subtitle={`Aluno: ${alunoSel?.nome} · Treinos de ${mesNome}`} />
       <div className="max-w-lg space-y-3">
         {treinos.length === 0 && (
           <div className="card text-center py-8 text-gray-400 text-sm">
@@ -269,9 +248,7 @@ export default function CoachTreinoPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm text-gray-900">{pub.treinos?.nome}</div>
-                  {pub.treinos?.descricao && (
-                    <div className="text-xs text-gray-400">{pub.treinos.descricao}</div>
-                  )}
+                  {pub.treinos?.descricao && <div className="text-xs text-gray-400">{pub.treinos.descricao}</div>}
                   <div className="text-xs text-gray-400">{exs.length} exercícios</div>
                 </div>
                 <ChevronRight size={16} className="text-gray-300 flex-shrink-0" />
@@ -279,16 +256,12 @@ export default function CoachTreinoPage() {
             </button>
           )
         })}
-        <button onClick={() => setEtapa('buscar_aluno')} className="btn w-full text-sm">
-          ← Voltar
-        </button>
+        <button onClick={() => setEtapa('buscar_aluno')} className="btn w-full text-sm">← Voltar</button>
       </div>
     </div>
   )
 
-  // ---- ETAPA: Registrando ----
   if (etapa === 'registrando') {
-    // Agrupa exercícios em itens (normal ou par conjugado)
     const itens: any[][] = []
     let i = 0
     while (i < exercicios.length) {
@@ -333,7 +306,7 @@ export default function CoachTreinoPage() {
                   const isUltimoConj = isConj && exIdx === 1
 
                   return (
-                    <div key={ex.id} className={`p-4 ${isConj && exIdx === 0 ? 'border-b border-primary-100' : ''} bg-white`}>
+                    <div key={ex.id} className={`p-4 bg-white ${isConj && exIdx === 0 ? 'border-b border-primary-100' : ''}`}>
                       <div className="flex items-start gap-3 mb-3">
                         <div className="w-7 h-7 rounded-full bg-primary-100 text-primary-800 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
                           {isConj ? `${gi+1}${exIdx===0?'A':'B'}` : gi+1}
@@ -355,29 +328,24 @@ export default function CoachTreinoPage() {
                             </div>
                           )}
                           {ex.observacoes_override && (
-                            <div className="text-xs text-gray-500 italic mt-1">
-                              📌 {ex.observacoes_override}
-                            </div>
+                            <div className="text-xs text-gray-500 italic mt-1">📌 {ex.observacoes_override}</div>
                           )}
                           {ex.exercicios?.observacoes && (
-                            <div className="text-xs text-gray-400 italic mt-0.5">
-                              💡 {ex.exercicios.observacoes}
-                            </div>
+                            <div className="text-xs text-gray-400 italic mt-0.5">💡 {ex.exercicios.observacoes}</div>
                           )}
                         </div>
                       </div>
 
-                      {/* Campos de carga por série */}
                       <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.min(series, 4)}, 1fr)` }}>
                         {Array.from({ length: series }).map((_, si) => (
                           <div key={si}>
                             <div className="text-xs text-gray-400 text-center mb-1">Série {si+1}</div>
                             <div className="relative">
                               <input
-                                className={`input text-center pr-7 ${salvando === ex.id ? 'border-primary-300' : ''}`}
+                                className="input text-center pr-7"
                                 type="number"
                                 step="0.5"
-                                placeholder="kg"
+                                placeholder="0"
                                 value={cargasEx[si] || ''}
                                 onChange={e => salvarCarga(ex.id, si, e.target.value)}
                               />
@@ -395,3 +363,29 @@ export default function CoachTreinoPage() {
                     </div>
                   )
                 })}
+              </div>
+            )
+          })}
+
+          <button onClick={finalizarAula} className="btn btn-primary w-full gap-2 py-3">
+            <CheckCircle size={16} /> Finalizar aula
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="max-w-lg mx-auto text-center py-12">
+      <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+        <CheckCircle size={32} className="text-green-600" />
+      </div>
+      <h1 className="text-xl font-semibold text-gray-900 mb-2">Aula finalizada! 🎉</h1>
+      <p className="text-sm text-gray-400 mb-6">Treino de {alunoSel?.nome} registrado com sucesso.</p>
+      <div className="flex gap-3 justify-center">
+        <button onClick={resetar} className="btn btn-primary">Nova aula</button>
+        <button onClick={() => window.location.href = '/coach/painel'} className="btn">Ir ao painel</button>
+      </div>
+    </div>
+  )
+}
