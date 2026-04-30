@@ -1,147 +1,151 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
-import { useAuth } from '@/hooks/useAuth'
 import { PageHeader, Spinner, EmptyState } from '@/components/ui'
-import { Search, Plus, Save, History } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 
-export default function CoachAlunosPage() {
-  const { perfil } = useAuth()
+export default function AlunoHistoricoPage() {
+  const { id } = useParams()
   const router = useRouter()
-  const [coach, setCoach] = useState<any>(null)
-  const [alunos, setAlunos] = useState<any[]>([])
-  const [busca, setBusca] = useState('')
+  const [aluno, setAluno] = useState<any>(null)
+  const [aulas, setAulas] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ nome: '', cpf: '', telefone: '', observacoes: '' })
-  const [editId, setEditId] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
+  const [expandido, setExpandido] = useState<string | null>(null)
   const supabase = createClient()
 
   useEffect(() => {
-    if (perfil?.id) loadData()
-  }, [perfil])
+    if (id) loadData()
+  }, [id])
 
   async function loadData() {
-    const { data: coachData } = await supabase
-      .from('coaches').select('*').eq('user_id', perfil!.id).single()
-    if (!coachData) { setLoading(false); return }
-    setCoach(coachData)
-
-    const { data } = await supabase
-      .from('alunos').select('*').order('nome')
-    setAlunos(data || [])
+    const [{ data: alunoData }, { data: aulasData }] = await Promise.all([
+      supabase.from('alunos').select('*').eq('id', id).single(),
+      supabase.from('aulas')
+        .select(`
+          id, finalizada_em, observacoes,
+          treinos ( nome, descricao ),
+          registros_carga (
+            id, carga_kg, reps_realizadas, observacoes,
+            exercicios ( nome, numero_maquina )
+          )
+        `)
+        .eq('aluno_id', id)
+        .eq('status', 'finalizada')
+        .order('finalizada_em', { ascending: false })
+        .limit(30)
+    ])
+    setAluno(alunoData)
+    setAulas(aulasData || [])
     setLoading(false)
   }
-
-  async function salvar() {
-    if (!form.nome.trim()) return
-    setSaving(true)
-    if (editId) {
-      await supabase.from('alunos').update({
-        nome: form.nome, cpf: form.cpf || null,
-        telefone: form.telefone || null, observacoes: form.observacoes || null,
-      }).eq('id', editId)
-    } else {
-      await supabase.from('alunos').insert({
-        nome: form.nome, cpf: form.cpf || null,
-        telefone: form.telefone || null, observacoes: form.observacoes || null,
-        cadastrado_por: coach?.id,
-      })
-    }
-    setForm({ nome: '', cpf: '', telefone: '', observacoes: '' })
-    setEditId(null)
-    setShowForm(false)
-    setSaving(false)
-    loadData()
-  }
-
-  const alunosFiltrados = busca
-    ? alunos.filter(a => a.nome.toLowerCase().includes(busca.toLowerCase()) || a.cpf?.includes(busca))
-    : alunos
 
   if (loading) return <Spinner />
 
   return (
     <div>
-      <PageHeader title="Alunos" subtitle="Gerencie seus alunos e veja o histórico de cada um" />
+      <button onClick={() => router.back()} className="btn btn-sm gap-1 mb-4">
+        <ArrowLeft size={13} /> Voltar
+      </button>
 
-      <div className="flex gap-3 mb-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search size={14} className="absolute left-3 top-3 text-gray-400" />
-          <input className="input pl-9" placeholder="Buscar por nome ou CPF..."
-            value={busca} onChange={e => setBusca(e.target.value)} />
-        </div>
-        <button onClick={() => { setShowForm(!showForm); setEditId(null); setForm({ nome: '', cpf: '', telefone: '', observacoes: '' }) }}
-          className="btn btn-primary btn-sm gap-1">
-          <Plus size={13} /> Novo
-        </button>
-      </div>
+      <PageHeader
+        title={aluno?.nome || 'Aluno'}
+        subtitle={`Histórico completo de treinos · ${aulas.length} aulas registradas`}
+      />
 
-      {showForm && (
-        <div className="card mb-4 max-w-lg">
-          <h3 className="text-sm font-semibold text-gray-900 mb-3">
-            {editId ? 'Editar aluno' : 'Novo aluno'}
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-            <div>
-              <label className="label">Nome completo *</label>
-              <input className="input" value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} />
-            </div>
-            <div>
-              <label className="label">CPF</label>
-              <input className="input" value={form.cpf} onChange={e => setForm(f => ({ ...f, cpf: e.target.value }))} placeholder="000.000.000-00" />
-            </div>
-            <div>
-              <label className="label">Telefone</label>
-              <input className="input" value={form.telefone} onChange={e => setForm(f => ({ ...f, telefone: e.target.value }))} placeholder="(11) 99999-9999" />
-            </div>
-            <div>
-              <label className="label">Observações</label>
-              <input className="input" value={form.observacoes} onChange={e => setForm(f => ({ ...f, observacoes: e.target.value }))} placeholder="Limitações, lesões..." />
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={salvar} disabled={saving || !form.nome.trim()} className="btn btn-primary btn-sm gap-1">
-              <Save size={12} /> {saving ? 'Salvando...' : 'Salvar'}
-            </button>
-            <button onClick={() => { setShowForm(false); setEditId(null) }} className="btn btn-sm">Cancelar</button>
-          </div>
+      {aluno?.observacoes && (
+        <div className="card mb-4 bg-yellow-50 border-yellow-200 max-w-2xl">
+          <div className="text-xs font-semibold text-yellow-800 mb-1">⚠️ Observações do aluno</div>
+          <div className="text-sm text-yellow-800">{aluno.observacoes}</div>
         </div>
       )}
 
-      {alunosFiltrados.length === 0 && <EmptyState message="Nenhum aluno encontrado." />}
+      {aulas.length === 0 && <EmptyState message="Nenhuma aula registrada ainda." />}
 
-      <div className="space-y-2 max-w-2xl">
-        {alunosFiltrados.map(aluno => (
-          <div key={aluno.id} className="card flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-primary-100 text-primary-800 text-sm font-semibold flex items-center justify-center flex-shrink-0">
-              {aluno.nome.slice(0,2).toUpperCase()}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-medium text-sm text-gray-900">{aluno.nome}</div>
-              <div className="text-xs text-gray-400">
-                {aluno.cpf && <span>{aluno.cpf} · </span>}
-                {aluno.telefone && <span>{aluno.telefone} · </span>}
-                {aluno.observacoes && <span className="italic">{aluno.observacoes}</span>}
+      <div className="space-y-3 max-w-2xl">
+        {aulas.map(aula => {
+          const isOpen = expandido === aula.id
+          const foraPrazo = aula.observacoes === 'fora_do_prazo'
+
+          const porExercicio: Record<string, any> = {}
+          for (const r of (aula.registros_carga || [])) {
+            const nome = r.exercicios?.nome || 'Exercício'
+            if (!porExercicio[nome]) {
+              porExercicio[nome] = {
+                nome,
+                maquina: r.exercicios?.numero_maquina || '',
+                series: []
+              }
+            }
+            const match = (r.observacoes || '').match(/Série (\d+)/)
+            const serieNum = match ? parseInt(match[1]) : porExercicio[nome].series.length + 1
+            porExercicio[nome].series.push({ serie: serieNum, carga: r.carga_kg, reps: r.reps_realizadas })
+          }
+          Object.values(porExercicio).forEach((ex: any) => {
+            ex.series.sort((a: any, b: any) => a.serie - b.serie)
+          })
+          const exerciciosList = Object.values(porExercicio)
+
+          return (
+            <div key={aula.id} className={`card cursor-pointer ${foraPrazo ? 'border-red-200' : ''}`}
+              onClick={() => setExpandido(isOpen ? null : aula.id)}>
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-sm text-gray-900">{aula.treinos?.nome}</span>
+                    {aula.treinos?.descricao && (
+                      <span className="text-xs text-gray-400">— {aula.treinos.descricao}</span>
+                    )}
+                    {foraPrazo && (
+                      <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">Fora do prazo</span>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-0.5">
+                    {new Date(aula.finalizada_em).toLocaleDateString('pt-BR', {
+                      weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                    })}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className="text-xs bg-primary-50 text-primary-700 px-2 py-1 rounded-full">
+                    {exerciciosList.length} exercícios
+                  </span>
+                  <span className="text-gray-300">{isOpen ? '▲' : '▼'}</span>
+                </div>
               </div>
+
+              {isOpen && (
+                <div className="mt-4 pt-4 border-t border-gray-100 space-y-4">
+                  {exerciciosList.map((ex: any) => {
+                    const cargaMax = Math.max(...ex.series.map((s: any) => s.carga))
+                    return (
+                      <div key={ex.nome}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-sm font-medium text-gray-900">{ex.nome}</span>
+                          {ex.maquina && (
+                            <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{ex.maquina}</span>
+                          )}
+                          <span className="text-xs text-primary-600 font-semibold ml-auto">máx {cargaMax}kg</span>
+                        </div>
+                        <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${Math.min(ex.series.length, 4)}, 1fr)` }}>
+                          {ex.series.map((s: any) => (
+                            <div key={s.serie} className={`rounded-lg px-2 py-2 text-center ${s.carga === cargaMax ? 'bg-primary-50 border border-primary-200' : 'bg-gray-50'}`}>
+                              <div className="text-xs text-gray-400">Série {s.serie}</div>
+                              <div className={`text-sm font-bold ${s.carga === cargaMax ? 'text-primary-700' : 'text-gray-700'}`}>
+                                {s.carga}kg
+                              </div>
+                              <div className="text-xs text-gray-400">{s.reps} reps</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
-            <div className="flex gap-2 flex-shrink-0">
-              <button
-                onClick={() => router.push(`/coach/alunos/${aluno.id}`)}
-                className="btn btn-sm gap-1 text-primary-600 border-primary-200">
-                <History size={12} /> Histórico
-              </button>
-              <button onClick={() => {
-                setEditId(aluno.id)
-                setForm({ nome: aluno.nome, cpf: aluno.cpf || '', telefone: aluno.telefone || '', observacoes: aluno.observacoes || '' })
-                setShowForm(true)
-                window.scrollTo(0, 0)
-              }} className="btn btn-sm">Editar</button>
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
