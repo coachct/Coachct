@@ -414,7 +414,7 @@ export default function CoachTreinoPage() {
     setExercicios([]); setCargas({}); setBusca(''); setAlunos([])
     setNovoNome(''); setNovoCPF(''); setShowCadastro(false)
     setFimSlot(null); setTempoRestante(0)
-    setAlertaAtivo(false); setInsights([]; setErroInsert(null)
+    setAlertaAtivo(false); setInsights([]); setErroInsert(null)
   }
 
   const corMap: Record<string, string> = {
