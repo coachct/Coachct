@@ -77,7 +77,16 @@ export default function CoachTreinoPage() {
     setAlunos([])
     const { data } = await supabase
       .from('treino_publicacoes')
-      .select('*, treinos(*, treino_exercicios(*, exercicios(nome, numero_maquina, observacoes)))')
+      .select(`
+        id, mes, ano, publicado,
+        treinos (
+          id, nome, descricao,
+          treino_exercicios (
+            id, exercicio_id, ordem, series_override, reps_override, descanso_override, observacoes_override, conjugado,
+            exercicios ( id, nome, numero_maquina, observacoes )
+          )
+        )
+      `)
       .eq('mes', mes)
       .eq('ano', ano)
       .eq('publicado', true)
