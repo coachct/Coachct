@@ -32,7 +32,7 @@ export default function CoachTreinoPage() {
   const [treinos, setTreinos] = useState<any[]>([])
   const [treinoSel, setTreinoSel] = useState<any>(null)
   const [aulaId, setAulaId] = useState<string | null>(null)
-  const aulaIdRef = useRef<string | null>(null) // ✅ ref síncrono
+  const aulaIdRef = useRef<string | null>(null)
 
   const [exercicios, setExercicios] = useState<any[]>([])
   const [cargas, setCargas] = useState<Record<string, string[]>>({})
@@ -46,6 +46,7 @@ export default function CoachTreinoPage() {
 
   const [insights, setInsights] = useState<Insight[]>([])
   const [loadingInsights, setLoadingInsights] = useState(false)
+  const [erroInsert, setErroInsert] = useState<string | null>(null)
 
   const supabase = createClient()
   const mes = new Date().getMonth() + 1
@@ -166,7 +167,7 @@ export default function CoachTreinoPage() {
     const fim = calcularFimSlot(inicio)
     setFimSlot(fim)
     setTempoRestante(Math.floor((fim.getTime() - new Date().getTime()) / 1000))
-    aulaIdRef.current = aula.id // ✅
+    aulaIdRef.current = aula.id
     setAulaId(aula.id)
     setEtapa('registrando')
   }
@@ -224,6 +225,7 @@ export default function CoachTreinoPage() {
     setFimSlot(fim)
     setTempoRestante(Math.floor((fim.getTime() - agora.getTime()) / 1000))
     setEtapa('registrando')
+    setErroInsert(null)
 
     const [maxCargas, aulaRes] = await Promise.all([
       buscarUltimasCargas(alunoAtual.id),
@@ -234,9 +236,16 @@ export default function CoachTreinoPage() {
     ])
 
     setUltimasCargas(maxCargas)
+
+    if (aulaRes.error) {
+      setErroInsert('Erro insert: ' + JSON.stringify(aulaRes.error))
+      return
+    }
     if (aulaRes.data) {
-      aulaIdRef.current = aulaRes.data.id // ✅ síncrono — disponível imediatamente
+      aulaIdRef.current = aulaRes.data.id
       setAulaId(aulaRes.data.id)
+    } else {
+      setErroInsert('Insert ok mas data null — verificar RLS da tabela aulas')
     }
   }
 
@@ -378,7 +387,6 @@ export default function CoachTreinoPage() {
   }
 
   async function finalizarAula() {
-    // ✅ usa ref síncrono — sempre tem o valor mais atual
     const aulaIdAtual = aulaIdRef.current ?? aulaId
     if (!aulaIdAtual) return
 
@@ -406,7 +414,7 @@ export default function CoachTreinoPage() {
     setExercicios([]); setCargas({}); setBusca(''); setAlunos([])
     setNovoNome(''); setNovoCPF(''); setShowCadastro(false)
     setFimSlot(null); setTempoRestante(0)
-    setAlertaAtivo(false); setInsights([])
+    setAlertaAtivo(false); setInsights([]; setErroInsert(null)
   }
 
   const corMap: Record<string, string> = {
@@ -541,9 +549,10 @@ export default function CoachTreinoPage() {
 
     return (
       <div>
-        {/* DEBUG — remove depois de confirmar que funciona */}
+        {/* DEBUG */}
         <div className="text-xs bg-red-100 text-red-600 p-2 mb-2 rounded">
-          DEBUG — aulaId: {aulaIdRef.current ?? aulaId ?? 'NULL'}
+          aulaId: {aulaIdRef.current ?? aulaId ?? 'NULL'}
+          {erroInsert && <div className="mt-1 font-bold">{erroInsert}</div>}
         </div>
 
         {alertaAtivo && (
