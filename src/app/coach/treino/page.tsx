@@ -204,7 +204,6 @@ export default function CoachTreinoPage() {
     setEtapa('escolher_treino')
   }
 
-  // ✅ FIX MOBILE: setEtapa e estados síncronos ANTES de qualquer await
   async function selecionarTreino(pub: any, alunoAtual: any) {
     const exs = (pub.treinos?.treino_exercicios || [])
       .sort((a: any, b: any) => (a.ordem ?? 0) - (b.ordem ?? 0))
@@ -217,15 +216,13 @@ export default function CoachTreinoPage() {
     const agora = new Date()
     const fim = calcularFimSlot(agora)
 
-    // tudo síncrono primeiro — mobile não cancela o evento
     setTreinoSel(pub)
     setExercicios(exs)
     setCargas(cargasIniciais)
     setFimSlot(fim)
     setTempoRestante(Math.floor((fim.getTime() - agora.getTime()) / 1000))
-    setEtapa('registrando') // ← muda de tela imediatamente
+    setEtapa('registrando')
 
-    // awaits depois — rodam em background sem bloquear a navegação
     const [maxCargas, aulaRes] = await Promise.all([
       buscarUltimasCargas(alunoAtual.id),
       supabase.from('aulas').insert({
@@ -259,8 +256,7 @@ export default function CoachTreinoPage() {
     setSalvando(null)
   }
 
-  async function gerarInsights(alunoId: string) {
-    setLoadingInsights(true)
+  async function gerarInsights(alunoId: string, aulaIdAtual: string) {
     const insightsGerados: Insight[] = []
     const hoje = new Date()
     const ha7dias = new Date(hoje); ha7dias.setDate(hoje.getDate() - 7)
@@ -285,12 +281,12 @@ export default function CoachTreinoPage() {
         .eq('aluno_id', alunoId).eq('status', 'finalizada')
         .gte('finalizada_em', inicioSemana.toISOString()),
       supabase.from('registros_carga').select('exercicio_id, carga_kg')
-        .eq('aula_id', aulaId!),
+        .eq('aula_id', aulaIdAtual),
       supabase.from('registros_carga')
         .select('exercicio_id, carga_kg, aulas!inner(aluno_id, status)')
         .eq('aulas.aluno_id', alunoId)
         .eq('aulas.status', 'finalizada')
-        .neq('aula_id', aulaId!),
+        .neq('aula_id', aulaIdAtual),
     ])
 
     const maxAnterior: Record<string, number> = {}
@@ -375,18 +371,26 @@ export default function CoachTreinoPage() {
     setLoadingInsights(false)
   }
 
+  // ✅ FIX MOBILE: muda de tela imediatamente, awaits em background
   async function finalizarAula() {
     if (!aulaId) return
+
     const agora = new Date()
     const foraPrazo = fimSlot ? agora > fimSlot : false
+    const aulaIdAtual = aulaId
+    const alunoIdAtual = alunoSel?.id
+
+    if (timerRef.current) clearInterval(timerRef.current)
+    setEtapa('finalizado')
+    setLoadingInsights(true)
+
     await supabase.from('aulas').update({
       finalizada_em: agora.toISOString(),
       status: 'finalizada',
       observacoes: foraPrazo ? 'fora_do_prazo' : null,
-    }).eq('id', aulaId)
-    if (timerRef.current) clearInterval(timerRef.current)
-    if (alunoSel?.id) await gerarInsights(alunoSel.id)
-    setEtapa('finalizado')
+    }).eq('id', aulaIdAtual)
+
+    if (alunoIdAtual) await gerarInsights(alunoIdAtual, aulaIdAtual)
   }
 
   function resetar() {
