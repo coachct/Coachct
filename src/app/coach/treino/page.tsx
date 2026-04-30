@@ -14,6 +14,15 @@ interface Insight {
   cor: 'green' | 'blue' | 'orange' | 'red' | 'purple'
 }
 
+// ✅ gera UUID no frontend — não depende de resposta do servidor
+function gerarUUID(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0
+    const v = c === 'x' ? r : (r & 0x3 | 0x8)
+    return v.toString(16)
+  })
+}
+
 export default function CoachTreinoPage() {
   const { perfil } = useAuth()
   const [coach, setCoach] = useState<any>(null)
@@ -218,6 +227,11 @@ export default function CoachTreinoPage() {
     const agora = new Date()
     const fim = calcularFimSlot(agora)
 
+    // ✅ gera o ID antes do insert — disponível imediatamente
+    const novoAulaId = gerarUUID()
+    aulaIdRef.current = novoAulaId
+    setAulaId(novoAulaId)
+
     setTreinoSel(pub)
     setExercicios(exs)
     setCargas(cargasIniciais)
@@ -225,13 +239,14 @@ export default function CoachTreinoPage() {
     setTempoRestante(Math.floor((fim.getTime() - agora.getTime()) / 1000))
     setEtapa('registrando')
 
-    // ✅ usa API route server-side — bypassa RLS
-    const [maxCargas, aulaRes] = await Promise.all([
+    // insert e cargas em paralelo — não bloqueia a tela
+    const [maxCargas] = await Promise.all([
       buscarUltimasCargas(alunoAtual.id),
       fetch('/api/aulas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          id: novoAulaId,
           coach_id: coach.id,
           aluno_id: alunoAtual.id,
           treino_id: pub.treinos?.id,
@@ -239,14 +254,10 @@ export default function CoachTreinoPage() {
           iniciada_em: agora.toISOString(),
           status: 'em_andamento',
         })
-      }).then(r => r.json())
+      })
     ])
 
     setUltimasCargas(maxCargas)
-    if (aulaRes.data) {
-      aulaIdRef.current = aulaRes.data.id
-      setAulaId(aulaRes.data.id)
-    }
   }
 
   async function salvarCarga(teId: string, serieIdx: number, valor: string) {
@@ -398,7 +409,6 @@ export default function CoachTreinoPage() {
     setEtapa('finalizado')
     setLoadingInsights(true)
 
-    // ✅ usa API route server-side — bypassa RLS
     await fetch('/api/aulas', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
