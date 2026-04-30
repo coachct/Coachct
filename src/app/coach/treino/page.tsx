@@ -306,7 +306,7 @@ export default function CoachTreinoPage() {
 
     const diasTreinados = [...new Set((aulasRecentes || []).map((a: any) =>
       new Date(a.finalizada_em).toDateString()
-    ))]
+    ))] as string[]
     let sequencia = diasTreinados.length > 0 ? 1 : 0
     for (let d = 1; d < diasTreinados.length; d++) {
       const diff = (new Date(diasTreinados[d-1]).getTime() - new Date(diasTreinados[d]).getTime()) / (1000*60*60*24)
