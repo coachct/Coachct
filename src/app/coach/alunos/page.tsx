@@ -1,7 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase'
 import { PageHeader, Spinner, EmptyState } from '@/components/ui'
 import { Users, Clock, ChevronRight } from 'lucide-react'
 
@@ -17,7 +16,6 @@ export default function AlunosPage() {
   const [alunos, setAlunos] = useState<Aluno[]>([])
   const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')
-  const supabase = createClient()
 
   useEffect(() => {
     loadAlunos()
@@ -25,38 +23,9 @@ export default function AlunosPage() {
 
   async function loadAlunos() {
     try {
-      const { data, error } = await supabase
-        .from('alunos')
-        .select(`
-          id,
-          nome,
-          aulas (
-            id,
-            finalizada_em,
-            status
-          )
-        `)
-        .order('nome', { ascending: true })
-
-      if (error) throw error
-
-      const mapped: Aluno[] = (data || []).map((a: any) => {
-        const aulasFinalizadas = (a.aulas || []).filter(
-          (au: any) => au.status === 'finalizada' && au.finalizada_em
-        )
-        aulasFinalizadas.sort(
-          (x: any, y: any) =>
-            new Date(y.finalizada_em).getTime() - new Date(x.finalizada_em).getTime()
-        )
-        return {
-          id: a.id,
-          nome: a.nome,
-          ultima_aula: aulasFinalizadas[0]?.finalizada_em ?? null,
-          total_aulas: aulasFinalizadas.length,
-        }
-      })
-
-      setAlunos(mapped)
+      const res = await fetch('/api/aulas?lista_alunos=1')
+      const json = await res.json()
+      setAlunos(json.data || [])
     } catch (err) {
       console.error('Erro ao carregar alunos:', err)
     } finally {
@@ -105,6 +74,7 @@ export default function AlunosPage() {
           <div
             key={aluno.id}
             className="card cursor-pointer hover:shadow-md transition-shadow"
+            onTouchStart={() => router.push(`/coach/alunos/${aluno.id}`)}
             onClick={() => router.push(`/coach/alunos/${aluno.id}`)}
           >
             <div className="flex items-center justify-between gap-3">
