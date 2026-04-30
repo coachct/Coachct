@@ -36,7 +36,6 @@ export default function CoachTreinoPage() {
   const [exercicios, setExercicios] = useState<any[]>([])
   const [cargas, setCargas] = useState<Record<string, string[]>>({})
   const [salvando, setSalvando] = useState<string | null>(null)
-  // Chave: exercicio_id → última carga máxima do aluno naquele exercício
   const [ultimasCargas, setUltimasCargas] = useState<Record<string, number>>({})
 
   const [fimSlot, setFimSlot] = useState<Date | null>(null)
@@ -90,7 +89,6 @@ export default function CoachTreinoPage() {
       .from('registros_carga')
       .select('exercicio_id, carga_kg, aulas!inner(aluno_id)')
       .eq('aulas.aluno_id', alunoId)
-
     const maxCargas: Record<string, number> = {}
     for (const r of (hist || [])) {
       if (!r.exercicio_id) continue
@@ -102,7 +100,7 @@ export default function CoachTreinoPage() {
 
   async function loadCoach() {
     const { data: coachData } = await supabase
-      .from('coaches').select('*').eq('user_id', perfil!.id).single()
+      .from('coaches').select('*').eq('user_id', perfil!.id).maybeSingle()
     if (!coachData) { setLoading(false); return }
     setCoach(coachData)
 
@@ -115,7 +113,7 @@ export default function CoachTreinoPage() {
       .eq('status', 'em_andamento')
       .order('iniciada_em', { ascending: false })
       .limit(1)
-      .single()
+      .maybeSingle()
 
     if (aulaPendente) {
       await continuarAula(aulaPendente)
@@ -178,7 +176,7 @@ export default function CoachTreinoPage() {
     setSalvandoAluno(true)
     const { data } = await supabase.from('alunos').insert({
       nome: novoNome.trim(), cpf: novoCPF.trim() || null, cadastrado_por: coach?.id,
-    }).select().single()
+    }).select().maybeSingle()
     if (data) await selecionarAluno(data)
     setSalvandoAluno(false)
     setShowCadastro(false)
@@ -210,7 +208,6 @@ export default function CoachTreinoPage() {
     }
     setCargas(cargasIniciais)
 
-    // Busca última carga por exercício (não por máquina)
     const maxCargas = await buscarUltimasCargas(alunoAtual.id)
     setUltimasCargas(maxCargas)
 
@@ -222,7 +219,7 @@ export default function CoachTreinoPage() {
     const { data: aula } = await supabase.from('aulas').insert({
       coach_id: coach.id, aluno_id: alunoAtual.id, treino_id: pub.treinos?.id,
       horario_agendado: agora.toISOString(), iniciada_em: agora.toISOString(), status: 'em_andamento',
-    }).select().single()
+    }).select().maybeSingle()
 
     if (aula) setAulaId(aula.id)
     setEtapa('registrando')
@@ -238,7 +235,6 @@ export default function CoachTreinoPage() {
     setSalvando(teId)
     const cargaNum = parseFloat(valor.replace(',', '.'))
     if (isNaN(cargaNum)) { setSalvando(null); return }
-
     await supabase.from('registros_carga').upsert({
       aula_id: aulaId,
       exercicio_id: ex.exercicio_id,
@@ -247,7 +243,6 @@ export default function CoachTreinoPage() {
       reps_realizadas: ex.reps_override || '12',
       observacoes: `Série ${serieIdx + 1}`,
     }, { onConflict: 'aula_id,exercicio_id,observacoes' })
-
     setSalvando(null)
   }
 
@@ -285,7 +280,6 @@ export default function CoachTreinoPage() {
         .neq('aula_id', aulaId!),
     ])
 
-    // Records batidos hoje (por exercício)
     const maxAnterior: Record<string, number> = {}
     for (const r of (cargasAnteriores || [])) {
       if (!r.exercicio_id) continue
@@ -303,7 +297,6 @@ export default function CoachTreinoPage() {
       })
     }
 
-    // Sequência de dias
     const diasTreinados = [...new Set((aulasRecentes || []).map((a: any) =>
       new Date(a.finalizada_em).toDateString()
     ))]
@@ -321,7 +314,6 @@ export default function CoachTreinoPage() {
       })
     }
 
-    // Treinos na semana
     const totalSemana = aulasSemana?.length || 0
     if (totalSemana >= 4) {
       insightsGerados.push({
@@ -337,7 +329,6 @@ export default function CoachTreinoPage() {
       })
     }
 
-    // Treinos no mês
     const totalMes = aulasMes?.length || 0
     insightsGerados.push({
       icon: '📊', titulo: `${totalMes} treino${totalMes !== 1 ? 's' : ''} em ${mesNome}`,
@@ -347,7 +338,6 @@ export default function CoachTreinoPage() {
       cor: totalMes >= 12 ? 'green' : totalMes >= 8 ? 'blue' : 'orange'
     })
 
-    // Grupos musculares em falta
     const descricoes = (aulasRecentes || []).map((a: any) =>
       (a.treinos?.descricao || a.treinos?.nome || '').toLowerCase()
     )
@@ -557,7 +547,6 @@ export default function CoachTreinoPage() {
                   const series = ex.series_override || 3
                   const reps = ex.reps_override || '12'
                   const maquina = ex.exercicios?.numero_maquina
-                  // Última carga por exercício_id
                   const ultimaCarga = ex.exercicio_id ? ultimasCargas[ex.exercicio_id] : null
                   const cargasEx = cargas[ex.id] || Array(series).fill('')
                   const isUltimoConj = isConj && exIdx === 1
