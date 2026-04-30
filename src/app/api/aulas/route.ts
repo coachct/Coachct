@@ -8,10 +8,10 @@ const supabase = createClient(
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { coach_id, aluno_id, treino_id, horario_agendado, iniciada_em, status } = body
+  const { id, coach_id, aluno_id, treino_id, horario_agendado, iniciada_em, status } = body
 
   const { data, error } = await supabase.from('aulas').insert({
-    coach_id, aluno_id, treino_id, horario_agendado, iniciada_em, status
+    id, coach_id, aluno_id, treino_id, horario_agendado, iniciada_em, status
   }).select().maybeSingle()
 
   if (error) return NextResponse.json({ error }, { status: 400 })
