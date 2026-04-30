@@ -33,7 +33,6 @@ export default function SidebarLayout({ children, navItems, role }: SidebarLayou
 
   const NavLinks = () => (
     <nav className="flex-1 px-2 py-4 space-y-0.5">
-      {/* Home fixo no topo */}
       <Link
         href={home}
         onClick={() => setOpen(false)}
@@ -125,7 +124,7 @@ export default function SidebarLayout({ children, navItems, role }: SidebarLayou
 
       {/* Main content */}
       <main className="flex-1 overflow-y-auto pt-14 md:pt-0">
-        <div className="max-w-5xl mx-auto p-4 md:p-6">
+        <div className="max-w-5xl mx-auto p-4 md:p-6 pb-24 md:pb-6">
           {children}
         </div>
       </main>
