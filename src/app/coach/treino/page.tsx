@@ -418,17 +418,24 @@ export default function CoachTreinoPage() {
           {alunos.length > 0 && (
             <div className="mt-2 divide-y divide-gray-100 border border-gray-100 rounded-xl overflow-hidden">
               {alunos.map(a => (
-                <button key={a.id} onClick={() => selecionarAluno(a)}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 text-left transition-colors">
-                  <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-800 text-xs font-semibold flex items-center justify-center flex-shrink-0">
+                <div
+                  key={a.id}
+                  role="button"
+                  tabIndex={0}
+                  onPointerUp={() => selecionarAluno(a)}
+                  onKeyDown={e => e.key === 'Enter' && selecionarAluno(a)}
+                  className="w-full flex items-center gap-3 px-4 py-3 active:bg-gray-50 text-left cursor-pointer select-none"
+                  style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
+                >
+                  <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-800 text-xs font-semibold flex items-center justify-center flex-shrink-0 pointer-events-none">
                     {a.nome.slice(0,2).toUpperCase()}
                   </div>
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 pointer-events-none">
                     <div className="text-sm font-medium text-gray-900">{a.nome}</div>
                     {a.cpf && <div className="text-xs text-gray-400">{a.cpf}</div>}
                   </div>
-                  <ChevronRight size={14} className="text-gray-300 flex-shrink-0" />
-                </button>
+                  <ChevronRight size={14} className="text-gray-300 flex-shrink-0 pointer-events-none" />
+                </div>
               ))}
             </div>
           )}
@@ -473,9 +480,16 @@ export default function CoachTreinoPage() {
         {treinos.map(pub => {
           const exs = pub.treinos?.treino_exercicios || []
           return (
-            <button key={pub.id} onClick={() => selecionarTreino(pub, alunoSel)}
-              className="card w-full text-left hover:border-primary-300 transition-colors">
-              <div className="flex items-center gap-3">
+            <div
+              key={pub.id}
+              role="button"
+              tabIndex={0}
+              onPointerUp={() => selecionarTreino(pub, alunoSel)}
+              onKeyDown={e => e.key === 'Enter' && selecionarTreino(pub, alunoSel)}
+              className="card w-full text-left border-2 border-transparent active:border-primary-300 active:bg-primary-50 transition-colors cursor-pointer select-none"
+              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
+            >
+              <div className="flex items-center gap-3 pointer-events-none">
                 <div className="w-10 h-10 rounded-xl bg-primary-100 text-primary-800 font-bold text-sm flex items-center justify-center flex-shrink-0">
                   {pub.treinos?.nome?.slice(0,2).toUpperCase()}
                 </div>
@@ -486,7 +500,7 @@ export default function CoachTreinoPage() {
                 </div>
                 <ChevronRight size={16} className="text-gray-300 flex-shrink-0" />
               </div>
-            </button>
+            </div>
           )
         })}
         <button onClick={() => setEtapa('buscar_aluno')} className="btn w-full text-sm">← Voltar</button>
