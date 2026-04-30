@@ -10,7 +10,44 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const aluno_id = searchParams.get('aluno_id')
   const aluno_info = searchParams.get('aluno_info')
+  const lista_alunos = searchParams.get('lista_alunos')
 
+  // Lista todos os alunos com suas aulas
+  if (lista_alunos) {
+    const { data: alunos, error: alunosError } = await supabase
+      .from('alunos')
+      .select('id, nome')
+      .order('nome', { ascending: true })
+
+    if (alunosError) return NextResponse.json({ error: alunosError }, { status: 400 })
+
+    const { data: aulas, error: aulasError } = await supabase
+      .from('aulas')
+      .select('aluno_id, finalizada_em, status')
+      .eq('status', 'finalizada')
+
+    if (aulasError) return NextResponse.json({ error: aulasError }, { status: 400 })
+
+    const resultado = (alunos || []).map((a: any) => {
+      const aulasAluno = (aulas || []).filter(
+        (au: any) => au.aluno_id === a.id && au.finalizada_em
+      )
+      aulasAluno.sort(
+        (x: any, y: any) =>
+          new Date(y.finalizada_em).getTime() - new Date(x.finalizada_em).getTime()
+      )
+      return {
+        id: a.id,
+        nome: a.nome,
+        ultima_aula: aulasAluno[0]?.finalizada_em ?? null,
+        total_aulas: aulasAluno.length,
+      }
+    })
+
+    return NextResponse.json({ data: resultado })
+  }
+
+  // Info do aluno
   if (aluno_info && aluno_id) {
     const { data, error } = await supabase
       .from('alunos').select('*').eq('id', aluno_id).single()
@@ -18,6 +55,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ data })
   }
 
+  // Histórico de aulas do aluno
   if (aluno_id) {
     const { data, error } = await supabase
       .from('aulas')
