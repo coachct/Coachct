@@ -40,7 +40,7 @@ export default function CoachPainelPage() {
     if (!coachData) { setLoading(false); return }
     setCoach(coachData)
 
-    // Verifica aula em andamento
+    // Verifica aula em andamento — maybeSingle não dá 406 quando não há resultado
     const { data: aulaPendente } = await supabase
       .from('aulas')
       .select('*, treinos(nome)')
@@ -48,17 +48,16 @@ export default function CoachPainelPage() {
       .eq('status', 'em_andamento')
       .order('iniciada_em', { ascending: false })
       .limit(1)
-      .single()
+      .maybeSingle()
 
     if (aulaPendente) {
       const { data: alunoData } = await supabase
-        .from('alunos').select('nome').eq('id', aulaPendente.aluno_id).single()
+        .from('alunos').select('nome').eq('id', aulaPendente.aluno_id).maybeSingle()
       setAulaAberta({ ...aulaPendente, alunos: alunoData })
       setLoading(false)
       return
     }
 
-    // Datas calculadas corretamente
     const inicioMes = new Date(ano, mes - 1, 1).toISOString()
     const fimMes = new Date(ano, mes, 0, 23, 59, 59).toISOString()
     const inicioMesPassado = new Date(anoMesPassado, mesPassado - 1, 1).toISOString()
@@ -98,7 +97,6 @@ export default function CoachPainelPage() {
     const diaSemanaHoje = hoje.getDay()
     const slotsSemana = (horarios || []).filter(h => h.dia_semana >= diaSemanaHoje).length
 
-    // Nomes dos alunos das últimas aulas
     const alunoIds = [...new Set((ultimas || []).map(a => a.aluno_id))]
     const alunosMap: Record<string, string> = {}
     if (alunoIds.length > 0) {
@@ -111,7 +109,6 @@ export default function CoachPainelPage() {
     }))
     setUltimasAulas(ultimasComNome)
 
-    // Alunos fiéis e sumidos
     const todosAlunoIds = [...new Set((todasAulas || []).map((a: any) => a.aluno_id))]
     const todosAlunosMap: Record<string, string> = {}
     if (todosAlunoIds.length > 0) {
@@ -137,7 +134,6 @@ export default function CoachPainelPage() {
       .slice(0, 3)
     setAlunosSumidos(sumidos)
 
-    // Heatmap
     const hm: Record<string, number> = {}
     for (const aula of (todasAulas || [])) {
       const d = new Date(aula.horario_agendado)
