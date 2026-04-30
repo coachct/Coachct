@@ -85,7 +85,7 @@ export default function CoachTreinoPage() {
     setEtapa('escolher_treino')
   }
 
-  async function selecionarTreino(pub: any) {
+  async function selecionarTreino(pub: any, alunoAtual: any) {
     setTreinoSel(pub)
     const exs = (pub.treinos?.treino_exercicios || [])
       .sort((a: any, b: any) => (a.ordem ?? 0) - (b.ordem ?? 0))
@@ -101,7 +101,7 @@ export default function CoachTreinoPage() {
     const { data: hist } = await supabase
       .from('registros_carga')
       .select('*, aulas!inner(aluno_id)')
-      .eq('aulas.aluno_id', aluno: any.id)
+      .eq('aulas.aluno_id', alunoAtual.id)
 
     const maxCargas: Record<string, number> = {}
     for (const r of (hist || [])) {
@@ -113,7 +113,7 @@ export default function CoachTreinoPage() {
 
     const { data: aula } = await supabase.from('aulas').insert({
       coach_id: coach.id,
-      aluno_id: alunoSel.id,
+      aluno_id: alunoAtual.id,
       treino_id: pub.treinos?.id,
       horario_agendado: new Date().toISOString(),
       iniciada_em: new Date().toISOString(),
@@ -240,7 +240,7 @@ export default function CoachTreinoPage() {
         {treinos.map(pub => {
           const exs = pub.treinos?.treino_exercicios || []
           return (
-            <button key={pub.id} onClick={() => selecionarTreino(pub)}
+            <button key={pub.id} onClick={() => selecionarTreino(pub, alunoSel)}
               className="card w-full text-left hover:border-primary-300 transition-colors">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-primary-100 text-primary-800 font-bold text-sm flex items-center justify-center flex-shrink-0">
