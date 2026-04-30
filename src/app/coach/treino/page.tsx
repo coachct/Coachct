@@ -46,7 +46,6 @@ export default function CoachTreinoPage() {
 
   const [insights, setInsights] = useState<Insight[]>([])
   const [loadingInsights, setLoadingInsights] = useState(false)
-  const [erroInsert, setErroInsert] = useState<string | null>(null)
 
   const supabase = createClient()
   const mes = new Date().getMonth() + 1
@@ -225,27 +224,28 @@ export default function CoachTreinoPage() {
     setFimSlot(fim)
     setTempoRestante(Math.floor((fim.getTime() - agora.getTime()) / 1000))
     setEtapa('registrando')
-    setErroInsert(null)
 
+    // ✅ usa API route server-side — bypassa RLS
     const [maxCargas, aulaRes] = await Promise.all([
       buscarUltimasCargas(alunoAtual.id),
-      supabase.from('aulas').insert({
-        coach_id: coach.id, aluno_id: alunoAtual.id, treino_id: pub.treinos?.id,
-        horario_agendado: agora.toISOString(), iniciada_em: agora.toISOString(), status: 'em_andamento',
-      }).select().maybeSingle()
+      fetch('/api/aulas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          coach_id: coach.id,
+          aluno_id: alunoAtual.id,
+          treino_id: pub.treinos?.id,
+          horario_agendado: agora.toISOString(),
+          iniciada_em: agora.toISOString(),
+          status: 'em_andamento',
+        })
+      }).then(r => r.json())
     ])
 
     setUltimasCargas(maxCargas)
-
-    if (aulaRes.error) {
-      setErroInsert('Erro insert: ' + JSON.stringify(aulaRes.error))
-      return
-    }
     if (aulaRes.data) {
       aulaIdRef.current = aulaRes.data.id
       setAulaId(aulaRes.data.id)
-    } else {
-      setErroInsert('Insert ok mas data null — verificar RLS da tabela aulas')
     }
   }
 
@@ -398,11 +398,17 @@ export default function CoachTreinoPage() {
     setEtapa('finalizado')
     setLoadingInsights(true)
 
-    await supabase.from('aulas').update({
-      finalizada_em: agora.toISOString(),
-      status: 'finalizada',
-      observacoes: foraPrazo ? 'fora_do_prazo' : null,
-    }).eq('id', aulaIdAtual)
+    // ✅ usa API route server-side — bypassa RLS
+    await fetch('/api/aulas', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: aulaIdAtual,
+        finalizada_em: agora.toISOString(),
+        status: 'finalizada',
+        observacoes: foraPrazo ? 'fora_do_prazo' : null,
+      })
+    })
 
     if (alunoIdAtual) await gerarInsights(alunoIdAtual, aulaIdAtual)
   }
@@ -414,7 +420,7 @@ export default function CoachTreinoPage() {
     setExercicios([]); setCargas({}); setBusca(''); setAlunos([])
     setNovoNome(''); setNovoCPF(''); setShowCadastro(false)
     setFimSlot(null); setTempoRestante(0)
-    setAlertaAtivo(false); setInsights([]); setErroInsert(null)
+    setAlertaAtivo(false); setInsights([])
   }
 
   const corMap: Record<string, string> = {
@@ -549,12 +555,6 @@ export default function CoachTreinoPage() {
 
     return (
       <div>
-        {/* DEBUG */}
-        <div className="text-xs bg-red-100 text-red-600 p-2 mb-2 rounded">
-          aulaId: {aulaIdRef.current ?? aulaId ?? 'NULL'}
-          {erroInsert && <div className="mt-1 font-bold">{erroInsert}</div>}
-        </div>
-
         {alertaAtivo && (
           <div className="fixed top-0 left-0 right-0 z-50 bg-orange-500 text-white px-4 py-3 flex items-center gap-3 animate-pulse">
             <AlertTriangle size={18} />
