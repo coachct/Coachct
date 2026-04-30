@@ -1,9 +1,9 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { PageHeader, Spinner } from '@/components/ui'
-import { Search, Plus, ChevronRight, CheckCircle, Link } from 'lucide-react'
+import { Search, Plus, ChevronRight, CheckCircle, Link, AlertTriangle, Clock } from 'lucide-react'
 
 type Etapa = 'buscar_aluno' | 'escolher_treino' | 'registrando' | 'finalizado'
 
@@ -31,6 +31,13 @@ export default function CoachTreinoPage() {
   const [salvando, setSalvando] = useState<string | null>(null)
   const [ultimasCargas, setUltimasCargas] = useState<Record<string, number>>({})
 
+  // Timer da aula
+  const [inicioAula, setInicioAula] = useState<Date | null>(null)
+  const [fimSlot, setFimSlot] = useState<Date | null>(null)
+  const [tempoRestante, setTempoRestante] = useState<number>(0) // segundos
+  const [alertaAtivo, setAlertaAtivo] = useState(false)
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
+
   const supabase = createClient()
   const mes = new Date().getMonth() + 1
   const ano = new Date().getFullYear()
@@ -38,7 +45,42 @@ export default function CoachTreinoPage() {
 
   useEffect(() => {
     if (perfil?.id) loadCoach()
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [perfil])
+
+  // Timer countdown
+  useEffect(() => {
+    if (!fimSlot || etapa !== 'registrando') return
+    timerRef.current = setInterval(() => {
+      const agora = new Date()
+      const diff = Math.floor((fimSlot.getTime() - agora.getTime()) / 1000)
+      setTempoRestante(diff)
+      setAlertaAtivo(diff <= 300 && diff > 0) // alerta nos últimos 5 min
+    }, 1000)
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+  }, [fimSlot, etapa])
+
+  function calcularFimSlot(inicio: Date): Date {
+    // Arredonda para o slot de 30min anterior (hora cheia ou meia hora)
+    const minutos = inicio.getMinutes()
+    const slotBase = new Date(inicio)
+    if (minutos < 30) {
+      slotBase.setMinutes(0, 0, 0)
+    } else {
+      slotBase.setMinutes(30, 0, 0)
+    }
+    // Fim = slotBase + 1 hora
+    const fim = new Date(slotBase)
+    fim.setHours(fim.getHours() + 1)
+    return fim
+  }
+
+  function formatarTempo(segundos: number): string {
+    if (segundos <= 0) return '00:00'
+    const m = Math.floor(segundos / 60)
+    const s = segundos % 60
+    return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+  }
 
   async function loadCoach() {
     const { data } = await supabase.from('coaches').select('*').eq('user_id', perfil!.id).single()
@@ -120,12 +162,20 @@ export default function CoachTreinoPage() {
     }
     setUltimasCargas(maxCargas)
 
+    // Calcular timer do slot
+    const agora = new Date()
+    const fim = calcularFimSlot(agora)
+    setInicioAula(agora)
+    setFimSlot(fim)
+    const diffInicial = Math.floor((fim.getTime() - agora.getTime()) / 1000)
+    setTempoRestante(diffInicial)
+
     const { data: aula } = await supabase.from('aulas').insert({
       coach_id: coach.id,
       aluno_id: alunoAtual.id,
       treino_id: pub.treinos?.id,
-      horario_agendado: new Date().toISOString(),
-      iniciada_em: new Date().toISOString(),
+      horario_agendado: agora.toISOString(),
+      iniciada_em: agora.toISOString(),
       status: 'em_andamento',
     }).select().single()
 
@@ -156,10 +206,14 @@ export default function CoachTreinoPage() {
 
   async function finalizarAula() {
     if (!aulaId) return
+    const agora = new Date()
+    const foraPrazo = fimSlot ? agora > fimSlot : false
     await supabase.from('aulas').update({
-      finalizada_em: new Date().toISOString(),
+      finalizada_em: agora.toISOString(),
       status: 'finalizada',
+      observacoes: foraPrazo ? 'fora_do_prazo' : null,
     }).eq('id', aulaId)
+    if (timerRef.current) clearInterval(timerRef.current)
     setEtapa('finalizado')
   }
 
@@ -175,6 +229,10 @@ export default function CoachTreinoPage() {
     setNovoNome('')
     setNovoCPF('')
     setShowCadastro(false)
+    setInicioAula(null)
+    setFimSlot(null)
+    setTempoRestante(0)
+    setAlertaAtivo(false)
   }
 
   if (loading) return <Spinner />
@@ -283,16 +341,43 @@ export default function CoachTreinoPage() {
       }
     }
 
+    const foraPrazo = tempoRestante <= 0 && fimSlot !== null
+    const corTimer = foraPrazo ? 'text-red-600' : alertaAtivo ? 'text-orange-500' : 'text-gray-500'
+
     return (
       <div>
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        {/* Alerta 5 minutos */}
+        {alertaAtivo && (
+          <div className="fixed top-0 left-0 right-0 z-50 bg-orange-500 text-white px-4 py-3 flex items-center gap-3 animate-pulse">
+            <AlertTriangle size={18} />
+            <span className="font-semibold text-sm">Atenção! Faltam {formatarTempo(tempoRestante)} para encerrar o slot desta aula!</span>
+          </div>
+        )}
+
+        {/* Alerta fora do prazo */}
+        {foraPrazo && (
+          <div className="fixed top-0 left-0 right-0 z-50 bg-red-600 text-white px-4 py-3 flex items-center gap-3">
+            <AlertTriangle size={18} />
+            <span className="font-semibold text-sm">⚠️ Tempo do slot encerrado! Finalize a aula agora.</span>
+          </div>
+        )}
+
+        <div className={`flex items-center justify-between mb-4 flex-wrap gap-2 ${alertaAtivo || foraPrazo ? 'mt-12' : ''}`}>
           <div>
             <h1 className="text-lg font-semibold text-gray-900">{treinoSel?.treinos?.nome}</h1>
             <p className="text-sm text-gray-400">{alunoSel?.nome}</p>
           </div>
-          <button onClick={finalizarAula} className="btn btn-primary gap-2">
-            <CheckCircle size={14} /> Finalizar aula
-          </button>
+          <div className="flex items-center gap-3">
+            {fimSlot && (
+              <div className={`flex items-center gap-1.5 text-sm font-mono font-semibold ${corTimer}`}>
+                <Clock size={14} />
+                {foraPrazo ? 'Fora do prazo' : formatarTempo(tempoRestante)}
+              </div>
+            )}
+            <button onClick={finalizarAula} className="btn btn-primary gap-2">
+              <CheckCircle size={14} /> Finalizar aula
+            </button>
+          </div>
         </div>
 
         <div className="space-y-4 max-w-2xl">
@@ -376,7 +461,7 @@ export default function CoachTreinoPage() {
             )
           })}
 
-          <button onClick={finalizarAula} className="btn btn-primary w-full gap-2 py-3">
+          <button onClick={finalizarAula} className={`btn w-full gap-2 py-3 ${foraPrazo ? 'btn-danger' : 'btn-primary'}`}>
             <CheckCircle size={16} /> Finalizar aula
           </button>
         </div>
