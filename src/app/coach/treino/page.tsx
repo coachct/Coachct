@@ -533,6 +533,11 @@ export default function CoachTreinoPage() {
 
     return (
       <div>
+        {/* DEBUG TEMPORÁRIO — remove depois */}
+        <div className="text-xs bg-red-100 text-red-600 p-2 mb-2 rounded">
+          DEBUG — aulaId: {aulaId ?? 'NULL'}
+        </div>
+
         {alertaAtivo && (
           <div className="fixed top-0 left-0 right-0 z-50 bg-orange-500 text-white px-4 py-3 flex items-center gap-3 animate-pulse">
             <AlertTriangle size={18} />
@@ -558,7 +563,6 @@ export default function CoachTreinoPage() {
                 {foraPrazo ? 'Fora do prazo' : formatarTempo(tempoRestante)}
               </div>
             )}
-            {/* ✅ onTouchStart para mobile */}
             <button
               onTouchStart={finalizarAula}
               onClick={finalizarAula}
@@ -636,7 +640,6 @@ export default function CoachTreinoPage() {
             )
           })}
 
-          {/* ✅ onTouchStart para mobile */}
           <button
             onTouchStart={finalizarAula}
             onClick={finalizarAula}
