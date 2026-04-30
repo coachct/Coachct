@@ -558,7 +558,12 @@ export default function CoachTreinoPage() {
                 {foraPrazo ? 'Fora do prazo' : formatarTempo(tempoRestante)}
               </div>
             )}
-            <button onClick={finalizarAula} className="btn btn-primary gap-2">
+            {/* ✅ onTouchStart para mobile */}
+            <button
+              onTouchStart={finalizarAula}
+              onClick={finalizarAula}
+              className="btn btn-primary gap-2"
+            >
               <CheckCircle size={14} /> Finalizar aula
             </button>
           </div>
@@ -631,7 +636,12 @@ export default function CoachTreinoPage() {
             )
           })}
 
-          <button onClick={finalizarAula} className="btn btn-primary w-full gap-2 py-3">
+          {/* ✅ onTouchStart para mobile */}
+          <button
+            onTouchStart={finalizarAula}
+            onClick={finalizarAula}
+            className="btn btn-primary w-full gap-2 py-3"
+          >
             <CheckCircle size={16} /> Finalizar aula
           </button>
         </div>
@@ -678,8 +688,20 @@ export default function CoachTreinoPage() {
       )}
 
       <div className="flex gap-3">
-        <button onClick={resetar} className="btn btn-primary flex-1">Nova aula</button>
-        <button onClick={() => window.location.href = '/coach/painel'} className="btn flex-1">Ir ao painel</button>
+        <button
+          onTouchStart={resetar}
+          onClick={resetar}
+          className="btn btn-primary flex-1"
+        >
+          Nova aula
+        </button>
+        <button
+          onTouchStart={() => { window.location.href = '/coach/painel' }}
+          onClick={() => { window.location.href = '/coach/painel' }}
+          className="btn flex-1"
+        >
+          Ir ao painel
+        </button>
       </div>
     </div>
   )
