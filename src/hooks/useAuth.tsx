@@ -25,7 +25,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .from('perfis')
       .select('*')
       .eq('id', userId)
-      .single()
+      .maybeSingle()
     setPerfil(data)
   }
 
