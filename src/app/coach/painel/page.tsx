@@ -32,10 +32,10 @@ export default function CoachPainelPage() {
   const mesesNomes = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 
   useEffect(() => {
-    if (perfil?.id) loadData()
-    const timeout = setTimeout(() => setLoading(false), 5000)
-    return () => clearTimeout(timeout)
-  }, [perfil])
+    if (perfil?.id) {
+      loadData()
+    }
+  }, [perfil?.id])
 
   async function loadData() {
     try {
@@ -44,7 +44,6 @@ export default function CoachPainelPage() {
       if (!coachData) return
       setCoach(coachData)
 
-      // ✅ usa API route — bypassa RLS
       const res = await fetch(`/api/aulas?painel=1&coach_id=${coachData.id}`)
       const json = await res.json()
       const {
