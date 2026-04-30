@@ -53,7 +53,11 @@ export default function CoachTreinoPage() {
 
   useEffect(() => {
     if (perfil?.id) loadCoach()
-    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+    const timeout = setTimeout(() => setLoading(false), 5000)
+    return () => {
+      clearTimeout(timeout)
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
   }, [perfil])
 
   useEffect(() => {
@@ -99,27 +103,32 @@ export default function CoachTreinoPage() {
   }
 
   async function loadCoach() {
-    const { data: coachData } = await supabase
-      .from('coaches').select('*').eq('user_id', perfil!.id).maybeSingle()
-    if (!coachData) { setLoading(false); return }
-    setCoach(coachData)
+    try {
+      const { data: coachData } = await supabase
+        .from('coaches').select('*').eq('user_id', perfil!.id).maybeSingle()
+      if (!coachData) return
+      setCoach(coachData)
 
-    const { data: aulaPendente } = await supabase
-      .from('aulas')
-      .select(`*, alunos(id, nome, cpf), treinos(id, nome, descricao,
-        treino_exercicios(id, exercicio_id, ordem, series_override, reps_override, descanso_override, observacoes_override, conjugado,
-          exercicios(id, nome, numero_maquina, observacoes)))`)
-      .eq('coach_id', coachData.id)
-      .eq('status', 'em_andamento')
-      .order('iniciada_em', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+      const { data: aulaPendente } = await supabase
+        .from('aulas')
+        .select(`*, alunos(id, nome, cpf), treinos(id, nome, descricao,
+          treino_exercicios(id, exercicio_id, ordem, series_override, reps_override, descanso_override, observacoes_override, conjugado,
+            exercicios(id, nome, numero_maquina, observacoes)))`)
+        .eq('coach_id', coachData.id)
+        .eq('status', 'em_andamento')
+        .order('iniciada_em', { ascending: false })
+        .limit(1)
+        .maybeSingle()
 
-    if (aulaPendente) {
-      await continuarAula(aulaPendente)
-      return
+      if (aulaPendente) {
+        await continuarAula(aulaPendente)
+        return
+      }
+    } catch (err) {
+      console.error('Erro ao carregar coach:', err)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   async function continuarAula(aula: any) {
@@ -158,7 +167,6 @@ export default function CoachTreinoPage() {
     setTempoRestante(Math.floor((fim.getTime() - new Date().getTime()) / 1000))
     setAulaId(aula.id)
     setEtapa('registrando')
-    setLoading(false)
   }
 
   async function buscarAlunos(q: string) {
