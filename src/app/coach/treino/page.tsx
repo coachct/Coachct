@@ -31,10 +31,9 @@ export default function CoachTreinoPage() {
   const [salvando, setSalvando] = useState<string | null>(null)
   const [ultimasCargas, setUltimasCargas] = useState<Record<string, number>>({})
 
-  // Timer da aula
   const [inicioAula, setInicioAula] = useState<Date | null>(null)
   const [fimSlot, setFimSlot] = useState<Date | null>(null)
-  const [tempoRestante, setTempoRestante] = useState<number>(0) // segundos
+  const [tempoRestante, setTempoRestante] = useState<number>(0)
   const [alertaAtivo, setAlertaAtivo] = useState(false)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -48,20 +47,18 @@ export default function CoachTreinoPage() {
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [perfil])
 
-  // Timer countdown
   useEffect(() => {
     if (!fimSlot || etapa !== 'registrando') return
     timerRef.current = setInterval(() => {
       const agora = new Date()
       const diff = Math.floor((fimSlot.getTime() - agora.getTime()) / 1000)
       setTempoRestante(diff)
-      setAlertaAtivo(diff <= 300 && diff > 0) // alerta nos últimos 5 min
+      setAlertaAtivo(diff <= 300 && diff > 0)
     }, 1000)
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [fimSlot, etapa])
 
   function calcularFimSlot(inicio: Date): Date {
-    // Arredonda para o slot de 30min anterior (hora cheia ou meia hora)
     const minutos = inicio.getMinutes()
     const slotBase = new Date(inicio)
     if (minutos < 30) {
@@ -69,7 +66,6 @@ export default function CoachTreinoPage() {
     } else {
       slotBase.setMinutes(30, 0, 0)
     }
-    // Fim = slotBase + 1 hora
     const fim = new Date(slotBase)
     fim.setHours(fim.getHours() + 1)
     return fim
@@ -83,8 +79,100 @@ export default function CoachTreinoPage() {
   }
 
   async function loadCoach() {
-    const { data } = await supabase.from('coaches').select('*').eq('user_id', perfil!.id).single()
-    setCoach(data)
+    const { data: coachData } = await supabase
+      .from('coaches').select('*').eq('user_id', perfil!.id).single()
+    if (!coachData) { setLoading(false); return }
+    setCoach(coachData)
+
+    // Verifica se tem aula em andamento e carrega direto
+    const { data: aulaPendente } = await supabase
+      .from('aulas')
+      .select(`
+        *, 
+        alunos(id, nome, cpf),
+        treinos(id, nome, descricao,
+          treino_exercicios(
+            id, exercicio_id, ordem, series_override, reps_override, descanso_override, observacoes_override, conjugado,
+            exercicios(id, nome, numero_maquina, observacoes)
+          )
+        )
+      `)
+      .eq('coach_id', coachData.id)
+      .eq('status', 'em_andamento')
+      .order('iniciada_em', { ascending: false })
+      .limit(1)
+      .single()
+
+    if (aulaPendente) {
+      await continuarAula(aulaPendente, coachData)
+      return
+    }
+
+    setLoading(false)
+  }
+
+  async function continuarAula(aula: any, coachData?: any) {
+    // Seta aluno
+    setAlunoSel(aula.alunos)
+
+    // Seta treino
+    setTreinoSel({ treinos: aula.treinos })
+
+    // Seta exercícios
+    const exs = (aula.treinos?.treino_exercicios || [])
+      .sort((a: any, b: any) => (a.ordem ?? 0) - (b.ordem ?? 0))
+    setExercicios(exs)
+
+    // Inicializa cargas
+    const cargasIniciais: Record<string, string[]> = {}
+    for (const ex of exs) {
+      const series = ex.series_override || 3
+      cargasIniciais[ex.id] = Array(series).fill('')
+    }
+
+    // Carrega cargas já registradas desta aula
+    const { data: registros } = await supabase
+      .from('registros_carga')
+      .select('*')
+      .eq('aula_id', aula.id)
+
+    for (const r of (registros || [])) {
+      const ex = exs.find((e: any) => e.exercicio_id === r.exercicio_id)
+      if (!ex) continue
+      const obs = r.observacoes || ''
+      const match = obs.match(/Série (\d+)/)
+      if (match) {
+        const serieIdx = parseInt(match[1]) - 1
+        if (!cargasIniciais[ex.id]) cargasIniciais[ex.id] = Array(ex.series_override || 3).fill('')
+        cargasIniciais[ex.id][serieIdx] = String(r.carga_kg)
+      }
+    }
+    setCargas(cargasIniciais)
+
+    // Busca últimas cargas do aluno
+    const { data: hist } = await supabase
+      .from('registros_carga')
+      .select('*, aulas!inner(aluno_id)')
+      .eq('aulas.aluno_id', aula.alunos?.id)
+
+    const maxCargas: Record<string, number> = {}
+    for (const r of (hist || [])) {
+      const maq = r.maquina
+      if (!maq) continue
+      if (!maxCargas[maq] || r.carga_kg > maxCargas[maq]) maxCargas[maq] = r.carga_kg
+    }
+    setUltimasCargas(maxCargas)
+
+    // Timer baseado no início original da aula
+    const inicio = new Date(aula.iniciada_em)
+    const fim = calcularFimSlot(inicio)
+    setInicioAula(inicio)
+    setFimSlot(fim)
+    const diff = Math.floor((fim.getTime() - new Date().getTime()) / 1000)
+    setTempoRestante(diff)
+
+    setAulaId(aula.id)
+    setEtapa('registrando')
     setLoading(false)
   }
 
@@ -162,7 +250,6 @@ export default function CoachTreinoPage() {
     }
     setUltimasCargas(maxCargas)
 
-    // Calcular timer do slot
     const agora = new Date()
     const fim = calcularFimSlot(agora)
     setInicioAula(agora)
@@ -346,15 +433,12 @@ export default function CoachTreinoPage() {
 
     return (
       <div>
-        {/* Alerta 5 minutos */}
         {alertaAtivo && (
           <div className="fixed top-0 left-0 right-0 z-50 bg-orange-500 text-white px-4 py-3 flex items-center gap-3 animate-pulse">
             <AlertTriangle size={18} />
             <span className="font-semibold text-sm">Atenção! Faltam {formatarTempo(tempoRestante)} para encerrar o slot desta aula!</span>
           </div>
         )}
-
-        {/* Alerta fora do prazo */}
         {foraPrazo && (
           <div className="fixed top-0 left-0 right-0 z-50 bg-red-600 text-white px-4 py-3 flex items-center gap-3">
             <AlertTriangle size={18} />
@@ -461,7 +545,7 @@ export default function CoachTreinoPage() {
             )
           })}
 
-          <button onClick={finalizarAula} className={`btn w-full gap-2 py-3 ${foraPrazo ? 'btn-danger' : 'btn-primary'}`}>
+          <button onClick={finalizarAula} className="btn btn-primary w-full gap-2 py-3">
             <CheckCircle size={16} /> Finalizar aula
           </button>
         </div>
