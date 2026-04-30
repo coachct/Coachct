@@ -38,3 +38,6 @@
   .badge-blue  { @apply bg-blue-50 text-blue-800; }
   .badge-gray  { @apply bg-gray-100 text-gray-600; }
 }
+* {
+  touch-action: manipulation;
+}
