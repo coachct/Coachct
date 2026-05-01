@@ -14,7 +14,6 @@ export default function TrocarSenhaPage() {
   const router = useRouter()
 
   useEffect(() => {
-    // Captura o token do hash da URL quando vem pelo link do email
     const hash = window.location.hash
     if (hash && hash.includes('access_token')) {
       const params = new URLSearchParams(hash.substring(1))
@@ -25,13 +24,11 @@ export default function TrocarSenhaPage() {
           access_token: accessToken,
           refresh_token: refreshToken,
         }).then(() => {
-          // limpa o hash da URL
           window.history.replaceState(null, '', window.location.pathname)
           setPronto(true)
         })
       }
     } else {
-      // Acesso normal (coach logado trocando a senha)
       supabase.auth.getSession().then(({ data }) => {
         if (data.session) setPronto(true)
       })
@@ -54,10 +51,13 @@ export default function TrocarSenhaPage() {
     if (error) {
       setErro('Erro ao alterar senha: ' + error.message)
     } else {
-      setMsg('Senha alterada com sucesso! Redirecionando...')
+      setMsg('Senha alterada com sucesso! Faça login com sua nova senha.')
       setNova('')
       setConfirma('')
-      setTimeout(() => router.push('/'), 2000)
+      setTimeout(async () => {
+        await supabase.auth.signOut()
+        router.push('/login')
+      }, 2000)
     }
     setLoading(false)
   }
