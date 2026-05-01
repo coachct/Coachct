@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase'
 import { Coach } from '@/types'
 import { fmt, DIAS_SEMANA, HORARIOS } from '@/lib/utils'
 import { PageHeader, Spinner, EmptyState } from '@/components/ui'
-import { Plus, ChevronDown, ChevronUp, Save } from 'lucide-react'
+import { Plus, ChevronDown, ChevronUp, Save, Trash2, X, ClipboardList } from 'lucide-react'
 
 const EMPTY = {
   nome: '', cpf: '', email: '', senha: '',
@@ -22,7 +22,16 @@ export default function CoachesPage() {
   const [msg, setMsg] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [horarios, setHorarios] = useState<Record<string, Set<string>>>({})
+
+  // modal de aulas
+  const [aulaModal, setAulaModal] = useState<{ coach: Coach; aulas: any[] } | null>(null)
+  const [loadingAulas, setLoadingAulas] = useState(false)
+  const [excluindo, setExcluindo] = useState<string | null>(null)
+  const [mesAulas, setMesAulas] = useState(new Date().getMonth() + 1)
+  const [anoAulas, setAnoAulas] = useState(new Date().getFullYear())
+
   const supabase = createClient()
+  const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 
   useEffect(() => { loadCoaches() }, [])
 
@@ -58,6 +67,47 @@ export default function CoachesPage() {
     if (rows.length > 0) await supabase.from('coach_horarios').insert(rows)
     setMsg('Grade salva!')
     setTimeout(() => setMsg(''), 2000)
+  }
+
+  async function abrirAulas(coach: Coach) {
+    setAulaModal({ coach, aulas: [] })
+    setLoadingAulas(true)
+    await buscarAulas(coach, mesAulas, anoAulas)
+  }
+
+  async function buscarAulas(coach: Coach, mes: number, ano: number) {
+    setLoadingAulas(true)
+    const inicio = new Date(ano, mes - 1, 1).toISOString()
+    const fim = new Date(ano, mes, 0, 23, 59, 59).toISOString()
+
+    const { data } = await supabase
+      .from('aulas')
+      .select('*, alunos(nome), treinos(nome)')
+      .eq('coach_id', coach.id)
+      .in('status', ['finalizada', 'em_andamento'])
+      .gte('horario_agendado', inicio)
+      .lte('horario_agendado', fim)
+      .order('horario_agendado', { ascending: false })
+
+    setAulaModal({ coach, aulas: data || [] })
+    setLoadingAulas(false)
+  }
+
+  async function excluirAula(aulaId: string) {
+    if (!confirm('Excluir esta aula permanentemente? Esta ação não pode ser desfeita.')) return
+    setExcluindo(aulaId)
+
+    // apaga registros de carga primeiro
+    await supabase.from('registros_carga').delete().eq('aula_id', aulaId)
+    // apaga a aula
+    await supabase.from('aulas').delete().eq('id', aulaId)
+
+    // atualiza a lista
+    setAulaModal(prev => prev ? {
+      ...prev,
+      aulas: prev.aulas.filter(a => a.id !== aulaId)
+    } : null)
+    setExcluindo(null)
   }
 
   async function handleCreate() {
@@ -236,7 +286,13 @@ export default function CoachesPage() {
                   <div className="text-xs text-gray-400">{coach.contrato} · Fixo {fmt(coach.salario_fixo)} + R${coach.adicional_por_aula}/aula · Cliente R${coach.valor_cliente_aula}/aula</div>
                   {beC && <div className="text-xs text-gray-400">Equilíbrio: {beC} aulas/mês</div>}
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+                  <button
+                    onClick={() => abrirAulas(coach)}
+                    className="btn btn-sm gap-1"
+                  >
+                    <ClipboardList size={12} /> Aulas
+                  </button>
                   <button onClick={() => { setEditForm(coach); setShowForm(false); window.scrollTo(0,0) }} className="btn btn-sm">Editar</button>
                   <button onClick={() => {
                     if (!expanded) loadHorarios(coach.id)
@@ -301,6 +357,119 @@ export default function CoachesPage() {
           )
         })}
       </div>
+
+      {/* ─── Modal de aulas do coach ─── */}
+      {aulaModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <div>
+                <h2 className="font-semibold text-gray-900">Aulas — {aulaModal.coach.nome}</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Selecione o mês para filtrar</p>
+              </div>
+              <button onClick={() => setAulaModal(null)} className="p-1.5 hover:bg-gray-100 rounded-lg">
+                <X size={18} className="text-gray-500" />
+              </button>
+            </div>
+
+            {/* Filtro de mês */}
+            <div className="flex gap-2 px-5 py-3 border-b border-gray-100">
+              <select
+                className="input input-sm w-auto"
+                value={mesAulas}
+                onChange={e => {
+                  const m = +e.target.value
+                  setMesAulas(m)
+                  buscarAulas(aulaModal.coach, m, anoAulas)
+                }}
+              >
+                {MESES.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
+              </select>
+              <select
+                className="input input-sm w-auto"
+                value={anoAulas}
+                onChange={e => {
+                  const a = +e.target.value
+                  setAnoAulas(a)
+                  buscarAulas(aulaModal.coach, mesAulas, a)
+                }}
+              >
+                {[2025, 2026, 2027].map(a => <option key={a} value={a}>{a}</option>)}
+              </select>
+              <span className="text-xs text-gray-400 self-center">
+                {aulaModal.aulas.length} aula{aulaModal.aulas.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+
+            {/* Lista de aulas */}
+            <div className="overflow-y-auto flex-1 px-5 py-3">
+              {loadingAulas ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="w-6 h-6 border-4 border-primary-400 border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : aulaModal.aulas.length === 0 ? (
+                <div className="text-center py-12 text-sm text-gray-400 italic">
+                  Nenhuma aula registrada neste mês.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {aulaModal.aulas.map(aula => (
+                    <div key={aula.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 border border-gray-100">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-medium text-gray-900 truncate">
+                            {aula.alunos?.nome || 'Aluno'}
+                          </span>
+                          <span className="text-xs text-gray-400">·</span>
+                          <span className="text-xs text-gray-500 truncate">
+                            {aula.treinos?.nome || '—'}
+                          </span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            aula.status === 'finalizada'
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-orange-100 text-orange-700'
+                          }`}>
+                            {aula.status === 'finalizada' ? 'Finalizada' : 'Em andamento'}
+                          </span>
+                          {aula.observacoes === 'fora_do_prazo' && (
+                            <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">
+                              Fora do prazo
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-400 mt-0.5">
+                          {new Date(aula.horario_agendado).toLocaleDateString('pt-BR', {
+                            weekday: 'short', day: '2-digit', month: 'short',
+                            hour: '2-digit', minute: '2-digit'
+                          })}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => excluirAula(aula.id)}
+                        disabled={excluindo === aula.id}
+                        className="flex-shrink-0 p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-50"
+                        title="Excluir aula"
+                      >
+                        {excluindo === aula.id
+                          ? <div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                          : <Trash2 size={14} />
+                        }
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-3 border-t border-gray-100">
+              <button onClick={() => setAulaModal(null)} className="btn w-full">Fechar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
