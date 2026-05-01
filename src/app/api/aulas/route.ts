@@ -15,6 +15,25 @@ export async function GET(req: NextRequest) {
   const aula_id = searchParams.get('aula_id')
   const painel = searchParams.get('painel')
   const coach_id = searchParams.get('coach_id')
+  const aula_detalhe = searchParams.get('aula_detalhe')
+
+  // Busca uma aula específica com detalhes para edição
+  if (aula_detalhe && aula_id) {
+    const { data: aula, error } = await supabase
+      .from('aulas')
+      .select(`
+        id, iniciada_em, finalizada_em, status, observacoes,
+        alunos(id, nome),
+        treinos(id, nome, descricao,
+          treino_exercicios(id, exercicio_id, ordem, series_override, reps_override, observacoes_override, conjugado,
+            exercicios(id, nome, numero_maquina))),
+        registros_carga(id, exercicio_id, carga_kg, reps_realizadas, observacoes)
+      `)
+      .eq('id', aula_id)
+      .maybeSingle()
+    if (error) return NextResponse.json({ error }, { status: 400 })
+    return NextResponse.json({ data: aula })
+  }
 
   // Dashboard do coach
   if (painel && coach_id) {
@@ -51,7 +70,7 @@ export async function GET(req: NextRequest) {
         .gte('horario_agendado', inicioMesPassado).lte('horario_agendado', fimMesPassado),
       supabase.from('coach_horarios').select('*')
         .eq('coach_id', coach_id).eq('ativo', true),
-      supabase.from('aulas').select('*, treinos(nome)')
+      supabase.from('aulas').select('*, treinos(nome), alunos(nome)')
         .eq('coach_id', coach_id).eq('status', 'finalizada')
         .order('finalizada_em', { ascending: false }).limit(5),
       supabase.from('aulas').select('aluno_id, horario_agendado, finalizada_em')
@@ -62,10 +81,10 @@ export async function GET(req: NextRequest) {
         .order('iniciada_em', { ascending: false }).limit(1).maybeSingle(),
     ])
 
-    // Busca nomes dos alunos das últimas aulas
-    const alunoIds = [...new Set((ultimas || []).map((a: any) => a.aluno_id))]
-    const todosAlunoIds = [...new Set((todasAulas || []).map((a: any) => a.aluno_id))]
-    const todosIds = [...new Set([...alunoIds, ...todosAlunoIds])]
+    const todosIds = [...new Set([
+      ...(ultimas || []).map((a: any) => a.aluno_id),
+      ...(todasAulas || []).map((a: any) => a.aluno_id),
+    ])]
 
     let alunosMap: Record<string, string> = {}
     if (todosIds.length > 0) {
@@ -74,7 +93,6 @@ export async function GET(req: NextRequest) {
       for (const a of (alunosData || [])) alunosMap[a.id] = a.nome
     }
 
-    // Busca nome do aluno da aula pendente
     let aulaPendenteComAluno = null
     if (aulaPendente) {
       const nomeAluno = alunosMap[(aulaPendente as any).aluno_id] || 'Aluno'
@@ -88,7 +106,8 @@ export async function GET(req: NextRequest) {
         aulasMesPassado: aulasMesPassado || 0,
         horarios: horarios || [],
         ultimas: (ultimas || []).map((a: any) => ({
-          ...a, alunos: { nome: alunosMap[a.aluno_id] || 'Aluno' }
+          ...a,
+          alunos: { nome: a.alunos?.nome || alunosMap[a.aluno_id] || 'Aluno' }
         })),
         todasAulas: todasAulas || [],
         alunosMap,
@@ -213,10 +232,27 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   const body = await req.json()
-  const { id, ...updates } = body
+  const { id, registros_carga, ...updates } = body
 
-  const { data, error } = await supabase.from('aulas').update(updates).eq('id', id).select().maybeSingle()
+  // Atualiza dados da aula
+  if (Object.keys(updates).length > 0) {
+    const { error } = await supabase.from('aulas').update(updates).eq('id', id)
+    if (error) return NextResponse.json({ error }, { status: 400 })
+  }
 
-  if (error) return NextResponse.json({ error }, { status: 400 })
-  return NextResponse.json({ data })
+  // Atualiza registros de carga se fornecidos
+  if (registros_carga && Array.isArray(registros_carga)) {
+    for (const r of registros_carga) {
+      await supabase.from('registros_carga').upsert({
+        aula_id: id,
+        exercicio_id: r.exercicio_id,
+        carga_kg: r.carga_kg,
+        reps_realizadas: r.reps_realizadas,
+        observacoes: r.observacoes,
+        maquina: r.maquina || '',
+      }, { onConflict: 'aula_id,exercicio_id,observacoes' })
+    }
+  }
+
+  return NextResponse.json({ ok: true })
 }
