@@ -52,13 +52,17 @@ export default function CoachTreinoPage() {
   const [alertaAtivo, setAlertaAtivo] = useState(false)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
 
+  // ✅ flag para evitar duplo disparo no mobile
+  const touchFiredRef = useRef(false)
+
   const [insights, setInsights] = useState<Insight[]>([])
   const [loadingInsights, setLoadingInsights] = useState(false)
 
   const supabase = createClient()
-  const mes = new Date().getMonth() + 1
-  const ano = new Date().getFullYear()
-  const mesNome = new Date().toLocaleDateString('pt-BR', { month: 'long' })
+  const now = new Date()
+  const mes = now.getMonth() + 1
+  const ano = now.getFullYear()
+  const mesNome = now.toLocaleDateString('pt-BR', { month: 'long' })
 
   useEffect(() => {
     if (perfil?.id) loadCoach()
@@ -204,13 +208,21 @@ export default function CoachTreinoPage() {
     setAlunoSel(aluno)
     setBusca('')
     setAlunos([])
+    // ✅ busca treinos do mês atual calculado no momento do clique
+    const agora = new Date()
+    const mesAtual = agora.getMonth() + 1
+    const anoAtual = agora.getFullYear()
     const { data } = await supabase
       .from('treino_publicacoes')
       .select(`id, mes, ano, publicado, treinos(id, nome, descricao,
         treino_exercicios(id, exercicio_id, ordem, series_override, reps_override, descanso_override, observacoes_override, conjugado,
           exercicios(id, nome, numero_maquina, observacoes)))`)
-      .eq('mes', mes).eq('ano', ano).eq('publicado', true)
-    setTreinos(data || [])
+      .eq('mes', mesAtual).eq('ano', anoAtual).eq('publicado', true)
+    // ✅ ordena alfabeticamente
+    const ordenado = (data || []).sort((a: any, b: any) =>
+      (a.treinos?.nome || '').localeCompare(b.treinos?.nome || '', 'pt-BR')
+    )
+    setTreinos(ordenado)
     setEtapa('escolher_treino')
   }
 
@@ -257,6 +269,33 @@ export default function CoachTreinoPage() {
     setUltimasCargas(maxCargas)
   }
 
+  // ✅ handler com proteção contra duplo disparo
+  function handleSelecionarTreino(pub: any, alunoAtual: any, fromTouch: boolean) {
+    if (fromTouch) {
+      touchFiredRef.current = true
+      selecionarTreino(pub, alunoAtual)
+    } else {
+      if (touchFiredRef.current) {
+        touchFiredRef.current = false
+        return
+      }
+      selecionarTreino(pub, alunoAtual)
+    }
+  }
+
+  function handleSelecionarAluno(aluno: any, fromTouch: boolean) {
+    if (fromTouch) {
+      touchFiredRef.current = true
+      selecionarAluno(aluno)
+    } else {
+      if (touchFiredRef.current) {
+        touchFiredRef.current = false
+        return
+      }
+      selecionarAluno(aluno)
+    }
+  }
+
   async function salvarCarga(teId: string, serieIdx: number, valor: string) {
     const novas = [...(cargas[teId] || [])]
     novas[serieIdx] = valor
@@ -280,7 +319,6 @@ export default function CoachTreinoPage() {
   }
 
   async function gerarInsights(alunoId: string, aulaIdAtual: string) {
-    // ✅ usa API route — bypassa RLS
     const res = await fetch(`/api/aulas?insights=1&aluno_id=${alunoId}&aula_id=${aulaIdAtual}`)
     const json = await res.json()
     const { aulasRecentes, aulasMes, aulasSemana, cargasHoje, cargasAnteriores } = json.data
@@ -398,6 +436,7 @@ export default function CoachTreinoPage() {
 
   function resetar() {
     aulaIdRef.current = null
+    touchFiredRef.current = false
     setEtapa('buscar_aluno')
     setAlunoSel(null); setTreinoSel(null); setAulaId(null)
     setExercicios([]); setCargas({}); setBusca(''); setAlunos([])
@@ -435,8 +474,8 @@ export default function CoachTreinoPage() {
                   key={a.id}
                   role="button"
                   tabIndex={0}
-                  onTouchStart={() => selecionarAluno(a)}
-                  onClick={() => selecionarAluno(a)}
+                  onTouchStart={() => handleSelecionarAluno(a, true)}
+                  onClick={() => handleSelecionarAluno(a, false)}
                   onKeyDown={e => e.key === 'Enter' && selecionarAluno(a)}
                   className="w-full flex items-center gap-3 px-4 py-3 active:bg-gray-50 text-left cursor-pointer select-none"
                   style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
@@ -498,8 +537,8 @@ export default function CoachTreinoPage() {
               key={pub.id}
               role="button"
               tabIndex={0}
-              onTouchStart={() => selecionarTreino(pub, alunoSel)}
-              onClick={() => selecionarTreino(pub, alunoSel)}
+              onTouchStart={() => handleSelecionarTreino(pub, alunoSel, true)}
+              onClick={() => handleSelecionarTreino(pub, alunoSel, false)}
               onKeyDown={e => e.key === 'Enter' && selecionarTreino(pub, alunoSel)}
               className="card w-full text-left border-2 border-transparent active:border-primary-300 active:bg-primary-50 transition-colors cursor-pointer select-none"
               style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
