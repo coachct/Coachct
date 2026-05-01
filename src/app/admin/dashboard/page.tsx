@@ -9,6 +9,7 @@ import Link from 'next/link'
 export default function AdminDashboard() {
   const [coaches, setCoaches] = useState<Coach[]>([])
   const [aulas, setAulas] = useState<Aula[]>([])
+  const [aulasHoje, setAulasHoje] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
 
@@ -18,12 +19,25 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     async function load() {
-      const [{ data: c }, { data: a }] = await Promise.all([
+      const inicioHoje = new Date(ano, mes - 1, now.getDate()).toISOString()
+      const fimHoje = new Date(ano, mes - 1, now.getDate(), 23, 59, 59).toISOString()
+
+      const [{ data: c }, { data: a }, { data: h }] = await Promise.all([
         supabase.from('coaches').select('*').eq('ativo', true),
-        supabase.from('aulas').select('*').gte('horario_agendado', `${ano}-${String(mes).padStart(2,'0')}-01`).eq('status', 'finalizada'),
+        supabase.from('aulas').select('*')
+          .gte('horario_agendado', `${ano}-${String(mes).padStart(2,'0')}-01`)
+          .eq('status', 'finalizada'),
+        supabase.from('aulas')
+          .select('*, coaches(nome), alunos(nome), treinos(nome)')
+          .gte('horario_agendado', inicioHoje)
+          .lte('horario_agendado', fimHoje)
+          .in('status', ['finalizada', 'em_andamento'])
+          .order('horario_agendado', { ascending: true }),
       ])
+
       setCoaches(c || [])
       setAulas(a || [])
+      setAulasHoje(h || [])
       setLoading(false)
     }
     load()
@@ -31,16 +45,17 @@ export default function AdminDashboard() {
 
   if (loading) return <Spinner />
 
-  // Calcular métricas
   const aulasPorCoach = (coachId: string) => aulas.filter(a => a.coach_id === coachId).length
-  const metrics = coaches.map(c => calcCoachMetrics(c, aulasPorCoach(c.id), 54)) // slots placeholder
+  const metrics = coaches.map(c => calcCoachMetrics(c, aulasPorCoach(c.id), 54))
   const fatTotal = metrics.reduce((s, m) => s + m.faturamento, 0)
   const cstTotal = metrics.reduce((s, m) => s + m.custo_total, 0)
   const mrgTotal = fatTotal - cstTotal
   const mrgPct = fatTotal > 0 ? (mrgTotal / fatTotal) * 100 : 0
   const aulasTotal = aulas.length
-
   const mesNome = now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+
+  const aulasFinalizadasHoje = aulasHoje.filter(a => a.status === 'finalizada')
+  const aulasEmAndamento = aulasHoje.filter(a => a.status === 'em_andamento')
 
   return (
     <div>
@@ -72,7 +87,7 @@ export default function AdminDashboard() {
         <KpiCard label="Custo variável" value={fmt(metrics.reduce((s,m)=>s+m.custo_variavel,0))} sub="por aulas dadas" />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         {/* Coaches ocupação */}
         <div className="card">
           <div className="flex items-center justify-between mb-4">
@@ -126,6 +141,88 @@ export default function AdminDashboard() {
             })}
           </div>
         </div>
+      </div>
+
+      {/* Aulas de hoje */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Aulas de hoje</h2>
+            <p className="text-xs text-gray-400 mt-0.5 capitalize">
+              {now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            {aulasEmAndamento.length > 0 && (
+              <span className="flex items-center gap-1.5 text-xs bg-orange-100 text-orange-700 px-2.5 py-1 rounded-full font-medium animate-pulse">
+                <span className="w-1.5 h-1.5 bg-orange-500 rounded-full" />
+                {aulasEmAndamento.length} em andamento
+              </span>
+            )}
+            <span className="text-xs bg-green-100 text-green-700 px-2.5 py-1 rounded-full font-medium">
+              {aulasFinalizadasHoje.length} finalizadas
+            </span>
+          </div>
+        </div>
+
+        {aulasHoje.length === 0 ? (
+          <div className="text-center py-8 text-sm text-gray-400 italic">
+            Nenhuma aula registrada hoje ainda.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {aulasHoje.map(aula => {
+              const emAndamento = aula.status === 'em_andamento'
+              return (
+                <div key={aula.id}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${
+                    emAndamento
+                      ? 'bg-orange-50 border-orange-200'
+                      : 'bg-gray-50 border-gray-100'
+                  }`}
+                >
+                  {/* Horário */}
+                  <div className="text-center flex-shrink-0 w-12">
+                    <div className="text-sm font-bold text-gray-700">
+                      {new Date(aula.horario_agendado).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+
+                  <div className="w-px h-8 bg-gray-200 flex-shrink-0" />
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium text-gray-900 truncate">
+                        {aula.alunos?.nome || 'Aluno'}
+                      </span>
+                      <span className="text-xs text-gray-400">·</span>
+                      <span className="text-xs text-gray-500 truncate">
+                        {aula.treinos?.nome || '—'}
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-400 mt-0.5">
+                      Coach: {aula.coaches?.nome || '—'}
+                    </div>
+                  </div>
+
+                  {/* Status */}
+                  <div className="flex-shrink-0">
+                    {emAndamento ? (
+                      <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">
+                        Em andamento
+                      </span>
+                    ) : (
+                      <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+                        Finalizada
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )
