@@ -52,9 +52,6 @@ export default function CoachTreinoPage() {
   const [alertaAtivo, setAlertaAtivo] = useState(false)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
 
-  // ✅ flag para evitar duplo disparo no mobile
-  const touchFiredRef = useRef(false)
-
   const [insights, setInsights] = useState<Insight[]>([])
   const [loadingInsights, setLoadingInsights] = useState(false)
 
@@ -208,7 +205,6 @@ export default function CoachTreinoPage() {
     setAlunoSel(aluno)
     setBusca('')
     setAlunos([])
-    // ✅ busca treinos do mês atual calculado no momento do clique
     const agora = new Date()
     const mesAtual = agora.getMonth() + 1
     const anoAtual = agora.getFullYear()
@@ -218,7 +214,6 @@ export default function CoachTreinoPage() {
         treino_exercicios(id, exercicio_id, ordem, series_override, reps_override, descanso_override, observacoes_override, conjugado,
           exercicios(id, nome, numero_maquina, observacoes)))`)
       .eq('mes', mesAtual).eq('ano', anoAtual).eq('publicado', true)
-    // ✅ ordena alfabeticamente
     const ordenado = (data || []).sort((a: any, b: any) =>
       (a.treinos?.nome || '').localeCompare(b.treinos?.nome || '', 'pt-BR')
     )
@@ -267,33 +262,6 @@ export default function CoachTreinoPage() {
     ])
 
     setUltimasCargas(maxCargas)
-  }
-
-  // ✅ handler com proteção contra duplo disparo
-  function handleSelecionarTreino(pub: any, alunoAtual: any, fromTouch: boolean) {
-    if (fromTouch) {
-      touchFiredRef.current = true
-      selecionarTreino(pub, alunoAtual)
-    } else {
-      if (touchFiredRef.current) {
-        touchFiredRef.current = false
-        return
-      }
-      selecionarTreino(pub, alunoAtual)
-    }
-  }
-
-  function handleSelecionarAluno(aluno: any, fromTouch: boolean) {
-    if (fromTouch) {
-      touchFiredRef.current = true
-      selecionarAluno(aluno)
-    } else {
-      if (touchFiredRef.current) {
-        touchFiredRef.current = false
-        return
-      }
-      selecionarAluno(aluno)
-    }
   }
 
   async function salvarCarga(teId: string, serieIdx: number, valor: string) {
@@ -436,7 +404,6 @@ export default function CoachTreinoPage() {
 
   function resetar() {
     aulaIdRef.current = null
-    touchFiredRef.current = false
     setEtapa('buscar_aluno')
     setAlunoSel(null); setTreinoSel(null); setAulaId(null)
     setExercicios([]); setCargas({}); setBusca(''); setAlunos([])
@@ -469,27 +436,35 @@ export default function CoachTreinoPage() {
           {buscando && <div className="text-xs text-gray-400 mt-2">Buscando...</div>}
           {alunos.length > 0 && (
             <div className="mt-2 divide-y divide-gray-100 border border-gray-100 rounded-xl overflow-hidden">
-              {alunos.map(a => (
-                <div
-                  key={a.id}
-                  role="button"
-                  tabIndex={0}
-                  onTouchStart={() => handleSelecionarAluno(a, true)}
-                  onClick={() => handleSelecionarAluno(a, false)}
-                  onKeyDown={e => e.key === 'Enter' && selecionarAluno(a)}
-                  className="w-full flex items-center gap-3 px-4 py-3 active:bg-gray-50 text-left cursor-pointer select-none"
-                  style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
-                >
-                  <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-800 text-xs font-semibold flex items-center justify-center flex-shrink-0 pointer-events-none">
-                    {a.nome.slice(0,2).toUpperCase()}
+              {alunos.map(a => {
+                let touchStartY = 0
+                return (
+                  <div
+                    key={a.id}
+                    role="button"
+                    tabIndex={0}
+                    onTouchStart={e => { touchStartY = e.touches[0].clientY }}
+                    onTouchEnd={e => {
+                      const delta = Math.abs(e.changedTouches[0].clientY - touchStartY)
+                      if (delta > 10) return
+                      selecionarAluno(a)
+                    }}
+                    onClick={() => selecionarAluno(a)}
+                    onKeyDown={e => e.key === 'Enter' && selecionarAluno(a)}
+                    className="w-full flex items-center gap-3 px-4 py-3 active:bg-gray-50 text-left cursor-pointer select-none"
+                    style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
+                  >
+                    <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-800 text-xs font-semibold flex items-center justify-center flex-shrink-0 pointer-events-none">
+                      {a.nome.slice(0,2).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0 pointer-events-none">
+                      <div className="text-sm font-medium text-gray-900">{a.nome}</div>
+                      {a.cpf && <div className="text-xs text-gray-400">{a.cpf}</div>}
+                    </div>
+                    <ChevronRight size={14} className="text-gray-300 flex-shrink-0 pointer-events-none" />
                   </div>
-                  <div className="flex-1 min-w-0 pointer-events-none">
-                    <div className="text-sm font-medium text-gray-900">{a.nome}</div>
-                    {a.cpf && <div className="text-xs text-gray-400">{a.cpf}</div>}
-                  </div>
-                  <ChevronRight size={14} className="text-gray-300 flex-shrink-0 pointer-events-none" />
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
           {busca.length >= 2 && alunos.length === 0 && !buscando && (
@@ -532,13 +507,19 @@ export default function CoachTreinoPage() {
         )}
         {treinos.map(pub => {
           const exs = pub.treinos?.treino_exercicios || []
+          let touchStartY = 0
           return (
             <div
               key={pub.id}
               role="button"
               tabIndex={0}
-              onTouchStart={() => handleSelecionarTreino(pub, alunoSel, true)}
-              onClick={() => handleSelecionarTreino(pub, alunoSel, false)}
+              onTouchStart={e => { touchStartY = e.touches[0].clientY }}
+              onTouchEnd={e => {
+                const delta = Math.abs(e.changedTouches[0].clientY - touchStartY)
+                if (delta > 10) return
+                selecionarTreino(pub, alunoSel)
+              }}
+              onClick={() => selecionarTreino(pub, alunoSel)}
               onKeyDown={e => e.key === 'Enter' && selecionarTreino(pub, alunoSel)}
               className="card w-full text-left border-2 border-transparent active:border-primary-300 active:bg-primary-50 transition-colors cursor-pointer select-none"
               style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
