@@ -23,14 +23,12 @@ export default function CoachesPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [horarios, setHorarios] = useState<Record<string, Set<string>>>({})
 
-  // modal de aulas
   const [aulaModal, setAulaModal] = useState<{ coach: Coach; aulas: any[] } | null>(null)
   const [loadingAulas, setLoadingAulas] = useState(false)
   const [excluindo, setExcluindo] = useState<string | null>(null)
   const [mesAulas, setMesAulas] = useState(new Date().getMonth() + 1)
   const [anoAulas, setAnoAulas] = useState(new Date().getFullYear())
 
-  // modal de senha
   const [senhaModal, setSenhaModal] = useState<Coach | null>(null)
   const [novaSenha, setNovaSenha] = useState('')
   const [salvandoSenha, setSalvandoSenha] = useState(false)
@@ -216,14 +214,17 @@ export default function CoachesPage() {
               <div>
                 <label className="label">Salário fixo/mês (R$)</label>
                 <input className="input" type="number" value={form.salario_fixo} onChange={e => setForm(f=>({...f,salario_fixo:+e.target.value}))} />
+                <p className="text-xs text-gray-400 mt-1">Pago todo mês, independe de aulas</p>
               </div>
               <div>
                 <label className="label">Adicional por aula (R$)</label>
                 <input className="input" type="number" value={form.adicional_por_aula} onChange={e => setForm(f=>({...f,adicional_por_aula:+e.target.value}))} />
+                <p className="text-xs text-gray-400 mt-1">Pago por cada aula dada</p>
               </div>
               <div>
                 <label className="label">Valor cobrado do cliente (R$)</label>
                 <input className="input" type="number" value={form.valor_cliente_aula} onChange={e => setForm(f=>({...f,valor_cliente_aula:+e.target.value}))} />
+                <p className="text-xs text-gray-400 mt-1">Receita da academia por aula</p>
               </div>
             </div>
             {(fixo > 0 || vaula > 0 || cliente > 0) && (
@@ -235,6 +236,7 @@ export default function CoachesPage() {
                 <div className="bg-white rounded-lg p-3 text-center">
                   <div className="text-xs text-gray-400">Custo real/aula</div>
                   <div className="text-sm font-semibold text-gray-800">R${custoReal.toFixed(2)}</div>
+                  <div className="text-xs text-gray-400">c/ fixo diluído</div>
                 </div>
                 <div className="bg-white rounded-lg p-3 text-center">
                   <div className="text-xs text-gray-400">Margem real/aula</div>
@@ -327,7 +329,8 @@ export default function CoachesPage() {
                       <thead>
                         <tr>
                           <th className="text-gray-400 font-normal w-14 text-left pb-2 pr-2">Hora</th>
-                          {DIAS_SEMANA.slice(1).map(d => (
+                          {/* ✅ inclui todos os dias incluindo domingo */}
+                          {DIAS_SEMANA.map(d => (
                             <th key={d} className="text-gray-400 font-normal text-center pb-2 px-0.5 min-w-[32px]">{d}</th>
                           ))}
                         </tr>
@@ -336,7 +339,8 @@ export default function CoachesPage() {
                         {HORARIOS.map(hora => (
                           <tr key={hora}>
                             <td className="text-gray-400 py-0.5 pr-2 whitespace-nowrap">{hora}</td>
-                            {[1,2,3,4,5,6].map(dia => {
+                            {/* ✅ inclui domingo (dia 0) */}
+                            {[0,1,2,3,4,5,6].map(dia => {
                               const key = `${dia}-${hora}`
                               const on = horarios[coach.id]?.has(key)
                               return (
@@ -359,7 +363,8 @@ export default function CoachesPage() {
                     <button onClick={() => saveHorarios(coach.id)} className="btn btn-primary btn-sm gap-1"><Save size={12} />Salvar grade</button>
                     <button onClick={() => {
                       const all = new Set<string>()
-                      HORARIOS.forEach(h => [1,2,3,4,5,6].forEach(d => all.add(`${d}-${h}`)))
+                      // ✅ inclui domingo (dia 0)
+                      HORARIOS.forEach(h => [0,1,2,3,4,5,6].forEach(d => all.add(`${d}-${h}`)))
                       setHorarios(prev => ({ ...prev, [coach.id]: all }))
                     }} className="btn btn-sm">Marcar todos</button>
                     <button onClick={() => setHorarios(prev => ({ ...prev, [coach.id]: new Set() }))} className="btn btn-sm">Limpar</button>
