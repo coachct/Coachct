@@ -181,11 +181,18 @@ export default function AdminDashboard() {
                       : 'bg-gray-50 border-gray-100'
                   }`}
                 >
-                  {/* Horário */}
-                  <div className="text-center flex-shrink-0 w-12">
+                  {/* Horários */}
+                  <div className="text-center flex-shrink-0 w-20">
                     <div className="text-sm font-bold text-gray-700">
                       {new Date(aula.horario_agendado).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                     </div>
+                    {aula.finalizada_em ? (
+                      <div className="text-xs text-gray-400 mt-0.5">
+                        até {new Date(aula.finalizada_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-orange-500 mt-0.5 font-medium">em curso</div>
+                    )}
                   </div>
 
                   <div className="w-px h-8 bg-gray-200 flex-shrink-0" />
@@ -215,7 +222,7 @@ export default function AdminDashboard() {
                     ) : (
                       <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
                         Finalizada
-                      </span>
+      				        </span>
                     )}
                   </div>
                 </div>
