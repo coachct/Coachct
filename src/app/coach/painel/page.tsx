@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { fmt } from '@/lib/utils'
-import { Users, BarChart2, TrendingUp, TrendingDown, Clock, PlayCircle, AlertTriangle } from 'lucide-react'
+import { Users, BarChart2, TrendingUp, TrendingDown, Clock, PlayCircle, AlertTriangle, Pencil } from 'lucide-react'
 
 const TURNOS = [{ label: 'Manhã' }, { label: 'Tarde' }, { label: 'Noite' }]
 const DIAS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
@@ -32,9 +32,7 @@ export default function CoachPainelPage() {
   const mesesNomes = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 
   useEffect(() => {
-    if (perfil?.id) {
-      loadData()
-    }
+    if (perfil?.id) loadData()
   }, [perfil?.id])
 
   async function loadData() {
@@ -46,10 +44,7 @@ export default function CoachPainelPage() {
 
       const res = await fetch(`/api/aulas?painel=1&coach_id=${coachData.id}`)
       const json = await res.json()
-      const {
-        aulasHoje, aulasMes, aulasMesPassado,
-        horarios, ultimas, todasAulas, alunosMap, aulaPendente
-      } = json.data
+      const { aulasHoje, aulasMes, aulasMesPassado, horarios, ultimas, todasAulas, alunosMap, aulaPendente } = json.data
 
       if (aulaPendente) {
         setAulaAberta(aulaPendente)
@@ -58,7 +53,6 @@ export default function CoachPainelPage() {
 
       const diaSemanaHoje = hoje.getDay()
       const slotsSemana = (horarios || []).filter((h: any) => h.dia_semana >= diaSemanaHoje).length
-
       setUltimasAulas(ultimas || [])
 
       const ha2semanas = new Date(hoje)
@@ -90,7 +84,6 @@ export default function CoachPainelPage() {
         hm[`${dia}-${turno}`] = (hm[`${dia}-${turno}`] || 0) + 1
       }
       setHeatmap(hm)
-
       setStats({ aulasHoje, aulasMes, slotsSemana, aulasMesPassado })
 
     } catch (err) {
@@ -116,6 +109,12 @@ export default function CoachPainelPage() {
     setAulaAberta(null)
     setCancelando(false)
     loadData()
+  }
+
+  function podeEditar(aula: any): boolean {
+    if (!aula?.finalizada_em) return false
+    const min = (new Date().getTime() - new Date(aula.finalizada_em).getTime()) / (1000 * 60)
+    return min <= 60
   }
 
   const maxHeatmap = Math.max(1, ...Object.values(heatmap))
@@ -341,6 +340,16 @@ export default function CoachPainelPage() {
                     {aula.treinos?.nome} · {new Date(aula.finalizada_em).toLocaleDateString('pt-BR')}
                   </div>
                 </div>
+                {/* ✅ botão editar — só aparece se dentro de 1h */}
+                {podeEditar(aula) && (
+                  <button
+                    onClick={() => router.push(`/coach/aulas/${aula.id}`)}
+                    className="flex-shrink-0 p-1.5 rounded-lg bg-primary-50 text-primary-600 hover:bg-primary-100 transition-colors"
+                    title="Editar aula"
+                  >
+                    <Pencil size={13} />
+                  </button>
+                )}
               </div>
             ))}
           </div>
