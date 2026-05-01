@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase'
 import { Coach } from '@/types'
 import { fmt, DIAS_SEMANA, HORARIOS } from '@/lib/utils'
 import { PageHeader, Spinner, EmptyState } from '@/components/ui'
-import { Plus, ChevronDown, ChevronUp, Save, Trash2, X, ClipboardList } from 'lucide-react'
+import { Plus, ChevronDown, ChevronUp, Save, Trash2, X, ClipboardList, KeyRound } from 'lucide-react'
 
 const EMPTY = {
   nome: '', cpf: '', email: '', senha: '',
@@ -29,6 +29,12 @@ export default function CoachesPage() {
   const [excluindo, setExcluindo] = useState<string | null>(null)
   const [mesAulas, setMesAulas] = useState(new Date().getMonth() + 1)
   const [anoAulas, setAnoAulas] = useState(new Date().getFullYear())
+
+  // modal de senha
+  const [senhaModal, setSenhaModal] = useState<Coach | null>(null)
+  const [novaSenha, setNovaSenha] = useState('')
+  const [salvandoSenha, setSalvandoSenha] = useState(false)
+  const [msgSenha, setMsgSenha] = useState('')
 
   const supabase = createClient()
   const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
@@ -79,7 +85,6 @@ export default function CoachesPage() {
     setLoadingAulas(true)
     const inicio = new Date(ano, mes - 1, 1).toISOString()
     const fim = new Date(ano, mes, 0, 23, 59, 59).toISOString()
-
     const { data } = await supabase
       .from('aulas')
       .select('*, alunos(nome), treinos(nome)')
@@ -88,26 +93,41 @@ export default function CoachesPage() {
       .gte('horario_agendado', inicio)
       .lte('horario_agendado', fim)
       .order('horario_agendado', { ascending: false })
-
     setAulaModal({ coach, aulas: data || [] })
     setLoadingAulas(false)
   }
 
   async function excluirAula(aulaId: string) {
-    if (!confirm('Excluir esta aula permanentemente? Esta ação não pode ser desfeita.')) return
+    if (!confirm('Excluir esta aula permanentemente?')) return
     setExcluindo(aulaId)
-
-    // apaga registros de carga primeiro
     await supabase.from('registros_carga').delete().eq('aula_id', aulaId)
-    // apaga a aula
     await supabase.from('aulas').delete().eq('id', aulaId)
-
-    // atualiza a lista
-    setAulaModal(prev => prev ? {
-      ...prev,
-      aulas: prev.aulas.filter(a => a.id !== aulaId)
-    } : null)
+    setAulaModal(prev => prev ? { ...prev, aulas: prev.aulas.filter(a => a.id !== aulaId) } : null)
     setExcluindo(null)
+  }
+
+  async function salvarSenha() {
+    if (!senhaModal) return
+    if (!novaSenha || novaSenha.length < 6) {
+      setMsgSenha('A senha deve ter pelo menos 6 caracteres.')
+      return
+    }
+    setSalvandoSenha(true)
+    setMsgSenha('')
+    const res = await fetch('/api/admin/reset-senha', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: senhaModal.user_id, nova_senha: novaSenha })
+    })
+    const json = await res.json()
+    setSalvandoSenha(false)
+    if (json.ok) {
+      setMsgSenha('✅ Senha alterada com sucesso!')
+      setNovaSenha('')
+      setTimeout(() => { setSenhaModal(null); setMsgSenha('') }, 1500)
+    } else {
+      setMsgSenha('Erro: ' + json.error)
+    }
   }
 
   async function handleCreate() {
@@ -190,27 +210,22 @@ export default function CoachesPage() {
               </select>
             </div>
           </div>
-
           <div className="bg-gray-50 rounded-xl p-4 mb-4">
             <div className="text-xs font-semibold text-gray-700 mb-3 uppercase tracking-wide">Estrutura de custo</div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
                 <label className="label">Salário fixo/mês (R$)</label>
                 <input className="input" type="number" value={form.salario_fixo} onChange={e => setForm(f=>({...f,salario_fixo:+e.target.value}))} />
-                <p className="text-xs text-gray-400 mt-1">Pago todo mês, independe de aulas</p>
               </div>
               <div>
                 <label className="label">Adicional por aula (R$)</label>
                 <input className="input" type="number" value={form.adicional_por_aula} onChange={e => setForm(f=>({...f,adicional_por_aula:+e.target.value}))} />
-                <p className="text-xs text-gray-400 mt-1">Pago por cada aula dada</p>
               </div>
               <div>
                 <label className="label">Valor cobrado do cliente (R$)</label>
                 <input className="input" type="number" value={form.valor_cliente_aula} onChange={e => setForm(f=>({...f,valor_cliente_aula:+e.target.value}))} />
-                <p className="text-xs text-gray-400 mt-1">Receita da academia por aula</p>
               </div>
             </div>
-
             {(fixo > 0 || vaula > 0 || cliente > 0) && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 pt-3 border-t border-gray-200">
                 <div className="bg-white rounded-lg p-3 text-center">
@@ -220,7 +235,6 @@ export default function CoachesPage() {
                 <div className="bg-white rounded-lg p-3 text-center">
                   <div className="text-xs text-gray-400">Custo real/aula</div>
                   <div className="text-sm font-semibold text-gray-800">R${custoReal.toFixed(2)}</div>
-                  <div className="text-xs text-gray-400">c/ fixo diluído</div>
                 </div>
                 <div className="bg-white rounded-lg p-3 text-center">
                   <div className="text-xs text-gray-400">Margem real/aula</div>
@@ -233,7 +247,6 @@ export default function CoachesPage() {
               </div>
             )}
           </div>
-
           <div className="flex gap-2">
             <button onClick={handleCreate} disabled={saving} className="btn btn-primary gap-2">
               <Save size={14} /> {saving ? 'Criando...' : 'Criar coach'}
@@ -286,12 +299,12 @@ export default function CoachesPage() {
                   <div className="text-xs text-gray-400">{coach.contrato} · Fixo {fmt(coach.salario_fixo)} + R${coach.adicional_por_aula}/aula · Cliente R${coach.valor_cliente_aula}/aula</div>
                   {beC && <div className="text-xs text-gray-400">Equilíbrio: {beC} aulas/mês</div>}
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
-                  <button
-                    onClick={() => abrirAulas(coach)}
-                    className="btn btn-sm gap-1"
-                  >
+                <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
+                  <button onClick={() => abrirAulas(coach)} className="btn btn-sm gap-1">
                     <ClipboardList size={12} /> Aulas
+                  </button>
+                  <button onClick={() => { setSenhaModal(coach); setNovaSenha(''); setMsgSenha('') }} className="btn btn-sm gap-1">
+                    <KeyRound size={12} /> Senha
                   </button>
                   <button onClick={() => { setEditForm(coach); setShowForm(false); window.scrollTo(0,0) }} className="btn btn-sm">Editar</button>
                   <button onClick={() => {
@@ -358,12 +371,10 @@ export default function CoachesPage() {
         })}
       </div>
 
-      {/* ─── Modal de aulas do coach ─── */}
+      {/* ─── Modal de aulas ─── */}
       {aulaModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
-
-            {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <div>
                 <h2 className="font-semibold text-gray-900">Aulas — {aulaModal.coach.nome}</h2>
@@ -373,99 +384,92 @@ export default function CoachesPage() {
                 <X size={18} className="text-gray-500" />
               </button>
             </div>
-
-            {/* Filtro de mês */}
             <div className="flex gap-2 px-5 py-3 border-b border-gray-100">
-              <select
-                className="input input-sm w-auto"
-                value={mesAulas}
-                onChange={e => {
-                  const m = +e.target.value
-                  setMesAulas(m)
-                  buscarAulas(aulaModal.coach, m, anoAulas)
-                }}
-              >
+              <select className="input w-auto" value={mesAulas} onChange={e => { const m = +e.target.value; setMesAulas(m); buscarAulas(aulaModal.coach, m, anoAulas) }}>
                 {MESES.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
               </select>
-              <select
-                className="input input-sm w-auto"
-                value={anoAulas}
-                onChange={e => {
-                  const a = +e.target.value
-                  setAnoAulas(a)
-                  buscarAulas(aulaModal.coach, mesAulas, a)
-                }}
-              >
+              <select className="input w-auto" value={anoAulas} onChange={e => { const a = +e.target.value; setAnoAulas(a); buscarAulas(aulaModal.coach, mesAulas, a) }}>
                 {[2025, 2026, 2027].map(a => <option key={a} value={a}>{a}</option>)}
               </select>
-              <span className="text-xs text-gray-400 self-center">
-                {aulaModal.aulas.length} aula{aulaModal.aulas.length !== 1 ? 's' : ''}
-              </span>
+              <span className="text-xs text-gray-400 self-center">{aulaModal.aulas.length} aula{aulaModal.aulas.length !== 1 ? 's' : ''}</span>
             </div>
-
-            {/* Lista de aulas */}
             <div className="overflow-y-auto flex-1 px-5 py-3">
               {loadingAulas ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="w-6 h-6 border-4 border-primary-400 border-t-transparent rounded-full animate-spin" />
                 </div>
               ) : aulaModal.aulas.length === 0 ? (
-                <div className="text-center py-12 text-sm text-gray-400 italic">
-                  Nenhuma aula registrada neste mês.
-                </div>
+                <div className="text-center py-12 text-sm text-gray-400 italic">Nenhuma aula registrada neste mês.</div>
               ) : (
                 <div className="space-y-2">
                   {aulaModal.aulas.map(aula => (
                     <div key={aula.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 border border-gray-100">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-medium text-gray-900 truncate">
-                            {aula.alunos?.nome || 'Aluno'}
-                          </span>
+                          <span className="text-sm font-medium text-gray-900 truncate">{aula.alunos?.nome || 'Aluno'}</span>
                           <span className="text-xs text-gray-400">·</span>
-                          <span className="text-xs text-gray-500 truncate">
-                            {aula.treinos?.nome || '—'}
-                          </span>
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                            aula.status === 'finalizada'
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-orange-100 text-orange-700'
-                          }`}>
+                          <span className="text-xs text-gray-500 truncate">{aula.treinos?.nome || '—'}</span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${aula.status === 'finalizada' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
                             {aula.status === 'finalizada' ? 'Finalizada' : 'Em andamento'}
                           </span>
-                          {aula.observacoes === 'fora_do_prazo' && (
-                            <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">
-                              Fora do prazo
-                            </span>
-                          )}
                         </div>
                         <div className="text-xs text-gray-400 mt-0.5">
-                          {new Date(aula.horario_agendado).toLocaleDateString('pt-BR', {
-                            weekday: 'short', day: '2-digit', month: 'short',
-                            hour: '2-digit', minute: '2-digit'
-                          })}
+                          {new Date(aula.horario_agendado).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                         </div>
                       </div>
-                      <button
-                        onClick={() => excluirAula(aula.id)}
-                        disabled={excluindo === aula.id}
-                        className="flex-shrink-0 p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-50"
-                        title="Excluir aula"
-                      >
+                      <button onClick={() => excluirAula(aula.id)} disabled={excluindo === aula.id}
+                        className="flex-shrink-0 p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-50">
                         {excluindo === aula.id
                           ? <div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
-                          : <Trash2 size={14} />
-                        }
+                          : <Trash2 size={14} />}
                       </button>
                     </div>
                   ))}
                 </div>
               )}
             </div>
-
-            {/* Footer */}
             <div className="px-5 py-3 border-t border-gray-100">
               <button onClick={() => setAulaModal(null)} className="btn w-full">Fechar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Modal de senha ─── */}
+      {senhaModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <div>
+                <h2 className="font-semibold text-gray-900">Redefinir senha</h2>
+                <p className="text-xs text-gray-400 mt-0.5">{senhaModal.nome}</p>
+              </div>
+              <button onClick={() => setSenhaModal(null)} className="p-1.5 hover:bg-gray-100 rounded-lg">
+                <X size={18} className="text-gray-500" />
+              </button>
+            </div>
+            <div className="px-5 py-4 space-y-4">
+              <div>
+                <label className="label">Nova senha</label>
+                <input
+                  className="input"
+                  type="password"
+                  placeholder="Mínimo 6 caracteres"
+                  value={novaSenha}
+                  onChange={e => setNovaSenha(e.target.value)}
+                />
+              </div>
+              {msgSenha && (
+                <p className={`text-xs px-3 py-2 rounded-lg ${msgSenha.startsWith('✅') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
+                  {msgSenha}
+                </p>
+              )}
+              <div className="flex gap-2">
+                <button onClick={salvarSenha} disabled={salvandoSenha} className="btn btn-primary flex-1 gap-2">
+                  <KeyRound size={13} /> {salvandoSenha ? 'Salvando...' : 'Salvar senha'}
+                </button>
+                <button onClick={() => setSenhaModal(null)} className="btn">Cancelar</button>
+              </div>
             </div>
           </div>
         </div>
