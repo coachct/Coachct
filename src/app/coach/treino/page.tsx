@@ -81,13 +81,31 @@ export default function CoachTreinoPage() {
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [fimSlot, etapa])
 
+  // ✅ nova lógica de slot
   function calcularFimSlot(inicio: Date): Date {
     const minutos = inicio.getMinutes()
-    const slotBase = new Date(inicio)
-    if (minutos < 30) slotBase.setMinutes(0, 0, 0)
-    else slotBase.setMinutes(30, 0, 0)
-    const fim = new Date(slotBase)
-    fim.setHours(fim.getHours() + 1)
+    const slot = new Date(inicio)
+    slot.setSeconds(0, 0)
+
+    if (minutos >= 45) {
+      // últimos 15 min da hora cheia → próxima hora cheia
+      // ex: 11:45 → 12:00, fim 12:55
+      slot.setMinutes(0)
+      slot.setHours(slot.getHours() + 1)
+    } else if (minutos >= 15) {
+      // 15–44 min → slot da meia hora
+      // ex: 06:20 → 06:30, fim 07:25
+      // ex: 06:35 → 06:30, fim 07:25
+      slot.setMinutes(30)
+    } else {
+      // 0–14 min → slot da hora cheia atual
+      // ex: 09:10 → 09:00, fim 09:55
+      slot.setMinutes(0)
+    }
+
+    // fim = slot + 55 minutos
+    const fim = new Date(slot)
+    fim.setMinutes(fim.getMinutes() + 55)
     return fim
   }
 
@@ -583,11 +601,7 @@ export default function CoachTreinoPage() {
                 {foraPrazo ? 'Fora do prazo' : formatarTempo(tempoRestante)}
               </div>
             )}
-            <button
-              onTouchStart={finalizarAula}
-              onClick={finalizarAula}
-              className="btn btn-primary gap-2"
-            >
+            <button onTouchStart={finalizarAula} onClick={finalizarAula} className="btn btn-primary gap-2">
               <CheckCircle size={14} /> Finalizar aula
             </button>
           </div>
@@ -660,11 +674,7 @@ export default function CoachTreinoPage() {
             )
           })}
 
-          <button
-            onTouchStart={finalizarAula}
-            onClick={finalizarAula}
-            className="btn btn-primary w-full gap-2 py-3"
-          >
+          <button onTouchStart={finalizarAula} onClick={finalizarAula} className="btn btn-primary w-full gap-2 py-3">
             <CheckCircle size={16} /> Finalizar aula
           </button>
         </div>
@@ -711,11 +721,7 @@ export default function CoachTreinoPage() {
       )}
 
       <div className="flex gap-3">
-        <button
-          onTouchStart={resetar}
-          onClick={resetar}
-          className="btn btn-primary flex-1"
-        >
+        <button onTouchStart={resetar} onClick={resetar} className="btn btn-primary flex-1">
           Nova aula
         </button>
         <button
