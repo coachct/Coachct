@@ -55,10 +55,11 @@ export default function CoachTreinoPage() {
   const [insights, setInsights] = useState<Insight[]>([])
   const [loadingInsights, setLoadingInsights] = useState(false)
 
+  // ✅ ref para controlar duplo disparo do finalizar
+  const finalizandoRef = useRef(false)
+
   const supabase = createClient()
   const now = new Date()
-  const mes = now.getMonth() + 1
-  const ano = now.getFullYear()
   const mesNome = now.toLocaleDateString('pt-BR', { month: 'long' })
 
   useEffect(() => {
@@ -81,29 +82,18 @@ export default function CoachTreinoPage() {
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [fimSlot, etapa])
 
-  // ✅ nova lógica de slot
   function calcularFimSlot(inicio: Date): Date {
     const minutos = inicio.getMinutes()
     const slot = new Date(inicio)
     slot.setSeconds(0, 0)
-
     if (minutos >= 45) {
-      // últimos 15 min da hora cheia → próxima hora cheia
-      // ex: 11:45 → 12:00, fim 12:55
       slot.setMinutes(0)
       slot.setHours(slot.getHours() + 1)
     } else if (minutos >= 15) {
-      // 15–44 min → slot da meia hora
-      // ex: 06:20 → 06:30, fim 07:25
-      // ex: 06:35 → 06:30, fim 07:25
       slot.setMinutes(30)
     } else {
-      // 0–14 min → slot da hora cheia atual
-      // ex: 09:10 → 09:00, fim 09:55
       slot.setMinutes(0)
     }
-
-    // fim = slot + 55 minutos
     const fim = new Date(slot)
     fim.setMinutes(fim.getMinutes() + 55)
     return fim
@@ -394,8 +384,12 @@ export default function CoachTreinoPage() {
   }
 
   async function finalizarAula() {
+    // ✅ evita duplo disparo
+    if (finalizandoRef.current) return
+    finalizandoRef.current = true
+
     const aulaIdAtual = aulaIdRef.current ?? aulaId
-    if (!aulaIdAtual) return
+    if (!aulaIdAtual) { finalizandoRef.current = false; return }
 
     const agora = new Date()
     const foraPrazo = fimSlot ? agora > fimSlot : false
@@ -418,10 +412,12 @@ export default function CoachTreinoPage() {
     setLoadingInsights(true)
 
     if (alunoIdAtual) await gerarInsights(alunoIdAtual, aulaIdAtual)
+    finalizandoRef.current = false
   }
 
   function resetar() {
     aulaIdRef.current = null
+    finalizandoRef.current = false
     setEtapa('buscar_aluno')
     setAlunoSel(null); setTreinoSel(null); setAulaId(null)
     setExercicios([]); setCargas({}); setBusca(''); setAlunos([])
@@ -601,7 +597,17 @@ export default function CoachTreinoPage() {
                 {foraPrazo ? 'Fora do prazo' : formatarTempo(tempoRestante)}
               </div>
             )}
-            <button onTouchStart={finalizarAula} onClick={finalizarAula} className="btn btn-primary gap-2">
+            {/* ✅ botão finalizar com proteção contra scroll e duplo toque */}
+            <button
+              onTouchStart={e => { (e.currentTarget as any)._touchY = e.touches[0].clientY }}
+              onTouchEnd={e => {
+                const delta = Math.abs(e.changedTouches[0].clientY - (e.currentTarget as any)._touchY)
+                if (delta > 10) return
+                finalizarAula()
+              }}
+              onClick={finalizarAula}
+              className="btn btn-primary gap-2"
+            >
               <CheckCircle size={14} /> Finalizar aula
             </button>
           </div>
@@ -674,7 +680,17 @@ export default function CoachTreinoPage() {
             )
           })}
 
-          <button onTouchStart={finalizarAula} onClick={finalizarAula} className="btn btn-primary w-full gap-2 py-3">
+          {/* ✅ botão finalizar do rodapé com mesma proteção */}
+          <button
+            onTouchStart={e => { (e.currentTarget as any)._touchY = e.touches[0].clientY }}
+            onTouchEnd={e => {
+              const delta = Math.abs(e.changedTouches[0].clientY - (e.currentTarget as any)._touchY)
+              if (delta > 10) return
+              finalizarAula()
+            }}
+            onClick={finalizarAula}
+            className="btn btn-primary w-full gap-2 py-3"
+          >
             <CheckCircle size={16} /> Finalizar aula
           </button>
         </div>
@@ -721,11 +737,25 @@ export default function CoachTreinoPage() {
       )}
 
       <div className="flex gap-3">
-        <button onTouchStart={resetar} onClick={resetar} className="btn btn-primary flex-1">
+        <button
+          onTouchStart={e => { (e.currentTarget as any)._touchY = e.touches[0].clientY }}
+          onTouchEnd={e => {
+            const delta = Math.abs(e.changedTouches[0].clientY - (e.currentTarget as any)._touchY)
+            if (delta > 10) return
+            resetar()
+          }}
+          onClick={resetar}
+          className="btn btn-primary flex-1"
+        >
           Nova aula
         </button>
         <button
-          onTouchStart={() => { window.location.href = '/coach/painel' }}
+          onTouchStart={e => { (e.currentTarget as any)._touchY = e.touches[0].clientY }}
+          onTouchEnd={e => {
+            const delta = Math.abs(e.changedTouches[0].clientY - (e.currentTarget as any)._touchY)
+            if (delta > 10) return
+            window.location.href = '/coach/painel'
+          }}
           onClick={() => { window.location.href = '/coach/painel' }}
           className="btn flex-1"
         >
