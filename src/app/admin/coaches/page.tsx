@@ -140,7 +140,7 @@ export default function CoachesPage() {
     )) return
 
     setExcluindoCoach(coach.id)
-    const res = await fetch('/api/admin/excluir-coach', {
+    const res = await fetch('/api/excluir-coach', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ coach_id: coach.id, user_id: coach.user_id })
