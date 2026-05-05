@@ -34,6 +34,9 @@ export default function CoachesPage() {
   const [salvandoSenha, setSalvandoSenha] = useState(false)
   const [msgSenha, setMsgSenha] = useState('')
 
+  // ✅ estado para exclusão de coach
+  const [excluindoCoach, setExcluindoCoach] = useState<string | null>(null)
+
   const supabase = createClient()
   const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 
@@ -126,6 +129,32 @@ export default function CoachesPage() {
     } else {
       setMsgSenha('Erro: ' + json.error)
     }
+  }
+
+  // ✅ função de exclusão de coach
+  async function excluirCoach(coach: Coach) {
+    if (!confirm(
+      `Desativar ${coach.nome}?\n\n` +
+      `O histórico de aulas e registros serão preservados para fins de faturamento e estatísticas. ` +
+      `O acesso ao sistema será bloqueado imediatamente.`
+    )) return
+
+    setExcluindoCoach(coach.id)
+    const res = await fetch('/api/admin/excluir-coach', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ coach_id: coach.id, user_id: coach.user_id })
+    })
+    const json = await res.json()
+    setExcluindoCoach(null)
+
+    if (json.ok) {
+      setMsg(`${coach.nome} foi desativado com sucesso.`)
+      loadCoaches()
+    } else {
+      setMsg('Erro: ' + json.error)
+    }
+    setTimeout(() => setMsg(''), 3000)
   }
 
   async function handleCreate() {
@@ -289,15 +318,21 @@ export default function CoachesPage() {
           const slots = horarios[coach.id]?.size || 0
           const mUnit = coach.valor_cliente_aula - coach.adicional_por_aula
           const beC = mUnit > 0 ? Math.ceil(coach.salario_fixo / mUnit) : null
+          const inativo = !coach.ativo
 
           return (
-            <div key={coach.id} className="card">
+            <div key={coach.id} className={`card ${inativo ? 'opacity-60 border-dashed' : ''}`}>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-primary-100 text-primary-800 flex items-center justify-center text-sm font-semibold flex-shrink-0">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0 ${inativo ? 'bg-gray-100 text-gray-400' : 'bg-primary-100 text-primary-800'}`}>
                   {coach.nome.slice(0,2).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium text-gray-900 text-sm">{coach.nome}</div>
+                  <div className="flex items-center gap-2">
+                    <div className="font-medium text-gray-900 text-sm">{coach.nome}</div>
+                    {inativo && (
+                      <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Inativo</span>
+                    )}
+                  </div>
                   <div className="text-xs text-gray-400">{coach.contrato} · Fixo {fmt(coach.salario_fixo)} + R${coach.adicional_por_aula}/aula · Cliente R${coach.valor_cliente_aula}/aula</div>
                   {beC && <div className="text-xs text-gray-400">Equilíbrio: {beC} aulas/mês</div>}
                 </div>
@@ -305,20 +340,37 @@ export default function CoachesPage() {
                   <button onClick={() => abrirAulas(coach)} className="btn btn-sm gap-1">
                     <ClipboardList size={12} /> Aulas
                   </button>
-                  <button onClick={() => { setSenhaModal(coach); setNovaSenha(''); setMsgSenha('') }} className="btn btn-sm gap-1">
-                    <KeyRound size={12} /> Senha
-                  </button>
-                  <button onClick={() => { setEditForm(coach); setShowForm(false); window.scrollTo(0,0) }} className="btn btn-sm">Editar</button>
-                  <button onClick={() => {
-                    if (!expanded) loadHorarios(coach.id)
-                    setExpandedId(expanded ? null : coach.id)
-                  }} className="btn btn-sm gap-1">
-                    Grade {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                  </button>
+                  {!inativo && (
+                    <>
+                      <button onClick={() => { setSenhaModal(coach); setNovaSenha(''); setMsgSenha('') }} className="btn btn-sm gap-1">
+                        <KeyRound size={12} /> Senha
+                      </button>
+                      <button onClick={() => { setEditForm(coach); setShowForm(false); window.scrollTo(0,0) }} className="btn btn-sm">Editar</button>
+                      <button onClick={() => {
+                        if (!expanded) loadHorarios(coach.id)
+                        setExpandedId(expanded ? null : coach.id)
+                      }} className="btn btn-sm gap-1">
+                        Grade {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                      </button>
+                    </>
+                  )}
+                  {/* ✅ botão desativar — só aparece se ativo */}
+                  {!inativo && (
+                    <button
+                      onClick={() => excluirCoach(coach)}
+                      disabled={excluindoCoach === coach.id}
+                      className="btn btn-sm text-red-500 hover:bg-red-50 gap-1 disabled:opacity-50"
+                      title="Desativar coach"
+                    >
+                      {excluindoCoach === coach.id
+                        ? <div className="w-3 h-3 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                        : <Trash2 size={12} />}
+                    </button>
+                  )}
                 </div>
               </div>
 
-              {expanded && (
+              {expanded && !inativo && (
                 <div className="mt-4 pt-4 border-t border-gray-100">
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-xs font-medium text-gray-700">Grade de horários — clique para marcar</span>
@@ -329,7 +381,6 @@ export default function CoachesPage() {
                       <thead>
                         <tr>
                           <th className="text-gray-400 font-normal w-14 text-left pb-2 pr-2">Hora</th>
-                          {/* ✅ inclui todos os dias incluindo domingo */}
                           {DIAS_SEMANA.map(d => (
                             <th key={d} className="text-gray-400 font-normal text-center pb-2 px-0.5 min-w-[32px]">{d}</th>
                           ))}
@@ -339,7 +390,6 @@ export default function CoachesPage() {
                         {HORARIOS.map(hora => (
                           <tr key={hora}>
                             <td className="text-gray-400 py-0.5 pr-2 whitespace-nowrap">{hora}</td>
-                            {/* ✅ inclui domingo (dia 0) */}
                             {[0,1,2,3,4,5,6].map(dia => {
                               const key = `${dia}-${hora}`
                               const on = horarios[coach.id]?.has(key)
@@ -363,7 +413,6 @@ export default function CoachesPage() {
                     <button onClick={() => saveHorarios(coach.id)} className="btn btn-primary btn-sm gap-1"><Save size={12} />Salvar grade</button>
                     <button onClick={() => {
                       const all = new Set<string>()
-                      // ✅ inclui domingo (dia 0)
                       HORARIOS.forEach(h => [0,1,2,3,4,5,6].forEach(d => all.add(`${d}-${h}`)))
                       setHorarios(prev => ({ ...prev, [coach.id]: all }))
                     }} className="btn btn-sm">Marcar todos</button>
