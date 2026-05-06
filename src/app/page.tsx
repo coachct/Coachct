@@ -151,7 +151,7 @@ export default function LandingPage() {
           <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 3, color: ACCENT, marginBottom: '1.5rem', fontFamily: "'DM Mono', monospace" }}>
             // Vila Olímpia · São Paulo
           </div>
-          <div className="hero-title-r" style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(42px, 7vw, 96px)', lineHeight: 0.95, color: '#fff', marginBottom: '1.5rem', maxWidth: 800 }}>
+          <div className="hero-title-r" style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(42px, 7vw, 58px)', lineHeight: 0.95, color: '#fff', marginBottom: '1.5rem', maxWidth: 800 }}>
             O AMBIENTE FAZ A DIFERENÇA,<br />O COACH CT AINDA MAIS<span style={{ color: ACCENT }}>!</span>
           </div>
           <div style={{ fontSize: 18, color: '#aaa', maxWidth: 560, marginBottom: '2.5rem', lineHeight: 1.7 }}>
