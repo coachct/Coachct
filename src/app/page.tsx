@@ -5,7 +5,6 @@ import { useAuth } from '@/hooks/useAuth'
 
 const ACCENT = '#ff2d9b'
 const CYAN = '#00e5ff'
-const ROXO = '#b44fd4'
 
 function HalterSVG({ estado }: { estado: 'livre' | 'ocupado' | 'meu' }) {
   const cor = estado === 'ocupado' ? '#333' : estado === 'meu' ? CYAN : ACCENT
@@ -36,10 +35,8 @@ export default function LandingPage() {
   const { perfil, loading } = useAuth()
   const router = useRouter()
   const [diaSel, setDiaSel] = useState(0)
-  const [menuOpen, setMenuOpen] = useState(false)
   const [periodo, setPeriodo] = useState<'todos' | 'manha' | 'tarde' | 'noite'>('todos')
 
-  // Se logado, redireciona para o painel correto
   useEffect(() => {
     if (!loading && perfil) {
       if (perfil.role === 'admin') router.push('/admin/dashboard')
@@ -50,7 +47,6 @@ export default function LandingPage() {
     }
   }, [perfil, loading])
 
-  // Gera os próximos 14 dias
   const dias = Array.from({ length: 14 }, (_, i) => {
     const d = new Date()
     d.setDate(d.getDate() + i)
@@ -72,22 +68,13 @@ export default function LandingPage() {
     navLinks: { display: 'flex', gap: '2rem', alignItems: 'center' },
     navLink: { color: '#555', fontSize: 13, fontWeight: 500, cursor: 'pointer', textDecoration: 'none', transition: 'color .2s' },
     navCta: { background: ACCENT, color: '#fff', border: 'none', borderRadius: 6, padding: '0.45rem 1.25rem', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-    hero: { paddingTop: 120, paddingBottom: 80, paddingLeft: '2.5rem', paddingRight: '2.5rem', maxWidth: 1100, margin: '0 auto' },
-    heroTag: { fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 3, color: ACCENT, marginBottom: '1.5rem', fontFamily: "'DM Mono', monospace" },
-    heroTitle: { fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(64px, 10vw, 120px)', lineHeight: 0.95, color: '#fff', marginBottom: '1.5rem' },
-    heroSub: { fontSize: 18, color: '#666', maxWidth: 520, marginBottom: '2.5rem', lineHeight: 1.7 },
-    heroBtns: { display: 'flex', gap: 12, flexWrap: 'wrap' as const },
-    btnPrimary: { background: ACCENT, color: '#fff', border: 'none', borderRadius: 8, padding: '0.9rem 2rem', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-    btnGhost: { background: 'transparent', color: '#f0f0f0', border: '1.5px solid #333', borderRadius: 8, padding: '0.9rem 2rem', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-    heroStats: { display: 'flex', gap: '3rem', marginTop: '4rem', flexWrap: 'wrap' as const },
-    statVal: { fontFamily: "'Bebas Neue', sans-serif", fontSize: 40, color: '#fff', lineHeight: 1 },
-    statLabel: { fontSize: 12, color: '#555' },
-    statBorder: { borderLeft: `2px solid ${ACCENT}`, paddingLeft: '1rem' },
     section: { padding: '6rem 2.5rem', maxWidth: 1100, margin: '0 auto' },
     sTag: { fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 3, color: ACCENT, fontFamily: "'DM Mono', monospace", marginBottom: '1rem' },
     sTitle: { fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(40px, 5vw, 64px)', color: '#fff', lineHeight: 1.05, marginBottom: '1rem' },
     sSub: { color: '#666', fontSize: 16, maxWidth: 560, lineHeight: 1.7 },
     divider: { borderTop: '1px solid #1a1a1a' },
+    btnPrimary: { background: ACCENT, color: '#fff', border: 'none', borderRadius: 8, padding: '0.9rem 2rem', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    btnGhost: { background: 'transparent', color: '#f0f0f0', border: '1.5px solid #333', borderRadius: 8, padding: '0.9rem 2rem', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
   }
 
   if (loading) return (
@@ -111,16 +98,14 @@ export default function LandingPage() {
         .slot-row-h { transition: all .2s; }
         .slot-row-h:hover { border-color: ${ACCENT} !important; background: #ff2d9b08 !important; cursor: pointer; }
         .periodo-btn-h { transition: all .15s; cursor: pointer; }
-        .periodo-btn-h:hover { color: #fff !important; }
         .feature-h { transition: all .2s; }
         .feature-h:hover { border-color: ${ACCENT} !important; }
         @media (max-width: 768px) {
           .nav-links-d { display: none !important; }
-          .hero-title-r { font-size: 64px !important; }
+          .hero-title-r { font-size: 42px !important; }
           .stats-r { gap: 1.5rem !important; }
           .grid3-r { grid-template-columns: 1fr !important; }
           .grid2-r { grid-template-columns: 1fr !important; }
-          .agenda-cols { flex-direction: column !important; }
         }
       `}</style>
 
@@ -134,30 +119,61 @@ export default function LandingPage() {
           <a href="#localizacao" className="nav-link-h" style={s.navLink}>Localização</a>
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <button onClick={() => router.push('/login')} className="nav-link-h" style={{ ...s.navLink, background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+          <button onClick={() => router.push('/login')} className="nav-link-h"
+            style={{ ...s.navLink, background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
             Entrar
           </button>
           <button onClick={() => router.push('/cadastro')} style={s.navCta}>Agendar agora</button>
         </div>
       </nav>
 
-      {/* HERO */}
-      <div style={s.hero}>
-        <div style={s.heroTag}>// Vila Olímpia · São Paulo</div>
-        <div className="hero-title-r" style={s.heroTitle}>
-          TREINO DE<br />VERDADE<span style={{ color: ACCENT }}>.</span>
-        </div>
-        <div style={s.heroSub}>
-          Musculação com ambiente premium e o serviço <strong style={{ color: '#fff' }}>Coach CT</strong> — treine com um personal no dia e horário que você quiser.
-        </div>
-        <div style={s.heroBtns}>
-          <button onClick={() => router.push('/cadastro')} style={s.btnPrimary}>Agendar Coach CT →</button>
-          <a href="#coach-ct"><button className="btn-ghost-h" style={s.btnGhost}>Como funciona</button></a>
-        </div>
-        <div className="stats-r" style={s.heroStats}>
-          <div style={s.statBorder}><div style={s.statVal}>1×1</div><div style={s.statLabel}>Personal exclusivo</div></div>
-          <div style={s.statBorder}><div style={s.statVal}>100%</div><div style={s.statLabel}>Horário flexível</div></div>
-          <div style={s.statBorder}><div style={{ ...s.statVal, fontSize: 28 }}>Vila<br />Olímpia</div><div style={s.statLabel}>Rua Fiandeiras, 392</div></div>
+      {/* HERO com foto de fundo */}
+      <div style={{ position: 'relative', paddingTop: 64, overflow: 'hidden' }}>
+        {/* Foto de fundo */}
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          backgroundImage: 'url(/hero.jpg)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center top',
+          zIndex: 0,
+        }} />
+        {/* Overlay escuro */}
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'linear-gradient(to right, #080808ee 50%, #08080888 100%)',
+          zIndex: 1,
+        }} />
+
+        {/* Conteúdo do hero */}
+        <div style={{ position: 'relative', zIndex: 2, padding: '6rem 2.5rem 5rem', maxWidth: 1100, margin: '0 auto' }}>
+          <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 3, color: ACCENT, marginBottom: '1.5rem', fontFamily: "'DM Mono', monospace" }}>
+            // Vila Olímpia · São Paulo
+          </div>
+          <div className="hero-title-r" style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(42px, 7vw, 96px)', lineHeight: 0.95, color: '#fff', marginBottom: '1.5rem', maxWidth: 800 }}>
+            O AMBIENTE FAZ A DIFERENÇA,<br />O COACH CT AINDA MAIS<span style={{ color: ACCENT }}>!</span>
+          </div>
+          <div style={{ fontSize: 18, color: '#aaa', maxWidth: 560, marginBottom: '2.5rem', lineHeight: 1.7 }}>
+            Do equipamento ao atendimento, o padrão é diferente em tudo. Musculação com máquinas premium e o{' '}
+            <strong style={{ color: '#fff' }}>Coach CT</strong> — seu personal exclusivo, agendado no horário que você escolher, focado só em você.
+          </div>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <button onClick={() => router.push('/cadastro')} style={s.btnPrimary}>Agendar Coach CT →</button>
+            <a href="#coach-ct"><button className="btn-ghost-h" style={s.btnGhost}>Como funciona</button></a>
+          </div>
+          <div className="stats-r" style={{ display: 'flex', gap: '3rem', marginTop: '4rem', flexWrap: 'wrap' }}>
+            {[
+              { val: '1×1', label: 'Personal exclusivo' },
+              { val: '100%', label: 'Horário flexível' },
+              { val: 'Vila\nOlímpia', label: 'Rua Fiandeiras, 392' },
+            ].map((s2, i) => (
+              <div key={i} style={{ borderLeft: `2px solid ${ACCENT}`, paddingLeft: '1rem' }}>
+                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: i === 2 ? 28 : 40, color: '#fff', lineHeight: 1, whiteSpace: 'pre-line' }}>{s2.val}</div>
+                <div style={{ fontSize: 12, color: '#555' }}>{s2.label}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -223,7 +239,7 @@ export default function LandingPage() {
         <div style={{ ...s.sSub, marginBottom: '3rem' }}>Veja as vagas disponíveis e reserve seu Coach CT. Cada halter representa uma vaga.</div>
 
         {/* Calendário */}
-        <div style={{ position: 'relative', marginBottom: '2rem', overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', marginBottom: '2rem' }}>
           <div style={{ display: 'flex', gap: 10, paddingBottom: 8 }}>
             {dias.map((d, i) => {
               const isHoje = i === 0
@@ -266,7 +282,7 @@ export default function LandingPage() {
             const lotado = livres === 0
             return (
               <div key={i} className="slot-row-h" onClick={() => router.push('/cadastro')}
-                style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', padding: '1rem 1.25rem', borderRadius: 12, border: `1px solid #222`, background: '#111', marginBottom: 8, opacity: lotado ? 0.5 : 1 }}>
+                style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', padding: '1rem 1.25rem', borderRadius: 12, border: '1px solid #222', background: '#111', marginBottom: 8, opacity: lotado ? 0.5 : 1 }}>
                 <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, fontWeight: 500, color: '#fff', width: 58, flexShrink: 0 }}>{h.hora}</div>
                 <div style={{ display: 'flex', gap: 6, flex: 1, alignItems: 'center', flexWrap: 'wrap' as const }}>
                   {Array.from({ length: h.total }).map((_, vi) => (
@@ -277,14 +293,18 @@ export default function LandingPage() {
                   <div style={{ fontSize: 11, fontFamily: "'DM Mono', monospace", color: lotado ? '#ff4444' : livres <= 2 ? '#ffaa00' : ACCENT, fontWeight: 600 }}>
                     {lotado ? 'LOTADO' : livres === 1 ? '1 VAGA' : `${livres} VAGAS`}
                   </div>
-                  {!lotado && <button onClick={e => { e.stopPropagation(); router.push('/cadastro') }}
-                    style={{ marginTop: 4, background: ACCENT, color: '#fff', border: 'none', borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                    Reservar
-                  </button>}
-                  {lotado && <button onClick={e => { e.stopPropagation(); router.push('/cadastro') }}
-                    style={{ marginTop: 4, background: 'transparent', color: '#ffaa00', border: '1px solid #ffaa00', borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                    Fila
-                  </button>}
+                  {!lotado && (
+                    <button onClick={e => { e.stopPropagation(); router.push('/cadastro') }}
+                      style={{ marginTop: 4, background: ACCENT, color: '#fff', border: 'none', borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                      Reservar
+                    </button>
+                  )}
+                  {lotado && (
+                    <button onClick={e => { e.stopPropagation(); router.push('/cadastro') }}
+                      style={{ marginTop: 4, background: 'transparent', color: '#ffaa00', border: '1px solid #ffaa00', borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                      Fila
+                    </button>
+                  )}
                 </div>
               </div>
             )
