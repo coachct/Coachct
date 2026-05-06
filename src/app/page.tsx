@@ -10,9 +10,13 @@ export default function HomePage() {
   useEffect(() => {
     if (loading) return
     if (!perfil) { router.push('/login'); return }
+
     if (perfil.role === 'admin') router.push('/admin/dashboard')
     else if (perfil.role === 'coach') router.push('/coach/painel')
     else if (perfil.role === 'coordenadora') router.push('/ju/biblioteca')
+    else if (perfil.role === 'recepcao') router.push('/recepcao/agenda')
+    else if (perfil.role === 'cliente') router.push('/minha-conta')
+    else router.push('/login')
   }, [perfil, loading, router])
 
   return (
