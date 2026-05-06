@@ -169,7 +169,7 @@ export default function LandingPage() {
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: `${ACCENT}15`, border: `1px solid ${ACCENT}30`, borderRadius: 20, padding: '0.35rem 1rem', fontSize: 12, color: ACCENT, fontWeight: 600, marginBottom: '1.5rem' }}>
           ⚡ COACH CT
         </div>
-        <div style={s.sTitle}>PERSONAL<br />QUANDO<br />VOCÊ QUISER</div>
+        <div style={s.sTitle}>PERSONAL QUANDO VOCÊ QUISER</div>
 
         {/* ✅ Texto explicativo */}
         <div style={{ fontSize: 16, color: '#888', maxWidth: 680, lineHeight: 1.8, marginBottom: '3rem' }}>
