@@ -102,7 +102,7 @@ export default function LandingPage() {
         .feature-h:hover { border-color: ${ACCENT} !important; }
         @media (max-width: 768px) {
           .nav-links-d { display: none !important; }
-          .hero-title-r { font-size: 42px !important; }
+          .hero-title-r { font-size: 36px !important; }
           .stats-r { gap: 1.5rem !important; }
           .grid3-r { grid-template-columns: 1fr !important; }
           .grid2-r { grid-template-columns: 1fr !important; }
@@ -127,31 +127,15 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      {/* HERO com foto de fundo */}
+      {/* HERO */}
       <div style={{ position: 'relative', paddingTop: 64, overflow: 'hidden' }}>
-        {/* Foto de fundo */}
-        <div style={{
-          position: 'absolute',
-          inset: 0,
-          backgroundImage: 'url(/hero.jpg)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center top',
-          zIndex: 0,
-        }} />
-        {/* Overlay escuro */}
-        <div style={{
-          position: 'absolute',
-          inset: 0,
-          background: 'linear-gradient(to right, #080808ee 50%, #08080888 100%)',
-          zIndex: 1,
-        }} />
-
-        {/* Conteúdo do hero */}
+        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'url(/hero.jpg)', backgroundSize: 'cover', backgroundPosition: 'center top', zIndex: 0 }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right, #080808ee 50%, #08080888 100%)', zIndex: 1 }} />
         <div style={{ position: 'relative', zIndex: 2, padding: '6rem 2.5rem 5rem', maxWidth: 1100, margin: '0 auto' }}>
           <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 3, color: ACCENT, marginBottom: '1.5rem', fontFamily: "'DM Mono', monospace" }}>
             // Vila Olímpia · São Paulo
           </div>
-          <div className="hero-title-r" style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(42px, 7vw, 58px)', lineHeight: 0.95, color: '#fff', marginBottom: '1.5rem', maxWidth: 800 }}>
+          <div className="hero-title-r" style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(32px, 4vw, 58px)', lineHeight: 1.05, color: '#fff', marginBottom: '1.5rem', maxWidth: 700 }}>
             O AMBIENTE FAZ A DIFERENÇA,<br />O COACH CT AINDA MAIS<span style={{ color: ACCENT }}>!</span>
           </div>
           <div style={{ fontSize: 18, color: '#aaa', maxWidth: 560, marginBottom: '2.5rem', lineHeight: 1.7 }}>
@@ -186,14 +170,21 @@ export default function LandingPage() {
           ⚡ COACH CT
         </div>
         <div style={s.sTitle}>PERSONAL<br />QUANDO<br />VOCÊ QUISER</div>
-        <div style={{ ...s.sSub, marginBottom: '3rem' }}>
-          Chega de esperar vaga, de treinar em grupo fingindo que é personal. Aqui você agenda com um coach de verdade — e ele está 100% focado em você.
+
+        {/* ✅ Texto explicativo */}
+        <div style={{ fontSize: 16, color: '#888', maxWidth: 680, lineHeight: 1.8, marginBottom: '3rem' }}>
+          Agende um horário e, ao chegar no CT, um dos nossos Coaches irá te acompanhar em formato personal — sim, 1×1.
+          Escolha um dos grupos musculares que ele lhe oferecer. Ah, e um detalhe:{' '}
+          <strong style={{ color: '#fff' }}>todos os treinos do Coach CT são montados pela nossa coordenadora Ju Hitomi</strong>,
+          então fiquem tranquilos que será intenso. Os treinos possuem até 1h de duração, e você sentirá a real diferença
+          de treinar com alguém dedicado 100% a você.
         </div>
+
         <div className="grid3-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}>
           {[
-            { icon: '📅', title: 'Agendamento flexível', desc: 'Escolha o dia e horário que encaixam na sua rotina. Sem mensalidade de personal.' },
-            { icon: '🎯', title: '1×1 de verdade', desc: 'Um coach. Um aluno. Atenção total durante toda a sessão.' },
-            { icon: '📲', title: 'Wellhub e TotalPass aceitos', desc: 'Planos Diamond e TP6 já incluem sessões Coach CT. Sem custo extra.' },
+            { icon: '📅', title: 'Agendamento flexível', desc: 'Escolha o dia e horário que encaixam na sua rotina. Sem mensalidade de personal, sem compromisso fixo.' },
+            { icon: '🎯', title: '1×1 de verdade', desc: 'Um coach. Um aluno. Atenção total durante toda a sessão — sem divisão de atenção.' },
+            { icon: '📲', title: 'Wellhub e TotalPass', desc: 'Wellhub Diamond e TotalPass TP6 têm direito a sessões Coach CT com check-in pelo app. Sem custo extra.' },
           ].map((f, i) => (
             <div key={i} className="feature-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem' }}>
               <div style={{ width: 40, height: 40, background: `${ACCENT}15`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, marginBottom: '1rem' }}>{f.icon}</div>
@@ -238,7 +229,6 @@ export default function LandingPage() {
         <div style={s.sTitle}>ESCOLHA SEU<br />HORÁRIO</div>
         <div style={{ ...s.sSub, marginBottom: '3rem' }}>Veja as vagas disponíveis e reserve seu Coach CT. Cada halter representa uma vaga.</div>
 
-        {/* Calendário */}
         <div style={{ overflowX: 'auto', marginBottom: '2rem' }}>
           <div style={{ display: 'flex', gap: 10, paddingBottom: 8 }}>
             {dias.map((d, i) => {
@@ -260,7 +250,6 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* Filtro período */}
         <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap' as const }}>
           {[
             { key: 'todos', label: 'Todos' },
@@ -275,7 +264,6 @@ export default function LandingPage() {
           ))}
         </div>
 
-        {/* Slots */}
         <div style={{ maxWidth: 700 }}>
           {horariosFiltrados.map((h, i) => {
             const livres = h.total - h.ocupados
