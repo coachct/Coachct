@@ -114,6 +114,7 @@ export default function LandingPage() {
         <div style={s.logo}>JUST<span style={{ color: ACCENT }}>CT</span></div>
         <div className="nav-links-d" style={s.navLinks}>
           <a href="#coach-ct" className="nav-link-h" style={s.navLink}>Coach CT</a>
+          <a href="#espaco" className="nav-link-h" style={s.navLink}>Espaço</a>
           <a href="#planos" className="nav-link-h" style={s.navLink}>Planos</a>
           <a href="#agenda" className="nav-link-h" style={s.navLink}>Agenda</a>
           <a href="#localizacao" className="nav-link-h" style={s.navLink}>Localização</a>
@@ -170,8 +171,6 @@ export default function LandingPage() {
           ⚡ COACH CT
         </div>
         <div style={s.sTitle}>PERSONAL QUANDO VOCÊ QUISER</div>
-
-        {/* ✅ Texto explicativo */}
         <div style={{ fontSize: 16, color: '#888', maxWidth: 680, lineHeight: 1.8, marginBottom: '3rem' }}>
           Agende um horário e, ao chegar no CT, um dos nossos Coaches irá te acompanhar em formato personal — sim, 1×1.
           Escolha um dos grupos musculares que ele lhe oferecer. Ah, e um detalhe:{' '}
@@ -179,7 +178,6 @@ export default function LandingPage() {
           então fiquem tranquilos que será intenso. Os treinos possuem até 1h de duração, e você sentirá a real diferença
           de treinar com alguém dedicado 100% a você.
         </div>
-
         <div className="grid3-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}>
           {[
             { icon: '📅', title: 'Agendamento flexível', desc: 'Escolha o dia e horário que encaixam na sua rotina. Sem mensalidade de personal, sem compromisso fixo.' },
@@ -197,9 +195,64 @@ export default function LandingPage() {
 
       <div style={s.divider} />
 
+      {/* ESPAÇO — MUSCULAÇÃO LIVRE */}
+      <div id="espaco" style={{ ...s.section, paddingBottom: '4rem' }}>
+        <div style={s.sTag}>// musculação livre</div>
+        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(32px, 4vw, 52px)', color: '#fff', lineHeight: 1.05, marginBottom: '1rem' }}>
+          QUER TREINAR SOZINHO?<br />SEM PROBLEMAS.
+        </div>
+        <div style={{ fontSize: 16, color: '#666', maxWidth: 600, lineHeight: 1.7, marginBottom: '2.5rem' }}>
+          Olha as máquinas que te esperam. Equipamentos premium, ambiente inspirador e espaço de sobra para você treinar no seu ritmo.
+        </div>
+
+        {/* Fotos */}
+        <div className="grid2-r" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '3rem' }}>
+          <div style={{ borderRadius: 16, overflow: 'hidden', aspectRatio: '16/9' }}>
+            <img src="/foto capa CT.jpg" alt="Leg Zone Just CT" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          </div>
+          <div style={{ borderRadius: 16, overflow: 'hidden', aspectRatio: '16/9' }}>
+            <img src="/Imagem Treino Sala CT.jpg" alt="Sala Just CT" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          </div>
+        </div>
+
+        {/* 3 cards */}
+        <div className="grid3-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}>
+          <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem' }}>
+            <div style={{ fontSize: 28, marginBottom: '1rem' }}>🏋️</div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: '0.75rem', letterSpacing: 1 }}>
+              EQUIPAMENTOS PREMIUM
+            </div>
+            <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6 }}>
+              Máquinas de última geração, halteres completos e espaço planejado para o seu melhor desempenho. A Leg Zone é só um dos destaques.
+            </div>
+          </div>
+          <div style={{ background: '#111', border: `1px solid ${ACCENT}`, borderRadius: 16, padding: '1.5rem', position: 'relative', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', top: 0, right: 0, background: ACCENT, fontSize: 10, fontWeight: 700, padding: '0.2rem 1rem', letterSpacing: 1, color: '#fff' }}>ACEITO AQUI</div>
+            <div style={{ fontSize: 28, marginBottom: '1rem' }}>📲</div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: '0.75rem', letterSpacing: 1 }}>
+              WELLHUB & TOTALPASS
+            </div>
+            <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6 }}>
+              Planos <strong style={{ color: '#fff' }}>Wellhub Diamond</strong> e <strong style={{ color: '#fff' }}>TotalPass TP6</strong> têm acesso liberado à musculação. Check-in direto pelo app na recepção.
+            </div>
+          </div>
+          <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem' }}>
+            <div style={{ fontSize: 28, marginBottom: '1rem' }}>✨</div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: '0.75rem', letterSpacing: 1 }}>
+              O AMBIENTE INSPIRA
+            </div>
+            <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6 }}>
+              De Vila Olímpia para o mundo. Um espaço pensado nos mínimos detalhes — da iluminação aos grafites — para você querer voltar sempre.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={s.divider} />
+
       {/* PLANOS */}
       <div id="planos" style={s.section}>
-        <div style={s.sTag}>// musculação livre</div>
+        <div style={s.sTag}>// planos</div>
         <div style={s.sTitle}>ESCOLHA SEU PLANO</div>
         <div style={{ ...s.sSub, marginBottom: '3rem' }}>Acesso ao espaço de musculação equipado e ambiente premium.</div>
         <div className="grid3-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}>
@@ -226,7 +279,7 @@ export default function LandingPage() {
       {/* AGENDA DEMO */}
       <div id="agenda" style={{ ...s.section, paddingBottom: '8rem' }}>
         <div style={s.sTag}>// agende agora</div>
-        <div style={s.sTitle}>ESCOLHA SEU<br />HORÁRIO</div>
+        <div style={s.sTitle}>ESCOLHA SEU HORÁRIO</div>
         <div style={{ ...s.sSub, marginBottom: '3rem' }}>Veja as vagas disponíveis e reserve seu Coach CT. Cada halter representa uma vaga.</div>
 
         <div style={{ overflowX: 'auto', marginBottom: '2rem' }}>
