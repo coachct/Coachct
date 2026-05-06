@@ -31,7 +31,7 @@ export default function RecepcaoAgendaPage() {
   })
 
   useEffect(() => {
-    if (!loading && perfil?.role !== 'recepcao' && perfil?.role !== 'admin') {
+    if (!loading && perfil?.role !== ('recepcao' as any) && perfil?.role !== 'admin') {
       router.push('/')
     }
   }, [perfil, loading])
