@@ -70,7 +70,7 @@ export default function LandingPage() {
     navCta: { background: ACCENT, color: '#fff', border: 'none', borderRadius: 6, padding: '0.45rem 1.25rem', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
     section: { padding: '6rem 2.5rem', maxWidth: 1100, margin: '0 auto' },
     sTag: { fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 3, color: ACCENT, fontFamily: "'DM Mono', monospace", marginBottom: '1rem' },
-    sTitle: { fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(40px, 5vw, 64px)', color: '#fff', lineHeight: 1.05, marginBottom: '1rem' },
+    sTitle: { fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(32px, 3.5vw, 48px)', color: '#fff', lineHeight: 1.05, marginBottom: '1rem' },
     sSub: { color: '#666', fontSize: 16, maxWidth: 560, lineHeight: 1.7 },
     divider: { borderTop: '1px solid #1a1a1a' },
     btnPrimary: { background: ACCENT, color: '#fff', border: 'none', borderRadius: 8, padding: '0.9rem 2rem', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
