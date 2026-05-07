@@ -102,6 +102,7 @@ export default function LandingPage() {
         .feature-h { transition: all .2s; }
         .feature-h:hover { border-color: ${ACCENT} !important; }
         .nav-semana-btn:hover:not(:disabled) { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
+        .maps-btn:hover { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
         @media (max-width: 768px) {
           .nav-links-d { display: none !important; }
           .hero-title-r { font-size: 36px !important; }
@@ -242,7 +243,27 @@ export default function LandingPage() {
       <div id="planos" style={s.section}>
         <div style={s.sTag}>// planos</div>
         <div style={s.sTitle}>ESCOLHA SEU PLANO</div>
-        <div style={{ ...s.sSub, marginBottom: '3rem' }}>Acesso ilimitado ao espaço de musculação premium em Vila Olímpia.</div>
+        <div style={{ ...s.sSub, marginBottom: '1rem' }}>Acesso ilimitado ao espaço de musculação premium em Vila Olímpia.</div>
+
+        {/* Apps aceitos */}
+        <div style={{ background: '#111', border: '1px solid #222', borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '3rem', display: 'flex', flexWrap: 'wrap' as const, gap: '1.5rem' }}>
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div style={{ fontSize: 11, color: ACCENT, fontWeight: 700, letterSpacing: 1, marginBottom: 6, textTransform: 'uppercase' as const }}>Wellhub</div>
+            <div style={{ fontSize: 13, color: '#666', lineHeight: 1.6 }}>
+              <span style={{ color: '#fff', fontWeight: 600 }}>Gold+</span> e superiores → Musculação livre<br />
+              <span style={{ color: '#fff', fontWeight: 600 }}>Diamond</span> → Musculação livre + sessões Coach CT
+            </div>
+          </div>
+          <div style={{ width: 1, background: '#222', flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div style={{ fontSize: 11, color: ACCENT, fontWeight: 700, letterSpacing: 1, marginBottom: 6, textTransform: 'uppercase' as const }}>TotalPass</div>
+            <div style={{ fontSize: 13, color: '#666', lineHeight: 1.6 }}>
+              <span style={{ color: '#fff', fontWeight: 600 }}>TP4</span> e superiores → Musculação livre<br />
+              <span style={{ color: '#fff', fontWeight: 600 }}>TP6</span> → Musculação livre + sessões Coach CT
+            </div>
+          </div>
+        </div>
+
         <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>Acesso ao espaço</div>
         <div className="grid3-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', marginBottom: '3rem' }}>
           {[
@@ -261,6 +282,7 @@ export default function LandingPage() {
             </div>
           ))}
         </div>
+
         <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>Créditos avulsos</div>
         <div className="grid2-r" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
           {[
@@ -287,17 +309,13 @@ export default function LandingPage() {
         <div style={s.sTitle}>ESCOLHA SEU HORÁRIO</div>
         <div style={{ ...s.sSub, marginBottom: '3rem' }}>Veja as vagas disponíveis e reserve seu Coach CT. Cada halter representa uma vaga.</div>
 
-        {/* Tudo alinhado em maxWidth 700 */}
         <div style={{ maxWidth: 700 }}>
-
           {/* Calendário semanal */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
-            <button
-              className="nav-semana-btn"
+            <button className="nav-semana-btn"
               onClick={() => { setSemanaOffset(o => Math.max(0, o - 1)); setDiaSel(0) }}
               disabled={semanaOffset === 0}
-              style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #333', background: 'transparent', color: semanaOffset === 0 ? '#333' : '#fff', fontSize: 18, cursor: semanaOffset === 0 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .2s' }}
-            >‹</button>
+              style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #333', background: 'transparent', color: semanaOffset === 0 ? '#333' : '#fff', fontSize: 18, cursor: semanaOffset === 0 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .2s' }}>‹</button>
             <div style={{ display: 'flex', gap: 6, flex: 1 }}>
               {diasSemana.map((d, i) => {
                 const isHoje = semanaOffset === 0 && i === 0
@@ -316,12 +334,10 @@ export default function LandingPage() {
                 )
               })}
             </div>
-            <button
-              className="nav-semana-btn"
+            <button className="nav-semana-btn"
               onClick={() => { setSemanaOffset(o => Math.min(2, o + 1)); setDiaSel(0) }}
               disabled={semanaOffset === 2}
-              style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #333', background: 'transparent', color: semanaOffset === 2 ? '#333' : '#fff', fontSize: 18, cursor: semanaOffset === 2 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .2s' }}
-            >›</button>
+              style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #333', background: 'transparent', color: semanaOffset === 2 ? '#333' : '#fff', fontSize: 18, cursor: semanaOffset === 2 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .2s' }}>›</button>
           </div>
 
           {/* Filtro período */}
@@ -372,7 +388,6 @@ export default function LandingPage() {
               </div>
             )
           })}
-
           <div style={{ textAlign: 'center' as const, marginTop: '2rem' }}>
             <button onClick={() => router.push('/cadastro')} style={s.btnPrimary}>
               Criar conta e reservar →
@@ -391,8 +406,8 @@ export default function LandingPage() {
           <div>
             {[
               { icon: '📍', title: 'Endereço', desc: 'Rua Fiandeiras, 392 — Vila Olímpia, São Paulo' },
-              { icon: '🕐', title: 'Horários', desc: 'Segunda a domingo, das 05:30 às 21:00' },
-              { icon: '🚇', title: 'Como chegar', desc: 'Próximo à estação Vila Olímpia do Metrô' },
+              { icon: '🕐', title: 'Seg a Sex', desc: '05:30 às 21:00' },
+              { icon: '🕐', title: 'Sáb, Dom e Feriados', desc: '08:00 às 13:00' },
               { icon: '📲', title: 'Wellhub e TotalPass', desc: 'Faça check-in pelo app parceiro na recepção' },
             ].map((item, i) => (
               <div key={i} style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
@@ -403,6 +418,11 @@ export default function LandingPage() {
                 </div>
               </div>
             ))}
+            <a href="https://maps.google.com/?q=Rua+Fiandeiras+392+Vila+Olimpia+Sao+Paulo" target="_blank" rel="noopener noreferrer">
+              <button className="maps-btn" style={{ marginTop: '0.5rem', background: 'transparent', border: '1px solid #333', borderRadius: 8, padding: '0.6rem 1.25rem', color: '#888', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", transition: 'all .2s', display: 'flex', alignItems: 'center', gap: 8 }}>
+                📍 Abrir no Google Maps →
+              </button>
+            </a>
           </div>
           <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, overflow: 'hidden', aspectRatio: '4/3' }}>
             <iframe
