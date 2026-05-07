@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { Clock, CheckCircle, XCircle, Search, Users, Calendar } from 'lucide-react'
+import { Clock, CheckCircle, XCircle, Search, Users, Calendar, ChevronLeft, ChevronRight } from 'lucide-react'
 
 const HORARIOS = [
   '05:30','06:00','06:30','07:00','07:30','08:00','08:30',
@@ -12,6 +12,12 @@ const HORARIOS = [
   '16:00','16:30','17:00','17:30','18:00','18:30','19:00',
   '19:30','20:00'
 ]
+
+function addDias(dataStr: string, dias: number) {
+  const d = new Date(dataStr + 'T12:00:00')
+  d.setDate(d.getDate() + dias)
+  return d.toISOString().split('T')[0]
+}
 
 export default function RecepcaoAgendaPage() {
   const { perfil, loading } = useAuth()
@@ -27,6 +33,8 @@ export default function RecepcaoAgendaPage() {
   const [abaAtiva, setAbaAtiva] = useState<'agendamentos' | 'grade'>('agendamentos')
 
   const scrollRef = useRef<number>(0)
+
+  const hoje = new Date().toISOString().split('T')[0]
 
   const diaSemana = new Date(data + 'T12:00:00').toLocaleDateString('pt-BR', {
     weekday: 'long', day: 'numeric', month: 'long'
@@ -59,15 +67,8 @@ export default function RecepcaoAgendaPage() {
   }
 
   function norm(hora: string) { return (hora || '').slice(0, 5) }
-
-  function coachesPorHorario(horario: string) {
-    return coaches.filter(c => norm(c.hora) === horario)
-  }
-
-  function agendamentosPorHorario(horario: string) {
-    return agendamentos.filter(a => norm(a.horario) === horario)
-  }
-
+  function coachesPorHorario(horario: string) { return coaches.filter(c => norm(c.hora) === horario) }
+  function agendamentosPorHorario(horario: string) { return agendamentos.filter(a => norm(a.horario) === horario) }
   function vagasDisponiveis(horario: string) {
     const total = coachesPorHorario(horario).length
     const ocupadas = agendamentosPorHorario(horario).filter(a => a.status !== 'cancelado').length
@@ -146,7 +147,7 @@ export default function RecepcaoAgendaPage() {
   return (
     <div className="min-h-screen bg-gray-50">
 
-      {/* Header — só título e resumo, sem seletor de data */}
+      {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
         <h1 className="text-lg font-semibold text-gray-900 capitalize">{diaSemana}</h1>
         <div className="flex gap-4 mt-1 text-sm text-gray-500">
@@ -296,17 +297,29 @@ export default function RecepcaoAgendaPage() {
             {/* ABA GRADE */}
             {abaAtiva === 'grade' && (
               <div>
-                {/* Seletor de data dentro da grade */}
+                {/* Navegação de data com setas */}
                 <div className="card mb-4 flex items-center justify-between">
-                  <div className="text-sm font-medium text-gray-700 capitalize">
-                    {new Date(data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                  <button
+                    onClick={() => { setData(addDias(data, -1)); setLoadingData(true) }}
+                    className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-all">
+                    <ChevronLeft size={16} />
+                  </button>
+                  <div className="text-center">
+                    <div className="text-sm font-semibold text-gray-900 capitalize">
+                      {new Date(data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                    </div>
+                    {data !== hoje && (
+                      <button onClick={() => { setData(hoje); setLoadingData(true) }}
+                        className="text-xs text-primary-600 hover:underline mt-0.5">
+                        Voltar para hoje
+                      </button>
+                    )}
                   </div>
-                  <input
-                    type="date"
-                    className="input text-sm"
-                    value={data}
-                    onChange={e => { setData(e.target.value); setLoadingData(true) }}
-                  />
+                  <button
+                    onClick={() => { setData(addDias(data, 1)); setLoadingData(true) }}
+                    className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-all">
+                    <ChevronRight size={16} />
+                  </button>
                 </div>
 
                 {horariosAtivos.length === 0 ? (
