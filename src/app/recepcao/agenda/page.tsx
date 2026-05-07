@@ -146,22 +146,14 @@ export default function RecepcaoAgendaPage() {
   return (
     <div className="min-h-screen bg-gray-50">
 
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
-        <div>
-          <h1 className="text-lg font-semibold text-gray-900 capitalize">{diaSemana}</h1>
-          <div className="flex gap-4 mt-1 text-sm text-gray-500">
-            <span>📅 {agendamentosAtivos.length} agendamentos</span>
-            <span>✅ {agendamentos.filter(a => a.status === 'realizado').length} realizados</span>
-            <span>❌ {agendamentos.filter(a => a.status === 'falta').length} faltas</span>
-          </div>
+      {/* Header — só título e resumo, sem seletor de data */}
+      <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
+        <h1 className="text-lg font-semibold text-gray-900 capitalize">{diaSemana}</h1>
+        <div className="flex gap-4 mt-1 text-sm text-gray-500">
+          <span>📅 {agendamentosAtivos.length} agendamentos</span>
+          <span>✅ {agendamentos.filter(a => a.status === 'realizado').length} realizados</span>
+          <span>❌ {agendamentos.filter(a => a.status === 'falta').length} faltas</span>
         </div>
-        <input
-          type="date"
-          className="input text-sm"
-          value={data}
-          onChange={e => { setData(e.target.value); setLoadingData(true) }}
-        />
       </div>
 
       <div className="max-w-3xl mx-auto px-6 py-5">
@@ -201,6 +193,7 @@ export default function RecepcaoAgendaPage() {
           </div>
         ) : (
           <>
+            {/* ABA CLIENTES */}
             {abaAtiva === 'agendamentos' && (
               <div>
                 <div className="card mb-4">
@@ -300,8 +293,22 @@ export default function RecepcaoAgendaPage() {
               </div>
             )}
 
+            {/* ABA GRADE */}
             {abaAtiva === 'grade' && (
               <div>
+                {/* Seletor de data dentro da grade */}
+                <div className="card mb-4 flex items-center justify-between">
+                  <div className="text-sm font-medium text-gray-700 capitalize">
+                    {new Date(data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                  </div>
+                  <input
+                    type="date"
+                    className="input text-sm"
+                    value={data}
+                    onChange={e => { setData(e.target.value); setLoadingData(true) }}
+                  />
+                </div>
+
                 {horariosAtivos.length === 0 ? (
                   <div className="card text-center py-12 text-gray-400 text-sm">
                     Nenhum coach disponível neste dia.
