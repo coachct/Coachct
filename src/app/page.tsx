@@ -195,7 +195,7 @@ export default function LandingPage() {
 
       <div style={s.divider} />
 
-      {/* ESPAÇO — MUSCULAÇÃO LIVRE */}
+      {/* ESPAÇO */}
       <div id="espaco" style={{ ...s.section, paddingBottom: '4rem' }}>
         <div style={s.sTag}>// musculação livre</div>
         <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(32px, 4vw, 52px)', color: '#fff', lineHeight: 1.05, marginBottom: '1rem' }}>
@@ -204,8 +204,6 @@ export default function LandingPage() {
         <div style={{ fontSize: 16, color: '#666', maxWidth: 600, lineHeight: 1.7, marginBottom: '2.5rem' }}>
           Olha as máquinas que te esperam. Equipamentos premium, ambiente inspirador e espaço de sobra para você treinar no seu ritmo.
         </div>
-
-        {/* Fotos */}
         <div className="grid2-r" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '3rem' }}>
           <div style={{ borderRadius: 16, overflow: 'hidden', aspectRatio: '16/9' }}>
             <img src="/foto capa CT.jpg" alt="Leg Zone Just CT" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -214,36 +212,24 @@ export default function LandingPage() {
             <img src="/Imagem Treino Sala CT.jpg" alt="Sala Just CT" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </div>
         </div>
-
-        {/* 3 cards */}
         <div className="grid3-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}>
           <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem' }}>
             <div style={{ fontSize: 28, marginBottom: '1rem' }}>🏋️</div>
-            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: '0.75rem', letterSpacing: 1 }}>
-              EQUIPAMENTOS PREMIUM
-            </div>
-            <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6 }}>
-              Máquinas de última geração, halteres completos e espaço planejado para o seu melhor desempenho. A Leg Zone é só um dos destaques.
-            </div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: '0.75rem', letterSpacing: 1 }}>EQUIPAMENTOS PREMIUM</div>
+            <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6 }}>Máquinas de última geração, halteres completos e espaço planejado para o seu melhor desempenho. A Leg Zone é só um dos destaques.</div>
           </div>
           <div style={{ background: '#111', border: `1px solid ${ACCENT}`, borderRadius: 16, padding: '1.5rem', position: 'relative', overflow: 'hidden' }}>
             <div style={{ position: 'absolute', top: 0, right: 0, background: ACCENT, fontSize: 10, fontWeight: 700, padding: '0.2rem 1rem', letterSpacing: 1, color: '#fff' }}>ACEITO AQUI</div>
             <div style={{ fontSize: 28, marginBottom: '1rem' }}>📲</div>
-            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: '0.75rem', letterSpacing: 1 }}>
-              WELLHUB & TOTALPASS
-            </div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: '0.75rem', letterSpacing: 1 }}>WELLHUB & TOTALPASS</div>
             <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6 }}>
               <strong style={{ color: '#fff' }}>Wellhub Gold+</strong> e superiores e <strong style={{ color: '#fff' }}>TotalPass TP4</strong> e superiores têm acesso liberado à musculação. Check-in direto pelo app na recepção.
             </div>
           </div>
           <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem' }}>
             <div style={{ fontSize: 28, marginBottom: '1rem' }}>✨</div>
-            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: '0.75rem', letterSpacing: 1 }}>
-              O AMBIENTE INSPIRA
-            </div>
-            <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6 }}>
-              De Vila Olímpia para o mundo. Um espaço pensado nos mínimos detalhes — da iluminação aos grafites — para você querer voltar sempre.
-            </div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: '0.75rem', letterSpacing: 1 }}>O AMBIENTE INSPIRA</div>
+            <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6 }}>De Vila Olímpia para o mundo. Um espaço pensado nos mínimos detalhes — da iluminação aos grafites — para você querer voltar sempre.</div>
           </div>
         </div>
       </div>
@@ -254,15 +240,34 @@ export default function LandingPage() {
       <div id="planos" style={s.section}>
         <div style={s.sTag}>// planos</div>
         <div style={s.sTitle}>ESCOLHA SEU PLANO</div>
-        <div style={{ ...s.sSub, marginBottom: '3rem' }}>Acesso ao espaço de musculação equipado e ambiente premium.</div>
-        <div className="grid3-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}>
+        <div style={{ ...s.sSub, marginBottom: '3rem' }}>Acesso ilimitado ao espaço de musculação premium em Vila Olímpia.</div>
+
+        <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>Acesso ao espaço</div>
+        <div className="grid3-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', marginBottom: '3rem' }}>
           {[
-            { nome: 'Diária', preco: 'R$ 64', cents: ',90', periodo: 'por visita', desc: 'Acesso único sem compromisso. Coach CT avulso disponível por R$ 79,90.', destaque: false },
-            { nome: 'Mensal', preco: 'R$ 199', cents: ',90', periodo: 'por mês', desc: 'Acesso ilimitado à musculação. Coach CT com desconto especial para mensalistas.', destaque: true },
-            { nome: 'Wellhub / TotalPass', preco: 'Check-in', cents: '', periodo: 'pelo app', desc: 'Diamond e TP6 já incluem acesso e sessões Coach CT. Mais fácil impossível.', destaque: false },
+            { nome: 'Mensal', preco: 'R$ 499', cents: ',00', periodo: '/mês · 2 meses fidelidade', desc: 'Acesso ilimitado ao CT. Cobrança automática todo mês. Cancelamento com 30 dias de antecedência.', destaque: false },
+            { nome: 'Semestral', preco: 'R$ 399', cents: ',00', periodo: '/mês · 6x R$399', desc: 'Plano ilimitado por 6 meses. Válido somente para o titular. Não permite cancelamento após uso ou 7 dias da compra.', destaque: true },
+            { nome: 'Anual', preco: 'R$ 349', cents: ',00', periodo: '/mês · média (total R$4.188)', desc: 'Plano ilimitado por 12 meses. Melhor custo-benefício. Não permite cancelamento após uso ou 7 dias da compra.', destaque: false },
           ].map((p, i) => (
             <div key={i} className="plano-card-h" style={{ background: '#111', border: `1px solid ${p.destaque ? ACCENT : '#222'}`, borderRadius: 16, padding: '2rem', position: 'relative', overflow: 'hidden' }}>
               {p.destaque && <div style={{ position: 'absolute', top: 12, right: -16, background: ACCENT, color: '#fff', fontSize: 10, fontWeight: 700, padding: '0.25rem 2.5rem', transform: 'rotate(15deg)', letterSpacing: 1 }}>MAIS POPULAR</div>}
+              <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '0.5rem' }}>{p.nome}</div>
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 48, color: '#fff', lineHeight: 1 }}>
+                {p.preco}<span style={{ fontSize: 24 }}>{p.cents}</span>
+              </div>
+              <div style={{ fontSize: 12, color: '#555', marginBottom: '1rem' }}>{p.periodo}</div>
+              <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6 }}>{p.desc}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>Créditos avulsos</div>
+        <div className="grid2-r" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+          {[
+            { nome: 'Coach CT', preco: 'R$ 79', cents: ',90', periodo: '/treino · válido 30 dias', desc: 'Crédito exclusivo para agendamento do Coach CT. Necessário ter acesso ao CT via plano ou app parceiro.', destaque: true },
+            { nome: 'Treino Avulso', preco: 'R$ 64', cents: ',90', periodo: '/treino · válido 30 dias', desc: 'Acesso único ao espaço de musculação. Não inclui acompanhamento de coach.', destaque: false },
+          ].map((p, i) => (
+            <div key={i} className="plano-card-h" style={{ background: '#111', border: `1px solid ${p.destaque ? ACCENT : '#222'}`, borderRadius: 16, padding: '2rem', position: 'relative', overflow: 'hidden' }}>
               <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '0.5rem' }}>{p.nome}</div>
               <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 48, color: '#fff', lineHeight: 1 }}>
                 {p.preco}<span style={{ fontSize: 24 }}>{p.cents}</span>
