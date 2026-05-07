@@ -56,7 +56,6 @@ export default function RecepcaoClientesPage() {
   const [semanaOffset, setSemanaOffset] = useState(0)
   const [horariosSel, setHorariosSel] = useState<any[]>([])
 
-  // Modal de confirmação
   const [modalSlot, setModalSlot] = useState<{ hora: string; data: string } | null>(null)
   const [tipoCredito, setTipoCredito] = useState('')
   const [agendando, setAgendando] = useState(false)
@@ -292,8 +291,8 @@ export default function RecepcaoClientesPage() {
   return (
     <div className="min-h-screen bg-gray-50">
 
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
+      {/* Header limpo — sem botões de nav */}
+      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-3">
           {clienteSel && (
             <button onClick={() => setClienteSel(null)} className="text-gray-400 hover:text-gray-600">
@@ -301,22 +300,22 @@ export default function RecepcaoClientesPage() {
             </button>
           )}
           <div>
-            <div className="font-bold text-gray-900 text-sm">● COACH CT</div>
-            <div className="text-xs text-gray-400">{clienteSel ? clienteSel.nome : 'Clientes'}</div>
+            <div className="text-base font-semibold text-gray-900">
+              {clienteSel ? clienteSel.nome : 'Clientes'}
+            </div>
+            {!clienteSel && (
+              <div className="text-xs text-gray-400">{clientes.length} cadastrado{clientes.length !== 1 ? 's' : ''}</div>
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {!clienteSel && (
-            <button onClick={() => setNovoCliente(true)} className="btn btn-sm gap-1 bg-primary-600 text-white hover:bg-primary-700">
-              <Plus size={14} /> Novo
-            </button>
-          )}
-          <button onClick={() => router.push('/recepcao/agenda')} className="btn btn-sm text-gray-500">Agenda</button>
-          <button onClick={() => { supabase.auth.signOut(); router.push('/login') }} className="btn btn-sm text-gray-500">Sair</button>
-        </div>
+        {!clienteSel && (
+          <button onClick={() => setNovoCliente(true)} className="btn btn-sm gap-1 bg-primary-600 text-white hover:bg-primary-700">
+            <Plus size={14} /> Novo
+          </button>
+        )}
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 py-5">
+      <div className="max-w-3xl mx-auto px-6 py-5">
 
         {/* LISTA */}
         {!clienteSel && (
@@ -386,7 +385,6 @@ export default function RecepcaoClientesPage() {
               </div>
             )}
 
-            {/* Abas */}
             <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
               {abas.map(a => (
                 <button key={a.key} onClick={() => setAba(a.key as any)}
@@ -535,13 +533,12 @@ export default function RecepcaoClientesPage() {
               </div>
             )}
 
-            {/* ABA AGENDAMENTOS FUTUROS */}
+            {/* ABA AGENDAMENTOS */}
             {aba === 'agendamentos' && (
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <div className="text-sm font-semibold text-gray-900">Próximos agendamentos</div>
-                  <button onClick={() => setAba('agendar')}
-                    className="btn btn-sm gap-1 bg-primary-600 text-white">
+                  <button onClick={() => setAba('agendar')} className="btn btn-sm gap-1 bg-primary-600 text-white">
                     <Plus size={12} /> Agendar
                   </button>
                 </div>
@@ -743,12 +740,11 @@ export default function RecepcaoClientesPage() {
             )}
 
             <div className="flex gap-2">
-              <button onClick={() => setModalSlot(null)}
-                className="btn flex-1 text-gray-500 border border-gray-200">
+              <button onClick={() => setModalSlot(null)} className="btn flex-1 text-gray-500 border border-gray-200">
                 Cancelar
               </button>
               <button onClick={confirmarAgendamento} disabled={agendando || !tipoCredito}
-                className={`btn flex-2 flex-1 font-medium transition-all ${
+                className={`btn flex-1 font-medium transition-all ${
                   tipoCredito ? 'bg-primary-600 text-white hover:bg-primary-700' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                 }`}>
                 <Calendar size={14} className="mr-1.5" />
