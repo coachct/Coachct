@@ -22,19 +22,15 @@ export default function RecepcaoClientesPage() {
 
   const [busca, setBusca] = useState('')
   const [clientes, setClientes] = useState<any[]>([])
-  const [loadingClientes, setLoadingClientes] = useState(true)
+  const [loadingClientes, setLoadingClientes] = useState(false)
   const [clienteSel, setClienteSel] = useState<any>(null)
   const [aba, setAba] = useState<'dados' | 'historico' | 'agendar'>('dados')
 
-  // Edição
   const [editando, setEditando] = useState(false)
   const [form, setForm] = useState<any>({})
   const [salvando, setSalvando] = useState(false)
-
-  // Histórico
   const [historico, setHistorico] = useState<any[]>([])
 
-  // Agendamento avulso
   const [diaSel, setDiaSel] = useState(0)
   const [semanaOffset, setSemanaOffset] = useState(0)
   const [horariosSel, setHorariosSel] = useState<any[]>([])
@@ -44,19 +40,22 @@ export default function RecepcaoClientesPage() {
   const [erroAgendar, setErroAgendar] = useState('')
   const [sucessoAgendar, setSucessoAgendar] = useState(false)
 
-  // Novo cliente
   const [novoCliente, setNovoCliente] = useState(false)
   const [formNovo, setFormNovo] = useState({ nome: '', email: '', telefone: '', cpf: '', plano: 'wellhub' })
   const [criando, setCriando] = useState(false)
   const [erroCriar, setErroCriar] = useState('')
 
+  // Aguarda perfil carregar antes de qualquer ação
   useEffect(() => {
-    if (!loading && perfil?.role !== ('recepcao' as any) && perfil?.role !== 'admin') {
-      router.push('/')
-    }
-  }, [perfil, loading])
+    if (loading) return
+    if (!perfil) { router.push('/'); return }
+    if (perfil.role !== 'recepcao' && perfil.role !== 'admin') { router.push('/'); return }
+    buscarClientes()
+  }, [loading, perfil])
 
+  // Busca reativa ao digitar
   useEffect(() => {
+    if (!perfil) return
     buscarClientes()
   }, [busca])
 
@@ -151,7 +150,6 @@ export default function RecepcaoClientesPage() {
     setCriando(false)
   }
 
-  // Agendamento avulso
   const diasSemana = Array.from({ length: 7 }, (_, i) => {
     const d = new Date()
     d.setDate(d.getDate() + semanaOffset * 7 + i)
@@ -229,7 +227,8 @@ export default function RecepcaoClientesPage() {
     falta:      { label: 'Falta',      color: 'bg-orange-100 text-orange-700' },
   }
 
-  if (loading) return (
+  // Mostra loading enquanto verifica autenticação
+  if (loading || !perfil) return (
     <div className="flex items-center justify-center h-screen">
       <div className="w-8 h-8 border-4 border-primary-400 border-t-transparent rounded-full animate-spin" />
     </div>
@@ -325,7 +324,6 @@ export default function RecepcaoClientesPage() {
         {/* PERFIL DO CLIENTE */}
         {clienteSel && (
           <>
-            {/* Alerta bloqueado */}
             {clienteSel.bloqueado && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 flex items-start gap-2">
                 <AlertCircle size={16} className="text-red-500 flex-shrink-0 mt-0.5" />
@@ -339,7 +337,6 @@ export default function RecepcaoClientesPage() {
               </div>
             )}
 
-            {/* Abas do perfil */}
             <div className="flex gap-2 mb-5">
               {[
                 { key: 'dados', label: 'Dados' },
@@ -363,20 +360,15 @@ export default function RecepcaoClientesPage() {
               ))}
             </div>
 
-            {/* ABA DADOS */}
             {aba === 'dados' && (
               <div className="card">
                 <div className="flex items-center justify-between mb-4">
                   <div className="text-sm font-semibold text-gray-900">Dados do cliente</div>
                   {!editando ? (
-                    <button onClick={() => setEditando(true)} className="btn btn-sm text-primary-600">
-                      Editar
-                    </button>
+                    <button onClick={() => setEditando(true)} className="btn btn-sm text-primary-600">Editar</button>
                   ) : (
                     <div className="flex gap-2">
-                      <button onClick={() => { setEditando(false); setForm(clienteSel) }} className="btn btn-sm text-gray-500">
-                        Cancelar
-                      </button>
+                      <button onClick={() => { setEditando(false); setForm(clienteSel) }} className="btn btn-sm text-gray-500">Cancelar</button>
                       <button onClick={salvarEdicao} disabled={salvando} className="btn btn-sm gap-1 bg-primary-600 text-white">
                         <Check size={12} /> {salvando ? 'Salvando...' : 'Salvar'}
                       </button>
@@ -405,7 +397,6 @@ export default function RecepcaoClientesPage() {
                       )}
                     </div>
                   ))}
-
                   <div>
                     <div className="text-xs text-gray-400 mb-1">Plano</div>
                     {editando ? (
@@ -426,13 +417,10 @@ export default function RecepcaoClientesPage() {
               </div>
             )}
 
-            {/* ABA HISTÓRICO */}
             {aba === 'historico' && (
               <div>
                 {historico.length === 0 ? (
-                  <div className="card text-center py-12 text-gray-400 text-sm">
-                    Nenhum agendamento encontrado.
-                  </div>
+                  <div className="card text-center py-12 text-gray-400 text-sm">Nenhum agendamento encontrado.</div>
                 ) : (
                   <div className="space-y-2">
                     {historico.map(ag => (
@@ -458,7 +446,6 @@ export default function RecepcaoClientesPage() {
               </div>
             )}
 
-            {/* ABA AGENDAR */}
             {aba === 'agendar' && (
               <div>
                 {sucessoAgendar && (
@@ -467,7 +454,6 @@ export default function RecepcaoClientesPage() {
                   </div>
                 )}
 
-                {/* Calendário */}
                 <div className="card mb-4">
                   <div className="flex items-center gap-2 mb-3">
                     <button
@@ -498,7 +484,6 @@ export default function RecepcaoClientesPage() {
                     >›</button>
                   </div>
 
-                  {/* Horários */}
                   <div className="grid grid-cols-3 gap-2">
                     {horariosSel.map(h => (
                       <button
@@ -520,7 +505,6 @@ export default function RecepcaoClientesPage() {
                   </div>
                 </div>
 
-                {/* Tipo de crédito */}
                 {horarioEscolhido && (
                   <div className="card mb-4">
                     <div className="text-xs text-gray-400 mb-3 uppercase tracking-wide">Tipo de crédito</div>
@@ -547,9 +531,7 @@ export default function RecepcaoClientesPage() {
                       ))}
                     </div>
 
-                    {erroAgendar && (
-                      <div className="mt-3 text-sm text-red-600">{erroAgendar}</div>
-                    )}
+                    {erroAgendar && <div className="mt-3 text-sm text-red-600">{erroAgendar}</div>}
 
                     <button
                       onClick={confirmarAgendamento}
@@ -567,7 +549,6 @@ export default function RecepcaoClientesPage() {
         )}
       </div>
 
-      {/* Modal novo cliente */}
       {novoCliente && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6">
@@ -609,15 +590,13 @@ export default function RecepcaoClientesPage() {
               </div>
             </div>
 
-            {erroCriar && (
-              <div className="mt-3 text-sm text-red-600">{erroCriar}</div>
-            )}
+            {erroCriar && <div className="mt-3 text-sm text-red-600">{erroCriar}</div>}
 
             <div className="flex gap-2 mt-5">
               <button onClick={() => setNovoCliente(false)} className="btn flex-1 text-gray-500 border border-gray-200">
                 Cancelar
               </button>
-              <button onClick={criarCliente} disabled={criando} className="btn flex-2 flex-1 bg-primary-600 text-white">
+              <button onClick={criarCliente} disabled={criando} className="btn flex-1 bg-primary-600 text-white">
                 {criando ? 'Cadastrando...' : 'Cadastrar'}
               </button>
             </div>
