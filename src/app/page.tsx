@@ -40,11 +40,12 @@ export default function LandingPage() {
 
   useEffect(() => {
     if (!loading && perfil) {
-      if (perfil.role === 'admin') router.push('/admin/dashboard')
-      else if (perfil.role === 'coach') router.push('/coach/painel')
-      else if (perfil.role === 'coordenadora') router.push('/ju/biblioteca')
-      else if (perfil.role === 'recepcao') router.push('/recepcao/agenda')
-      // clientes ficam no site público
+      const role = (perfil.role as string)
+      if (role === 'admin') router.push('/admin/dashboard')
+      else if (role === 'coach') router.push('/coach/painel')
+      else if (role === 'coordenadora') router.push('/ju/biblioteca')
+      else if (role === 'recepcao') router.push('/recepcao/agenda')
+      else if (role === 'cliente') router.push('/minha-conta')
     }
   }, [perfil, loading])
 
@@ -244,7 +245,6 @@ export default function LandingPage() {
         <div style={s.sTag}>// planos</div>
         <div style={s.sTitle}>ESCOLHA SEU PLANO</div>
         <div style={{ ...s.sSub, marginBottom: '1rem' }}>Acesso ilimitado ao espaço de musculação premium em Vila Olímpia.</div>
-
         <div style={{ background: '#111', border: '1px solid #222', borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '3rem', display: 'flex', flexWrap: 'wrap' as const, gap: '1.5rem' }}>
           <div style={{ flex: 1, minWidth: 220 }}>
             <div style={{ fontSize: 11, color: ACCENT, fontWeight: 700, letterSpacing: 1, marginBottom: 6, textTransform: 'uppercase' as const }}>Wellhub</div>
@@ -262,7 +262,6 @@ export default function LandingPage() {
             </div>
           </div>
         </div>
-
         <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>Acesso ao espaço</div>
         <div className="grid3-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', marginBottom: '3rem' }}>
           {[
@@ -281,7 +280,6 @@ export default function LandingPage() {
             </div>
           ))}
         </div>
-
         <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>Créditos avulsos</div>
         <div className="grid2-r" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
           {[
@@ -302,12 +300,11 @@ export default function LandingPage() {
 
       <div style={s.divider} />
 
-      {/* AGENDA DEMO */}
+      {/* AGENDA */}
       <div id="agenda" style={{ ...s.section, paddingBottom: '8rem' }}>
         <div style={s.sTag}>// agende agora</div>
         <div style={s.sTitle}>ESCOLHA SEU HORÁRIO</div>
         <div style={{ ...s.sSub, marginBottom: '3rem' }}>Veja as vagas disponíveis e reserve seu Coach CT. Cada halter representa uma vaga.</div>
-
         <div style={{ maxWidth: 700 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
             <button className="nav-semana-btn"
@@ -337,7 +334,6 @@ export default function LandingPage() {
               disabled={semanaOffset === 2}
               style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #333', background: 'transparent', color: semanaOffset === 2 ? '#333' : '#fff', fontSize: 18, cursor: semanaOffset === 2 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .2s' }}>›</button>
           </div>
-
           <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap' as const }}>
             {[
               { key: 'todos', label: 'Todos' },
@@ -351,12 +347,11 @@ export default function LandingPage() {
               </button>
             ))}
           </div>
-
           {horariosFiltrados.map((h, i) => {
             const livres = h.total - h.ocupados
             const lotado = livres === 0
             return (
-              <div key={i} className="slot-row-h" onClick={() => router.push('/cadastro')}
+              <div key={i} className="slot-row-h" onClick={() => router.push('/login')}
                 style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', padding: '1rem 1.25rem', borderRadius: 12, border: '1px solid #222', background: '#111', marginBottom: 8, opacity: lotado ? 0.5 : 1 }}>
                 <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, fontWeight: 500, color: '#fff', width: 58, flexShrink: 0 }}>{h.hora}</div>
                 <div style={{ display: 'flex', gap: 6, flex: 1, alignItems: 'center', flexWrap: 'wrap' as const }}>
@@ -384,7 +379,6 @@ export default function LandingPage() {
               </div>
             )
           })}
-
           <div style={{ textAlign: 'center' as const, marginTop: '2rem' }}>
             <button onClick={() => router.push('/cadastro')} style={s.btnPrimary}>
               Criar conta e reservar →
