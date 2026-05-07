@@ -1,4 +1,4 @@
-export type Role = 'admin' | 'coach' | 'coordenadora'
+export type Role = 'admin' | 'coach' | 'coordenadora' | 'recepcao' | 'cliente'
 
 export interface Perfil {
   id: string
