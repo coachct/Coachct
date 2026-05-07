@@ -71,9 +71,9 @@ export default function CadastroPage() {
       if (!nome.trim()) { setErro('Preencha seu nome completo.'); return }
       if (cpf.replace(/\D/g, '').length < 11) { setErro('CPF inválido.'); return }
       if (telefone.replace(/\D/g, '').length < 10) { setErro('Telefone inválido.'); return }
+      if (!email.trim()) { setErro('Preencha o email.'); return }
       setEtapa(2)
     } else if (etapa === 2) {
-      if (!email.trim()) { setErro('Preencha o email.'); return }
       if (senha.length < 6) { setErro('A senha deve ter pelo menos 6 caracteres.'); return }
       if (senha !== senha2) { setErro('As senhas não coincidem.'); return }
       if (!plano) { setErro('Selecione seu plano de acesso.'); return }
@@ -86,7 +86,6 @@ export default function CadastroPage() {
     setErro('')
     setSalvando(true)
 
-    // 1. Cria usuário no Auth
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password: senha,
@@ -103,7 +102,6 @@ export default function CadastroPage() {
 
     const userId = authData.user.id
 
-    // 2. Cria perfil
     await supabase.from('perfis').upsert({
       id: userId,
       nome: nome.trim(),
@@ -111,7 +109,6 @@ export default function CadastroPage() {
       ativo: true,
     })
 
-    // 3. Cria cadastro de cliente
     const { data: clienteData } = await supabase.from('clientes').insert({
       user_id: userId,
       nome: nome.trim(),
@@ -120,7 +117,6 @@ export default function CadastroPage() {
       email: email.trim(),
     }).select().maybeSingle()
 
-    // 4. Cria créditos iniciais do mês
     if (clienteData) {
       const agora = new Date()
       const mes = agora.getMonth() + 1
@@ -128,21 +124,11 @@ export default function CadastroPage() {
 
       if (plano === 'wellhub') {
         await supabase.from('cliente_creditos').insert({
-          cliente_id: clienteData.id,
-          tipo: 'wellhub',
-          total: 8,
-          usado: 0,
-          mes,
-          ano,
+          cliente_id: clienteData.id, tipo: 'wellhub', total: 8, usado: 0, mes, ano,
         })
       } else if (plano === 'totalpass') {
         await supabase.from('cliente_creditos').insert({
-          cliente_id: clienteData.id,
-          tipo: 'totalpass',
-          total: 10,
-          usado: 0,
-          mes,
-          ano,
+          cliente_id: clienteData.id, tipo: 'totalpass', total: 10, usado: 0, mes, ano,
         })
       }
     }
@@ -197,21 +183,21 @@ export default function CadastroPage() {
         </div>
 
         {/* Progresso */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: '2rem' }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: '1rem' }}>
           {[1, 2, 3].map(n => (
             <div key={n} style={{ flex: 1, height: 3, borderRadius: 2, background: n <= etapa ? ACCENT : '#222', transition: 'background .3s' }} />
           ))}
         </div>
         <div style={{ fontSize: 12, color: '#555', marginBottom: '1.5rem', textAlign: 'center' as const }}>
           {etapa === 1 && 'Passo 1 de 3 — Seus dados'}
-          {etapa === 2 && 'Passo 2 de 3 — Acesso e plano'}
+          {etapa === 2 && 'Passo 2 de 3 — Senha e plano'}
           {etapa === 3 && 'Passo 3 de 3 — Contrato'}
         </div>
 
         {/* Card */}
         <div style={{ background: '#111', border: '1px solid #222', borderRadius: 20, padding: '2rem' }}>
 
-          {/* ETAPA 1 */}
+          {/* ETAPA 1 — dados + email */}
           {etapa === 1 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <h1 style={{ fontSize: 18, fontWeight: 600, color: '#fff', marginBottom: '0.5rem' }}>Seus dados</h1>
@@ -230,18 +216,18 @@ export default function CadastroPage() {
                 <input style={inputStyle} type="text" placeholder="(11) 99999-9999"
                   value={telefone} onChange={e => setTelefone(formatarTel(e.target.value))} />
               </div>
-            </div>
-          )}
-
-          {/* ETAPA 2 */}
-          {etapa === 2 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <h1 style={{ fontSize: 18, fontWeight: 600, color: '#fff', marginBottom: '0.5rem' }}>Acesso e plano</h1>
               <div>
                 <label style={labelStyle}>Email *</label>
                 <input style={inputStyle} type="email" placeholder="seu@email.com"
                   value={email} onChange={e => setEmail(e.target.value)} />
               </div>
+            </div>
+          )}
+
+          {/* ETAPA 2 — senha + plano */}
+          {etapa === 2 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <h1 style={{ fontSize: 18, fontWeight: 600, color: '#fff', marginBottom: '0.5rem' }}>Senha e plano</h1>
               <div>
                 <label style={labelStyle}>Senha *</label>
                 <input style={inputStyle} type="password" placeholder="Mínimo 6 caracteres"
@@ -271,7 +257,7 @@ export default function CadastroPage() {
             </div>
           )}
 
-          {/* ETAPA 3 */}
+          {/* ETAPA 3 — contrato */}
           {etapa === 3 && (
             <div>
               <h1 style={{ fontSize: 18, fontWeight: 600, color: '#fff', marginBottom: '0.5rem' }}>Contrato de adesão</h1>
