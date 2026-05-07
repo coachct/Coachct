@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle, CreditCard, Clock, CheckCircle2, XCircle } from 'lucide-react'
+import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle, Clock, CheckCircle2, XCircle } from 'lucide-react'
 
 const HORARIOS = [
   '05:30','06:00','06:30','07:00','07:30','08:00','08:30',
@@ -20,6 +20,20 @@ const LIMITE_PLANO: Record<string, number> = {
   totalpass: 10,
 }
 
+const planoConfig: Record<string, { label: string; cor: string; bg: string; barra: string }> = {
+  wellhub:   { label: 'Wellhub Diamond', cor: 'text-purple-700', bg: 'bg-purple-50 border-purple-200', barra: 'bg-purple-400' },
+  totalpass: { label: 'TotalPass TP6',   cor: 'text-blue-700',   bg: 'bg-blue-50 border-blue-200',     barra: 'bg-blue-400' },
+  avulso:    { label: 'Avulso Coach CT', cor: 'text-pink-700',   bg: 'bg-pink-50 border-pink-200',     barra: 'bg-pink-400' },
+}
+
+const statusConfig: Record<string, { label: string; color: string }> = {
+  agendado:   { label: 'Agendado',   color: 'bg-blue-100 text-blue-700' },
+  confirmado: { label: 'Confirmado', color: 'bg-green-100 text-green-700' },
+  realizado:  { label: 'Realizado',  color: 'bg-gray-100 text-gray-600' },
+  cancelado:  { label: 'Cancelado',  color: 'bg-red-100 text-red-600' },
+  falta:      { label: 'Falta',      color: 'bg-orange-100 text-orange-700' },
+}
+
 export default function RecepcaoClientesPage() {
   const { perfil, loading } = useAuth()
   const router = useRouter()
@@ -29,7 +43,7 @@ export default function RecepcaoClientesPage() {
   const [clientes, setClientes] = useState<any[]>([])
   const [loadingClientes, setLoadingClientes] = useState(false)
   const [clienteSel, setClienteSel] = useState<any>(null)
-  const [aba, setAba] = useState<'dados' | 'historico' | 'agendar'>('dados')
+  const [aba, setAba] = useState<'dados' | 'planos' | 'agendamentos' | 'historico' | 'agendar'>('dados')
 
   const [editando, setEditando] = useState(false)
   const [form, setForm] = useState<any>({})
@@ -85,7 +99,7 @@ export default function RecepcaoClientesPage() {
     setErroAgendar('')
     setHorarioEscolhido('')
     setTipoCredito('')
-    await carregarCreditos(cliente)
+    await Promise.all([carregarCreditos(cliente), carregarHistorico(cliente.id)])
   }
 
   async function carregarCreditos(cliente: any) {
@@ -118,7 +132,6 @@ export default function RecepcaoClientesPage() {
     if ((cliente.creditos_avulso || 0) > 0) {
       resultado['avulso'] = { usado: usado['avulso'] || 0, limite: cliente.creditos_avulso }
     }
-
     setCreditos(resultado)
   }
 
@@ -128,7 +141,7 @@ export default function RecepcaoClientesPage() {
       .select('*')
       .eq('cliente_id', clienteId)
       .order('data', { ascending: false })
-      .limit(30)
+      .limit(50)
     setHistorico(data || [])
   }
 
@@ -214,8 +227,7 @@ export default function RecepcaoClientesPage() {
     }
 
     const resultado = Object.entries(porHora).map(([hora, total]) => ({
-      hora,
-      total,
+      hora, total,
       ocupados: ocupados[hora] || 0,
       livres: total - (ocupados[hora] || 0),
     })).sort((a, b) => a.hora.localeCompare(b.hora))
@@ -243,29 +255,22 @@ export default function RecepcaoClientesPage() {
       setSucessoAgendar(true)
       setHorarioEscolhido('')
       setTipoCredito('')
-      carregarHorariosAgendar()
-      await carregarCreditos(clienteSel)
+      await Promise.all([carregarHorariosAgendar(), carregarCreditos(clienteSel), carregarHistorico(clienteSel.id)])
     }
     setAgendando(false)
   }
 
-  const statusConfig: Record<string, { label: string; color: string; icon: any }> = {
-    agendado:   { label: 'Agendado',   color: 'bg-blue-100 text-blue-700',   icon: Clock },
-    confirmado: { label: 'Confirmado', color: 'bg-green-100 text-green-700', icon: CheckCircle2 },
-    realizado:  { label: 'Realizado',  color: 'bg-gray-100 text-gray-600',   icon: CheckCircle2 },
-    cancelado:  { label: 'Cancelado',  color: 'bg-red-100 text-red-600',     icon: XCircle },
-    falta:      { label: 'Falta',      color: 'bg-orange-100 text-orange-700', icon: XCircle },
-  }
-
-  const planoConfig: Record<string, { label: string; cor: string; bg: string }> = {
-    wellhub:   { label: 'Wellhub Diamond', cor: 'text-purple-700', bg: 'bg-purple-50 border-purple-200' },
-    totalpass: { label: 'TotalPass TP6',   cor: 'text-blue-700',   bg: 'bg-blue-50 border-blue-200' },
-    avulso:    { label: 'Avulso Coach CT', cor: 'text-pink-700',   bg: 'bg-pink-50 border-pink-200' },
-  }
-
   const hoje = new Date().toISOString().split('T')[0]
-  const historicoFuturo = historico.filter(a => a.data >= hoje && a.status !== 'cancelado')
-  const historicoPassado = historico.filter(a => a.data < hoje || a.status === 'cancelado')
+  const agendamentosFuturos = historico.filter(a => a.data >= hoje && ['agendado','confirmado'].includes(a.status)).sort((a,b) => a.data.localeCompare(b.data))
+  const agendamentosPassados = historico.filter(a => a.data < hoje || ['realizado','falta','cancelado'].includes(a.status)).sort((a,b) => b.data.localeCompare(a.data))
+
+  const abas = [
+    { key: 'dados', label: 'Dados' },
+    { key: 'planos', label: 'Planos' },
+    { key: 'agendamentos', label: `Agenda${agendamentosFuturos.length > 0 ? ` (${agendamentosFuturos.length})` : ''}` },
+    { key: 'historico', label: 'Histórico' },
+    { key: 'agendar', label: '+ Agendar' },
+  ]
 
   if (loading || !perfil) return (
     <div className="flex items-center justify-center h-screen">
@@ -307,12 +312,8 @@ export default function RecepcaoClientesPage() {
           <>
             <div className="relative mb-4">
               <Search size={14} className="absolute left-3 top-3 text-gray-400" />
-              <input
-                className="input pl-9 w-full"
-                placeholder="Buscar por nome, CPF ou email..."
-                value={busca}
-                onChange={e => setBusca(e.target.value)}
-              />
+              <input className="input pl-9 w-full" placeholder="Buscar por nome, CPF ou email..."
+                value={busca} onChange={e => setBusca(e.target.value)} />
             </div>
 
             {loadingClientes ? (
@@ -328,7 +329,7 @@ export default function RecepcaoClientesPage() {
                   return (
                     <div key={c.id} onClick={() => abrirCliente(c)}
                       className="card flex items-center gap-3 cursor-pointer hover:border-primary-200 transition-all">
-                      <div className="w-10 h-10 rounded-full bg-primary-100 text-primary-800 text-sm font-bold flex items-center justify-center flex-shrink-0">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-700 text-white text-sm font-bold flex items-center justify-center flex-shrink-0">
                         {c.nome?.slice(0, 2).toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -375,42 +376,11 @@ export default function RecepcaoClientesPage() {
               </div>
             )}
 
-            {/* Cards de crédito */}
-            <div className="grid grid-cols-2 gap-3 mb-5">
-              {Object.entries(creditos).map(([plano, info]) => {
-                const restante = info.limite - info.usado
-                const pct = Math.round((info.usado / info.limite) * 100)
-                const cfg = planoConfig[plano]
-                return (
-                  <div key={plano} className={`rounded-2xl border p-4 ${cfg?.bg}`}>
-                    <div className={`text-xs font-semibold mb-1 ${cfg?.cor}`}>{cfg?.label || plano}</div>
-                    <div className="flex items-end gap-1">
-                      <span className={`text-3xl font-bold ${cfg?.cor}`}>{restante}</span>
-                      <span className="text-xs text-gray-400 mb-1">/ {info.limite}</span>
-                    </div>
-                    <div className="text-xs text-gray-400 mt-1">sessões restantes</div>
-                    <div className="mt-2 h-1.5 bg-white rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full ${
-                        plano === 'wellhub' ? 'bg-purple-400' :
-                        plano === 'totalpass' ? 'bg-blue-400' : 'bg-pink-400'
-                      }`} style={{ width: `${Math.min(pct, 100)}%` }} />
-                    </div>
-                    <div className="text-xs text-gray-400 mt-1">{info.usado} usadas este mês</div>
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* Abas */}
-            <div className="flex gap-2 mb-5">
-              {[
-                { key: 'dados', label: 'Dados' },
-                { key: 'historico', label: 'Histórico' },
-                { key: 'agendar', label: '+ Agendar' },
-              ].map(a => (
-                <button key={a.key}
-                  onClick={() => { setAba(a.key as any); if (a.key === 'historico') carregarHistorico(clienteSel.id) }}
-                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+            {/* Abas — scroll horizontal no mobile */}
+            <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
+              {abas.map(a => (
+                <button key={a.key} onClick={() => setAba(a.key as any)}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all flex-shrink-0 ${
                     aba === a.key ? 'bg-primary-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-primary-300'
                   }`}>
                   {a.label}
@@ -420,127 +390,171 @@ export default function RecepcaoClientesPage() {
 
             {/* ABA DADOS */}
             {aba === 'dados' && (
-              <div className="card">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="text-sm font-semibold text-gray-900">Dados do cliente</div>
-                  {!editando ? (
-                    <button onClick={() => setEditando(true)} className="btn btn-sm text-primary-600">Editar</button>
-                  ) : (
-                    <div className="flex gap-2">
-                      <button onClick={() => { setEditando(false); setForm(clienteSel) }} className="btn btn-sm text-gray-500">Cancelar</button>
-                      <button onClick={salvarEdicao} disabled={salvando} className="btn btn-sm gap-1 bg-primary-600 text-white">
-                        <Check size={12} /> {salvando ? 'Salvando...' : 'Salvar'}
-                      </button>
+              <div className="space-y-4">
+                {/* Card avatar + nome */}
+                <div className="bg-gradient-to-br from-primary-600 to-primary-800 rounded-2xl p-5 text-white flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-full bg-white/20 text-white text-xl font-bold flex items-center justify-center flex-shrink-0">
+                    {clienteSel.nome?.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div>
+                    <div className="font-bold text-lg leading-tight">{clienteSel.nome}</div>
+                    <div className="text-primary-200 text-sm mt-0.5">{clienteSel.email || '—'}</div>
+                    <div className="flex gap-1 mt-2 flex-wrap">
+                      {(clienteSel.planos || ['wellhub']).map((p: string) => (
+                        <span key={p} className="text-xs px-2 py-0.5 rounded-full bg-white/20 text-white">{planoConfig[p]?.label}</span>
+                      ))}
                     </div>
-                  )}
+                  </div>
                 </div>
 
-                <div className="space-y-3">
-                  {[
-                    { label: 'Nome', key: 'nome', type: 'text' },
-                    { label: 'Email', key: 'email', type: 'email' },
-                    { label: 'Telefone', key: 'telefone', type: 'text' },
-                    { label: 'CPF', key: 'cpf', type: 'text' },
-                  ].map(f => (
-                    <div key={f.key}>
-                      <div className="text-xs text-gray-400 mb-1">{f.label}</div>
-                      {editando ? (
-                        <input type={f.type} className="input w-full" value={form[f.key] || ''}
-                          onChange={e => setForm({ ...form, [f.key]: e.target.value })} />
-                      ) : (
-                        <div className="text-sm text-gray-900">{clienteSel[f.key] || '—'}</div>
-                      )}
-                    </div>
-                  ))}
-
-                  <div>
-                    <div className="text-xs text-gray-400 mb-2">Planos</div>
-                    {editando ? (
-                      <div className="flex flex-col gap-2">
-                        {['wellhub', 'totalpass'].map(p => (
-                          <label key={p} className="flex items-center gap-2 cursor-pointer">
-                            <input type="checkbox" checked={(form.planos || []).includes(p)}
-                              onChange={e => {
-                                const atual = form.planos || []
-                                setForm({ ...form, planos: e.target.checked ? [...atual, p] : atual.filter((x: string) => x !== p) })
-                              }}
-                              className="w-4 h-4 accent-primary-600" />
-                            <span className="text-sm text-gray-700">{planoConfig[p].label}</span>
-                          </label>
-                        ))}
-                        <div className="mt-1">
-                          <div className="text-xs text-gray-400 mb-1">Créditos avulsos</div>
-                          <input type="number" min={0} className="input w-24" value={form.creditos_avulso || 0}
-                            onChange={e => setForm({ ...form, creditos_avulso: parseInt(e.target.value) || 0 })} />
-                        </div>
-                      </div>
+                {/* Card dados */}
+                <div className="card">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="text-sm font-semibold text-gray-900">Informações</div>
+                    {!editando ? (
+                      <button onClick={() => setEditando(true)} className="btn btn-sm text-primary-600">Editar</button>
                     ) : (
-                      <div className="flex gap-2 flex-wrap">
-                        {(clienteSel.planos || ['wellhub']).map((p: string) => (
-                          <span key={p} className={`text-xs px-2.5 py-1 rounded-full border ${planoConfig[p]?.bg} ${planoConfig[p]?.cor}`}>
-                            {planoConfig[p]?.label}
-                          </span>
-                        ))}
-                        {(clienteSel.creditos_avulso || 0) > 0 && (
-                          <span className="text-xs px-2.5 py-1 rounded-full border bg-pink-50 border-pink-200 text-pink-700">
-                            {clienteSel.creditos_avulso} avulso{clienteSel.creditos_avulso !== 1 ? 's' : ''}
-                          </span>
-                        )}
+                      <div className="flex gap-2">
+                        <button onClick={() => { setEditando(false); setForm(clienteSel) }} className="btn btn-sm text-gray-500">Cancelar</button>
+                        <button onClick={salvarEdicao} disabled={salvando} className="btn btn-sm gap-1 bg-primary-600 text-white">
+                          <Check size={12} /> {salvando ? 'Salvando...' : 'Salvar'}
+                        </button>
                       </div>
                     )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    {[
+                      { label: 'Nome', key: 'nome', type: 'text', full: true },
+                      { label: 'Email', key: 'email', type: 'email', full: true },
+                      { label: 'Telefone', key: 'telefone', type: 'text', full: false },
+                      { label: 'CPF', key: 'cpf', type: 'text', full: false },
+                    ].map(f => (
+                      <div key={f.key} className={f.full ? 'col-span-2' : ''}>
+                        <div className="text-xs text-gray-400 mb-1">{f.label}</div>
+                        {editando ? (
+                          <input type={f.type} className="input w-full" value={form[f.key] || ''}
+                            onChange={e => setForm({ ...form, [f.key]: e.target.value })} />
+                        ) : (
+                          <div className="text-sm font-medium text-gray-900">{clienteSel[f.key] || '—'}</div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
             )}
 
-            {/* ABA HISTÓRICO */}
-            {aba === 'historico' && (
-              <div className="space-y-5">
-                {/* Próximos */}
-                {historicoFuturo.length > 0 && (
-                  <div>
-                    <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Próximos agendamentos</div>
+            {/* ABA PLANOS */}
+            {aba === 'planos' && (
+              <div className="space-y-4">
+                {/* Cards de crédito */}
+                <div className="grid grid-cols-2 gap-3">
+                  {Object.entries(creditos).map(([plano, info]) => {
+                    const restante = info.limite - info.usado
+                    const pct = Math.round((info.usado / info.limite) * 100)
+                    const cfg = planoConfig[plano]
+                    return (
+                      <div key={plano} className={`rounded-2xl border p-4 ${cfg?.bg}`}>
+                        <div className={`text-xs font-semibold mb-2 ${cfg?.cor}`}>{cfg?.label || plano}</div>
+                        <div className="flex items-end gap-1">
+                          <span className={`text-4xl font-bold ${cfg?.cor}`}>{restante}</span>
+                          <span className="text-xs text-gray-400 mb-1">/ {info.limite}</span>
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">sessões restantes</div>
+                        <div className="mt-3 h-2 bg-white rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full transition-all ${cfg?.barra}`}
+                            style={{ width: `${Math.min(pct, 100)}%` }} />
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">{info.usado} usadas este mês</div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Editar planos */}
+                <div className="card">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="text-sm font-semibold text-gray-900">Planos ativos</div>
+                    {!editando ? (
+                      <button onClick={() => setEditando(true)} className="btn btn-sm text-primary-600">Editar</button>
+                    ) : (
+                      <div className="flex gap-2">
+                        <button onClick={() => { setEditando(false); setForm(clienteSel) }} className="btn btn-sm text-gray-500">Cancelar</button>
+                        <button onClick={salvarEdicao} disabled={salvando} className="btn btn-sm gap-1 bg-primary-600 text-white">
+                          <Check size={12} /> {salvando ? 'Salvando...' : 'Salvar'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {editando ? (
+                    <div className="space-y-3">
+                      {['wellhub', 'totalpass'].map(p => (
+                        <label key={p} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                          (form.planos || []).includes(p) ? `${planoConfig[p].bg} border-current` : 'border-gray-200'
+                        }`}>
+                          <input type="checkbox" checked={(form.planos || []).includes(p)}
+                            onChange={e => {
+                              const atual = form.planos || []
+                              setForm({ ...form, planos: e.target.checked ? [...atual, p] : atual.filter((x: string) => x !== p) })
+                            }}
+                            className="w-4 h-4 accent-primary-600" />
+                          <span className={`text-sm font-medium ${planoConfig[p].cor}`}>{planoConfig[p].label}</span>
+                          <span className="text-xs text-gray-400 ml-auto">{LIMITE_PLANO[p]} sessões/mês</span>
+                        </label>
+                      ))}
+                      <div className="pt-2 border-t border-gray-100">
+                        <div className="text-xs text-gray-400 mb-2">Créditos avulsos disponíveis</div>
+                        <input type="number" min={0} className="input w-28"
+                          value={form.creditos_avulso || 0}
+                          onChange={e => setForm({ ...form, creditos_avulso: parseInt(e.target.value) || 0 })} />
+                      </div>
+                    </div>
+                  ) : (
                     <div className="space-y-2">
-                      {historicoFuturo.map(ag => {
-                        const Ic = statusConfig[ag.status]?.icon || Clock
-                        return (
-                          <div key={ag.id} className="card flex items-center gap-3 border-l-4 border-l-blue-400">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-sm font-semibold text-gray-900">
-                                  {new Date(ag.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' })}
-                                </span>
-                                <span className="font-mono text-xs text-gray-500">{(ag.horario || '').slice(0, 5)}</span>
-                                <span className={`text-xs px-2 py-0.5 rounded-full ${statusConfig[ag.status]?.color}`}>
-                                  {statusConfig[ag.status]?.label}
-                                </span>
-                              </div>
-                              <div className="text-xs text-gray-400 mt-0.5">{planoConfig[ag.tipo_credito]?.label || ag.tipo_credito}</div>
+                      {(clienteSel.planos || ['wellhub']).map((p: string) => (
+                        <div key={p} className={`flex items-center justify-between p-3 rounded-xl border ${planoConfig[p]?.bg}`}>
+                          <span className={`text-sm font-medium ${planoConfig[p]?.cor}`}>{planoConfig[p]?.label}</span>
+                          <span className="text-xs text-gray-500">{LIMITE_PLANO[p]} sessões/mês</span>
+                        </div>
+                      ))}
+                      {(clienteSel.creditos_avulso || 0) > 0 && (
+                        <div className="flex items-center justify-between p-3 rounded-xl border bg-pink-50 border-pink-200">
+                          <span className="text-sm font-medium text-pink-700">Avulso Coach CT</span>
+                          <span className="text-xs text-gray-500">{clienteSel.creditos_avulso} crédito{clienteSel.creditos_avulso !== 1 ? 's' : ''}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ABA AGENDAMENTOS FUTUROS */}
+            {aba === 'agendamentos' && (
+              <div>
+                {agendamentosFuturos.length === 0 ? (
+                  <div className="card text-center py-12 text-gray-400 text-sm">Nenhum agendamento futuro.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {agendamentosFuturos.map(ag => (
+                      <div key={ag.id} className="card border-l-4 border-l-blue-400">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-blue-50 flex flex-col items-center justify-center flex-shrink-0">
+                            <div className="text-xs font-bold text-blue-700 leading-none">
+                              {new Date(ag.data + 'T12:00:00').getDate()}
+                            </div>
+                            <div className="text-xs text-blue-500 uppercase">
+                              {new Date(ag.data + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' })}
                             </div>
                           </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Passados */}
-                {historicoPassado.length > 0 && (
-                  <div>
-                    <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Histórico</div>
-                    <div className="space-y-2">
-                      {historicoPassado.map(ag => (
-                        <div key={ag.id} className={`card flex items-center gap-3 border-l-4 ${
-                          ag.status === 'realizado' ? 'border-l-gray-300' :
-                          ag.status === 'falta' ? 'border-l-orange-400' :
-                          ag.status === 'cancelado' ? 'border-l-red-300' : 'border-l-gray-200'
-                        }`}>
                           <div className="flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-sm font-medium text-gray-700">
-                                {new Date(ag.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' })}
+                              <span className="text-sm font-semibold text-gray-900 capitalize">
+                                {new Date(ag.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long' })}
                               </span>
-                              <span className="font-mono text-xs text-gray-400">{(ag.horario || '').slice(0, 5)}</span>
+                              <span className="font-mono text-xs text-gray-500">{(ag.horario || '').slice(0,5)}</span>
                               <span className={`text-xs px-2 py-0.5 rounded-full ${statusConfig[ag.status]?.color}`}>
                                 {statusConfig[ag.status]?.label}
                               </span>
@@ -548,13 +562,58 @@ export default function RecepcaoClientesPage() {
                             <div className="text-xs text-gray-400 mt-0.5">{planoConfig[ag.tipo_credito]?.label || ag.tipo_credito}</div>
                           </div>
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                    ))}
                   </div>
                 )}
+              </div>
+            )}
 
-                {historico.length === 0 && (
-                  <div className="card text-center py-12 text-gray-400 text-sm">Nenhum agendamento encontrado.</div>
+            {/* ABA HISTÓRICO */}
+            {aba === 'historico' && (
+              <div>
+                {agendamentosPassados.length === 0 ? (
+                  <div className="card text-center py-12 text-gray-400 text-sm">Nenhum histórico encontrado.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {agendamentosPassados.map(ag => (
+                      <div key={ag.id} className={`card flex items-center gap-3 border-l-4 ${
+                        ag.status === 'realizado' ? 'border-l-green-400' :
+                        ag.status === 'falta' ? 'border-l-orange-400' :
+                        'border-l-gray-200'
+                      }`}>
+                        <div className={`w-10 h-10 rounded-xl flex flex-col items-center justify-center flex-shrink-0 ${
+                          ag.status === 'realizado' ? 'bg-green-50' :
+                          ag.status === 'falta' ? 'bg-orange-50' : 'bg-gray-50'
+                        }`}>
+                          <div className={`text-xs font-bold leading-none ${
+                            ag.status === 'realizado' ? 'text-green-700' :
+                            ag.status === 'falta' ? 'text-orange-700' : 'text-gray-500'
+                          }`}>
+                            {new Date(ag.data + 'T12:00:00').getDate()}
+                          </div>
+                          <div className={`text-xs uppercase ${
+                            ag.status === 'realizado' ? 'text-green-500' :
+                            ag.status === 'falta' ? 'text-orange-500' : 'text-gray-400'
+                          }`}>
+                            {new Date(ag.data + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' })}
+                          </div>
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-medium text-gray-700 capitalize">
+                              {new Date(ag.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long' })}
+                            </span>
+                            <span className="font-mono text-xs text-gray-400">{(ag.horario || '').slice(0,5)}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${statusConfig[ag.status]?.color}`}>
+                              {statusConfig[ag.status]?.label}
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-400 mt-0.5">{planoConfig[ag.tipo_credito]?.label || ag.tipo_credito}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             )}
@@ -608,7 +667,7 @@ export default function RecepcaoClientesPage() {
 
                 {horarioEscolhido && (
                   <div className="card mb-4">
-                    <div className="text-xs text-gray-400 mb-3 uppercase tracking-wide">Tipo de crédito</div>
+                    <div className="text-xs text-gray-400 mb-3 uppercase tracking-wide font-semibold">Tipo de crédito</div>
                     <div className="space-y-2">
                       {[
                         ...(clienteSel.planos || ['wellhub']),
@@ -620,7 +679,7 @@ export default function RecepcaoClientesPage() {
                           <div key={p} onClick={() => !semSaldo && setTipoCredito(p)}
                             className={`border rounded-xl p-3 flex items-center gap-3 transition-all ${
                               semSaldo ? 'opacity-40 cursor-not-allowed border-gray-100' :
-                              tipoCredito === p ? `border-primary-400 ${planoConfig[p]?.bg} cursor-pointer` :
+                              tipoCredito === p ? `${planoConfig[p]?.bg} border-primary-400 cursor-pointer` :
                               'border-gray-200 hover:border-primary-200 cursor-pointer'
                             }`}>
                             <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${
@@ -630,7 +689,7 @@ export default function RecepcaoClientesPage() {
                               <span className={`text-sm font-medium ${planoConfig[p]?.cor}`}>{planoConfig[p]?.label || p}</span>
                               {info && <span className="text-xs text-gray-400 ml-2">{info.limite - info.usado} restantes</span>}
                             </div>
-                            {semSaldo && <span className="text-xs text-red-500">Sem saldo</span>}
+                            {semSaldo && <span className="text-xs text-red-500 font-medium">Sem saldo</span>}
                           </div>
                         )
                       })}
@@ -639,7 +698,7 @@ export default function RecepcaoClientesPage() {
                     {erroAgendar && <div className="mt-3 text-sm text-red-600">{erroAgendar}</div>}
 
                     <button onClick={confirmarAgendamento} disabled={agendando}
-                      className="btn w-full mt-4 bg-primary-600 text-white hover:bg-primary-700 font-medium">
+                      className="btn w-full mt-4 bg-primary-600 text-white hover:bg-primary-700 font-medium py-3">
                       <Calendar size={14} className="mr-2" />
                       {agendando ? 'Agendando...' : `Confirmar às ${horarioEscolhido}`}
                     </button>
@@ -654,9 +713,9 @@ export default function RecepcaoClientesPage() {
       {/* Modal novo cliente */}
       {novoCliente && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="font-semibold text-gray-900">Novo cliente</div>
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-5">
+              <div className="font-semibold text-gray-900 text-lg">Novo cliente</div>
               <button onClick={() => setNovoCliente(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
 
@@ -668,29 +727,32 @@ export default function RecepcaoClientesPage() {
                 { label: 'CPF', key: 'cpf', type: 'text' },
               ].map(f => (
                 <div key={f.key}>
-                  <label className="text-xs text-gray-500 mb-1 block">{f.label}</label>
+                  <label className="text-xs text-gray-500 mb-1 block font-medium">{f.label}</label>
                   <input type={f.type} className="input w-full"
                     value={formNovo[f.key as keyof typeof formNovo] as string}
                     onChange={e => setFormNovo({ ...formNovo, [f.key]: e.target.value })} />
                 </div>
               ))}
               <div>
-                <label className="text-xs text-gray-500 mb-2 block">Planos</label>
+                <label className="text-xs text-gray-500 mb-2 block font-medium">Planos</label>
                 {['wellhub', 'totalpass'].map(p => (
-                  <label key={p} className="flex items-center gap-2 cursor-pointer mb-1">
+                  <label key={p} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer mb-2 transition-all ${
+                    formNovo.planos.includes(p) ? `${planoConfig[p].bg}` : 'border-gray-200'
+                  }`}>
                     <input type="checkbox" checked={formNovo.planos.includes(p)}
                       onChange={e => setFormNovo({
                         ...formNovo,
                         planos: e.target.checked ? [...formNovo.planos, p] : formNovo.planos.filter(x => x !== p)
                       })}
                       className="w-4 h-4 accent-primary-600" />
-                    <span className="text-sm text-gray-700">{planoConfig[p].label}</span>
+                    <span className={`text-sm font-medium ${planoConfig[p].cor}`}>{planoConfig[p].label}</span>
+                    <span className="text-xs text-gray-400 ml-auto">{LIMITE_PLANO[p]} sess/mês</span>
                   </label>
                 ))}
               </div>
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Créditos avulsos</label>
-                <input type="number" min={0} className="input w-24"
+                <label className="text-xs text-gray-500 mb-1 block font-medium">Créditos avulsos</label>
+                <input type="number" min={0} className="input w-28"
                   value={formNovo.creditos_avulso}
                   onChange={e => setFormNovo({ ...formNovo, creditos_avulso: parseInt(e.target.value) || 0 })} />
               </div>
@@ -698,9 +760,9 @@ export default function RecepcaoClientesPage() {
 
             {erroCriar && <div className="mt-3 text-sm text-red-600">{erroCriar}</div>}
 
-            <div className="flex gap-2 mt-5">
+            <div className="flex gap-2 mt-6">
               <button onClick={() => setNovoCliente(false)} className="btn flex-1 text-gray-500 border border-gray-200">Cancelar</button>
-              <button onClick={criarCliente} disabled={criando} className="btn flex-1 bg-primary-600 text-white">
+              <button onClick={criarCliente} disabled={criando} className="btn flex-1 bg-primary-600 text-white font-medium">
                 {criando ? 'Cadastrando...' : 'Cadastrar'}
               </button>
             </div>
