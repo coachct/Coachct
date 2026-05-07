@@ -44,7 +44,7 @@ export default function LandingPage() {
       else if (perfil.role === 'coach') router.push('/coach/painel')
       else if (perfil.role === 'coordenadora') router.push('/ju/biblioteca')
       else if (perfil.role === 'recepcao') router.push('/recepcao/agenda')
-      else if (perfil.role === 'cliente') router.push('/minha-conta')
+      // clientes ficam no site público
     }
   }, [perfil, loading])
 
@@ -125,7 +125,7 @@ export default function LandingPage() {
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <button onClick={() => router.push('/login')} className="nav-link-h"
             style={{ ...s.navLink, background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-            Entrar
+            Login
           </button>
           <button onClick={() => router.push('/cadastro')} style={s.navCta}>Agendar agora</button>
         </div>
@@ -245,7 +245,6 @@ export default function LandingPage() {
         <div style={s.sTitle}>ESCOLHA SEU PLANO</div>
         <div style={{ ...s.sSub, marginBottom: '1rem' }}>Acesso ilimitado ao espaço de musculação premium em Vila Olímpia.</div>
 
-        {/* Apps aceitos */}
         <div style={{ background: '#111', border: '1px solid #222', borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '3rem', display: 'flex', flexWrap: 'wrap' as const, gap: '1.5rem' }}>
           <div style={{ flex: 1, minWidth: 220 }}>
             <div style={{ fontSize: 11, color: ACCENT, fontWeight: 700, letterSpacing: 1, marginBottom: 6, textTransform: 'uppercase' as const }}>Wellhub</div>
@@ -310,7 +309,6 @@ export default function LandingPage() {
         <div style={{ ...s.sSub, marginBottom: '3rem' }}>Veja as vagas disponíveis e reserve seu Coach CT. Cada halter representa uma vaga.</div>
 
         <div style={{ maxWidth: 700 }}>
-          {/* Calendário semanal */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
             <button className="nav-semana-btn"
               onClick={() => { setSemanaOffset(o => Math.max(0, o - 1)); setDiaSel(0) }}
@@ -340,7 +338,6 @@ export default function LandingPage() {
               style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #333', background: 'transparent', color: semanaOffset === 2 ? '#333' : '#fff', fontSize: 18, cursor: semanaOffset === 2 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .2s' }}>›</button>
           </div>
 
-          {/* Filtro período */}
           <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap' as const }}>
             {[
               { key: 'todos', label: 'Todos' },
@@ -355,7 +352,6 @@ export default function LandingPage() {
             ))}
           </div>
 
-          {/* Slots */}
           {horariosFiltrados.map((h, i) => {
             const livres = h.total - h.ocupados
             const lotado = livres === 0
@@ -373,13 +369,13 @@ export default function LandingPage() {
                     {lotado ? 'LOTADO' : livres === 1 ? '1 VAGA' : `${livres} VAGAS`}
                   </div>
                   {!lotado && (
-                    <button onClick={e => { e.stopPropagation(); router.push('/cadastro') }}
+                    <button onClick={e => { e.stopPropagation(); router.push('/login') }}
                       style={{ marginTop: 4, background: ACCENT, color: '#fff', border: 'none', borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
                       Reservar
                     </button>
                   )}
                   {lotado && (
-                    <button onClick={e => { e.stopPropagation(); router.push('/cadastro') }}
+                    <button onClick={e => { e.stopPropagation(); router.push('/login') }}
                       style={{ marginTop: 4, background: 'transparent', color: '#ffaa00', border: '1px solid #ffaa00', borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
                       Fila
                     </button>
@@ -388,6 +384,7 @@ export default function LandingPage() {
               </div>
             )
           })}
+
           <div style={{ textAlign: 'center' as const, marginTop: '2rem' }}>
             <button onClick={() => router.push('/cadastro')} style={s.btnPrimary}>
               Criar conta e reservar →
@@ -440,7 +437,7 @@ export default function LandingPage() {
         </div>
         <div style={{ fontSize: 12, color: '#444' }}>© 2025 Just CT — Serious Training. Todos os direitos reservados.</div>
         <div style={{ display: 'flex', gap: '1.5rem' }}>
-          <span onClick={() => router.push('/login')} style={{ fontSize: 12, color: '#555', cursor: 'pointer' }}>Entrar</span>
+          <span onClick={() => router.push('/login')} style={{ fontSize: 12, color: '#555', cursor: 'pointer' }}>Login</span>
           <span onClick={() => router.push('/cadastro')} style={{ fontSize: 12, color: ACCENT, cursor: 'pointer' }}>Criar conta</span>
         </div>
       </footer>
