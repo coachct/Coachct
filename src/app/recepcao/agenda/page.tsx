@@ -43,36 +43,22 @@ export default function RecepcaoAgendaPage() {
   }, [data, perfil])
 
   async function loadData(manter_scroll = false) {
-    if (manter_scroll) {
-      scrollRef.current = window.scrollY
-    }
+    if (manter_scroll) scrollRef.current = window.scrollY
     const diaSem = new Date(data + 'T12:00:00').getDay()
 
     const [{ data: ags }, { data: coachs }] = await Promise.all([
-      supabase
-        .from('agendamentos')
-        .select('*, clientes(nome, cpf, telefone)')
-        .eq('data', data)
-        .order('horario'),
-      supabase
-        .from('coach_horarios')
-        .select('*, coaches(id, nome)')
-        .eq('dia_semana', diaSem)
-        .eq('ativo', true),
+      supabase.from('agendamentos').select('*, clientes(nome, cpf, telefone)').eq('data', data).order('horario'),
+      supabase.from('coach_horarios').select('*, coaches(id, nome)').eq('dia_semana', diaSem).eq('ativo', true),
     ])
 
     setAgendamentos(ags || [])
     setCoaches(coachs || [])
     setLoadingData(false)
 
-    if (manter_scroll) {
-      setTimeout(() => window.scrollTo({ top: scrollRef.current }), 50)
-    }
+    if (manter_scroll) setTimeout(() => window.scrollTo({ top: scrollRef.current }), 50)
   }
 
-  function norm(hora: string) {
-    return (hora || '').slice(0, 5)
-  }
+  function norm(hora: string) { return (hora || '').slice(0, 5) }
 
   function coachesPorHorario(horario: string) {
     return coaches.filter(c => norm(c.hora) === horario)
@@ -161,55 +147,33 @@ export default function RecepcaoAgendaPage() {
     <div className="min-h-screen bg-gray-50">
 
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
+      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div>
-          <div className="font-bold text-gray-900 text-sm">● COACH CT</div>
-          <div className="text-xs text-gray-400">Recepção</div>
-        </div>
-        <div className="flex items-center gap-3">
-          <input
-            type="date"
-            className="input text-sm"
-            value={data}
-            onChange={e => { setData(e.target.value); setLoadingData(true) }}
-          />
-          <button
-            onClick={() => router.push('/recepcao/clientes')}
-            className="btn btn-sm text-gray-500"
-          >
-            Clientes
-          </button>
-          <button
-            onClick={() => { supabase.auth.signOut(); router.push('/login') }}
-            className="btn btn-sm text-gray-500"
-          >
-            Sair
-          </button>
-        </div>
-      </div>
-
-      <div className="max-w-3xl mx-auto px-4 py-5">
-
-        {/* Data e resumo */}
-        <div className="mb-5">
           <h1 className="text-lg font-semibold text-gray-900 capitalize">{diaSemana}</h1>
-          <div className="flex gap-4 mt-2 text-sm text-gray-500">
+          <div className="flex gap-4 mt-1 text-sm text-gray-500">
             <span>📅 {agendamentosAtivos.length} agendamentos</span>
             <span>✅ {agendamentos.filter(a => a.status === 'realizado').length} realizados</span>
             <span>❌ {agendamentos.filter(a => a.status === 'falta').length} faltas</span>
           </div>
         </div>
+        <input
+          type="date"
+          className="input text-sm"
+          value={data}
+          onChange={e => { setData(e.target.value); setLoadingData(true) }}
+        />
+      </div>
+
+      <div className="max-w-3xl mx-auto px-6 py-5">
 
         {/* Abas */}
         <div className="flex gap-2 mb-5">
-          <button
-            onClick={() => setAbaAtiva('agendamentos')}
+          <button onClick={() => setAbaAtiva('agendamentos')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
               abaAtiva === 'agendamentos'
                 ? 'bg-primary-600 text-white'
                 : 'bg-white border border-gray-200 text-gray-600 hover:border-primary-300'
-            }`}
-          >
+            }`}>
             <Users size={14} />
             Clientes do dia
             {agendamentosAtivos.length > 0 && (
@@ -220,14 +184,12 @@ export default function RecepcaoAgendaPage() {
               </span>
             )}
           </button>
-          <button
-            onClick={() => setAbaAtiva('grade')}
+          <button onClick={() => setAbaAtiva('grade')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
               abaAtiva === 'grade'
                 ? 'bg-primary-600 text-white'
                 : 'bg-white border border-gray-200 text-gray-600 hover:border-primary-300'
-            }`}
-          >
+            }`}>
             <Calendar size={14} />
             Grade do dia
           </button>
@@ -244,12 +206,8 @@ export default function RecepcaoAgendaPage() {
                 <div className="card mb-4">
                   <div className="relative">
                     <Search size={14} className="absolute left-3 top-3 text-gray-400" />
-                    <input
-                      className="input pl-9"
-                      placeholder="Buscar por nome ou CPF..."
-                      value={busca}
-                      onChange={e => setBusca(e.target.value)}
-                    />
+                    <input className="input pl-9" placeholder="Buscar por nome ou CPF..."
+                      value={busca} onChange={e => setBusca(e.target.value)} />
                   </div>
                   {agendamentosFiltrados && agendamentosFiltrados.length === 0 && (
                     <div className="text-sm text-gray-400 text-center mt-3">Nenhum cliente encontrado.</div>
@@ -275,8 +233,7 @@ export default function RecepcaoAgendaPage() {
                         <div key={ag.id} className={`card border-l-4 ${
                           ag.status === 'realizado' ? 'border-l-gray-300' :
                           ag.status === 'falta' ? 'border-l-orange-400' :
-                          ag.coach_id ? 'border-l-green-400' :
-                          'border-l-blue-400'
+                          ag.coach_id ? 'border-l-green-400' : 'border-l-blue-400'
                         }`}>
                           <div className="flex items-start gap-3">
                             <div className="w-9 h-9 rounded-full bg-primary-100 text-primary-800 text-xs font-bold flex items-center justify-center flex-shrink-0">
@@ -295,9 +252,7 @@ export default function RecepcaoAgendaPage() {
                                 {ag.clientes?.telefone && <span>{ag.clientes.telefone}</span>}
                               </div>
                               {coachNome && (
-                                <div className="text-xs text-green-700 mt-1 font-medium">
-                                  Coach: {coachNome}
-                                </div>
+                                <div className="text-xs text-green-700 mt-1 font-medium">Coach: {coachNome}</div>
                               )}
                             </div>
                           </div>
@@ -305,50 +260,34 @@ export default function RecepcaoAgendaPage() {
                           {ag.status !== 'realizado' && ag.status !== 'falta' && (
                             <div className="mt-3 flex flex-wrap gap-2">
                               {!ag.coach_id && coachesLivres.length > 0 && (
-                                <select
-                                  className="input input-sm text-xs flex-1"
-                                  defaultValue=""
+                                <select className="input input-sm text-xs flex-1" defaultValue=""
                                   onChange={e => { if (e.target.value) alocarCoach(ag.id, e.target.value) }}
-                                  disabled={alocandoId === ag.id}
-                                >
+                                  disabled={alocandoId === ag.id}>
                                   <option value="">Alocar coach...</option>
                                   {coachesLivres.map(c => (
-                                    <option key={c.coaches?.id} value={c.coaches?.id}>
-                                      {c.coaches?.nome}
-                                    </option>
+                                    <option key={c.coaches?.id} value={c.coaches?.id}>{c.coaches?.nome}</option>
                                   ))}
                                 </select>
                               )}
                               {ag.coach_id && (
-                                <select
-                                  className="input input-sm text-xs flex-1"
-                                  value={ag.coach_id}
+                                <select className="input input-sm text-xs flex-1" value={ag.coach_id}
                                   onChange={e => alocarCoach(ag.id, e.target.value)}
-                                  disabled={alocandoId === ag.id}
-                                >
+                                  disabled={alocandoId === ag.id}>
                                   {coachesHorario.map(c => (
-                                    <option key={c.coaches?.id} value={c.coaches?.id}>
-                                      {c.coaches?.nome}
-                                    </option>
+                                    <option key={c.coaches?.id} value={c.coaches?.id}>{c.coaches?.nome}</option>
                                   ))}
                                 </select>
                               )}
-                              <button
-                                onClick={() => marcarPresenca(ag.id)}
-                                className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600"
-                              >
+                              <button onClick={() => marcarPresenca(ag.id)}
+                                className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
                                 <CheckCircle size={12} /> Presença
                               </button>
-                              <button
-                                onClick={() => marcarFalta(ag.id)}
-                                className="btn btn-sm gap-1 text-orange-600 hover:bg-orange-50"
-                              >
+                              <button onClick={() => marcarFalta(ag.id)}
+                                className="btn btn-sm gap-1 text-orange-600 hover:bg-orange-50">
                                 <XCircle size={12} /> Falta
                               </button>
-                              <button
-                                onClick={() => cancelarAgendamento(ag.id)}
-                                className="btn btn-sm text-red-400 hover:bg-red-50"
-                              >
+                              <button onClick={() => cancelarAgendamento(ag.id)}
+                                className="btn btn-sm text-red-400 hover:bg-red-50">
                                 Cancelar
                               </button>
                             </div>
@@ -392,22 +331,18 @@ export default function RecepcaoAgendaPage() {
                               {vagas === 0 ? 'Lotado' : `${vagas} vaga${vagas !== 1 ? 's' : ''}`}
                             </span>
                           </div>
-
                           <div className="flex flex-wrap gap-1.5 mt-2">
                             {coachesHorario.map(c => {
                               const alocado = ags.some(a => a.coach_id === c.coaches?.id)
                               return (
                                 <span key={c.id} className={`text-xs px-2.5 py-1 rounded-full ${
-                                  alocado
-                                    ? 'bg-primary-100 text-primary-800 line-through opacity-60'
-                                    : 'bg-gray-100 text-gray-700'
+                                  alocado ? 'bg-primary-100 text-primary-800 line-through opacity-60' : 'bg-gray-100 text-gray-700'
                                 }`}>
                                   {c.coaches?.nome?.split(' ')[0]}
                                 </span>
                               )
                             })}
                           </div>
-
                           {ags.length > 0 && (
                             <div className="mt-2 text-xs text-gray-500">
                               {ags.length} cliente{ags.length !== 1 ? 's' : ''} agendado{ags.length !== 1 ? 's' : ''}
