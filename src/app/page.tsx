@@ -233,7 +233,7 @@ export default function LandingPage() {
               WELLHUB & TOTALPASS
             </div>
             <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6 }}>
-              Planos <strong style={{ color: '#fff' }}>Wellhub Diamond</strong> e <strong style={{ color: '#fff' }}>TotalPass TP6</strong> têm acesso liberado à musculação. Check-in direto pelo app na recepção.
+              <strong style={{ color: '#fff' }}>Wellhub Gold+</strong> e superiores e <strong style={{ color: '#fff' }}>TotalPass TP4</strong> e superiores têm acesso liberado à musculação. Check-in direto pelo app na recepção.
             </div>
           </div>
           <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem' }}>
