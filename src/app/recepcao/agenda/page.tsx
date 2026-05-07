@@ -33,7 +33,7 @@ export default function RecepcaoAgendaPage() {
   const [abaAtiva, setAbaAtiva] = useState<'agendamentos' | 'grade'>('agendamentos')
 
   const scrollRef = useRef<number>(0)
-
+  const dateInputRef = useRef<HTMLInputElement>(null)
   const hoje = new Date().toISOString().split('T')[0]
 
   const diaSemana = new Date(data + 'T12:00:00').toLocaleDateString('pt-BR', {
@@ -297,14 +297,15 @@ export default function RecepcaoAgendaPage() {
             {/* ABA GRADE */}
             {abaAtiva === 'grade' && (
               <div>
-                {/* Navegação de data com setas */}
-                <div className="card mb-4 flex items-center justify-between">
+                {/* Navegação de data: setas + ícone calendário */}
+                <div className="card mb-4 flex items-center gap-3">
                   <button
                     onClick={() => { setData(addDias(data, -1)); setLoadingData(true) }}
-                    className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-all">
+                    className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-all flex-shrink-0">
                     <ChevronLeft size={16} />
                   </button>
-                  <div className="text-center">
+
+                  <div className="flex-1 text-center">
                     <div className="text-sm font-semibold text-gray-900 capitalize">
                       {new Date(data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
                     </div>
@@ -315,9 +316,26 @@ export default function RecepcaoAgendaPage() {
                       </button>
                     )}
                   </div>
+
+                  {/* Input de data escondido acionado pelo ícone */}
+                  <div className="relative flex-shrink-0">
+                    <button
+                      onClick={() => dateInputRef.current?.showPicker()}
+                      className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-all">
+                      <Calendar size={15} />
+                    </button>
+                    <input
+                      ref={dateInputRef}
+                      type="date"
+                      value={data}
+                      onChange={e => { setData(e.target.value); setLoadingData(true) }}
+                      className="absolute opacity-0 w-0 h-0 top-0 left-0 pointer-events-none"
+                    />
+                  </div>
+
                   <button
                     onClick={() => { setData(addDias(data, 1)); setLoadingData(true) }}
-                    className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-all">
+                    className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-all flex-shrink-0">
                     <ChevronRight size={16} />
                   </button>
                 </div>
