@@ -48,7 +48,6 @@ export default function LandingPage() {
     }
   }, [perfil, loading])
 
-  // Gera os 7 dias da semana atual baseado no offset
   const diasSemana = Array.from({ length: 7 }, (_, i) => {
     const d = new Date()
     d.setDate(d.getDate() + semanaOffset * 7 + i)
@@ -95,14 +94,14 @@ export default function LandingPage() {
         .btn-ghost-h:hover { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
         .plano-card-h { transition: all .25s; }
         .plano-card-h:hover { border-color: ${ACCENT} !important; transform: translateY(-4px); }
-        .dia-btn-h { transition: all .2s; cursor: pointer; flex: 1; }
+        .dia-btn-h { transition: all .2s; cursor: pointer; flex: 1; min-width: 0; }
         .dia-btn-h:hover { border-color: ${ACCENT} !important; }
         .slot-row-h { transition: all .2s; }
         .slot-row-h:hover { border-color: ${ACCENT} !important; background: #ff2d9b08 !important; cursor: pointer; }
         .periodo-btn-h { transition: all .15s; cursor: pointer; }
         .feature-h { transition: all .2s; }
         .feature-h:hover { border-color: ${ACCENT} !important; }
-        .nav-semana-btn:hover { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
+        .nav-semana-btn:hover:not(:disabled) { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
         @media (max-width: 768px) {
           .nav-links-d { display: none !important; }
           .hero-title-r { font-size: 36px !important; }
@@ -268,7 +267,7 @@ export default function LandingPage() {
             { nome: 'Coach CT', preco: 'R$ 79', cents: ',90', periodo: '/treino · válido 30 dias', desc: 'Crédito exclusivo para agendamento do Coach CT. Necessário ter acesso ao CT via plano ou app parceiro.', destaque: true },
             { nome: 'Treino Avulso', preco: 'R$ 64', cents: ',90', periodo: '/treino · válido 30 dias', desc: 'Acesso único ao espaço de musculação. Não inclui acompanhamento de coach.', destaque: false },
           ].map((p, i) => (
-            <div key={i} className="plano-card-h" style={{ background: '#111', border: `1px solid ${p.destaque ? ACCENT : '#222'}`, borderRadius: 16, padding: '2rem', position: 'relative', overflow: 'hidden' }}>
+            <div key={i} className="plano-card-h" style={{ background: '#111', border: `1px solid ${p.destaque ? ACCENT : '#222'}`, borderRadius: 16, padding: '2rem' }}>
               <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '0.5rem' }}>{p.nome}</div>
               <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 48, color: '#fff', lineHeight: 1 }}>
                 {p.preco}<span style={{ fontSize: 24 }}>{p.cents}</span>
@@ -288,27 +287,29 @@ export default function LandingPage() {
         <div style={s.sTitle}>ESCOLHA SEU HORÁRIO</div>
         <div style={{ ...s.sSub, marginBottom: '3rem' }}>Veja as vagas disponíveis e reserve seu Coach CT. Cada halter representa uma vaga.</div>
 
-        {/* Calendário semanal com navegação */}
-        <div style={{ marginBottom: '2rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+        {/* Tudo alinhado em maxWidth 700 */}
+        <div style={{ maxWidth: 700 }}>
+
+          {/* Calendário semanal */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
             <button
               className="nav-semana-btn"
               onClick={() => { setSemanaOffset(o => Math.max(0, o - 1)); setDiaSel(0) }}
               disabled={semanaOffset === 0}
               style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #333', background: 'transparent', color: semanaOffset === 0 ? '#333' : '#fff', fontSize: 18, cursor: semanaOffset === 0 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .2s' }}
             >‹</button>
-            <div style={{ flex: 1, display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 6, flex: 1 }}>
               {diasSemana.map((d, i) => {
                 const isHoje = semanaOffset === 0 && i === 0
                 const isSel = i === diaSel
                 return (
                   <div key={i} className="dia-btn-h" onClick={() => setDiaSel(i)}
-                    style={{ padding: '0.75rem 0.25rem', borderRadius: 10, border: `1.5px solid ${isSel ? ACCENT : '#222'}`, background: isSel ? `${ACCENT}15` : 'transparent', textAlign: 'center', minWidth: 0 }}>
-                    <div style={{ fontSize: 10, textTransform: 'uppercase' as const, letterSpacing: 1, color: isSel ? ACCENT : '#555', fontWeight: 600, marginBottom: 4 }}>
+                    style={{ padding: '0.6rem 0.25rem', borderRadius: 10, border: `1.5px solid ${isSel ? ACCENT : '#222'}`, background: isSel ? `${ACCENT}15` : 'transparent', textAlign: 'center' }}>
+                    <div style={{ fontSize: 9, textTransform: 'uppercase' as const, letterSpacing: 1, color: isSel ? ACCENT : '#555', fontWeight: 600, marginBottom: 2 }}>
                       {isHoje ? 'HOJE' : DIAS_SEMANA[d.getDay()]}
                     </div>
-                    <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: isSel ? '#fff' : '#888', lineHeight: 1 }}>{d.getDate()}</div>
-                    <div style={{ fontSize: 10, color: isSel ? ACCENT : '#444', textTransform: 'uppercase' as const, letterSpacing: 1 }}>
+                    <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 20, color: isSel ? '#fff' : '#888', lineHeight: 1 }}>{d.getDate()}</div>
+                    <div style={{ fontSize: 9, color: isSel ? ACCENT : '#444', textTransform: 'uppercase' as const }}>
                       {d.toLocaleDateString('pt-BR', { month: 'short' })}
                     </div>
                   </div>
@@ -322,25 +323,23 @@ export default function LandingPage() {
               style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #333', background: 'transparent', color: semanaOffset === 2 ? '#333' : '#fff', fontSize: 18, cursor: semanaOffset === 2 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .2s' }}
             >›</button>
           </div>
-        </div>
 
-        {/* Filtro período */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap' as const }}>
-          {[
-            { key: 'todos', label: 'Todos' },
-            { key: 'manha', label: '🌅 Manhã' },
-            { key: 'tarde', label: '☀️ Tarde' },
-            { key: 'noite', label: '🌙 Noite' },
-          ].map(p => (
-            <button key={p.key} className="periodo-btn-h" onClick={() => setPeriodo(p.key as any)}
-              style={{ padding: '0.35rem 1rem', borderRadius: 20, border: `1px solid ${periodo === p.key ? ACCENT : '#333'}`, background: periodo === p.key ? `${ACCENT}20` : 'transparent', color: periodo === p.key ? ACCENT : '#555', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-              {p.label}
-            </button>
-          ))}
-        </div>
+          {/* Filtro período */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap' as const }}>
+            {[
+              { key: 'todos', label: 'Todos' },
+              { key: 'manha', label: '🌅 Manhã' },
+              { key: 'tarde', label: '☀️ Tarde' },
+              { key: 'noite', label: '🌙 Noite' },
+            ].map(p => (
+              <button key={p.key} className="periodo-btn-h" onClick={() => setPeriodo(p.key as any)}
+                style={{ padding: '0.35rem 1rem', borderRadius: 20, border: `1px solid ${periodo === p.key ? ACCENT : '#333'}`, background: periodo === p.key ? `${ACCENT}20` : 'transparent', color: periodo === p.key ? ACCENT : '#555', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                {p.label}
+              </button>
+            ))}
+          </div>
 
-        {/* Slots */}
-        <div style={{ maxWidth: 700 }}>
+          {/* Slots */}
           {horariosFiltrados.map((h, i) => {
             const livres = h.total - h.ocupados
             const lotado = livres === 0
@@ -373,6 +372,7 @@ export default function LandingPage() {
               </div>
             )
           })}
+
           <div style={{ textAlign: 'center' as const, marginTop: '2rem' }}>
             <button onClick={() => router.push('/cadastro')} style={s.btnPrimary}>
               Criar conta e reservar →
