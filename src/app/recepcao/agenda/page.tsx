@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { Clock, User, CheckCircle, XCircle, UserCheck, Search } from 'lucide-react'
+import { Clock, CheckCircle, XCircle, Search } from 'lucide-react'
 
 const HORARIOS = [
   '05:30','06:00','06:30','07:00','07:30','08:00','08:30',
@@ -25,7 +25,6 @@ export default function RecepcaoAgendaPage() {
   const [alocandoId, setAlocandoId] = useState<string | null>(null)
   const [busca, setBusca] = useState('')
 
-  const hoje = new Date()
   const diaSemana = new Date(data + 'T12:00:00').toLocaleDateString('pt-BR', {
     weekday: 'long', day: 'numeric', month: 'long'
   })
@@ -45,11 +44,13 @@ export default function RecepcaoAgendaPage() {
     const diaSem = new Date(data + 'T12:00:00').getDay()
 
     const [{ data: ags }, { data: coachs }] = await Promise.all([
-      supabase.from('agendamentos')
+      supabase
+        .from('agendamentos')
         .select('*, clientes(nome, cpf, telefone)')
         .eq('data', data)
         .order('horario'),
-      supabase.from('coach_horarios')
+      supabase
+        .from('coach_horarios')
         .select('*, coaches(id, nome)')
         .eq('dia_semana', diaSem)
         .eq('ativo', true),
@@ -60,21 +61,22 @@ export default function RecepcaoAgendaPage() {
     setLoadingData(false)
   }
 
-  // Agrupa coaches por horário
+  // Normaliza para "HH:MM" independente do formato vindo do banco
+  function norm(hora: string) {
+    return (hora || '').slice(0, 5)
+  }
+
   function coachesPorHorario(horario: string) {
-    return coaches.filter(c => c.hora === horario)
+    return coaches.filter(c => norm(c.hora) === horario)
   }
 
-  // Agendamentos por horário
   function agendamentosPorHorario(horario: string) {
-    return agendamentos.filter(a => a.horario.startsWith(horario))
+    return agendamentos.filter(a => norm(a.horario) === horario)
   }
 
-  // Vagas disponíveis por horário
   function vagasDisponiveis(horario: string) {
     const total = coachesPorHorario(horario).length
-    const ocupadas = agendamentosPorHorario(horario)
-      .filter(a => a.status !== 'cancelado').length
+    const ocupadas = agendamentosPorHorario(horario).filter(a => a.status !== 'cancelado').length
     return Math.max(0, total - ocupadas)
   }
 
@@ -91,18 +93,13 @@ export default function RecepcaoAgendaPage() {
   }
 
   async function marcarPresenca(agendamentoId: string) {
-    await supabase.from('agendamentos').update({
-      status: 'realizado'
-    }).eq('id', agendamentoId)
+    await supabase.from('agendamentos').update({ status: 'realizado' }).eq('id', agendamentoId)
     await loadData()
   }
 
   async function marcarFalta(agendamentoId: string) {
     if (!confirm('Marcar como falta? O cliente poderá ser bloqueado para novos agendamentos.')) return
-    await supabase.from('agendamentos').update({
-      status: 'falta'
-    }).eq('id', agendamentoId)
-    // Bloqueia o cliente
+    await supabase.from('agendamentos').update({ status: 'falta' }).eq('id', agendamentoId)
     const ag = agendamentos.find(a => a.id === agendamentoId)
     if (ag?.cliente_id) {
       await supabase.from('clientes').update({
@@ -131,12 +128,10 @@ export default function RecepcaoAgendaPage() {
     falta:      { label: 'Falta',      color: 'bg-orange-100 text-orange-700' },
   }
 
-  // Horários que têm coaches ou agendamentos
   const horariosAtivos = HORARIOS.filter(h =>
     coachesPorHorario(h).length > 0 || agendamentosPorHorario(h).length > 0
   )
 
-  // Filtro de busca
   const agendamentosFiltrados = busca
     ? agendamentos.filter(a =>
         a.clientes?.nome?.toLowerCase().includes(busca.toLowerCase()) ||
@@ -152,6 +147,7 @@ export default function RecepcaoAgendaPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
         <div>
@@ -165,8 +161,12 @@ export default function RecepcaoAgendaPage() {
             value={data}
             onChange={e => setData(e.target.value)}
           />
-          <button onClick={() => { supabase.auth.signOut(); router.push('/login') }}
-            className="btn btn-sm text-gray-500">Sair</button>
+          <button
+            onClick={() => { supabase.auth.signOut(); router.push('/login') }}
+            className="btn btn-sm text-gray-500"
+          >
+            Sair
+          </button>
         </div>
       </div>
 
@@ -200,7 +200,7 @@ export default function RecepcaoAgendaPage() {
                   <div className="flex-1">
                     <div className="text-sm font-medium text-gray-900">{ag.clientes?.nome}</div>
                     <div className="text-xs text-gray-400">
-                      {ag.horario?.slice(0,5)} · {ag.tipo_credito} ·
+                      {norm(ag.horario)} · {ag.tipo_credito} ·
                       <span className={`ml-1 px-1.5 py-0.5 rounded text-xs ${statusConfig[ag.status]?.color}`}>
                         {statusConfig[ag.status]?.label}
                       </span>
@@ -229,6 +229,7 @@ export default function RecepcaoAgendaPage() {
 
               return (
                 <div key={horario} className="card">
+
                   {/* Cabeçalho do horário */}
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
@@ -281,7 +282,7 @@ export default function RecepcaoAgendaPage() {
                           }`}>
                             <div className="flex items-start gap-3">
                               <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-800 text-xs font-bold flex items-center justify-center flex-shrink-0">
-                                {ag.clientes?.nome?.slice(0,2).toUpperCase()}
+                                {ag.clientes?.nome?.slice(0, 2).toUpperCase()}
                               </div>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
@@ -307,14 +308,11 @@ export default function RecepcaoAgendaPage() {
                             {/* Ações */}
                             {ag.status !== 'realizado' && ag.status !== 'falta' && ag.status !== 'cancelado' && (
                               <div className="mt-3 flex flex-wrap gap-2">
-                                {/* Alocar coach */}
                                 {!ag.coach_id && coachesLivres.length > 0 && (
                                   <select
                                     className="input input-sm text-xs flex-1"
                                     defaultValue=""
-                                    onChange={e => {
-                                      if (e.target.value) alocarCoach(ag.id, e.target.value)
-                                    }}
+                                    onChange={e => { if (e.target.value) alocarCoach(ag.id, e.target.value) }}
                                     disabled={alocandoId === ag.id}
                                   >
                                     <option value="">Alocar coach...</option>
