@@ -35,6 +35,7 @@ export default function LandingPage() {
   const { perfil, loading } = useAuth()
   const router = useRouter()
   const [diaSel, setDiaSel] = useState(0)
+  const [semanaOffset, setSemanaOffset] = useState(0)
   const [periodo, setPeriodo] = useState<'todos' | 'manha' | 'tarde' | 'noite'>('todos')
 
   useEffect(() => {
@@ -47,9 +48,10 @@ export default function LandingPage() {
     }
   }, [perfil, loading])
 
-  const dias = Array.from({ length: 14 }, (_, i) => {
+  // Gera os 7 dias da semana atual baseado no offset
+  const diasSemana = Array.from({ length: 7 }, (_, i) => {
     const d = new Date()
-    d.setDate(d.getDate() + i)
+    d.setDate(d.getDate() + semanaOffset * 7 + i)
     return d
   })
 
@@ -93,13 +95,14 @@ export default function LandingPage() {
         .btn-ghost-h:hover { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
         .plano-card-h { transition: all .25s; }
         .plano-card-h:hover { border-color: ${ACCENT} !important; transform: translateY(-4px); }
-        .dia-btn-h { transition: all .2s; cursor: pointer; }
+        .dia-btn-h { transition: all .2s; cursor: pointer; flex: 1; }
         .dia-btn-h:hover { border-color: ${ACCENT} !important; }
         .slot-row-h { transition: all .2s; }
         .slot-row-h:hover { border-color: ${ACCENT} !important; background: #ff2d9b08 !important; cursor: pointer; }
         .periodo-btn-h { transition: all .15s; cursor: pointer; }
         .feature-h { transition: all .2s; }
         .feature-h:hover { border-color: ${ACCENT} !important; }
+        .nav-semana-btn:hover { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
         @media (max-width: 768px) {
           .nav-links-d { display: none !important; }
           .hero-title-r { font-size: 36px !important; }
@@ -241,7 +244,6 @@ export default function LandingPage() {
         <div style={s.sTag}>// planos</div>
         <div style={s.sTitle}>ESCOLHA SEU PLANO</div>
         <div style={{ ...s.sSub, marginBottom: '3rem' }}>Acesso ilimitado ao espaço de musculação premium em Vila Olímpia.</div>
-
         <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>Acesso ao espaço</div>
         <div className="grid3-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', marginBottom: '3rem' }}>
           {[
@@ -260,7 +262,6 @@ export default function LandingPage() {
             </div>
           ))}
         </div>
-
         <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>Créditos avulsos</div>
         <div className="grid2-r" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
           {[
@@ -287,27 +288,43 @@ export default function LandingPage() {
         <div style={s.sTitle}>ESCOLHA SEU HORÁRIO</div>
         <div style={{ ...s.sSub, marginBottom: '3rem' }}>Veja as vagas disponíveis e reserve seu Coach CT. Cada halter representa uma vaga.</div>
 
-        <div style={{ overflowX: 'auto', marginBottom: '2rem' }}>
-          <div style={{ display: 'flex', gap: 10, paddingBottom: 8 }}>
-            {dias.map((d, i) => {
-              const isHoje = i === 0
-              const isSel = i === diaSel
-              return (
-                <div key={i} className="dia-btn-h" onClick={() => setDiaSel(i)}
-                  style={{ flexShrink: 0, width: 72, padding: '0.75rem 0.5rem', borderRadius: 10, border: `1.5px solid ${isSel ? ACCENT : '#222'}`, background: isSel ? `${ACCENT}15` : 'transparent', textAlign: 'center' }}>
-                  <div style={{ fontSize: 10, textTransform: 'uppercase' as const, letterSpacing: 2, color: isSel ? ACCENT : '#555', fontWeight: 600, marginBottom: 4 }}>
-                    {isHoje ? 'HOJE' : DIAS_SEMANA[d.getDay()]}
+        {/* Calendário semanal com navegação */}
+        <div style={{ marginBottom: '2rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+            <button
+              className="nav-semana-btn"
+              onClick={() => { setSemanaOffset(o => Math.max(0, o - 1)); setDiaSel(0) }}
+              disabled={semanaOffset === 0}
+              style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #333', background: 'transparent', color: semanaOffset === 0 ? '#333' : '#fff', fontSize: 18, cursor: semanaOffset === 0 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .2s' }}
+            >‹</button>
+            <div style={{ flex: 1, display: 'flex', gap: 8 }}>
+              {diasSemana.map((d, i) => {
+                const isHoje = semanaOffset === 0 && i === 0
+                const isSel = i === diaSel
+                return (
+                  <div key={i} className="dia-btn-h" onClick={() => setDiaSel(i)}
+                    style={{ padding: '0.75rem 0.25rem', borderRadius: 10, border: `1.5px solid ${isSel ? ACCENT : '#222'}`, background: isSel ? `${ACCENT}15` : 'transparent', textAlign: 'center', minWidth: 0 }}>
+                    <div style={{ fontSize: 10, textTransform: 'uppercase' as const, letterSpacing: 1, color: isSel ? ACCENT : '#555', fontWeight: 600, marginBottom: 4 }}>
+                      {isHoje ? 'HOJE' : DIAS_SEMANA[d.getDay()]}
+                    </div>
+                    <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: isSel ? '#fff' : '#888', lineHeight: 1 }}>{d.getDate()}</div>
+                    <div style={{ fontSize: 10, color: isSel ? ACCENT : '#444', textTransform: 'uppercase' as const, letterSpacing: 1 }}>
+                      {d.toLocaleDateString('pt-BR', { month: 'short' })}
+                    </div>
                   </div>
-                  <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: isSel ? '#fff' : '#888', lineHeight: 1 }}>{d.getDate()}</div>
-                  <div style={{ fontSize: 10, color: isSel ? ACCENT : '#444', textTransform: 'uppercase' as const, letterSpacing: 1 }}>
-                    {d.toLocaleDateString('pt-BR', { month: 'short' })}
-                  </div>
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
+            <button
+              className="nav-semana-btn"
+              onClick={() => { setSemanaOffset(o => Math.min(2, o + 1)); setDiaSel(0) }}
+              disabled={semanaOffset === 2}
+              style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #333', background: 'transparent', color: semanaOffset === 2 ? '#333' : '#fff', fontSize: 18, cursor: semanaOffset === 2 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .2s' }}
+            >›</button>
           </div>
         </div>
 
+        {/* Filtro período */}
         <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap' as const }}>
           {[
             { key: 'todos', label: 'Todos' },
@@ -322,6 +339,7 @@ export default function LandingPage() {
           ))}
         </div>
 
+        {/* Slots */}
         <div style={{ maxWidth: 700 }}>
           {horariosFiltrados.map((h, i) => {
             const livres = h.total - h.ocupados
