@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle, Clock, CheckCircle2, XCircle } from 'lucide-react'
+import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle } from 'lucide-react'
 
 const HORARIOS = [
   '05:30','06:00','06:30','07:00','07:30','08:00','08:30',
@@ -55,11 +55,12 @@ export default function RecepcaoClientesPage() {
   const [diaSel, setDiaSel] = useState(0)
   const [semanaOffset, setSemanaOffset] = useState(0)
   const [horariosSel, setHorariosSel] = useState<any[]>([])
-  const [horarioEscolhido, setHorarioEscolhido] = useState('')
+
+  // Modal de confirmação
+  const [modalSlot, setModalSlot] = useState<{ hora: string; data: string } | null>(null)
   const [tipoCredito, setTipoCredito] = useState('')
   const [agendando, setAgendando] = useState(false)
-  const [erroAgendar, setErroAgendar] = useState('')
-  const [sucessoAgendar, setSucessoAgendar] = useState(false)
+  const [erroModal, setErroModal] = useState('')
 
   const [novoCliente, setNovoCliente] = useState(false)
   const [formNovo, setFormNovo] = useState({ nome: '', email: '', telefone: '', cpf: '', planos: ['wellhub'], creditos_avulso: 0 })
@@ -95,9 +96,7 @@ export default function RecepcaoClientesPage() {
     setEditando(false)
     setAba('dados')
     setHistorico([])
-    setSucessoAgendar(false)
-    setErroAgendar('')
-    setHorarioEscolhido('')
+    setModalSlot(null)
     setTipoCredito('')
     await Promise.all([carregarCreditos(cliente), carregarHistorico(cliente.id)])
   }
@@ -235,34 +234,46 @@ export default function RecepcaoClientesPage() {
     setHorariosSel(resultado)
   }
 
-  async function confirmarAgendamento() {
-    if (!horarioEscolhido || !tipoCredito) { setErroAgendar('Selecione o horário e o tipo de crédito.'); return }
-    setAgendando(true)
-    setErroAgendar('')
+  function abrirModal(hora: string) {
     const dataStr = diasSemana[diaSel].toISOString().split('T')[0]
+    setModalSlot({ hora, data: dataStr })
+    setTipoCredito('')
+    setErroModal('')
+  }
+
+  async function confirmarAgendamento() {
+    if (!tipoCredito) { setErroModal('Selecione o tipo de crédito.'); return }
+    if (!modalSlot || !clienteSel) return
+    setAgendando(true)
+    setErroModal('')
 
     const { error } = await supabase.from('agendamentos').insert({
       cliente_id: clienteSel.id,
-      data: dataStr,
-      horario: horarioEscolhido + ':00',
+      data: modalSlot.data,
+      horario: modalSlot.hora + ':00',
       status: 'agendado',
       tipo_credito: tipoCredito,
     })
 
     if (error) {
-      setErroAgendar('Erro ao agendar. Tente novamente.')
-    } else {
-      setSucessoAgendar(true)
-      setHorarioEscolhido('')
-      setTipoCredito('')
-      await Promise.all([carregarHorariosAgendar(), carregarCreditos(clienteSel), carregarHistorico(clienteSel.id)])
+      setErroModal('Erro ao agendar. Tente novamente.')
+      setAgendando(false)
+      return
     }
+
+    setModalSlot(null)
     setAgendando(false)
+    await Promise.all([carregarCreditos(clienteSel), carregarHistorico(clienteSel.id)])
+    setAba('agendamentos')
   }
 
   const hoje = new Date().toISOString().split('T')[0]
-  const agendamentosFuturos = historico.filter(a => a.data >= hoje && ['agendado','confirmado'].includes(a.status)).sort((a,b) => a.data.localeCompare(b.data))
-  const agendamentosPassados = historico.filter(a => a.data < hoje || ['realizado','falta','cancelado'].includes(a.status)).sort((a,b) => b.data.localeCompare(a.data))
+  const agendamentosFuturos = historico
+    .filter(a => a.data >= hoje && ['agendado','confirmado'].includes(a.status))
+    .sort((a, b) => a.data.localeCompare(b.data))
+  const agendamentosPassados = historico
+    .filter(a => a.data < hoje || ['realizado','falta','cancelado'].includes(a.status))
+    .sort((a, b) => b.data.localeCompare(a.data))
 
   const abas = [
     { key: 'dados', label: 'Dados' },
@@ -362,7 +373,6 @@ export default function RecepcaoClientesPage() {
         {/* PERFIL */}
         {clienteSel && (
           <>
-            {/* Alerta bloqueado */}
             {clienteSel.bloqueado && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 flex items-start gap-2">
                 <AlertCircle size={16} className="text-red-500 flex-shrink-0 mt-0.5" />
@@ -376,7 +386,7 @@ export default function RecepcaoClientesPage() {
               </div>
             )}
 
-            {/* Abas — scroll horizontal no mobile */}
+            {/* Abas */}
             <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
               {abas.map(a => (
                 <button key={a.key} onClick={() => setAba(a.key as any)}
@@ -391,7 +401,6 @@ export default function RecepcaoClientesPage() {
             {/* ABA DADOS */}
             {aba === 'dados' && (
               <div className="space-y-4">
-                {/* Card avatar + nome */}
                 <div className="bg-gradient-to-br from-primary-600 to-primary-800 rounded-2xl p-5 text-white flex items-center gap-4">
                   <div className="w-14 h-14 rounded-full bg-white/20 text-white text-xl font-bold flex items-center justify-center flex-shrink-0">
                     {clienteSel.nome?.slice(0, 2).toUpperCase()}
@@ -407,7 +416,6 @@ export default function RecepcaoClientesPage() {
                   </div>
                 </div>
 
-                {/* Card dados */}
                 <div className="card">
                   <div className="flex items-center justify-between mb-4">
                     <div className="text-sm font-semibold text-gray-900">Informações</div>
@@ -422,7 +430,6 @@ export default function RecepcaoClientesPage() {
                       </div>
                     )}
                   </div>
-
                   <div className="grid grid-cols-2 gap-4">
                     {[
                       { label: 'Nome', key: 'nome', type: 'text', full: true },
@@ -448,7 +455,6 @@ export default function RecepcaoClientesPage() {
             {/* ABA PLANOS */}
             {aba === 'planos' && (
               <div className="space-y-4">
-                {/* Cards de crédito */}
                 <div className="grid grid-cols-2 gap-3">
                   {Object.entries(creditos).map(([plano, info]) => {
                     const restante = info.limite - info.usado
@@ -472,7 +478,6 @@ export default function RecepcaoClientesPage() {
                   })}
                 </div>
 
-                {/* Editar planos */}
                 <div className="card">
                   <div className="flex items-center justify-between mb-4">
                     <div className="text-sm font-semibold text-gray-900">Planos ativos</div>
@@ -487,12 +492,11 @@ export default function RecepcaoClientesPage() {
                       </div>
                     )}
                   </div>
-
                   {editando ? (
                     <div className="space-y-3">
                       {['wellhub', 'totalpass'].map(p => (
                         <label key={p} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                          (form.planos || []).includes(p) ? `${planoConfig[p].bg} border-current` : 'border-gray-200'
+                          (form.planos || []).includes(p) ? `${planoConfig[p].bg}` : 'border-gray-200'
                         }`}>
                           <input type="checkbox" checked={(form.planos || []).includes(p)}
                             onChange={e => {
@@ -505,7 +509,7 @@ export default function RecepcaoClientesPage() {
                         </label>
                       ))}
                       <div className="pt-2 border-t border-gray-100">
-                        <div className="text-xs text-gray-400 mb-2">Créditos avulsos disponíveis</div>
+                        <div className="text-xs text-gray-400 mb-2">Créditos avulsos</div>
                         <input type="number" min={0} className="input w-28"
                           value={form.creditos_avulso || 0}
                           onChange={e => setForm({ ...form, creditos_avulso: parseInt(e.target.value) || 0 })} />
@@ -534,15 +538,28 @@ export default function RecepcaoClientesPage() {
             {/* ABA AGENDAMENTOS FUTUROS */}
             {aba === 'agendamentos' && (
               <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="text-sm font-semibold text-gray-900">Próximos agendamentos</div>
+                  <button onClick={() => setAba('agendar')}
+                    className="btn btn-sm gap-1 bg-primary-600 text-white">
+                    <Plus size={12} /> Agendar
+                  </button>
+                </div>
                 {agendamentosFuturos.length === 0 ? (
-                  <div className="card text-center py-12 text-gray-400 text-sm">Nenhum agendamento futuro.</div>
+                  <div className="card text-center py-12 text-gray-400 text-sm">
+                    Nenhum agendamento futuro.
+                    <br />
+                    <button onClick={() => setAba('agendar')} className="mt-3 text-primary-600 text-sm font-medium">
+                      + Fazer agendamento
+                    </button>
+                  </div>
                 ) : (
                   <div className="space-y-2">
                     {agendamentosFuturos.map(ag => (
                       <div key={ag.id} className="card border-l-4 border-l-blue-400">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl bg-blue-50 flex flex-col items-center justify-center flex-shrink-0">
-                            <div className="text-xs font-bold text-blue-700 leading-none">
+                            <div className="text-sm font-bold text-blue-700 leading-none">
                               {new Date(ag.data + 'T12:00:00').getDate()}
                             </div>
                             <div className="text-xs text-blue-500 uppercase">
@@ -572,6 +589,7 @@ export default function RecepcaoClientesPage() {
             {/* ABA HISTÓRICO */}
             {aba === 'historico' && (
               <div>
+                <div className="text-sm font-semibold text-gray-900 mb-4">Histórico de treinos</div>
                 {agendamentosPassados.length === 0 ? (
                   <div className="card text-center py-12 text-gray-400 text-sm">Nenhum histórico encontrado.</div>
                 ) : (
@@ -579,14 +597,13 @@ export default function RecepcaoClientesPage() {
                     {agendamentosPassados.map(ag => (
                       <div key={ag.id} className={`card flex items-center gap-3 border-l-4 ${
                         ag.status === 'realizado' ? 'border-l-green-400' :
-                        ag.status === 'falta' ? 'border-l-orange-400' :
-                        'border-l-gray-200'
+                        ag.status === 'falta' ? 'border-l-orange-400' : 'border-l-gray-200'
                       }`}>
                         <div className={`w-10 h-10 rounded-xl flex flex-col items-center justify-center flex-shrink-0 ${
                           ag.status === 'realizado' ? 'bg-green-50' :
                           ag.status === 'falta' ? 'bg-orange-50' : 'bg-gray-50'
                         }`}>
-                          <div className={`text-xs font-bold leading-none ${
+                          <div className={`text-sm font-bold leading-none ${
                             ag.status === 'realizado' ? 'text-green-700' :
                             ag.status === 'falta' ? 'text-orange-700' : 'text-gray-500'
                           }`}>
@@ -621,20 +638,15 @@ export default function RecepcaoClientesPage() {
             {/* ABA AGENDAR */}
             {aba === 'agendar' && (
               <div>
-                {sucessoAgendar && (
-                  <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-4 flex items-center gap-2 text-green-700 text-sm">
-                    <Check size={16} /> Agendamento realizado com sucesso!
-                  </div>
-                )}
-
-                <div className="card mb-4">
+                <div className="text-sm font-semibold text-gray-900 mb-4">Escolha o dia e horário</div>
+                <div className="card">
                   <div className="flex items-center gap-2 mb-3">
                     <button onClick={() => { setSemanaOffset(o => Math.max(0, o - 1)); setDiaSel(0) }}
                       disabled={semanaOffset === 0}
                       className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 disabled:opacity-30">‹</button>
                     <div className="flex gap-1 flex-1">
                       {diasSemana.map((d, i) => (
-                        <button key={i} onClick={() => { setDiaSel(i); setSucessoAgendar(false); setHorarioEscolhido('') }}
+                        <button key={i} onClick={() => setDiaSel(i)}
                           className={`flex-1 py-2 rounded-lg text-center transition-all ${
                             i === diaSel ? 'bg-primary-600 text-white' : 'bg-gray-50 border border-gray-200 text-gray-600 hover:border-primary-300'
                           }`}>
@@ -649,66 +661,103 @@ export default function RecepcaoClientesPage() {
                   </div>
 
                   <div className="grid grid-cols-3 gap-2">
+                    {horariosSel.length === 0 && (
+                      <div className="col-span-3 text-center py-6 text-gray-400 text-sm">Nenhum horário disponível.</div>
+                    )}
                     {horariosSel.map(h => (
                       <button key={h.hora}
-                        onClick={() => { if (h.livres > 0) { setHorarioEscolhido(h.hora); setSucessoAgendar(false) } }}
+                        onClick={() => h.livres > 0 && abrirModal(h.hora)}
                         disabled={h.livres === 0}
-                        className={`py-2 px-3 rounded-lg text-sm font-medium border transition-all ${
-                          horarioEscolhido === h.hora ? 'bg-primary-600 text-white border-primary-600' :
-                          h.livres === 0 ? 'bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed' :
-                          'bg-white border-gray-200 text-gray-700 hover:border-primary-400'
+                        className={`py-3 px-3 rounded-xl text-sm font-medium border transition-all ${
+                          h.livres === 0
+                            ? 'bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed'
+                            : 'bg-white border-gray-200 text-gray-700 hover:border-primary-400 hover:bg-primary-50 active:scale-95'
                         }`}>
-                        <div>{h.hora}</div>
-                        <div className="text-xs opacity-70">{h.livres === 0 ? 'Lotado' : `${h.livres} vaga${h.livres !== 1 ? 's' : ''}`}</div>
+                        <div className="font-bold">{h.hora}</div>
+                        <div className="text-xs opacity-70 mt-0.5">
+                          {h.livres === 0 ? 'Lotado' : `${h.livres} vaga${h.livres !== 1 ? 's' : ''}`}
+                        </div>
                       </button>
                     ))}
                   </div>
                 </div>
-
-                {horarioEscolhido && (
-                  <div className="card mb-4">
-                    <div className="text-xs text-gray-400 mb-3 uppercase tracking-wide font-semibold">Tipo de crédito</div>
-                    <div className="space-y-2">
-                      {[
-                        ...(clienteSel.planos || ['wellhub']),
-                        ...((clienteSel.creditos_avulso || 0) > 0 ? ['avulso'] : [])
-                      ].map((p: string) => {
-                        const info = creditos[p]
-                        const semSaldo = info ? (info.limite - info.usado) <= 0 : false
-                        return (
-                          <div key={p} onClick={() => !semSaldo && setTipoCredito(p)}
-                            className={`border rounded-xl p-3 flex items-center gap-3 transition-all ${
-                              semSaldo ? 'opacity-40 cursor-not-allowed border-gray-100' :
-                              tipoCredito === p ? `${planoConfig[p]?.bg} border-primary-400 cursor-pointer` :
-                              'border-gray-200 hover:border-primary-200 cursor-pointer'
-                            }`}>
-                            <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${
-                              tipoCredito === p ? 'border-primary-600 bg-primary-600' : 'border-gray-300'
-                            }`} />
-                            <div className="flex-1">
-                              <span className={`text-sm font-medium ${planoConfig[p]?.cor}`}>{planoConfig[p]?.label || p}</span>
-                              {info && <span className="text-xs text-gray-400 ml-2">{info.limite - info.usado} restantes</span>}
-                            </div>
-                            {semSaldo && <span className="text-xs text-red-500 font-medium">Sem saldo</span>}
-                          </div>
-                        )
-                      })}
-                    </div>
-
-                    {erroAgendar && <div className="mt-3 text-sm text-red-600">{erroAgendar}</div>}
-
-                    <button onClick={confirmarAgendamento} disabled={agendando}
-                      className="btn w-full mt-4 bg-primary-600 text-white hover:bg-primary-700 font-medium py-3">
-                      <Calendar size={14} className="mr-2" />
-                      {agendando ? 'Agendando...' : `Confirmar às ${horarioEscolhido}`}
-                    </button>
-                  </div>
-                )}
               </div>
             )}
           </>
         )}
       </div>
+
+      {/* MODAL CONFIRMAÇÃO */}
+      {modalSlot && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <div className="font-bold text-gray-900">Confirmar agendamento</div>
+                <div className="text-sm text-gray-400 mt-0.5 capitalize">
+                  {new Date(modalSlot.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })} · {modalSlot.hora}
+                </div>
+              </div>
+              <button onClick={() => setModalSlot(null)} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="mb-4">
+              <div className="text-xs text-gray-400 mb-2 uppercase tracking-wide font-semibold">Usar crédito de</div>
+              <div className="space-y-2">
+                {[
+                  ...(clienteSel.planos || ['wellhub']),
+                  ...((clienteSel.creditos_avulso || 0) > 0 ? ['avulso'] : [])
+                ].map((p: string) => {
+                  const info = creditos[p]
+                  const restante = info ? info.limite - info.usado : 0
+                  const semSaldo = restante <= 0
+                  return (
+                    <div key={p} onClick={() => !semSaldo && setTipoCredito(p)}
+                      className={`border rounded-xl p-3 flex items-center gap-3 transition-all ${
+                        semSaldo ? 'opacity-40 cursor-not-allowed border-gray-100 bg-gray-50' :
+                        tipoCredito === p ? `${planoConfig[p]?.bg} border-primary-400 cursor-pointer` :
+                        'border-gray-200 hover:border-primary-200 cursor-pointer bg-white'
+                      }`}>
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
+                        tipoCredito === p ? 'border-primary-600 bg-primary-600' : 'border-gray-300'
+                      }`}>
+                        {tipoCredito === p && <div className="w-2 h-2 rounded-full bg-white" />}
+                      </div>
+                      <div className="flex-1">
+                        <div className={`text-sm font-semibold ${planoConfig[p]?.cor}`}>{planoConfig[p]?.label || p}</div>
+                        {info && <div className="text-xs text-gray-400">{restante} sessão{restante !== 1 ? 'ões' : ''} restante{restante !== 1 ? 's' : ''}</div>}
+                      </div>
+                      {semSaldo && <span className="text-xs text-red-400 font-medium">Sem saldo</span>}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {erroModal && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-sm text-red-600">
+                {erroModal}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button onClick={() => setModalSlot(null)}
+                className="btn flex-1 text-gray-500 border border-gray-200">
+                Cancelar
+              </button>
+              <button onClick={confirmarAgendamento} disabled={agendando || !tipoCredito}
+                className={`btn flex-2 flex-1 font-medium transition-all ${
+                  tipoCredito ? 'bg-primary-600 text-white hover:bg-primary-700' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                }`}>
+                <Calendar size={14} className="mr-1.5" />
+                {agendando ? 'Confirmando...' : 'Confirmar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal novo cliente */}
       {novoCliente && (
