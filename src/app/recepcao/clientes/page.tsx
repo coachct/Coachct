@@ -49,7 +49,7 @@ export default function RecepcaoClientesPage() {
   useEffect(() => {
     if (loading) return
     if (!perfil) { router.push('/'); return }
-    if (perfil.role !== 'recepcao' && perfil.role !== 'admin') { router.push('/'); return }
+    if ((perfil.role as any) !== 'recepcao' && (perfil.role as any) !== 'admin') { router.push('/'); return }
     buscarClientes()
   }, [loading, perfil])
 
