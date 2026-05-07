@@ -140,7 +140,6 @@ export default function RecepcaoAgendaPage() {
     coachesPorHorario(h).length > 0 || agendamentosPorHorario(h).length > 0
   )
 
-  // Agendamentos ativos do dia (não cancelados), ordenados por horário
   const agendamentosAtivos = agendamentos
     .filter(a => a.status !== 'cancelado')
     .sort((a, b) => a.horario.localeCompare(b.horario))
@@ -174,6 +173,12 @@ export default function RecepcaoAgendaPage() {
             value={data}
             onChange={e => { setData(e.target.value); setLoadingData(true) }}
           />
+          <button
+            onClick={() => router.push('/recepcao/clientes')}
+            className="btn btn-sm text-gray-500"
+          >
+            Clientes
+          </button>
           <button
             onClick={() => { supabase.auth.signOut(); router.push('/login') }}
             className="btn btn-sm text-gray-500"
@@ -234,10 +239,8 @@ export default function RecepcaoAgendaPage() {
           </div>
         ) : (
           <>
-            {/* ABA: CLIENTES DO DIA */}
             {abaAtiva === 'agendamentos' && (
               <div>
-                {/* Busca */}
                 <div className="card mb-4">
                   <div className="relative">
                     <Search size={14} className="absolute left-3 top-3 text-gray-400" />
@@ -253,7 +256,6 @@ export default function RecepcaoAgendaPage() {
                   )}
                 </div>
 
-                {/* Lista de agendamentos */}
                 {agendamentosAtivos.length === 0 ? (
                   <div className="card text-center py-12 text-gray-400 text-sm">
                     Nenhum agendamento para este dia.
@@ -300,7 +302,6 @@ export default function RecepcaoAgendaPage() {
                             </div>
                           </div>
 
-                          {/* Ações */}
                           {ag.status !== 'realizado' && ag.status !== 'falta' && (
                             <div className="mt-3 flex flex-wrap gap-2">
                               {!ag.coach_id && coachesLivres.length > 0 && (
@@ -360,7 +361,6 @@ export default function RecepcaoAgendaPage() {
               </div>
             )}
 
-            {/* ABA: GRADE DO DIA */}
             {abaAtiva === 'grade' && (
               <div>
                 {horariosAtivos.length === 0 ? (
