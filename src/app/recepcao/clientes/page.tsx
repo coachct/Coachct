@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle } from 'lucide-react'
+import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle, ShoppingCart, Package, DollarSign } from 'lucide-react'
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
@@ -26,6 +26,13 @@ const statusConfig: Record<string, { label: string; color: string }> = {
   falta:      { label: 'Falta',      color: 'bg-orange-100 text-orange-700' },
 }
 
+const FORMAS_PAGAMENTO = [
+  { key: 'pix', label: 'PIX' },
+  { key: 'cartao_credito', label: 'Cartão de crédito' },
+  { key: 'cartao_debito', label: 'Cartão de débito' },
+  { key: 'dinheiro', label: 'Dinheiro' },
+]
+
 export default function RecepcaoClientesPage() {
   const { perfil, loading } = useAuth()
   const router = useRouter()
@@ -35,7 +42,7 @@ export default function RecepcaoClientesPage() {
   const [clientes, setClientes] = useState<any[]>([])
   const [loadingClientes, setLoadingClientes] = useState(false)
   const [clienteSel, setClienteSel] = useState<any>(null)
-  const [aba, setAba] = useState<'dados' | 'planos' | 'agendamentos' | 'historico' | 'agendar'>('dados')
+  const [aba, setAba] = useState<'dados' | 'planos' | 'agendamentos' | 'historico' | 'vendas' | 'agendar'>('dados')
 
   const [editando, setEditando] = useState(false)
   const [form, setForm] = useState<any>({})
@@ -43,6 +50,7 @@ export default function RecepcaoClientesPage() {
 
   const [historico, setHistorico] = useState<any[]>([])
   const [saldoMes, setSaldoMes] = useState<Record<string, any>>({})
+  const [vendas, setVendas] = useState<any[]>([])
 
   const [diaSel, setDiaSel] = useState(0)
   const [semanaOffset, setSemanaOffset] = useState(0)
@@ -57,6 +65,19 @@ export default function RecepcaoClientesPage() {
   const [formNovo, setFormNovo] = useState({ nome: '', email: '', telefone: '', cpf: '', planos: ['wellhub'], creditos_avulso: 0 })
   const [criando, setCriando] = useState(false)
   const [erroCriar, setErroCriar] = useState('')
+
+  // Modal de venda
+  const [modalVenda, setModalVenda] = useState(false)
+  const [produtosDisp, setProdutosDisp] = useState<any[]>([])
+  const [formVenda, setFormVenda] = useState({
+    produto_id: '',
+    quantidade: 1,
+    valor_unitario: 0,
+    forma_pagamento: 'pix',
+    observacao: '',
+  })
+  const [vendendo, setVendendo] = useState(false)
+  const [erroVenda, setErroVenda] = useState('')
 
   useEffect(() => {
     if (loading) return
@@ -91,9 +112,14 @@ export default function RecepcaoClientesPage() {
     setEditando(false)
     setAba('dados')
     setHistorico([])
+    setVendas([])
     setModalSlot(null)
     setTipoCredito('')
-    await Promise.all([carregarSaldo(cliente.id), carregarHistorico(cliente.id)])
+    await Promise.all([
+      carregarSaldo(cliente.id),
+      carregarHistorico(cliente.id),
+      carregarVendas(cliente.id),
+    ])
   }
 
   async function carregarSaldo(clienteId: string) {
@@ -117,6 +143,16 @@ export default function RecepcaoClientesPage() {
       .order('data', { ascending: false })
       .limit(50)
     setHistorico(data || [])
+  }
+
+  async function carregarVendas(clienteId: string) {
+    const { data } = await supabase
+      .from('vendas')
+      .select('*, produtos(nome, tipo), perfis:vendido_por(nome)')
+      .eq('cliente_id', clienteId)
+      .order('vendido_em', { ascending: false })
+      .limit(50)
+    setVendas(data || [])
   }
 
   async function salvarEdicao() {
@@ -167,6 +203,73 @@ export default function RecepcaoClientesPage() {
       setClientes([])
     }
     setCriando(false)
+  }
+
+  async function abrirVenda() {
+    const { data } = await supabase
+      .from('produtos')
+      .select('*')
+      .eq('ativo', true)
+      .order('nome')
+    setProdutosDisp(data || [])
+    setFormVenda({
+      produto_id: data && data[0] ? data[0].id : '',
+      quantidade: 1,
+      valor_unitario: data && data[0] ? Number(data[0].valor) : 0,
+      forma_pagamento: 'pix',
+      observacao: '',
+    })
+    setErroVenda('')
+    setModalVenda(true)
+  }
+
+  function selecionarProduto(produtoId: string) {
+    const p = produtosDisp.find(x => x.id === produtoId)
+    if (p) {
+      setFormVenda({
+        ...formVenda,
+        produto_id: produtoId,
+        valor_unitario: Number(p.valor),
+      })
+    }
+  }
+
+  async function confirmarVenda() {
+    if (!formVenda.produto_id) { setErroVenda('Selecione um produto.'); return }
+    if (formVenda.quantidade < 1 || formVenda.quantidade > 20) { setErroVenda('Quantidade deve ser entre 1 e 20.'); return }
+    if (formVenda.valor_unitario <= 0) { setErroVenda('Informe um valor válido.'); return }
+
+    setVendendo(true)
+    setErroVenda('')
+
+    const { data, error } = await supabase.rpc('registrar_venda', {
+      p_produto_id: formVenda.produto_id,
+      p_cliente_id: clienteSel.id,
+      p_quantidade: formVenda.quantidade,
+      p_valor_unitario: formVenda.valor_unitario,
+      p_forma_pagamento: formVenda.forma_pagamento,
+      p_vendido_por: perfil?.id,
+      p_observacao: formVenda.observacao.trim() || null,
+    })
+
+    setVendendo(false)
+
+    if (error) {
+      setErroVenda('Erro ao registrar venda: ' + error.message)
+      return
+    }
+
+    if (data && !data.sucesso) {
+      setErroVenda('Erro: ' + (data.motivo || 'desconhecido'))
+      return
+    }
+
+    setModalVenda(false)
+    await Promise.all([
+      carregarSaldo(clienteSel.id),
+      carregarVendas(clienteSel.id),
+    ])
+    setAba('vendas')
   }
 
   const diasSemana = Array.from({ length: 7 }, (_, i) => {
@@ -222,8 +325,6 @@ export default function RecepcaoClientesPage() {
 
   async function abrirModal(hora: string) {
     const dataStr = diasSemana[diaSel].toISOString().split('T')[0]
-
-    // Carrega o saldo do mês correto baseado na data selecionada
     const dataObj = diasSemana[diaSel]
     const { data: saldoData } = await supabase.rpc('saldo_creditos_cliente', {
       p_cliente_id: clienteSel.id,
@@ -274,6 +375,7 @@ export default function RecepcaoClientesPage() {
   const abas = [
     { key: 'dados', label: 'Dados' },
     { key: 'planos', label: 'Planos' },
+    { key: 'vendas', label: `Vendas${vendas.length > 0 ? ` (${vendas.length})` : ''}` },
     { key: 'agendamentos', label: `Agenda${agendamentosFuturos.length > 0 ? ` (${agendamentosFuturos.length})` : ''}` },
     { key: 'historico', label: 'Histórico' },
     { key: 'agendar', label: '+ Agendar' },
@@ -364,11 +466,6 @@ export default function RecepcaoClientesPage() {
                               {planoConfig[p]?.label || p}
                             </span>
                           ))}
-                          {(c.creditos_avulso || 0) > 0 && (
-                            <span className="text-xs px-2 py-0.5 rounded-full border bg-pink-50 border-pink-200 text-pink-700">
-                              {c.creditos_avulso} avulso{c.creditos_avulso !== 1 ? 's' : ''}
-                            </span>
-                          )}
                         </div>
                       </div>
                       <ChevronRight size={14} className="text-gray-300 flex-shrink-0" />
@@ -394,6 +491,12 @@ export default function RecepcaoClientesPage() {
                 </button>
               </div>
             )}
+
+            {/* Botão grande de Vender produto */}
+            <button onClick={abrirVenda}
+              className="w-full mb-4 btn gap-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 py-3 font-semibold shadow-sm">
+              <ShoppingCart size={16} /> Vender produto
+            </button>
 
             <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
               {abas.map(a => (
@@ -514,12 +617,6 @@ export default function RecepcaoClientesPage() {
                           <span className="text-xs text-gray-400 ml-auto">{LIMITE_PLANO[p]} sessões/mês</span>
                         </label>
                       ))}
-                      <div className="pt-2 border-t border-gray-100">
-                        <div className="text-xs text-gray-400 mb-2">Créditos avulsos</div>
-                        <input type="number" min={0} className="input w-28"
-                          value={form.creditos_avulso || 0}
-                          onChange={e => setForm({ ...form, creditos_avulso: parseInt(e.target.value) || 0 })} />
-                      </div>
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -529,15 +626,60 @@ export default function RecepcaoClientesPage() {
                           <span className="text-xs text-gray-500">{LIMITE_PLANO[p]} sessões/mês</span>
                         </div>
                       ))}
-                      {(clienteSel.creditos_avulso || 0) > 0 && (
-                        <div className="flex items-center justify-between p-3 rounded-xl border bg-pink-50 border-pink-200">
-                          <span className="text-sm font-medium text-pink-700">Avulso Coach CT</span>
-                          <span className="text-xs text-gray-500">{clienteSel.creditos_avulso} crédito{clienteSel.creditos_avulso !== 1 ? 's' : ''}</span>
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {aba === 'vendas' && (
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="text-sm font-semibold text-gray-900">Histórico de vendas</div>
+                  <button onClick={abrirVenda} className="btn btn-sm gap-1 bg-green-600 text-white hover:bg-green-700">
+                    <ShoppingCart size={12} /> Nova venda
+                  </button>
+                </div>
+                {vendas.length === 0 ? (
+                  <div className="card text-center py-12 text-gray-400 text-sm">
+                    Nenhuma venda registrada para este cliente.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {vendas.map(v => (
+                      <div key={v.id} className="card">
+                        <div className="flex items-start gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-green-50 text-green-700 flex items-center justify-center flex-shrink-0">
+                            <Package size={18} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-semibold text-gray-900">
+                                {v.produtos?.nome || 'Produto removido'}
+                              </span>
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">
+                                {v.quantidade}x
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 flex-wrap">
+                              <span className="font-mono font-bold text-green-700">
+                                R$ {Number(v.valor_total).toFixed(2).replace('.', ',')}
+                              </span>
+                              <span>{FORMAS_PAGAMENTO.find(f => f.key === v.forma_pagamento)?.label || v.forma_pagamento}</span>
+                              <span>{new Date(v.vendido_em).toLocaleDateString('pt-BR')} {new Date(v.vendido_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                            {v.perfis?.nome && (
+                              <div className="text-xs text-gray-400 mt-0.5">Vendido por {v.perfis.nome}</div>
+                            )}
+                            {v.observacao && (
+                              <div className="text-xs text-gray-500 mt-1 italic">{v.observacao}</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -761,6 +903,120 @@ export default function RecepcaoClientesPage() {
         </div>
       )}
 
+      {/* Modal de Venda */}
+      {modalVenda && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <div className="font-bold text-gray-900 flex items-center gap-2">
+                  <ShoppingCart size={18} className="text-green-600" /> Vender produto
+                </div>
+                <div className="text-xs text-gray-400 mt-0.5">para {clienteSel?.nome}</div>
+              </div>
+              <button onClick={() => setModalVenda(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            </div>
+
+            {produtosDisp.length === 0 ? (
+              <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 text-sm text-orange-700">
+                Nenhum produto ativo cadastrado. Peça ao admin para cadastrar produtos.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs text-gray-500 mb-2 block font-medium uppercase tracking-wide">Produto</label>
+                  <div className="space-y-2">
+                    {produtosDisp.map(p => (
+                      <label key={p.id} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                        formVenda.produto_id === p.id ? 'border-green-400 bg-green-50' : 'border-gray-200'
+                      }`}>
+                        <input type="radio" checked={formVenda.produto_id === p.id}
+                          onChange={() => selecionarProduto(p.id)}
+                          className="mt-1 accent-green-600" />
+                        <div className="flex-1">
+                          <div className="text-sm font-medium text-gray-900">{p.nome}</div>
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            R$ {Number(p.valor).toFixed(2).replace('.', ',')}
+                            {p.dias_validade && ` · validade ${p.dias_validade} dias`}
+                          </div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block font-medium">Quantidade</label>
+                    <input type="number" min={1} max={20} className="input w-full"
+                      value={formVenda.quantidade}
+                      onChange={e => setFormVenda({ ...formVenda, quantidade: parseInt(e.target.value) || 1 })} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block font-medium">Valor unitário (R$)</label>
+                    <input type="number" min={0} step="0.01" className="input w-full"
+                      value={formVenda.valor_unitario}
+                      onChange={e => setFormVenda({ ...formVenda, valor_unitario: parseFloat(e.target.value) || 0 })} />
+                  </div>
+                </div>
+
+                <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center justify-between">
+                  <span className="text-sm text-green-800 font-medium">Total da venda</span>
+                  <span className="font-mono text-xl font-bold text-green-700">
+                    R$ {(formVenda.quantidade * formVenda.valor_unitario).toFixed(2).replace('.', ',')}
+                  </span>
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-500 mb-2 block font-medium uppercase tracking-wide">Forma de pagamento</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {FORMAS_PAGAMENTO.map(f => (
+                      <button key={f.key}
+                        onClick={() => setFormVenda({ ...formVenda, forma_pagamento: f.key })}
+                        className={`p-3 rounded-xl border text-sm font-medium transition-all ${
+                          formVenda.forma_pagamento === f.key
+                            ? 'border-green-400 bg-green-50 text-green-700'
+                            : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                        }`}>
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block font-medium">Observação (opcional)</label>
+                  <textarea className="input w-full resize-none" rows={2}
+                    value={formVenda.observacao}
+                    onChange={e => setFormVenda({ ...formVenda, observacao: e.target.value })}
+                    placeholder="Ex: cliente pagou parcelado..." />
+                </div>
+
+                {erroVenda && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-600 flex items-start gap-2">
+                    <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+                    {erroVenda}
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <button onClick={() => setModalVenda(false)}
+                    className="btn flex-1 text-gray-500 border border-gray-200">
+                    Cancelar
+                  </button>
+                  <button onClick={confirmarVenda} disabled={vendendo}
+                    className="btn flex-1 bg-green-600 text-white hover:bg-green-700 gap-1">
+                    <DollarSign size={14} /> {vendendo ? 'Registrando...' : 'Confirmar venda'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {novoCliente && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
@@ -799,12 +1055,6 @@ export default function RecepcaoClientesPage() {
                     <span className="text-xs text-gray-400 ml-auto">{LIMITE_PLANO[p]} sess/mês</span>
                   </label>
                 ))}
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block font-medium">Créditos avulsos</label>
-                <input type="number" min={0} className="input w-28"
-                  value={formNovo.creditos_avulso}
-                  onChange={e => setFormNovo({ ...formNovo, creditos_avulso: parseInt(e.target.value) || 0 })} />
               </div>
             </div>
 
