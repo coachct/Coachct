@@ -151,6 +151,10 @@ export default function AgendarPage() {
     const dataSel = diasSemana[diaSel]
     const diaSem = dataSel.getDay()
     const dataStr = dataSel.toISOString().split('T')[0]
+    const hoje = new Date().toISOString().split('T')[0]
+    const agora = new Date()
+    const horaAtual = `${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}`
+    const isDiaDe = dataStr === hoje
 
     const [{ data: hors }, { data: ags }, { data: agCliente }, { data: filas }] = await Promise.all([
       supabase.from('coach_horarios').select('hora').eq('dia_semana', diaSem).eq('ativo', true),
@@ -162,8 +166,11 @@ export default function AgendarPage() {
     const porHora: Record<string, number> = {}
     for (const h of (hors || [])) {
       const hora = (h.hora || '').slice(0, 5)
+      // Se for hoje, ignora horários que já passaram
+      if (isDiaDe && hora <= horaAtual) continue
       porHora[hora] = (porHora[hora] || 0) + 1
     }
+
     const ocupados: Record<string, number> = {}
     for (const a of (ags || [])) {
       const hora = (a.horario || '').slice(0, 5)
@@ -231,7 +238,6 @@ export default function AgendarPage() {
     totalpass: '🔵',
     avulso: '🏋️',
   }
-
   const notifOpcoes = [
     { key: 'whatsapp', label: 'WhatsApp', icon: '💬' },
     { key: 'email', label: 'Email', icon: '📧' },
@@ -280,7 +286,6 @@ export default function AgendarPage() {
     })
 
     if (error) { setErroModal('Erro ao agendar. Tente novamente.'); setConfirmando(false); return }
-
     setContratoAssinado(true)
     setModalSlot(null)
     setConfirmando(false)
@@ -295,7 +300,6 @@ export default function AgendarPage() {
     setEntrandoFila(true)
     setErroFila('')
 
-    // Salva preferência de notificação se mudou
     if (notifFila !== cliente.notificacao_preferida) {
       await supabase.from('clientes').update({ notificacao_preferida: notifFila }).eq('id', cliente.id)
       setCliente({ ...cliente, notificacao_preferida: notifFila })
@@ -439,7 +443,9 @@ export default function AgendarPage() {
           <div style={{ textAlign: 'center', padding: '3rem', color: '#555' }}>Carregando horários...</div>
         ) : horariosFiltrados.length === 0 ? (
           <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#444' }}>
-            Nenhum horário disponível neste dia.
+            {semanaOffset === 0 && diaSel === 0
+              ? 'Não há mais horários disponíveis para hoje.'
+              : 'Nenhum horário disponível neste dia.'}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -546,7 +552,7 @@ export default function AgendarPage() {
               <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase' as const, letterSpacing: 1 }}>Como vai usar esta sessão?</div>
               {planosDisp.length === 0 ? (
                 <div style={{ background: '#1a0a00', border: '1px solid #ff660033', borderRadius: 10, padding: '1rem', fontSize: 13, color: AMARELO, lineHeight: 1.6 }}>
-                  ⚠️ Você não tem créditos disponíveis para este dia. Compre sessões avulsas na recepção do Just CT.
+                  ⚠️ Você não tem créditos disponíveis. Compre sessões avulsas na recepção do Just CT.
                 </div>
               ) : (
                 planosDisp.map(p => (
@@ -600,7 +606,6 @@ export default function AgendarPage() {
               {dataFormatada(modalFila.data)} · {modalFila.hora}
             </div>
 
-            {/* Aviso */}
             <div style={{ background: '#1a1000', border: `1px solid ${AMARELO}33`, borderRadius: 10, padding: '1rem', marginBottom: '1.5rem', fontSize: 13, color: '#aaa', lineHeight: 1.7 }}>
               <div style={{ color: AMARELO, fontWeight: 600, marginBottom: 6 }}>⚠️ Atenção antes de entrar na fila</div>
               <ul style={{ paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -610,7 +615,6 @@ export default function AgendarPage() {
               </ul>
             </div>
 
-            {/* Plano */}
             <div style={{ marginBottom: '1.5rem' }}>
               <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase' as const, letterSpacing: 1 }}>Usar crédito de qual plano?</div>
               {planosDisp.map(p => (
@@ -630,7 +634,6 @@ export default function AgendarPage() {
               ))}
             </div>
 
-            {/* Preferência de notificação */}
             <div style={{ marginBottom: '1.5rem' }}>
               <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase' as const, letterSpacing: 1 }}>Como quer ser avisado quando a vaga abrir?</div>
               <div style={{ display: 'flex', gap: 8 }}>
@@ -659,7 +662,6 @@ export default function AgendarPage() {
               )}
             </div>
 
-            {/* Aceite */}
             <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer', marginBottom: '1.5rem' }}>
               <input type="checkbox" checked={filaAceite} onChange={e => setFilaAceite(e.target.checked)}
                 style={{ marginTop: 2, accentColor: AMARELO, width: 16, height: 16, flexShrink: 0 }} />
