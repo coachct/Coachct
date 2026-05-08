@@ -110,7 +110,7 @@ export default function MinhaContaPage() {
       return {
         pode: false,
         motivo: 'Menos de 3h antes da aula',
-        aviso: 'Não é possível cancelar com menos de 3h de antecedência.',
+        aviso: 'Não é possível cancelar com menos de 3h de antecedência. Faltar gera bloqueio de conta e multa.',
       }
     }
 
@@ -118,14 +118,14 @@ export default function MinhaContaPage() {
       return {
         pode: true,
         motivo: 'Entre 3h e 12h — verificar fila',
-        aviso: 'Entre 12h e 3h antes: cancelamento só permitido se houver cliente na fila de espera.',
+        aviso: 'Como há clientes na fila de espera, você pode cancelar normalmente. Seu crédito será devolvido e a vaga repassada para o próximo da fila.',
       }
     }
 
     return {
       pode: true,
       motivo: 'Cancelamento livre',
-      aviso: 'Cancelamento gratuito até 12h antes. Seu crédito será devolvido.',
+      aviso: 'Você está cancelando com mais de 12h de antecedência. Seu crédito será devolvido integralmente.',
     }
   }
 
@@ -147,7 +147,7 @@ export default function MinhaContaPage() {
         setModalCancelar({
           ...ag,
           pode: false,
-          aviso: 'Faltam menos de 12h e não há ninguém na fila de espera. Cancelamento não permitido.',
+          aviso: 'Faltam menos de 12h para o treino e não há ninguém na fila de espera. Por isso o cancelamento não é permitido. Faltar sem aviso gera bloqueio e multa.',
         })
         setErroCancelar('')
         return
@@ -267,7 +267,6 @@ export default function MinhaContaPage() {
           + Agendar Coach CT
         </button>
 
-        {/* Agendamentos */}
         <div style={{ marginBottom: '2rem' }}>
           <div style={{ fontSize: 11, color: '#555', fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: '1rem' }}>Meus agendamentos</div>
           {agendamentos.length === 0 ? (
@@ -324,7 +323,6 @@ export default function MinhaContaPage() {
           )}
         </div>
 
-        {/* Fila de espera */}
         {filas.length > 0 && (
           <div style={{ marginBottom: '2rem' }}>
             <div style={{ fontSize: 11, color: AMARELO, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: '1rem' }}>⏳ Aguardando na fila de espera</div>
@@ -380,7 +378,6 @@ export default function MinhaContaPage() {
         )}
       </div>
 
-      {/* Modal cancelamento */}
       {modalCancelar && (
         <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: '#111', border: '1px solid #333', borderRadius: 20, width: '100%', maxWidth: 420, padding: '1.5rem' }}>
@@ -422,7 +419,6 @@ export default function MinhaContaPage() {
         </div>
       )}
 
-      {/* Modal sair da fila */}
       {modalSairFila && (
         <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: '#111', border: `1px solid ${AMARELO}33`, borderRadius: 20, width: '100%', maxWidth: 420, padding: '1.5rem' }}>
