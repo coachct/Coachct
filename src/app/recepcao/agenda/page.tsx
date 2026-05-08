@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { Clock, CheckCircle, XCircle, Search, Users, Calendar, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Clock, CheckCircle, XCircle, Search, Users, Calendar, ChevronLeft, ChevronRight, Lock, Unlock, X, AlertCircle } from 'lucide-react'
 
 const HORARIOS = [
   '05:30','06:00','06:30','07:00','07:30','08:00','08:30',
@@ -27,10 +27,18 @@ export default function RecepcaoAgendaPage() {
   const [data, setData] = useState(() => new Date().toISOString().split('T')[0])
   const [agendamentos, setAgendamentos] = useState<any[]>([])
   const [coaches, setCoaches] = useState<any[]>([])
+  const [bloqueios, setBloqueios] = useState<any[]>([])
   const [loadingData, setLoadingData] = useState(true)
   const [alocandoId, setAlocandoId] = useState<string | null>(null)
   const [busca, setBusca] = useState('')
   const [abaAtiva, setAbaAtiva] = useState<'agendamentos' | 'grade'>('agendamentos')
+
+  // Modal de bloqueio
+  const [modalBloqueio, setModalBloqueio] = useState<{ horario: string; vagasLivres: number; bloqueiosAtivos: any[] } | null>(null)
+  const [qtdBloquear, setQtdBloquear] = useState(1)
+  const [motivoBloqueio, setMotivoBloqueio] = useState('')
+  const [salvandoBloqueio, setSalvandoBloqueio] = useState(false)
+  const [erroBloqueio, setErroBloqueio] = useState('')
 
   const scrollRef = useRef<number>(0)
   const dateInputRef = useRef<HTMLInputElement>(null)
@@ -54,13 +62,15 @@ export default function RecepcaoAgendaPage() {
     if (manter_scroll) scrollRef.current = window.scrollY
     const diaSem = new Date(data + 'T12:00:00').getDay()
 
-    const [{ data: ags }, { data: coachs }] = await Promise.all([
+    const [{ data: ags }, { data: coachs }, { data: bloqs }] = await Promise.all([
       supabase.from('agendamentos').select('*, clientes(nome, cpf, telefone)').eq('data', data).order('horario'),
       supabase.from('coach_horarios').select('*, coaches(id, nome)').eq('dia_semana', diaSem).eq('ativo', true),
+      supabase.from('vagas_bloqueadas').select('*, perfis:bloqueado_por(nome)').eq('data', data).eq('ativo', true),
     ])
 
     setAgendamentos(ags || [])
     setCoaches(coachs || [])
+    setBloqueios(bloqs || [])
     setLoadingData(false)
 
     if (manter_scroll) setTimeout(() => window.scrollTo({ top: scrollRef.current }), 50)
@@ -69,10 +79,17 @@ export default function RecepcaoAgendaPage() {
   function norm(hora: string) { return (hora || '').slice(0, 5) }
   function coachesPorHorario(horario: string) { return coaches.filter(c => norm(c.hora) === horario) }
   function agendamentosPorHorario(horario: string) { return agendamentos.filter(a => norm(a.horario) === horario) }
+  function bloqueiosPorHorario(horario: string) { return bloqueios.filter(b => norm(b.horario) === horario) }
+
+  function bloqueadasNoHorario(horario: string) {
+    return bloqueiosPorHorario(horario).reduce((acc, b) => acc + (b.quantidade || 0), 0)
+  }
+
   function vagasDisponiveis(horario: string) {
     const total = coachesPorHorario(horario).length
     const ocupadas = agendamentosPorHorario(horario).filter(a => a.status !== 'cancelado').length
-    return Math.max(0, total - ocupadas)
+    const bloqueadas = bloqueadasNoHorario(horario)
+    return Math.max(0, total - ocupadas - bloqueadas)
   }
 
   async function alocarCoach(agendamentoId: string, coachId: string) {
@@ -115,6 +132,68 @@ export default function RecepcaoAgendaPage() {
     await loadData(true)
   }
 
+  function abrirModalBloqueio(horario: string) {
+    const vagasLivres = vagasDisponiveis(horario)
+    const bloqueiosAtivos = bloqueiosPorHorario(horario)
+    setModalBloqueio({ horario, vagasLivres, bloqueiosAtivos })
+    setQtdBloquear(1)
+    setMotivoBloqueio('')
+    setErroBloqueio('')
+  }
+
+  async function salvarBloqueio() {
+    if (!modalBloqueio) return
+    if (!motivoBloqueio.trim()) {
+      setErroBloqueio('Informe o motivo do bloqueio.')
+      return
+    }
+    if (qtdBloquear < 1 || qtdBloquear > modalBloqueio.vagasLivres) {
+      setErroBloqueio(`Quantidade inválida. Há ${modalBloqueio.vagasLivres} vaga(s) disponível(eis).`)
+      return
+    }
+
+    setSalvandoBloqueio(true)
+    setErroBloqueio('')
+
+    const { error } = await supabase.from('vagas_bloqueadas').insert({
+      data,
+      horario: modalBloqueio.horario + ':00',
+      quantidade: qtdBloquear,
+      motivo: motivoBloqueio.trim(),
+      bloqueado_por: perfil?.id,
+      bloqueado_por_role: perfil?.role,
+      ativo: true,
+    })
+
+    if (error) {
+      setErroBloqueio('Erro ao bloquear. Tente novamente.')
+      setSalvandoBloqueio(false)
+      return
+    }
+
+    setModalBloqueio(null)
+    setSalvandoBloqueio(false)
+    await loadData(true)
+  }
+
+  async function desbloquearVaga(bloqueioId: string) {
+    if (!confirm('Desbloquear esta(s) vaga(s)?')) return
+    await supabase.from('vagas_bloqueadas').update({
+      ativo: false,
+      desbloqueado_em: new Date().toISOString(),
+      desbloqueado_por: perfil?.id,
+    }).eq('id', bloqueioId)
+    await loadData(true)
+    if (modalBloqueio) {
+      const novosBloqueios = modalBloqueio.bloqueiosAtivos.filter(b => b.id !== bloqueioId)
+      if (novosBloqueios.length === 0) {
+        setModalBloqueio(null)
+      } else {
+        setModalBloqueio({ ...modalBloqueio, bloqueiosAtivos: novosBloqueios })
+      }
+    }
+  }
+
   const statusConfig: Record<string, { label: string; color: string }> = {
     agendado:   { label: 'Agendado',   color: 'bg-blue-100 text-blue-700' },
     confirmado: { label: 'Confirmado', color: 'bg-green-100 text-green-700' },
@@ -154,6 +233,9 @@ export default function RecepcaoAgendaPage() {
           <span>📅 {agendamentosAtivos.length} agendamentos</span>
           <span>✅ {agendamentos.filter(a => a.status === 'realizado').length} realizados</span>
           <span>❌ {agendamentos.filter(a => a.status === 'falta').length} faltas</span>
+          {bloqueios.length > 0 && (
+            <span>🔒 {bloqueios.reduce((acc, b) => acc + b.quantidade, 0)} bloqueada(s)</span>
+          )}
         </div>
       </div>
 
@@ -297,7 +379,7 @@ export default function RecepcaoAgendaPage() {
             {/* ABA GRADE */}
             {abaAtiva === 'grade' && (
               <div>
-                {/* Navegação de data: setas + ícone calendário */}
+                {/* Navegação de data */}
                 <div className="card mb-4 flex items-center gap-3">
                   <button
                     onClick={() => { setData(addDias(data, -1)); setLoadingData(true) }}
@@ -317,7 +399,6 @@ export default function RecepcaoAgendaPage() {
                     )}
                   </div>
 
-                  {/* Input de data escondido acionado pelo ícone */}
                   <div className="relative flex-shrink-0">
                     <button
                       onClick={() => dateInputRef.current?.showPicker()}
@@ -350,6 +431,8 @@ export default function RecepcaoAgendaPage() {
                       const coachesHorario = coachesPorHorario(horario)
                       const vagas = vagasDisponiveis(horario)
                       const ags = agendamentosPorHorario(horario).filter(a => a.status !== 'cancelado')
+                      const bloqueiosHorario = bloqueiosPorHorario(horario)
+                      const totalBloqueadas = bloqueadasNoHorario(horario)
 
                       return (
                         <div key={horario} className="card">
@@ -361,13 +444,26 @@ export default function RecepcaoAgendaPage() {
                                 {coachesHorario.length} coach{coachesHorario.length !== 1 ? 'es' : ''}
                               </span>
                             </div>
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                              vagas === 0 ? 'bg-red-100 text-red-700' :
-                              vagas <= 2 ? 'bg-orange-100 text-orange-700' :
-                              'bg-green-100 text-green-700'
-                            }`}>
-                              {vagas === 0 ? 'Lotado' : `${vagas} vaga${vagas !== 1 ? 's' : ''}`}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                vagas === 0 ? 'bg-red-100 text-red-700' :
+                                vagas <= 2 ? 'bg-orange-100 text-orange-700' :
+                                'bg-green-100 text-green-700'
+                              }`}>
+                                {vagas === 0 ? 'Lotado' : `${vagas} vaga${vagas !== 1 ? 's' : ''}`}
+                              </span>
+                              {totalBloqueadas > 0 && (
+                                <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-red-50 text-red-600 border border-red-200">
+                                  🔒 {totalBloqueadas}
+                                </span>
+                              )}
+                              <button
+                                onClick={() => abrirModalBloqueio(horario)}
+                                className="text-xs px-2 py-0.5 rounded-full border border-gray-200 text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-all flex items-center gap-1">
+                                <Lock size={10} />
+                                {totalBloqueadas > 0 ? 'Gerenciar' : 'Bloquear'}
+                              </button>
+                            </div>
                           </div>
                           <div className="flex flex-wrap gap-1.5 mt-2">
                             {coachesHorario.map(c => {
@@ -386,6 +482,27 @@ export default function RecepcaoAgendaPage() {
                               {ags.length} cliente{ags.length !== 1 ? 's' : ''} agendado{ags.length !== 1 ? 's' : ''}
                             </div>
                           )}
+                          {bloqueiosHorario.length > 0 && (
+                            <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
+                              {bloqueiosHorario.map(b => (
+                                <div key={b.id} className="flex items-start gap-2 text-xs">
+                                  <Lock size={11} className="text-red-500 mt-0.5 flex-shrink-0" />
+                                  <div className="flex-1">
+                                    <span className="font-medium text-red-700">{b.quantidade} vaga(s)</span>
+                                    <span className="text-gray-500"> — {b.motivo || 'Sem motivo'}</span>
+                                    {b.perfis?.nome && (
+                                      <span className="text-gray-400"> · por {b.perfis.nome.split(' ')[0]}</span>
+                                    )}
+                                  </div>
+                                  <button
+                                    onClick={() => desbloquearVaga(b.id)}
+                                    className="text-green-600 hover:bg-green-50 rounded px-1.5 py-0.5 flex items-center gap-1">
+                                    <Unlock size={10} /> Liberar
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )
                     })}
@@ -396,6 +513,104 @@ export default function RecepcaoAgendaPage() {
           </>
         )}
       </div>
+
+      {/* Modal de bloqueio */}
+      {modalBloqueio && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <div className="font-bold text-gray-900 flex items-center gap-2">
+                  <Lock size={18} className="text-red-500" /> Bloquear vagas — {modalBloqueio.horario}
+                </div>
+                <div className="text-sm text-gray-400 mt-0.5 capitalize">
+                  {new Date(data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                </div>
+              </div>
+              <button onClick={() => setModalBloqueio(null)} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            </div>
+
+            {modalBloqueio.bloqueiosAtivos.length > 0 && (
+              <div className="mb-4">
+                <div className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-2">Bloqueios ativos</div>
+                <div className="space-y-2">
+                  {modalBloqueio.bloqueiosAtivos.map(b => (
+                    <div key={b.id} className="bg-red-50 border border-red-100 rounded-lg p-3 flex items-start gap-2">
+                      <Lock size={14} className="text-red-500 mt-0.5 flex-shrink-0" />
+                      <div className="flex-1 text-sm">
+                        <div className="font-medium text-red-700">{b.quantidade} vaga(s)</div>
+                        <div className="text-xs text-gray-600 mt-0.5">{b.motivo || 'Sem motivo registrado'}</div>
+                        {b.perfis?.nome && (
+                          <div className="text-xs text-gray-400 mt-0.5">por {b.perfis.nome}</div>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => desbloquearVaga(b.id)}
+                        className="btn btn-sm gap-1 text-green-600 hover:bg-green-50">
+                        <Unlock size={12} /> Liberar
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {modalBloqueio.vagasLivres > 0 ? (
+              <>
+                <div className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-2">Bloquear novas vagas</div>
+                <div className="bg-gray-50 rounded-lg p-3 mb-3 text-xs text-gray-600 flex items-start gap-2">
+                  <AlertCircle size={13} className="text-gray-400 mt-0.5 flex-shrink-0" />
+                  <span>Há {modalBloqueio.vagasLivres} vaga(s) livre(s) neste horário. Bloqueios impedem que clientes reservem essas vagas.</span>
+                </div>
+
+                <div className="mb-3">
+                  <label className="text-xs text-gray-500 mb-1 block font-medium">Quantidade</label>
+                  <input type="number" min={1} max={modalBloqueio.vagasLivres}
+                    value={qtdBloquear}
+                    onChange={e => setQtdBloquear(parseInt(e.target.value) || 1)}
+                    className="input w-24" />
+                </div>
+
+                <div className="mb-3">
+                  <label className="text-xs text-gray-500 mb-1 block font-medium">
+                    Motivo {(perfil?.role as any) === 'recepcao' && <span className="text-red-500">*</span>}
+                  </label>
+                  <textarea
+                    value={motivoBloqueio}
+                    onChange={e => setMotivoBloqueio(e.target.value)}
+                    placeholder="Ex: equipamento em manutenção, evento, limpeza..."
+                    rows={2}
+                    className="input w-full resize-none"
+                  />
+                </div>
+
+                {erroBloqueio && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-2.5 mb-3 text-sm text-red-600">
+                    {erroBloqueio}
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <button onClick={() => setModalBloqueio(null)}
+                    className="btn flex-1 text-gray-500 border border-gray-200">
+                    Cancelar
+                  </button>
+                  <button onClick={salvarBloqueio} disabled={salvandoBloqueio}
+                    className="btn flex-1 bg-red-500 text-white hover:bg-red-600 gap-1">
+                    <Lock size={12} /> {salvandoBloqueio ? 'Bloqueando...' : 'Bloquear'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-4 text-sm text-gray-400">
+                Sem vagas livres para bloquear neste horário.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
