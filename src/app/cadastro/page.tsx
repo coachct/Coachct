@@ -19,6 +19,7 @@ export default function CadastroPage() {
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   const [senha2, setSenha2] = useState('')
+  const [notificacao, setNotificacao] = useState<'whatsapp' | 'email' | 'nenhuma'>('whatsapp')
 
   function formatarCPF(v: string) {
     return v.replace(/\D/g, '').slice(0, 11)
@@ -72,7 +73,11 @@ export default function CadastroPage() {
       nome: nome.trim(),
       cpf: cpf.replace(/\D/g, ''),
       telefone: telefone.replace(/\D/g, ''),
+      whatsapp: telefone.replace(/\D/g, ''),
       email: email.trim(),
+      notificacao_preferida: notificacao,
+      planos: ['wellhub'],
+      bloqueado: false,
     })
 
     setSalvando(false)
@@ -100,6 +105,12 @@ export default function CadastroPage() {
     textTransform: 'uppercase' as const,
     letterSpacing: 1,
   }
+
+  const notifOpcoes = [
+    { key: 'whatsapp', label: 'WhatsApp', icon: '💬', desc: 'Aviso pelo número cadastrado' },
+    { key: 'email', label: 'Email', icon: '📧', desc: 'Aviso no seu email' },
+    { key: 'nenhuma', label: 'Nenhuma', icon: '🔕', desc: 'Sem notificações' },
+  ]
 
   return (
     <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem 1rem', fontFamily: "'DM Sans', sans-serif" }}>
@@ -131,35 +142,75 @@ export default function CadastroPage() {
             <>
               <h1 style={{ fontSize: 18, fontWeight: 600, color: '#fff', marginBottom: '1.5rem' }}>Seus dados</h1>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+
                 <div>
                   <label style={labelStyle}>Nome completo *</label>
                   <input style={inputStyle} type="text" placeholder="Seu nome completo"
                     value={nome} onChange={e => setNome(e.target.value)} />
                 </div>
+
                 <div>
                   <label style={labelStyle}>CPF *</label>
                   <input style={inputStyle} type="text" placeholder="000.000.000-00"
                     value={cpf} onChange={e => setCpf(formatarCPF(e.target.value))} />
                 </div>
+
                 <div>
                   <label style={labelStyle}>Telefone / WhatsApp *</label>
                   <input style={inputStyle} type="text" placeholder="(11) 99999-9999"
                     value={telefone} onChange={e => setTelefone(formatarTel(e.target.value))} />
                 </div>
+
                 <div>
                   <label style={labelStyle}>Email *</label>
                   <input style={inputStyle} type="email" placeholder="seu@email.com"
                     value={email} onChange={e => setEmail(e.target.value)} />
                 </div>
+
                 <div>
                   <label style={labelStyle}>Senha *</label>
                   <input style={inputStyle} type="password" placeholder="Mínimo 6 caracteres"
                     value={senha} onChange={e => setSenha(e.target.value)} />
                 </div>
+
                 <div>
                   <label style={labelStyle}>Confirmar senha *</label>
                   <input style={inputStyle} type="password" placeholder="Repita a senha"
                     value={senha2} onChange={e => setSenha2(e.target.value)} />
+                </div>
+
+                {/* Preferência de notificação */}
+                <div>
+                  <label style={labelStyle}>Como quer ser avisado?</label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {notifOpcoes.map(op => (
+                      <div key={op.key} onClick={() => setNotificacao(op.key as any)}
+                        style={{
+                          border: `1.5px solid ${notificacao === op.key ? ACCENT : '#333'}`,
+                          background: notificacao === op.key ? `${ACCENT}10` : 'transparent',
+                          borderRadius: 10, padding: '0.65rem 1rem',
+                          cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem',
+                          transition: 'all .15s',
+                        }}>
+                        <span style={{ fontSize: 18 }}>{op.icon}</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: notificacao === op.key ? '#fff' : '#888' }}>{op.label}</div>
+                          <div style={{ fontSize: 11, color: '#555', marginTop: 1 }}>{op.desc}</div>
+                        </div>
+                        <div style={{
+                          width: 16, height: 16, borderRadius: '50%',
+                          border: `2px solid ${notificacao === op.key ? ACCENT : '#444'}`,
+                          background: notificacao === op.key ? ACCENT : 'transparent',
+                          flexShrink: 0,
+                        }} />
+                      </div>
+                    ))}
+                  </div>
+                  {notificacao === 'whatsapp' && (
+                    <div style={{ fontSize: 11, color: '#555', marginTop: 6, paddingLeft: 4 }}>
+                      📱 Usaremos o número de WhatsApp informado acima.
+                    </div>
+                  )}
                 </div>
 
                 {erro && (
