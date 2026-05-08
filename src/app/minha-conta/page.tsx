@@ -22,12 +22,16 @@ export default function MinhaContaPage() {
 
   const [cliente, setCliente] = useState<any>(null)
   const [agendamentos, setAgendamentos] = useState<any[]>([])
+  const [filas, setFilas] = useState<any[]>([])
   const [creditos, setCreditos] = useState<Record<string, { usado: number; limite: number }>>({})
   const [loadingData, setLoadingData] = useState(true)
 
   const [modalCancelar, setModalCancelar] = useState<any>(null)
   const [cancelando, setCancelando] = useState(false)
   const [erroCancelar, setErroCancelar] = useState('')
+
+  const [modalSairFila, setModalSairFila] = useState<any>(null)
+  const [saindoFila, setSaindoFila] = useState(false)
 
   useEffect(() => {
     if (!loading && !perfil) router.push('/login')
@@ -44,14 +48,22 @@ export default function MinhaContaPage() {
 
     if (cli) {
       const hoje = new Date().toISOString().split('T')[0]
-      const { data: ags } = await supabase
-        .from('agendamentos').select('*')
-        .eq('cliente_id', cli.id)
-        .gte('data', hoje)
-        .order('data').order('horario')
-        .limit(20)
+
+      const [{ data: ags }, { data: filasData }] = await Promise.all([
+        supabase.from('agendamentos').select('*')
+          .eq('cliente_id', cli.id)
+          .gte('data', hoje)
+          .order('data').order('horario')
+          .limit(20),
+        supabase.from('fila_espera').select('*')
+          .eq('cliente_id', cli.id)
+          .eq('status', 'aguardando')
+          .gte('data', hoje)
+          .order('data').order('horario'),
+      ])
 
       setAgendamentos(ags || [])
+      setFilas(filasData || [])
       await carregarCreditos(cli)
     }
     setLoadingData(false)
@@ -88,7 +100,6 @@ export default function MinhaContaPage() {
     setCreditos(resultado)
   }
 
-  // Calcula situação do cancelamento
   function situacaoCancelamento(ag: any): { pode: boolean; motivo: string; aviso: string } {
     const agora = new Date()
     const dataHoraAula = new Date(`${ag.data}T${ag.horario}`)
@@ -104,9 +115,8 @@ export default function MinhaContaPage() {
     }
 
     if (diffHoras <= 12) {
-      // Entre 3h e 12h: só pode se houver fila
       return {
-        pode: true, // verificamos a fila na hora
+        pode: true,
         motivo: 'Entre 3h e 12h — verificar fila',
         aviso: 'Entre 12h e 3h antes: cancelamento só permitido se houver cliente na fila de espera.',
       }
@@ -125,7 +135,6 @@ export default function MinhaContaPage() {
     const dataHoraAula = new Date(`${ag.data}T${ag.horario}`)
     const diffHoras = (dataHoraAula.getTime() - agora.getTime()) / (1000 * 60 * 60)
 
-    // Entre 3h e 12h: verifica se há fila
     if (diffHoras > 3 && diffHoras <= 12) {
       const { data: fila } = await supabase
         .from('fila_espera')
@@ -171,6 +180,19 @@ export default function MinhaContaPage() {
     await loadDados()
   }
 
+  async function sairDaFila() {
+    if (!modalSairFila) return
+    setSaindoFila(true)
+
+    const { error } = await supabase.from('fila_espera').delete().eq('id', modalSairFila.id)
+
+    if (!error) {
+      setModalSairFila(null)
+      await loadDados()
+    }
+    setSaindoFila(false)
+  }
+
   async function sair() {
     await supabase.auth.signOut()
     router.push('/')
@@ -183,7 +205,6 @@ export default function MinhaContaPage() {
     </div>
   )
 
-  const totalSessoes = Object.values(creditos).reduce((acc, info) => acc + (info.limite - info.usado), 0)
   const agendamentosAtivos = agendamentos.filter(a => !['cancelado'].includes(a.status))
 
   return (
@@ -193,7 +214,6 @@ export default function MinhaContaPage() {
         * { box-sizing: border-box; margin: 0; padding: 0; }
       `}</style>
 
-      {/* Nav */}
       <div style={{ background: '#08080895', backdropFilter: 'blur(16px)', borderBottom: '1px solid #1a1a1a', padding: '0 2rem', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
         <div onClick={() => router.push('/')} style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', letterSpacing: 2, cursor: 'pointer' }}>
           JUST<span style={{ color: ACCENT }}>CT</span>
@@ -208,7 +228,6 @@ export default function MinhaContaPage() {
 
       <div style={{ maxWidth: 700, margin: '0 auto', padding: '2rem 1.5rem' }}>
 
-        {/* Boas vindas */}
         <div style={{ marginBottom: '2rem' }}>
           <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: '#fff', letterSpacing: 1 }}>
             Olá, {perfil?.nome?.split(' ')[0]}! 👋
@@ -216,8 +235,7 @@ export default function MinhaContaPage() {
           <div style={{ fontSize: 14, color: '#555', marginTop: 4 }}>Bem-vindo à sua área do aluno</div>
         </div>
 
-        {/* Cards de créditos por plano */}
-        <div style={{ display: 'grid', gridTemplateColumns: Object.keys(creditos).length > 1 ? '1fr 1fr' : '1fr 1fr', gap: '1rem', marginBottom: '2rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '2rem' }}>
           {Object.entries(creditos).map(([plano, info]) => {
             const restante = info.limite - info.usado
             return (
@@ -244,7 +262,6 @@ export default function MinhaContaPage() {
           </div>
         </div>
 
-        {/* Botão agendar */}
         <button onClick={() => router.push('/agendar')}
           style={{ width: '100%', background: ACCENT, color: '#fff', border: 'none', borderRadius: 12, padding: '1rem', fontWeight: 600, fontSize: 16, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", marginBottom: '2rem' }}>
           + Agendar Coach CT
@@ -260,7 +277,6 @@ export default function MinhaContaPage() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {agendamentos.map(ag => {
-                const sit = situacaoCancelamento(ag)
                 const statusColor: Record<string, string> = {
                   agendado: CYAN,
                   confirmado: '#aaff00',
@@ -308,7 +324,42 @@ export default function MinhaContaPage() {
           )}
         </div>
 
-        {/* Dados da conta */}
+        {/* Fila de espera */}
+        {filas.length > 0 && (
+          <div style={{ marginBottom: '2rem' }}>
+            <div style={{ fontSize: 11, color: AMARELO, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: '1rem' }}>⏳ Aguardando na fila de espera</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {filas.map(f => (
+                <div key={f.id} style={{ background: '#1a1000', border: `1px solid ${AMARELO}33`, borderRadius: 12, padding: '1rem 1.25rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div style={{ textAlign: 'center', flexShrink: 0 }}>
+                      <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: AMARELO, lineHeight: 1 }}>
+                        {new Date(f.data + 'T12:00:00').getDate()}
+                      </div>
+                      <div style={{ fontSize: 10, color: AMARELO, textTransform: 'uppercase' as const, opacity: 0.7 }}>
+                        {new Date(f.data + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' })}
+                      </div>
+                    </div>
+                    <div style={{ width: 1, height: 36, background: '#332200', flexShrink: 0 }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: '#fff' }}>
+                        Coach CT — {f.horario?.slice(0, 5)}
+                      </div>
+                      <div style={{ fontSize: 12, color: '#888' }}>{planoLabel[f.tipo_credito] || f.tipo_credito}</div>
+                      <div style={{ fontSize: 11, color: AMARELO, marginTop: 4 }}>Você será avisado se uma vaga abrir</div>
+                    </div>
+                    <button
+                      onClick={() => setModalSairFila(f)}
+                      style={{ background: 'transparent', border: `1px solid ${AMARELO}66`, borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, color: AMARELO, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", flexShrink: 0 }}>
+                      Sair da fila
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {cliente && (
           <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.25rem' }}>
             <div style={{ fontSize: 11, color: '#555', fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: '1rem' }}>Minha conta</div>
@@ -366,6 +417,40 @@ export default function MinhaContaPage() {
                   {cancelando ? 'Cancelando...' : 'Confirmar cancelamento'}
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal sair da fila */}
+      {modalSairFila && (
+        <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#111', border: `1px solid ${AMARELO}33`, borderRadius: 20, width: '100%', maxWidth: 420, padding: '1.5rem' }}>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: AMARELO, marginBottom: 4 }}>
+              SAIR DA FILA DE ESPERA
+            </div>
+            <div style={{ fontSize: 13, color: '#555', marginBottom: '1.5rem', textTransform: 'capitalize' as const }}>
+              {new Date(modalSairFila.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })} · {modalSairFila.horario?.slice(0, 5)}
+            </div>
+
+            <div style={{
+              background: '#1a1000',
+              border: `1px solid ${AMARELO}33`,
+              borderRadius: 10, padding: '1rem', marginBottom: '1.5rem',
+              fontSize: 13, color: '#aaa', lineHeight: 1.6,
+            }}>
+              Você ainda não foi confirmado neste horário. Pode sair da fila a qualquer momento sem multa ou desconto de crédito.
+            </div>
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setModalSairFila(null)}
+                style={{ flex: 1, background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.85rem', color: '#888', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                Voltar
+              </button>
+              <button onClick={sairDaFila} disabled={saindoFila}
+                style={{ flex: 2, background: AMARELO, color: '#000', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 700, fontSize: 15, cursor: saindoFila ? 'default' : 'pointer', fontFamily: "'DM Sans', sans-serif", opacity: saindoFila ? 0.7 : 1 }}>
+                {saindoFila ? 'Saindo...' : 'Sair da fila'}
+              </button>
             </div>
           </div>
         </div>
