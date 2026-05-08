@@ -323,7 +323,7 @@ export default function AgendarPage() {
     setContratoAssinado(true)
     setModalFila(null)
     setEntrandoFila(false)
-    await loadHorarios()
+    router.push('/minha-conta')
   }
 
   const dataFormatada = (dataStr: string) => {
@@ -354,7 +354,6 @@ export default function AgendarPage() {
         .nav-semana-btn:hover:not(:disabled) { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
       `}</style>
 
-      {/* Nav */}
       <div style={{ background: '#08080895', backdropFilter: 'blur(16px)', borderBottom: '1px solid #1a1a1a', padding: '0 2rem', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
         <div onClick={() => router.push('/')} style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', letterSpacing: 2, cursor: 'pointer' }}>
           JUST<span style={{ color: ACCENT }}>CT</span>
@@ -370,7 +369,6 @@ export default function AgendarPage() {
           <div style={{ fontSize: 14, color: '#555', marginTop: 4 }}>Cada halter = uma vaga disponível</div>
         </div>
 
-        {/* Banner créditos zerados */}
         {todosSemSaldo && (
           <div style={{ background: '#1a0a00', border: '1px solid #ff660033', borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1.5rem' }}>
             <div style={{ fontSize: 14, color: AMARELO, fontWeight: 600, marginBottom: 4 }}>⚠️ Você usou todas as sessões do seu plano este mês</div>
@@ -380,7 +378,6 @@ export default function AgendarPage() {
           </div>
         )}
 
-        {/* Saldo rápido */}
         {Object.keys(creditos).length > 0 && (
           <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap' as const }}>
             {Object.entries(creditos).map(([plano, info]) => {
@@ -399,7 +396,6 @@ export default function AgendarPage() {
           </div>
         )}
 
-        {/* Calendário */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
           <button className="nav-semana-btn"
             onClick={() => { setSemanaOffset(o => Math.max(0, o - 1)); setDiaSel(0) }}
@@ -429,7 +425,6 @@ export default function AgendarPage() {
             style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #333', background: 'transparent', color: semanaOffset === 3 ? '#333' : '#fff', fontSize: 18, cursor: semanaOffset === 3 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .2s' }}>›</button>
         </div>
 
-        {/* Filtro período */}
         <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap' as const }}>
           {[
             { key: 'todos', label: 'Todos' },
@@ -444,7 +439,6 @@ export default function AgendarPage() {
           ))}
         </div>
 
-        {/* Slots */}
         {loadingHorarios ? (
           <div style={{ textAlign: 'center', padding: '3rem', color: '#555' }}>Carregando horários...</div>
         ) : horariosFiltrados.length === 0 ? (
@@ -514,7 +508,6 @@ export default function AgendarPage() {
         )}
       </div>
 
-      {/* Modal contrato */}
       {mostrarContrato && (
         <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: '#111', border: '1px solid #333', borderRadius: 20, width: '100%', maxWidth: 500, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
@@ -549,7 +542,6 @@ export default function AgendarPage() {
         </div>
       )}
 
-      {/* Modal confirmação reserva */}
       {modalSlot && !mostrarContrato && (
         <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: '#111', border: '1px solid #333', borderRadius: 20, width: '100%', maxWidth: 440, padding: '1.5rem' }}>
@@ -623,7 +615,6 @@ export default function AgendarPage() {
         </div>
       )}
 
-      {/* Modal fila de espera */}
       {modalFila && !mostrarContrato && (
         <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: '#111', border: `1px solid ${AMARELO}33`, borderRadius: 20, width: '100%', maxWidth: 440, padding: '1.5rem', maxHeight: '90vh', overflowY: 'auto' }}>
