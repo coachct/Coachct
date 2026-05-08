@@ -9,7 +9,6 @@ const CYAN = '#00e5ff'
 const AMARELO = '#ffaa00'
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
-
 const LIMITE_PLANO: Record<string, number> = { wellhub: 8, totalpass: 10 }
 
 const CONTRATO = `CONTRATO DE ADESÃO — COACH CT / JUST CT
@@ -74,6 +73,7 @@ export default function AgendarPage() {
   const [creditos, setCreditos] = useState<Record<string, { usado: number; limite: number }>>({})
   const [agendamentosNoDia, setAgendamentosNoDia] = useState<any[]>([])
   const [filasDoCliente, setFilasDoCliente] = useState<any[]>([])
+  const [filaGeral, setFilaGeral] = useState<any[]>([]) // fila de qualquer cliente
 
   const [modalSlot, setModalSlot] = useState<{ data: string; hora: string; vagas: number } | null>(null)
   const [tipoCredito, setTipoCredito] = useState<string>('')
@@ -156,17 +156,17 @@ export default function AgendarPage() {
     const horaAtual = `${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}`
     const isDiaDe = dataStr === hoje
 
-    const [{ data: hors }, { data: ags }, { data: agCliente }, { data: filas }] = await Promise.all([
+    const [{ data: hors }, { data: ags }, { data: agCliente }, { data: filas }, { data: filaGeralData }] = await Promise.all([
       supabase.from('coach_horarios').select('hora').eq('dia_semana', diaSem).eq('ativo', true),
       supabase.from('agendamentos').select('horario, status').eq('data', dataStr).neq('status', 'cancelado'),
       supabase.from('agendamentos').select('horario, tipo_credito, status').eq('data', dataStr).eq('cliente_id', cliente.id),
       supabase.from('fila_espera').select('horario').eq('data', dataStr).eq('cliente_id', cliente.id),
+      supabase.from('fila_espera').select('horario').eq('data', dataStr).eq('status', 'aguardando'),
     ])
 
     const porHora: Record<string, number> = {}
     for (const h of (hors || [])) {
       const hora = (h.hora || '').slice(0, 5)
-      // Se for hoje, ignora horários que já passaram
       if (isDiaDe && hora <= horaAtual) continue
       porHora[hora] = (porHora[hora] || 0) + 1
     }
@@ -186,6 +186,7 @@ export default function AgendarPage() {
     setHorarios(resultado)
     setAgendamentosNoDia(agCliente || [])
     setFilasDoCliente(filas || [])
+    setFilaGeral(filaGeralData || [])
     setLoadingHorarios(false)
   }
 
@@ -211,6 +212,10 @@ export default function AgendarPage() {
 
   function naFila(hora: string) {
     return filasDoCliente.some(f => (f.horario || '').slice(0, 5) === hora)
+  }
+
+  function temFilaNoHorario(hora: string) {
+    return filaGeral.some(f => (f.horario || '').slice(0, 5) === hora)
   }
 
   function planosDisponiveisParaDia() {
@@ -335,6 +340,7 @@ export default function AgendarPage() {
 
   const planosDisp = planosDisponiveisParaDia()
   const todosSemSaldo = Object.keys(creditos).length > 0 && planosDisp.length === 0
+  const temFila = modalSlot ? temFilaNoHorario(modalSlot.hora) : false
 
   return (
     <div style={{ minHeight: '100vh', background: '#080808', fontFamily: "'DM Sans', sans-serif", color: '#f0f0f0' }}>
@@ -456,6 +462,7 @@ export default function AgendarPage() {
                 (a.horario || '').slice(0, 5) === h.hora && ['agendado','confirmado'].includes(a.status)
               )
               const semCredito = planosDisp.length === 0
+              const temFilaEsperaAqui = temFilaNoHorario(h.hora)
 
               return (
                 <div key={i} className="slot-row-h"
@@ -476,9 +483,12 @@ export default function AgendarPage() {
                       <div style={{ fontSize: 11, color: AMARELO, fontWeight: 600 }}>NA FILA ⏳</div>
                     ) : (
                       <>
-                        <div style={{ fontSize: 11, fontFamily: "'DM Mono', monospace", color: lotado ? '#ff4444' : h.livres <= 2 ? AMARELO : ACCENT, fontWeight: 600, marginBottom: 6 }}>
+                        <div style={{ fontSize: 11, fontFamily: "'DM Mono', monospace", color: lotado ? '#ff4444' : h.livres <= 2 ? AMARELO : ACCENT, fontWeight: 600, marginBottom: 4 }}>
                           {lotado ? 'LOTADO' : h.livres === 1 ? '1 VAGA' : `${h.livres} VAGAS`}
                         </div>
+                        {temFilaEsperaAqui && !lotado && (
+                          <div style={{ fontSize: 9, color: AMARELO, marginBottom: 4 }}>⏳ há fila</div>
+                        )}
                         {!lotado && !semCredito && (
                           <button onClick={() => abrirModalReserva(h.hora, h.livres)}
                             style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
@@ -573,8 +583,25 @@ export default function AgendarPage() {
               )}
             </div>
 
-            <div style={{ background: '#0a0a0a', borderRadius: 10, padding: '0.75rem 1rem', marginBottom: '1.5rem', fontSize: 12, color: '#555', lineHeight: 1.6 }}>
-              ⚠️ Cancelamento gratuito até 12h antes. Falta sem aviso gera bloqueio de conta.
+            {/* Aviso de cancelamento dinâmico */}
+            <div style={{
+              background: temFila ? '#1a1000' : '#0a0a0a',
+              border: `1px solid ${temFila ? AMARELO + '44' : '#1a1a1a'}`,
+              borderRadius: 10, padding: '0.75rem 1rem', marginBottom: '1.5rem', fontSize: 12, lineHeight: 1.7,
+            }}>
+              {temFila ? (
+                <>
+                  <div style={{ color: AMARELO, fontWeight: 600, marginBottom: 4 }}>⏳ Há fila de espera para este horário</div>
+                  <div style={{ color: '#888' }}>
+                    Cancelamento gratuito <strong style={{ color: '#fff' }}>até 3h antes</strong> — desde que haja outra pessoa na fila.<br />
+                    Abaixo de 3h antes: <strong style={{ color: '#ff4444' }}>cancelamento bloqueado</strong>. Falta sem aviso gera bloqueio de conta.
+                  </div>
+                </>
+              ) : (
+                <div style={{ color: '#555' }}>
+                  ⚠️ Cancelamento gratuito <strong style={{ color: '#888' }}>até 12h antes</strong>. Entre 12h e 3h: só com fila de espera. Falta sem aviso gera bloqueio de conta.
+                </div>
+              )}
             </div>
 
             {erroModal && (
