@@ -42,7 +42,7 @@ export default function RecepcaoClientesPage() {
   const [salvando, setSalvando] = useState(false)
 
   const [historico, setHistorico] = useState<any[]>([])
-  const [creditos, setCreditos] = useState<Record<string, { usado: number; limite: number }>>({})
+  const [saldoMes, setSaldoMes] = useState<Record<string, any>>({})
 
   const [diaSel, setDiaSel] = useState(0)
   const [semanaOffset, setSemanaOffset] = useState(0)
@@ -64,7 +64,6 @@ export default function RecepcaoClientesPage() {
     if ((perfil.role as any) !== 'recepcao' && (perfil.role as any) !== 'admin') { router.push('/'); return }
   }, [loading, perfil])
 
-  // Só busca quando tiver pelo menos 2 caracteres
   useEffect(() => {
     if (!perfil) return
     if (busca.trim().length >= 2) {
@@ -94,40 +93,20 @@ export default function RecepcaoClientesPage() {
     setHistorico([])
     setModalSlot(null)
     setTipoCredito('')
-    await Promise.all([carregarCreditos(cliente), carregarHistorico(cliente.id)])
+    await Promise.all([carregarSaldo(cliente.id), carregarHistorico(cliente.id)])
   }
 
-  async function carregarCreditos(cliente: any) {
+  async function carregarSaldo(clienteId: string) {
     const agora = new Date()
     const mes = agora.getMonth() + 1
     const ano = agora.getFullYear()
-    const inicio = `${ano}-${String(mes).padStart(2, '0')}-01`
-    const fim = `${ano}-${String(mes).padStart(2, '0')}-31`
 
-    const { data: ags } = await supabase
-      .from('agendamentos')
-      .select('tipo_credito, status')
-      .eq('cliente_id', cliente.id)
-      .gte('data', inicio)
-      .lte('data', fim)
-      .in('status', ['agendado', 'confirmado', 'realizado'])
-
-    const usado: Record<string, number> = {}
-    for (const a of (ags || [])) {
-      usado[a.tipo_credito] = (usado[a.tipo_credito] || 0) + 1
-    }
-
-    const resultado: Record<string, { usado: number; limite: number }> = {}
-    const planos = cliente.planos || ['wellhub']
-    for (const p of planos) {
-      if (LIMITE_PLANO[p]) {
-        resultado[p] = { usado: usado[p] || 0, limite: LIMITE_PLANO[p] }
-      }
-    }
-    if ((cliente.creditos_avulso || 0) > 0) {
-      resultado['avulso'] = { usado: usado['avulso'] || 0, limite: cliente.creditos_avulso }
-    }
-    setCreditos(resultado)
+    const { data } = await supabase.rpc('saldo_creditos_cliente', {
+      p_cliente_id: clienteId,
+      p_mes: mes,
+      p_ano: ano,
+    })
+    setSaldoMes(data || {})
   }
 
   async function carregarHistorico(clienteId: string) {
@@ -155,7 +134,7 @@ export default function RecepcaoClientesPage() {
       const updated = { ...clienteSel, ...form }
       setClienteSel(updated)
       setEditando(false)
-      await carregarCreditos(updated)
+      await carregarSaldo(updated.id)
       buscarClientes()
     }
     setSalvando(false)
@@ -205,9 +184,10 @@ export default function RecepcaoClientesPage() {
     const diaSemNum = dataSel.getDay()
     const dataStr = dataSel.toISOString().split('T')[0]
 
-    const [{ data: hors }, { data: ags }] = await Promise.all([
+    const [{ data: hors }, { data: ags }, { data: bloqueadas }] = await Promise.all([
       supabase.from('coach_horarios').select('hora').eq('dia_semana', diaSemNum).eq('ativo', true),
       supabase.from('agendamentos').select('horario').eq('data', dataStr).neq('status', 'cancelado'),
+      supabase.from('vagas_bloqueadas').select('horario, quantidade').eq('data', dataStr).eq('ativo', true),
     ])
 
     const porHora: Record<string, number> = {}
@@ -220,18 +200,38 @@ export default function RecepcaoClientesPage() {
       const hora = (a.horario || '').slice(0, 5)
       ocupados[hora] = (ocupados[hora] || 0) + 1
     }
+    const bloqueadasMap: Record<string, number> = {}
+    for (const b of (bloqueadas || [])) {
+      const hora = (b.horario || '').slice(0, 5)
+      bloqueadasMap[hora] = (bloqueadasMap[hora] || 0) + (b.quantidade || 1)
+    }
 
-    const resultado = Object.entries(porHora).map(([hora, total]) => ({
-      hora, total,
-      ocupados: ocupados[hora] || 0,
-      livres: total - (ocupados[hora] || 0),
-    })).sort((a, b) => a.hora.localeCompare(b.hora))
+    const resultado = Object.entries(porHora).map(([hora, total]) => {
+      const bloq = bloqueadasMap[hora] || 0
+      const ocup = ocupados[hora] || 0
+      return {
+        hora, total,
+        ocupados: ocup,
+        bloqueadas: bloq,
+        livres: Math.max(0, total - ocup - bloq),
+      }
+    }).sort((a, b) => a.hora.localeCompare(b.hora))
 
     setHorariosSel(resultado)
   }
 
-  function abrirModal(hora: string) {
+  async function abrirModal(hora: string) {
     const dataStr = diasSemana[diaSel].toISOString().split('T')[0]
+
+    // Carrega o saldo do mês correto baseado na data selecionada
+    const dataObj = diasSemana[diaSel]
+    const { data: saldoData } = await supabase.rpc('saldo_creditos_cliente', {
+      p_cliente_id: clienteSel.id,
+      p_mes: dataObj.getMonth() + 1,
+      p_ano: dataObj.getFullYear(),
+    })
+    setSaldoMes(saldoData || {})
+
     setModalSlot({ hora, data: dataStr })
     setTipoCredito('')
     setErroModal('')
@@ -259,7 +259,7 @@ export default function RecepcaoClientesPage() {
 
     setModalSlot(null)
     setAgendando(false)
-    await Promise.all([carregarCreditos(clienteSel), carregarHistorico(clienteSel.id)])
+    await Promise.all([carregarSaldo(clienteSel.id), carregarHistorico(clienteSel.id)])
     setAba('agendamentos')
   }
 
@@ -288,7 +288,6 @@ export default function RecepcaoClientesPage() {
   return (
     <div className="min-h-screen bg-gray-50">
 
-      {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-3">
           {clienteSel && (
@@ -314,7 +313,6 @@ export default function RecepcaoClientesPage() {
 
       <div className="max-w-3xl mx-auto px-6 py-5">
 
-        {/* BUSCA */}
         {!clienteSel && (
           <>
             <div className="relative mb-4">
@@ -382,7 +380,6 @@ export default function RecepcaoClientesPage() {
           </>
         )}
 
-        {/* PERFIL */}
         {clienteSel && (
           <>
             {clienteSel.bloqueado && (
@@ -409,7 +406,6 @@ export default function RecepcaoClientesPage() {
               ))}
             </div>
 
-            {/* ABA DADOS */}
             {aba === 'dados' && (
               <div className="space-y-4">
                 <div className="bg-gradient-to-br from-primary-600 to-primary-800 rounded-2xl p-5 text-white flex items-center gap-4">
@@ -463,24 +459,23 @@ export default function RecepcaoClientesPage() {
               </div>
             )}
 
-            {/* ABA PLANOS */}
             {aba === 'planos' && (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
-                  {Object.entries(creditos).map(([plano, info]) => {
-                    const restante = info.limite - info.usado
-                    const pct = Math.round((info.usado / info.limite) * 100)
+                  {Object.entries(saldoMes).map(([plano, info]: [string, any]) => {
+                    const restante = info.disponivel
+                    const pct = info.total > 0 ? Math.round((info.usado / info.total) * 100) : 0
                     const cfg = planoConfig[plano]
                     return (
-                      <div key={plano} className={`rounded-2xl border p-4 ${cfg?.bg}`}>
-                        <div className={`text-xs font-semibold mb-2 ${cfg?.cor}`}>{cfg?.label || plano}</div>
+                      <div key={plano} className={`rounded-2xl border p-4 ${cfg?.bg || 'bg-gray-50 border-gray-200'}`}>
+                        <div className={`text-xs font-semibold mb-2 ${cfg?.cor || 'text-gray-700'}`}>{cfg?.label || plano}</div>
                         <div className="flex items-end gap-1">
-                          <span className={`text-4xl font-bold ${cfg?.cor}`}>{restante}</span>
-                          <span className="text-xs text-gray-400 mb-1">/ {info.limite}</span>
+                          <span className={`text-4xl font-bold ${cfg?.cor || 'text-gray-700'}`}>{restante}</span>
+                          <span className="text-xs text-gray-400 mb-1">/ {info.total}</span>
                         </div>
                         <div className="text-xs text-gray-400 mt-1">sessões restantes</div>
                         <div className="mt-3 h-2 bg-white rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full transition-all ${cfg?.barra}`}
+                          <div className={`h-full rounded-full transition-all ${cfg?.barra || 'bg-gray-400'}`}
                             style={{ width: `${Math.min(pct, 100)}%` }} />
                         </div>
                         <div className="text-xs text-gray-400 mt-1">{info.usado} usadas este mês</div>
@@ -546,7 +541,6 @@ export default function RecepcaoClientesPage() {
               </div>
             )}
 
-            {/* ABA AGENDAMENTOS */}
             {aba === 'agendamentos' && (
               <div>
                 <div className="flex items-center justify-between mb-4">
@@ -596,7 +590,6 @@ export default function RecepcaoClientesPage() {
               </div>
             )}
 
-            {/* ABA HISTÓRICO */}
             {aba === 'historico' && (
               <div>
                 <div className="text-sm font-semibold text-gray-900 mb-4">Histórico de treinos</div>
@@ -645,7 +638,6 @@ export default function RecepcaoClientesPage() {
               </div>
             )}
 
-            {/* ABA AGENDAR */}
             {aba === 'agendar' && (
               <div>
                 <div className="text-sm font-semibold text-gray-900 mb-4">Escolha o dia e horário</div>
@@ -697,7 +689,6 @@ export default function RecepcaoClientesPage() {
         )}
       </div>
 
-      {/* MODAL CONFIRMAÇÃO */}
       {modalSlot && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm p-6">
@@ -716,33 +707,35 @@ export default function RecepcaoClientesPage() {
             <div className="mb-4">
               <div className="text-xs text-gray-400 mb-2 uppercase tracking-wide font-semibold">Usar crédito de</div>
               <div className="space-y-2">
-                {[
-                  ...(clienteSel.planos || ['wellhub']),
-                  ...((clienteSel.creditos_avulso || 0) > 0 ? ['avulso'] : [])
-                ].map((p: string) => {
-                  const info = creditos[p]
-                  const restante = info ? info.limite - info.usado : 0
-                  const semSaldo = restante <= 0
-                  return (
-                    <div key={p} onClick={() => !semSaldo && setTipoCredito(p)}
-                      className={`border rounded-xl p-3 flex items-center gap-3 transition-all ${
-                        semSaldo ? 'opacity-40 cursor-not-allowed border-gray-100 bg-gray-50' :
-                        tipoCredito === p ? `${planoConfig[p]?.bg} border-primary-400 cursor-pointer` :
-                        'border-gray-200 hover:border-primary-200 cursor-pointer bg-white'
-                      }`}>
-                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                        tipoCredito === p ? 'border-primary-600 bg-primary-600' : 'border-gray-300'
-                      }`}>
-                        {tipoCredito === p && <div className="w-2 h-2 rounded-full bg-white" />}
+                {Object.keys(saldoMes).length === 0 ? (
+                  <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-sm text-orange-700">
+                    Cliente sem créditos disponíveis para esta data.
+                  </div>
+                ) : (
+                  Object.entries(saldoMes).map(([p, info]: [string, any]) => {
+                    const restante = info.disponivel
+                    const semSaldo = restante <= 0
+                    return (
+                      <div key={p} onClick={() => !semSaldo && setTipoCredito(p)}
+                        className={`border rounded-xl p-3 flex items-center gap-3 transition-all ${
+                          semSaldo ? 'opacity-40 cursor-not-allowed border-gray-100 bg-gray-50' :
+                          tipoCredito === p ? `${planoConfig[p]?.bg} border-primary-400 cursor-pointer` :
+                          'border-gray-200 hover:border-primary-200 cursor-pointer bg-white'
+                        }`}>
+                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
+                          tipoCredito === p ? 'border-primary-600 bg-primary-600' : 'border-gray-300'
+                        }`}>
+                          {tipoCredito === p && <div className="w-2 h-2 rounded-full bg-white" />}
+                        </div>
+                        <div className="flex-1">
+                          <div className={`text-sm font-semibold ${planoConfig[p]?.cor}`}>{planoConfig[p]?.label || p}</div>
+                          <div className="text-xs text-gray-400">{restante} sessão{restante !== 1 ? 'ões' : ''} restante{restante !== 1 ? 's' : ''}</div>
+                        </div>
+                        {semSaldo && <span className="text-xs text-red-400 font-medium">Sem saldo</span>}
                       </div>
-                      <div className="flex-1">
-                        <div className={`text-sm font-semibold ${planoConfig[p]?.cor}`}>{planoConfig[p]?.label || p}</div>
-                        {info && <div className="text-xs text-gray-400">{restante} sessão{restante !== 1 ? 'ões' : ''} restante{restante !== 1 ? 's' : ''}</div>}
-                      </div>
-                      {semSaldo && <span className="text-xs text-red-400 font-medium">Sem saldo</span>}
-                    </div>
-                  )
-                })}
+                    )
+                  })
+                )}
               </div>
             </div>
 
@@ -768,7 +761,6 @@ export default function RecepcaoClientesPage() {
         </div>
       )}
 
-      {/* Modal novo cliente */}
       {novoCliente && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
