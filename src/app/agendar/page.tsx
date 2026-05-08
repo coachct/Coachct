@@ -9,7 +9,6 @@ const CYAN = '#00e5ff'
 const AMARELO = '#ffaa00'
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
-const LIMITE_PLANO: Record<string, number> = { wellhub: 8, totalpass: 10 }
 
 const CONTRATO = `CONTRATO DE ADESÃO — COACH CT / JUST CT
 
@@ -70,7 +69,9 @@ export default function AgendarPage() {
   const [cliente, setCliente] = useState<any>(null)
   const [loadingHorarios, setLoadingHorarios] = useState(false)
 
-  const [creditos, setCreditos] = useState<Record<string, { usado: number; limite: number }>>({})
+  // Saldo do mês atual e do próximo (para agendamentos futuros)
+  const [saldoMesAtual, setSaldoMesAtual] = useState<Record<string, { total: number; usado: number; disponivel: number }>>({})
+  const [saldoMesProximo, setSaldoMesProximo] = useState<Record<string, { total: number; usado: number; disponivel: number }>>({})
   const [agendamentosNoDia, setAgendamentosNoDia] = useState<any[]>([])
   const [filasDoCliente, setFilasDoCliente] = useState<any[]>([])
   const [filaGeral, setFilaGeral] = useState<any[]>([])
@@ -111,39 +112,32 @@ export default function AgendarPage() {
       const { count } = await supabase.from('agendamentos').select('*', { count: 'exact', head: true }).eq('cliente_id', data.id)
       setContratoAssinado((count || 0) > 0)
       setNotifFila(data.notificacao_preferida || 'whatsapp')
-      await carregarCreditos(data)
+      await carregarSaldos(data.id)
     }
   }
 
-  async function carregarCreditos(c: any) {
+  async function carregarSaldos(clienteId: string) {
     const agora = new Date()
-    const mes = agora.getMonth() + 1
-    const ano = agora.getFullYear()
-    const inicio = `${ano}-${String(mes).padStart(2, '0')}-01`
-    const fim = `${ano}-${String(mes).padStart(2, '0')}-31`
+    const mesAtual = agora.getMonth() + 1
+    const anoAtual = agora.getFullYear()
+    const mesProximo = mesAtual === 12 ? 1 : mesAtual + 1
+    const anoProximo = mesAtual === 12 ? anoAtual + 1 : anoAtual
 
-    const { data: ags } = await supabase
-      .from('agendamentos')
-      .select('tipo_credito')
-      .eq('cliente_id', c.id)
-      .gte('data', inicio)
-      .lte('data', fim)
-      .in('status', ['agendado', 'confirmado', 'realizado'])
+    const [{ data: atual }, { data: proximo }] = await Promise.all([
+      supabase.rpc('saldo_creditos_cliente', {
+        p_cliente_id: clienteId,
+        p_mes: mesAtual,
+        p_ano: anoAtual,
+      }),
+      supabase.rpc('saldo_creditos_cliente', {
+        p_cliente_id: clienteId,
+        p_mes: mesProximo,
+        p_ano: anoProximo,
+      }),
+    ])
 
-    const usado: Record<string, number> = {}
-    for (const a of (ags || [])) {
-      usado[a.tipo_credito] = (usado[a.tipo_credito] || 0) + 1
-    }
-
-    const resultado: Record<string, { usado: number; limite: number }> = {}
-    const planos = c.planos || ['wellhub']
-    for (const p of planos) {
-      if (LIMITE_PLANO[p]) resultado[p] = { usado: usado[p] || 0, limite: LIMITE_PLANO[p] }
-    }
-    if ((c.creditos_avulso || 0) > 0) {
-      resultado['avulso'] = { usado: usado['avulso'] || 0, limite: c.creditos_avulso }
-    }
-    setCreditos(resultado)
+    setSaldoMesAtual(atual || {})
+    setSaldoMesProximo(proximo || {})
   }
 
   async function loadHorarios() {
@@ -231,17 +225,21 @@ export default function AgendarPage() {
     return filaGeral.some(f => (f.horario || '').slice(0, 5) === hora)
   }
 
+  // Identifica qual saldo usar baseado na data selecionada (mês atual ou próximo)
+  function saldoParaData(): Record<string, any> {
+    const dataSel = diasSemana[diaSel]
+    const agora = new Date()
+    const mesmoMes = dataSel.getMonth() === agora.getMonth() && dataSel.getFullYear() === agora.getFullYear()
+    return mesmoMes ? saldoMesAtual : saldoMesProximo
+  }
+
   function planosDisponiveisParaDia() {
-    const planos = cliente?.planos || ['wellhub']
+    const saldo = saldoParaData()
     const disponiveis: string[] = []
-    for (const p of planos) {
-      const info = creditos[p]
-      const saldo = info ? info.limite - info.usado : 0
-      if (saldo > 0 && !jaAgendouNoDia(p)) disponiveis.push(p)
-    }
-    if ((cliente?.creditos_avulso || 0) > 0 && !jaAgendouNoDia('avulso')) {
-      const info = creditos['avulso']
-      if (info && info.limite - info.usado > 0) disponiveis.push('avulso')
+    for (const plano of Object.keys(saldo)) {
+      if (saldo[plano].disponivel > 0 && !jaAgendouNoDia(plano)) {
+        disponiveis.push(plano)
+      }
     }
     return disponiveis
   }
@@ -287,8 +285,8 @@ export default function AgendarPage() {
       setErroModal(`Você já tem um agendamento com ${planoLabel[tipoCredito]} neste dia.`)
       return
     }
-    const info = creditos[tipoCredito]
-    if (info && info.limite - info.usado <= 0) {
+    const saldo = saldoParaData()
+    if (saldo[tipoCredito] && saldo[tipoCredito].disponivel <= 0) {
       setErroModal('Saldo insuficiente para este plano.')
       return
     }
@@ -352,8 +350,10 @@ export default function AgendarPage() {
   )
 
   const planosDisp = planosDisponiveisParaDia()
-  const todosSemSaldo = Object.keys(creditos).length > 0 && planosDisp.length === 0
+  const saldoExibir = saldoParaData()
+  const todosSemSaldo = Object.keys(saldoExibir).length > 0 && planosDisp.length === 0
   const temFila = modalSlot ? temFilaNoHorario(modalSlot.hora) : false
+  const dataSelEhProximoMes = diasSemana[diaSel].getMonth() !== new Date().getMonth() || diasSemana[diaSel].getFullYear() !== new Date().getFullYear()
 
   return (
     <div style={{ minHeight: '100vh', background: '#080808', fontFamily: "'DM Sans', sans-serif", color: '#f0f0f0' }}>
@@ -384,17 +384,24 @@ export default function AgendarPage() {
 
         {todosSemSaldo && (
           <div style={{ background: '#1a0a00', border: '1px solid #ff660033', borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1.5rem' }}>
-            <div style={{ fontSize: 14, color: AMARELO, fontWeight: 600, marginBottom: 4 }}>⚠️ Você usou todas as sessões do seu plano este mês</div>
+            <div style={{ fontSize: 14, color: AMARELO, fontWeight: 600, marginBottom: 4 }}>⚠️ Sem créditos disponíveis</div>
             <div style={{ fontSize: 13, color: '#666', lineHeight: 1.6 }}>
-              Seus créditos renovam no dia 1º do próximo mês. Você ainda pode treinar comprando sessões avulsas Coach CT na recepção.
+              {dataSelEhProximoMes 
+                ? 'Você não tem créditos para o mês selecionado.' 
+                : 'Seus créditos renovam no dia 1º do próximo mês. Você ainda pode treinar comprando sessões avulsas Coach CT na recepção.'}
             </div>
           </div>
         )}
 
-        {Object.keys(creditos).length > 0 && (
-          <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap' as const }}>
-            {Object.entries(creditos).map(([plano, info]) => {
-              const restante = info.limite - info.usado
+        {Object.keys(saldoExibir).length > 0 && (
+          <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap' as const, alignItems: 'center' }}>
+            {dataSelEhProximoMes && (
+              <span style={{ fontSize: 11, color: AMARELO, fontWeight: 600, marginRight: 4 }}>
+                Saldo do próximo mês:
+              </span>
+            )}
+            {Object.entries(saldoExibir).map(([plano, info]: [string, any]) => {
+              const restante = info.disponivel
               return (
                 <div key={plano} style={{
                   background: '#111', border: `1px solid ${restante === 0 ? '#333' : restante <= 2 ? '#ffaa0044' : '#ff2d9b33'}`,
@@ -402,7 +409,7 @@ export default function AgendarPage() {
                   color: restante === 0 ? '#444' : restante <= 2 ? AMARELO : ACCENT,
                 }}>
                   <span style={{ fontWeight: 600 }}>{restante}</span>
-                  <span style={{ color: '#555', marginLeft: 4 }}>/ {info.limite} {planoLabel[plano]}</span>
+                  <span style={{ color: '#555', marginLeft: 4 }}>/ {info.total} {planoLabel[plano]}</span>
                 </div>
               )
             })}
@@ -588,9 +595,9 @@ export default function AgendarPage() {
                     <span style={{ fontSize: 18 }}>{planoIcon[p]}</span>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 14, fontWeight: 600, color: tipoCredito === p ? '#fff' : '#888' }}>{planoLabel[p]}</div>
-                      {creditos[p] && (
+                      {saldoExibir[p] && (
                         <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>
-                          {creditos[p].limite - creditos[p].usado} sessões restantes este mês
+                          {saldoExibir[p].disponivel} sessões restantes {dataSelEhProximoMes ? 'no próximo mês' : 'este mês'}
                         </div>
                       )}
                     </div>
@@ -665,9 +672,9 @@ export default function AgendarPage() {
                   <span style={{ fontSize: 18 }}>{planoIcon[p]}</span>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 14, fontWeight: 600, color: tipoFilaCredito === p ? '#fff' : '#888' }}>{planoLabel[p]}</div>
-                    {creditos[p] && (
+                    {saldoExibir[p] && (
                       <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>
-                        {creditos[p].limite - creditos[p].usado} sessões restantes
+                        {saldoExibir[p].disponivel} sessões restantes
                       </div>
                     )}
                   </div>
