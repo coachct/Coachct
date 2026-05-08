@@ -6,8 +6,11 @@ import { createClient } from '@/lib/supabase'
 
 const ACCENT = '#ff2d9b'
 const CYAN = '#00e5ff'
+const AMARELO = '#ffaa00'
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+
+const LIMITE_PLANO: Record<string, number> = { wellhub: 8, totalpass: 10 }
 
 const CONTRATO = `CONTRATO DE ADESÃO — COACH CT / JUST CT
 
@@ -34,13 +37,14 @@ O presente contrato regula as condições de uso do serviço Coach CT, que consi
 5. FILA DE ESPERA
 5.1. Ao entrar na fila de espera, o cliente aceita automaticamente as regras.
 5.2. Quando uma vaga abrir, o agendamento é confirmado automaticamente.
-5.3. As mesmas regras de falta e cancelamento se aplicam.
+5.3. As mesmas regras de cancelamento e falta se aplicam — inclusive multa por no-show.
+5.4. A confirmação automática pode ocorrer a qualquer momento até 3h antes do treino.
 
 6. ACEITE
 Ao concluir o cadastro, o cliente declara ter lido e concordado com todos os termos acima.`
 
-function HalterSVG({ estado, onClick }: { estado: 'livre' | 'ocupado' | 'meu', onClick?: () => void }) {
-  const cor = estado === 'ocupado' ? '#333' : estado === 'meu' ? CYAN : ACCENT
+function HalterSVG({ estado, onClick }: { estado: 'livre' | 'ocupado' | 'meu' | 'fila', onClick?: () => void }) {
+  const cor = estado === 'ocupado' ? '#333' : estado === 'meu' ? CYAN : estado === 'fila' ? AMARELO : ACCENT
   const opacity = estado === 'ocupado' ? 0.3 : 1
   return (
     <svg width="36" height="36" viewBox="0 0 48 28"
@@ -64,21 +68,34 @@ export default function AgendarPage() {
   const [semanaOffset, setSemanaOffset] = useState(0)
   const [periodo, setPeriodo] = useState<'todos' | 'manha' | 'tarde' | 'noite'>('todos')
   const [horarios, setHorarios] = useState<any[]>([])
-  const [agendamentos, setAgendamentos] = useState<any[]>([])
   const [cliente, setCliente] = useState<any>(null)
   const [loadingHorarios, setLoadingHorarios] = useState(false)
 
-  // Modal de confirmação
+  // Créditos do mês
+  const [creditos, setCreditos] = useState<Record<string, { usado: number; limite: number }>>({})
+  // Agendamentos do cliente no dia selecionado
+  const [agendamentosNoDia, setAgendamentosNoDia] = useState<any[]>([])
+  // Fila de espera do cliente
+  const [filasDoCliente, setFilasDoCliente] = useState<any[]>([])
+
+  // Modal reserva
   const [modalSlot, setModalSlot] = useState<{ data: string; hora: string; vagas: number } | null>(null)
-  const [tipoCredito, setTipoCredito] = useState<'wellhub' | 'totalpass' | 'avulso' | ''>('')
+  const [tipoCredito, setTipoCredito] = useState<string>('')
   const [confirmando, setConfirmando] = useState(false)
   const [erroModal, setErroModal] = useState('')
 
+  // Modal fila
+  const [modalFila, setModalFila] = useState<{ data: string; hora: string } | null>(null)
+  const [tipoFilaCredito, setTipoFilaCredito] = useState<string>('')
+  const [entrandoFila, setEntrandoFila] = useState(false)
+  const [erroFila, setErroFila] = useState('')
+  const [filaAceite, setFilaAceite] = useState(false)
+
   // Contrato
   const [mostrarContrato, setMostrarContrato] = useState(false)
-  const [contratoAceito, setContratoAceito] = useState(false)
   const [contratoAssinado, setContratoAssinado] = useState(false)
   const [aceiteCheck, setAceiteCheck] = useState(false)
+  const [pendingAction, setPendingAction] = useState<'reserva' | 'fila' | null>(null)
 
   useEffect(() => {
     if (!loading && !perfil) router.push('/login')
@@ -90,41 +107,73 @@ export default function AgendarPage() {
   }, [perfil])
 
   useEffect(() => {
-    if (perfil) loadHorarios()
-  }, [diaSel, semanaOffset, perfil])
+    if (perfil && cliente) loadHorarios()
+  }, [diaSel, semanaOffset, perfil, cliente])
 
   async function loadCliente() {
     const { data } = await supabase.from('clientes').select('*').eq('user_id', perfil!.id).maybeSingle()
     setCliente(data)
-    // Verifica se já assinou o contrato (tem pelo menos 1 agendamento anterior)
     if (data) {
       const { count } = await supabase.from('agendamentos').select('*', { count: 'exact', head: true }).eq('cliente_id', data.id)
       setContratoAssinado((count || 0) > 0)
+      await carregarCreditos(data)
     }
+  }
+
+  async function carregarCreditos(c: any) {
+    const agora = new Date()
+    const mes = agora.getMonth() + 1
+    const ano = agora.getFullYear()
+    const inicio = `${ano}-${String(mes).padStart(2, '0')}-01`
+    const fim = `${ano}-${String(mes).padStart(2, '0')}-31`
+
+    const { data: ags } = await supabase
+      .from('agendamentos')
+      .select('tipo_credito')
+      .eq('cliente_id', c.id)
+      .gte('data', inicio)
+      .lte('data', fim)
+      .in('status', ['agendado', 'confirmado', 'realizado'])
+
+    const usado: Record<string, number> = {}
+    for (const a of (ags || [])) {
+      usado[a.tipo_credito] = (usado[a.tipo_credito] || 0) + 1
+    }
+
+    const resultado: Record<string, { usado: number; limite: number }> = {}
+    const planos = c.planos || ['wellhub']
+    for (const p of planos) {
+      if (LIMITE_PLANO[p]) resultado[p] = { usado: usado[p] || 0, limite: LIMITE_PLANO[p] }
+    }
+    if ((c.creditos_avulso || 0) > 0) {
+      resultado['avulso'] = { usado: usado['avulso'] || 0, limite: c.creditos_avulso }
+    }
+    setCreditos(resultado)
   }
 
   async function loadHorarios() {
     setLoadingHorarios(true)
     const dataSel = diasSemana[diaSel]
-    const diaSemana = dataSel.getDay()
+    const diaSem = dataSel.getDay()
     const dataStr = dataSel.toISOString().split('T')[0]
 
-    const [{ data: hors }, { data: ags }] = await Promise.all([
-      supabase.from('coach_horarios').select('hora, coaches(id, nome)').eq('dia_semana', diaSemana).eq('ativo', true),
+    const [{ data: hors }, { data: ags }, { data: agCliente }, { data: filas }] = await Promise.all([
+      supabase.from('coach_horarios').select('hora').eq('dia_semana', diaSem).eq('ativo', true),
       supabase.from('agendamentos').select('horario, status').eq('data', dataStr).neq('status', 'cancelado'),
+      supabase.from('agendamentos').select('horario, tipo_credito, status').eq('data', dataStr).eq('cliente_id', cliente.id),
+      supabase.from('fila_espera').select('horario').eq('data', dataStr).eq('cliente_id', cliente.id),
     ])
 
-    // Agrupa vagas por horário
     const porHora: Record<string, number> = {}
     for (const h of (hors || [])) {
-      porHora[h.hora] = (porHora[h.hora] || 0) + 1
+      const hora = (h.hora || '').slice(0, 5)
+      porHora[hora] = (porHora[hora] || 0) + 1
     }
 
-    // Conta ocupados por horário
     const ocupados: Record<string, number> = {}
     for (const a of (ags || [])) {
-      const hora = a.horario?.slice(0, 5)
-      if (hora) ocupados[hora] = (ocupados[hora] || 0) + 1
+      const hora = (a.horario || '').slice(0, 5)
+      ocupados[hora] = (ocupados[hora] || 0) + 1
     }
 
     const resultado = Object.entries(porHora).map(([hora, total]) => ({
@@ -135,7 +184,8 @@ export default function AgendarPage() {
     })).sort((a, b) => a.hora.localeCompare(b.hora))
 
     setHorarios(resultado)
-    setAgendamentos(ags || [])
+    setAgendamentosNoDia(agCliente || [])
+    setFilasDoCliente(filas || [])
     setLoadingHorarios(false)
   }
 
@@ -153,13 +203,65 @@ export default function AgendarPage() {
     return true
   })
 
-  function abrirModal(hora: string, vagas: number) {
-    const dataSel = diasSemana[diaSel]
-    const dataStr = dataSel.toISOString().split('T')[0]
+  // Verifica se cliente já agendou naquele dia com aquele plano
+  function jaAgendouNoDia(plano: string) {
+    return agendamentosNoDia.some(a =>
+      a.tipo_credito === plano && ['agendado', 'confirmado', 'realizado'].includes(a.status)
+    )
+  }
+
+  // Verifica se cliente está na fila daquele horário
+  function naFila(hora: string) {
+    return filasDoCliente.some(f => (f.horario || '').slice(0, 5) === hora)
+  }
+
+  // Planos disponíveis para aquele dia (não zerados e não usados no dia)
+  function planosDisponiveisParaDia() {
+    const planos = cliente?.planos || ['wellhub']
+    const disponiveis: string[] = []
+    for (const p of planos) {
+      const info = creditos[p]
+      const saldo = info ? info.limite - info.usado : 0
+      if (saldo > 0 && !jaAgendouNoDia(p)) disponiveis.push(p)
+    }
+    if ((cliente?.creditos_avulso || 0) > 0 && !jaAgendouNoDia('avulso')) {
+      const info = creditos['avulso']
+      if (info && info.limite - info.usado > 0) disponiveis.push('avulso')
+    }
+    return disponiveis
+  }
+
+  // Label dos planos
+  const planoLabel: Record<string, string> = {
+    wellhub: 'Wellhub Diamond',
+    totalpass: 'TotalPass TP6',
+    avulso: 'Crédito Avulso Coach CT',
+  }
+  const planoIcon: Record<string, string> = {
+    wellhub: '💜',
+    totalpass: '🔵',
+    avulso: '🏋️',
+  }
+
+  function abrirModalReserva(hora: string, vagas: number) {
+    const dataStr = diasSemana[diaSel].toISOString().split('T')[0]
     setModalSlot({ data: dataStr, hora, vagas })
     setTipoCredito('')
     setErroModal('')
     if (!contratoAssinado) {
+      setPendingAction('reserva')
+      setMostrarContrato(true)
+    }
+  }
+
+  function abrirModalFila(hora: string) {
+    const dataStr = diasSemana[diaSel].toISOString().split('T')[0]
+    setModalFila({ data: dataStr, hora })
+    setTipoFilaCredito('')
+    setErroFila('')
+    setFilaAceite(false)
+    if (!contratoAssinado) {
+      setPendingAction('fila')
       setMostrarContrato(true)
     }
   }
@@ -167,6 +269,20 @@ export default function AgendarPage() {
   async function confirmarAgendamento() {
     if (!tipoCredito) { setErroModal('Selecione como vai usar esta sessão.'); return }
     if (!modalSlot || !cliente) return
+
+    // Valida regra de 1 por dia por plano
+    if (jaAgendouNoDia(tipoCredito)) {
+      setErroModal(`Você já tem um agendamento com ${planoLabel[tipoCredito]} neste dia.`)
+      return
+    }
+
+    // Valida saldo
+    const info = creditos[tipoCredito]
+    if (info && info.limite - info.usado <= 0) {
+      setErroModal('Saldo insuficiente para este plano.')
+      return
+    }
+
     setConfirmando(true)
     setErroModal('')
 
@@ -190,6 +306,34 @@ export default function AgendarPage() {
     router.push('/minha-conta')
   }
 
+  async function confirmarFila() {
+    if (!tipoFilaCredito) { setErroFila('Selecione como vai usar esta sessão.'); return }
+    if (!filaAceite) { setErroFila('Confirme que entendeu as regras da fila.'); return }
+    if (!modalFila || !cliente) return
+
+    setEntrandoFila(true)
+    setErroFila('')
+
+    const { error } = await supabase.from('fila_espera').insert({
+      cliente_id: cliente.id,
+      data: modalFila.data,
+      horario: modalFila.hora + ':00',
+      tipo_credito: tipoFilaCredito,
+      status: 'aguardando',
+    })
+
+    if (error) {
+      setErroFila('Erro ao entrar na fila. Tente novamente.')
+      setEntrandoFila(false)
+      return
+    }
+
+    setContratoAssinado(true)
+    setModalFila(null)
+    setEntrandoFila(false)
+    await loadHorarios()
+  }
+
   const dataFormatada = (dataStr: string) => {
     const d = new Date(dataStr + 'T12:00:00')
     return d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
@@ -201,6 +345,9 @@ export default function AgendarPage() {
       <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
     </div>
   )
+
+  const planosDisp = planosDisponiveisParaDia()
+  const todosSemSaldo = Object.keys(creditos).length > 0 && planosDisp.length === 0 && !Object.values(creditos).some(i => i.limite - i.usado > 0)
 
   return (
     <div style={{ minHeight: '100vh', background: '#080808', fontFamily: "'DM Sans', sans-serif", color: '#f0f0f0' }}>
@@ -219,18 +366,46 @@ export default function AgendarPage() {
         <div onClick={() => router.push('/')} style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', letterSpacing: 2, cursor: 'pointer' }}>
           JUST<span style={{ color: ACCENT }}>CT</span>
         </div>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          <button onClick={() => router.push('/minha-conta')} style={{ background: 'transparent', border: '1px solid #333', borderRadius: 8, padding: '0.4rem 1rem', color: '#888', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-            Minha conta
-          </button>
-        </div>
+        <button onClick={() => router.push('/minha-conta')} style={{ background: 'transparent', border: '1px solid #333', borderRadius: 8, padding: '0.4rem 1rem', color: '#888', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+          Minha conta
+        </button>
       </div>
 
       <div style={{ maxWidth: 700, margin: '0 auto', padding: '2rem 1.5rem' }}>
-        <div style={{ marginBottom: '2rem' }}>
+        <div style={{ marginBottom: '1.5rem' }}>
           <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: '#fff' }}>AGENDAR COACH CT</div>
           <div style={{ fontSize: 14, color: '#555', marginTop: 4 }}>Cada halter = uma vaga disponível</div>
         </div>
+
+        {/* Banner créditos zerados */}
+        {todosSemSaldo && (
+          <div style={{ background: '#1a0a00', border: '1px solid #ff660033', borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1.5rem' }}>
+            <div style={{ fontSize: 14, color: '#ffaa00', fontWeight: 600, marginBottom: 4 }}>⚠️ Você usou todas as sessões do seu plano este mês</div>
+            <div style={{ fontSize: 13, color: '#666', lineHeight: 1.6 }}>
+              Seus créditos Wellhub/TotalPass renovam no dia 1º do próximo mês. Mas você ainda pode treinar comprando sessões avulsas Coach CT na recepção.
+            </div>
+          </div>
+        )}
+
+        {/* Saldo rápido */}
+        {Object.keys(creditos).length > 0 && (
+          <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap' as const }}>
+            {Object.entries(creditos).map(([plano, info]) => {
+              const restante = info.limite - info.usado
+              return (
+                <div key={plano} style={{
+                  background: restante === 0 ? '#1a1a1a' : '#111',
+                  border: `1px solid ${restante === 0 ? '#333' : restante <= 2 ? '#ffaa0044' : '#ff2d9b33'}`,
+                  borderRadius: 10, padding: '0.5rem 1rem', fontSize: 12,
+                  color: restante === 0 ? '#444' : restante <= 2 ? AMARELO : ACCENT,
+                }}>
+                  <span style={{ fontWeight: 600 }}>{restante}</span>
+                  <span style={{ color: '#555', marginLeft: 4 }}>/ {info.limite} {planoLabel[plano]}</span>
+                </div>
+              )
+            })}
+          </div>
+        )}
 
         {/* Calendário */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
@@ -288,32 +463,50 @@ export default function AgendarPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {horariosFiltrados.map((h, i) => {
               const lotado = h.livres <= 0
+              const clienteNaFila = naFila(h.hora)
+              const jaAgendado = agendamentosNoDia.some(a =>
+                (a.horario || '').slice(0, 5) === h.hora && ['agendado','confirmado'].includes(a.status)
+              )
+              const semCredito = planosDisp.length === 0
+
               return (
                 <div key={i} className="slot-row-h"
-                  style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', padding: '1rem 1.25rem', borderRadius: 12, border: '1px solid #222', background: '#111', opacity: lotado ? 0.5 : 1 }}>
+                  style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', padding: '1rem 1.25rem', borderRadius: 12, border: `1px solid ${jaAgendado ? CYAN + '44' : clienteNaFila ? AMARELO + '44' : '#222'}`, background: jaAgendado ? '#00e5ff08' : clienteNaFila ? '#ffaa0008' : '#111' }}>
                   <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, fontWeight: 500, color: '#fff', width: 58, flexShrink: 0 }}>{h.hora}</div>
                   <div style={{ display: 'flex', gap: 6, flex: 1, alignItems: 'center', flexWrap: 'wrap' as const }}>
                     {Array.from({ length: h.total }).map((_, vi) => (
                       <HalterSVG key={vi}
-                        estado={vi < h.ocupados ? 'ocupado' : 'livre'}
-                        onClick={() => !lotado && abrirModal(h.hora, h.livres)}
+                        estado={jaAgendado && vi === 0 ? 'meu' : clienteNaFila && vi === 0 ? 'fila' : vi < h.ocupados ? 'ocupado' : 'livre'}
+                        onClick={() => !lotado && !semCredito && !jaAgendado && abrirModalReserva(h.hora, h.livres)}
                       />
                     ))}
                   </div>
                   <div style={{ flexShrink: 0, minWidth: 90, textAlign: 'right' as const }}>
-                    <div style={{ fontSize: 11, fontFamily: "'DM Mono', monospace", color: lotado ? '#ff4444' : h.livres <= 2 ? '#ffaa00' : ACCENT, fontWeight: 600, marginBottom: 6 }}>
-                      {lotado ? 'LOTADO' : h.livres === 1 ? '1 VAGA' : `${h.livres} VAGAS`}
-                    </div>
-                    {!lotado && (
-                      <button onClick={() => abrirModal(h.hora, h.livres)}
-                        style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                        Reservar
-                      </button>
-                    )}
-                    {lotado && (
-                      <button style={{ background: 'transparent', color: '#ffaa00', border: '1px solid #ffaa00', borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                        Fila
-                      </button>
+                    {jaAgendado ? (
+                      <div style={{ fontSize: 11, color: CYAN, fontWeight: 600 }}>RESERVADO ✓</div>
+                    ) : clienteNaFila ? (
+                      <div style={{ fontSize: 11, color: AMARELO, fontWeight: 600 }}>NA FILA ⏳</div>
+                    ) : (
+                      <>
+                        <div style={{ fontSize: 11, fontFamily: "'DM Mono', monospace", color: lotado ? '#ff4444' : h.livres <= 2 ? AMARELO : ACCENT, fontWeight: 600, marginBottom: 6 }}>
+                          {lotado ? 'LOTADO' : h.livres === 1 ? '1 VAGA' : `${h.livres} VAGAS`}
+                        </div>
+                        {!lotado && !semCredito && (
+                          <button onClick={() => abrirModalReserva(h.hora, h.livres)}
+                            style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                            Reservar
+                          </button>
+                        )}
+                        {lotado && !semCredito && (
+                          <button onClick={() => abrirModalFila(h.hora)}
+                            style={{ background: 'transparent', color: AMARELO, border: `1px solid ${AMARELO}`, borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                            Fila
+                          </button>
+                        )}
+                        {semCredito && (
+                          <div style={{ fontSize: 10, color: '#555', lineHeight: 1.4 }}>Sem créditos</div>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -323,31 +516,31 @@ export default function AgendarPage() {
         )}
       </div>
 
-      {/* Modal contrato (primeira vez) */}
+      {/* Modal contrato */}
       {mostrarContrato && (
         <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: '#111', border: '1px solid #333', borderRadius: 20, width: '100%', maxWidth: 500, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '1.5rem 1.5rem 1rem', borderBottom: '1px solid #222' }}>
               <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', letterSpacing: 1 }}>CONTRATO COACH CT</div>
-              <div style={{ fontSize: 13, color: '#555', marginTop: 4 }}>Leia antes de fazer sua primeira reserva</div>
+              <div style={{ fontSize: 13, color: '#888', marginTop: 4 }}>Leia antes de fazer sua primeira reserva</div>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.5rem' }}>
-              <pre style={{ fontSize: 12, color: '#666', lineHeight: 1.7, whiteSpace: 'pre-wrap', fontFamily: "'DM Sans', sans-serif" }}>{CONTRATO}</pre>
+              <pre style={{ fontSize: 13, color: '#aaa', lineHeight: 1.8, whiteSpace: 'pre-wrap', fontFamily: "'DM Sans', sans-serif" }}>{CONTRATO}</pre>
             </div>
             <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid #222' }}>
               <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer', marginBottom: '1rem' }}>
                 <input type="checkbox" checked={aceiteCheck} onChange={e => setAceiteCheck(e.target.checked)}
                   style={{ marginTop: 2, accentColor: ACCENT, width: 16, height: 16, flexShrink: 0 }} />
-                <span style={{ fontSize: 13, color: '#888', lineHeight: 1.5 }}>
+                <span style={{ fontSize: 13, color: '#aaa', lineHeight: 1.5 }}>
                   Li e aceito o contrato e as regras de agendamento, cancelamento e falta.
                 </span>
               </label>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={() => { setMostrarContrato(false); setModalSlot(null) }}
+                <button onClick={() => { setMostrarContrato(false); setModalSlot(null); setModalFila(null) }}
                   style={{ flex: 1, background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.75rem', color: '#888', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
                   Cancelar
                 </button>
-                <button onClick={() => { if (aceiteCheck) { setContratoAceito(true); setMostrarContrato(false) } }}
+                <button onClick={() => { if (aceiteCheck) { setContratoAssinado(true); setMostrarContrato(false); setPendingAction(null) } }}
                   disabled={!aceiteCheck}
                   style={{ flex: 2, background: aceiteCheck ? ACCENT : '#333', color: '#fff', border: 'none', borderRadius: 10, padding: '0.75rem', fontWeight: 600, fontSize: 14, cursor: aceiteCheck ? 'pointer' : 'default', fontFamily: "'DM Sans', sans-serif" }}>
                   Aceitar e continuar →
@@ -358,29 +551,38 @@ export default function AgendarPage() {
         </div>
       )}
 
-      {/* Modal confirmação de reserva */}
+      {/* Modal confirmação reserva */}
       {modalSlot && !mostrarContrato && (
         <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: '#111', border: '1px solid #333', borderRadius: 20, width: '100%', maxWidth: 440, padding: '1.5rem' }}>
             <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: 4 }}>CONFIRMAR RESERVA</div>
-            <div style={{ fontSize: 13, color: '#555', marginBottom: '1.5rem', textTransform: 'capitalize' }}>
+            <div style={{ fontSize: 13, color: '#555', marginBottom: '1.5rem', textTransform: 'capitalize' as const }}>
               {dataFormatada(modalSlot.data)} · {modalSlot.hora} · {modalSlot.vagas} vaga{modalSlot.vagas !== 1 ? 's' : ''} disponível{modalSlot.vagas !== 1 ? 'is' : ''}
             </div>
 
             <div style={{ marginBottom: '1.5rem' }}>
-              <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Como vai usar esta sessão?</div>
-              {[
-                { key: 'wellhub', label: 'Wellhub Diamond', icon: '💜' },
-                { key: 'totalpass', label: 'TotalPass TP6', icon: '🔵' },
-                { key: 'avulso', label: 'Crédito Avulso Coach CT', icon: '🏋️' },
-              ].map(p => (
-                <div key={p.key} onClick={() => setTipoCredito(p.key as any)}
-                  style={{ border: `1.5px solid ${tipoCredito === p.key ? ACCENT : '#333'}`, background: tipoCredito === p.key ? `${ACCENT}12` : 'transparent', borderRadius: 10, padding: '0.75rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: 8, transition: 'all .15s' }}>
-                  <span style={{ fontSize: 18 }}>{p.icon}</span>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: tipoCredito === p.key ? '#fff' : '#888' }}>{p.label}</span>
-                  <div style={{ marginLeft: 'auto', width: 16, height: 16, borderRadius: '50%', border: `2px solid ${tipoCredito === p.key ? ACCENT : '#444'}`, background: tipoCredito === p.key ? ACCENT : 'transparent', flexShrink: 0 }} />
+              <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase' as const, letterSpacing: 1 }}>Como vai usar esta sessão?</div>
+              {planosDisp.length === 0 ? (
+                <div style={{ background: '#1a0a00', border: '1px solid #ff660033', borderRadius: 10, padding: '1rem', fontSize: 13, color: AMARELO, lineHeight: 1.6 }}>
+                  ⚠️ Você não tem créditos disponíveis para este dia. Compre sessões avulsas na recepção do Just CT.
                 </div>
-              ))}
+              ) : (
+                planosDisp.map(p => (
+                  <div key={p} onClick={() => setTipoCredito(p)}
+                    style={{ border: `1.5px solid ${tipoCredito === p ? ACCENT : '#333'}`, background: tipoCredito === p ? `${ACCENT}12` : 'transparent', borderRadius: 10, padding: '0.75rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: 8, transition: 'all .15s' }}>
+                    <span style={{ fontSize: 18 }}>{planoIcon[p]}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: tipoCredito === p ? '#fff' : '#888' }}>{planoLabel[p]}</div>
+                      {creditos[p] && (
+                        <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>
+                          {creditos[p].limite - creditos[p].usado} sessões restantes este mês
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${tipoCredito === p ? ACCENT : '#444'}`, background: tipoCredito === p ? ACCENT : 'transparent', flexShrink: 0 }} />
+                  </div>
+                ))
+              )}
             </div>
 
             <div style={{ background: '#0a0a0a', borderRadius: 10, padding: '0.75rem 1rem', marginBottom: '1.5rem', fontSize: 12, color: '#555', lineHeight: 1.6 }}>
@@ -398,9 +600,77 @@ export default function AgendarPage() {
                 style={{ flex: 1, background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.85rem', color: '#888', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
                 Cancelar
               </button>
-              <button onClick={confirmarAgendamento} disabled={confirmando}
-                style={{ flex: 2, background: ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 600, fontSize: 15, cursor: confirmando ? 'default' : 'pointer', fontFamily: "'DM Sans', sans-serif", opacity: confirmando ? 0.7 : 1 }}>
+              <button onClick={confirmarAgendamento} disabled={confirmando || planosDisp.length === 0}
+                style={{ flex: 2, background: planosDisp.length === 0 ? '#222' : ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 600, fontSize: 15, cursor: confirmando || planosDisp.length === 0 ? 'default' : 'pointer', fontFamily: "'DM Sans', sans-serif", opacity: confirmando ? 0.7 : 1 }}>
                 {confirmando ? 'Confirmando...' : 'Confirmar reserva ✓'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal fila de espera */}
+      {modalFila && !mostrarContrato && (
+        <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#111', border: `1px solid ${AMARELO}33`, borderRadius: 20, width: '100%', maxWidth: 440, padding: '1.5rem' }}>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: AMARELO, marginBottom: 4 }}>FILA DE ESPERA</div>
+            <div style={{ fontSize: 13, color: '#555', marginBottom: '1.5rem', textTransform: 'capitalize' as const }}>
+              {dataFormatada(modalFila.data)} · {modalFila.hora}
+            </div>
+
+            {/* Aviso importante */}
+            <div style={{ background: '#1a1000', border: `1px solid ${AMARELO}33`, borderRadius: 10, padding: '1rem', marginBottom: '1.5rem', fontSize: 13, color: '#aaa', lineHeight: 1.7 }}>
+              <div style={{ color: AMARELO, fontWeight: 600, marginBottom: 6 }}>⚠️ Atenção antes de entrar na fila</div>
+              <ul style={{ paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <li>Se uma vaga abrir, <strong style={{ color: '#fff' }}>seu agendamento é confirmado automaticamente</strong>, a qualquer hora.</li>
+                <li>Se confirmado, você pode cancelar <strong style={{ color: '#fff' }}>até 3h antes</strong> do treino — mas só se houver outra pessoa na fila.</li>
+                <li>Se não houver mais fila, <strong style={{ color: '#fff' }}>não é possível cancelar</strong> e a falta gera multa.</li>
+                <li>As mesmas regras de <strong style={{ color: '#fff' }}>no-show e bloqueio</strong> se aplicam.</li>
+              </ul>
+            </div>
+
+            <div style={{ marginBottom: '1.5rem' }}>
+              <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase' as const, letterSpacing: 1 }}>Usar crédito de qual plano?</div>
+              {planosDisp.map(p => (
+                <div key={p} onClick={() => setTipoFilaCredito(p)}
+                  style={{ border: `1.5px solid ${tipoFilaCredito === p ? AMARELO : '#333'}`, background: tipoFilaCredito === p ? `${AMARELO}12` : 'transparent', borderRadius: 10, padding: '0.75rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: 8, transition: 'all .15s' }}>
+                  <span style={{ fontSize: 18 }}>{planoIcon[p]}</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: tipoFilaCredito === p ? '#fff' : '#888' }}>{planoLabel[p]}</div>
+                    {creditos[p] && (
+                      <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>
+                        {creditos[p].limite - creditos[p].usado} sessões restantes
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${tipoFilaCredito === p ? AMARELO : '#444'}`, background: tipoFilaCredito === p ? AMARELO : 'transparent', flexShrink: 0 }} />
+                </div>
+              ))}
+            </div>
+
+            {/* Aceite da fila */}
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer', marginBottom: '1.5rem' }}>
+              <input type="checkbox" checked={filaAceite} onChange={e => setFilaAceite(e.target.checked)}
+                style={{ marginTop: 2, accentColor: AMARELO, width: 16, height: 16, flexShrink: 0 }} />
+              <span style={{ fontSize: 13, color: '#888', lineHeight: 1.5 }}>
+                Entendi as regras da fila. Se uma vaga abrir, aceito o agendamento automático e as regras de cancelamento e multa.
+              </span>
+            </label>
+
+            {erroFila && (
+              <div style={{ background: '#ffaa0015', border: '1px solid #ffaa0044', borderRadius: 8, padding: '0.6rem 1rem', fontSize: 13, color: AMARELO, marginBottom: '1rem' }}>
+                {erroFila}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setModalFila(null)}
+                style={{ flex: 1, background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.85rem', color: '#888', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                Cancelar
+              </button>
+              <button onClick={confirmarFila} disabled={entrandoFila}
+                style={{ flex: 2, background: AMARELO, color: '#000', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 700, fontSize: 15, cursor: entrandoFila ? 'default' : 'pointer', fontFamily: "'DM Sans', sans-serif", opacity: entrandoFila ? 0.7 : 1 }}>
+                {entrandoFila ? 'Entrando...' : 'Entrar na fila ⏳'}
               </button>
             </div>
           </div>
