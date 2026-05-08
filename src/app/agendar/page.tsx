@@ -636,9 +636,9 @@ export default function AgendarPage() {
             <div style={{ background: '#1a1000', border: `1px solid ${AMARELO}33`, borderRadius: 10, padding: '1rem', marginBottom: '1.5rem', fontSize: 13, color: '#aaa', lineHeight: 1.7 }}>
               <div style={{ color: AMARELO, fontWeight: 600, marginBottom: 6 }}>⚠️ Atenção antes de entrar na fila</div>
               <ul style={{ paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <li>Se uma vaga abrir, <strong style={{ color: '#fff' }}>seu agendamento é confirmado automaticamente</strong>, a qualquer hora.</li>
-                <li>Você pode cancelar <strong style={{ color: '#fff' }}>até 3h antes</strong> — mas só se houver outra pessoa na fila.</li>
-                <li>Se não houver mais fila, <strong style={{ color: '#fff' }}>não é possível cancelar</strong> e a falta gera multa.</li>
+                <li>Se alguém cancelar a reserva, <strong style={{ color: '#fff' }}>você será automaticamente reservado na aula</strong> — até 3h antes do treino.</li>
+<li>Após confirmado, você pode cancelar <strong style={{ color: '#fff' }}>até 3h antes</strong> — mas só se houver outra pessoa na fila.</li>
+<li>Se não houver mais fila, <strong style={{ color: '#fff' }}>cancelamento bloqueado</strong> e falta sem aviso gera multa.</li>
               </ul>
             </div>
 
