@@ -2,6 +2,7 @@ import SidebarLayout from '@/components/layout/SidebarLayout'
 const nav = [
   { label: 'Dashboard', href: '/admin/dashboard' },
   { label: 'Agenda', href: '/admin/agenda' },
+  { label: 'Clientes', href: '/admin/clientes' },
   { label: 'Produtos', href: '/admin/produtos' },
   { label: 'Faturamento & Margem', href: '/admin/financeiro' },
   { label: 'Coaches', href: '/admin/coaches' },
