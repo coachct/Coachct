@@ -9,6 +9,45 @@ const TIPOS_PRODUTO = [
   { key: 'credito_coach', label: 'Crédito Avulso Coach CT', precisaValidade: true, descricao: 'Gera N créditos individuais com validade própria' },
 ]
 
+function ProdutoCard({ produto, onEditar, onAlternar }: any) {
+  const tipoLabel = TIPOS_PRODUTO.find(t => t.key === produto.tipo)?.label || produto.tipo
+  return (
+    <div className={`card flex items-start gap-3 ${!produto.ativo ? 'opacity-60' : ''}`}>
+      <div className="w-10 h-10 rounded-xl bg-primary-100 text-primary-700 flex items-center justify-center flex-shrink-0">
+        <Package size={18} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-semibold text-gray-900">{produto.nome}</span>
+          {!produto.ativo && (
+            <span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">Inativo</span>
+          )}
+        </div>
+        <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+          <span>{tipoLabel}</span>
+          <span className="font-mono font-semibold text-gray-700">
+            R$ {Number(produto.valor).toFixed(2).replace('.', ',')}
+          </span>
+          {produto.dias_validade && (
+            <span>Validade: {produto.dias_validade} dias</span>
+          )}
+        </div>
+        {produto.descricao && (
+          <div className="text-xs text-gray-400 mt-1 line-clamp-2">{produto.descricao}</div>
+        )}
+      </div>
+      <div className="flex flex-col gap-1">
+        <button onClick={onEditar} className="btn btn-sm gap-1 text-primary-600 hover:bg-primary-50">
+          <Edit2 size={11} /> Editar
+        </button>
+        <button onClick={onAlternar} className="btn btn-sm text-xs text-gray-500 hover:bg-gray-50">
+          {produto.ativo ? 'Desativar' : 'Ativar'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function AdminProdutosPage() {
   const { perfil, loading } = useAuth()
   const router = useRouter()
@@ -113,18 +152,20 @@ export default function AdminProdutosPage() {
     await loadProdutos()
   }
 
-  if (loading || loadingData) return (
-    <div className="flex items-center justify-center h-screen">
-      <div className="w-8 h-8 border-4 border-primary-400 border-t-transparent rounded-full animate-spin" />
-    </div>
-  )
+  if (loading || loadingData) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="w-8 h-8 border-4 border-primary-400 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
 
   const ativos = produtos.filter(p => p.ativo)
   const inativos = produtos.filter(p => !p.ativo)
+  const tipoForm = TIPOS_PRODUTO.find(t => t.key === form.tipo)
 
   return (
     <div className="min-h-screen bg-gray-50">
-
       <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10 flex items-center justify-between">
         <div>
           <h1 className="text-lg font-semibold text-gray-900">Produtos</h1>
@@ -136,7 +177,6 @@ export default function AdminProdutosPage() {
       </div>
 
       <div className="max-w-3xl mx-auto px-6 py-5">
-
         {produtos.length === 0 ? (
           <div className="card text-center py-16">
             <Package size={32} className="mx-auto text-gray-200 mb-3" />
@@ -157,7 +197,6 @@ export default function AdminProdutosPage() {
                 </div>
               </div>
             )}
-
             {inativos.length > 0 && (
               <div className="mt-6">
                 <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Inativos</div>
@@ -219,8 +258,7 @@ export default function AdminProdutosPage() {
                     value={form.valor}
                     onChange={e => setForm({ ...form, valor: parseFloat(e.target.value) || 0 })} />
                 </div>
-
-                {TIPOS_PRODUTO.find(t => t.key === form.tipo)?.precisaValidade && (
+                {tipoForm?.precisaValidade && (
                   <div>
                     <label className="text-xs text-gray-500 mb-1 block font-medium">Validade (dias)</label>
                     <input type="number" min={1} className="input w-full"
@@ -269,21 +307,3 @@ export default function AdminProdutosPage() {
     </div>
   )
 }
-
-function ProdutoCard({ produto, onEditar, onAlternar }: any) {
-  const tipoLabel = TIPOS_PRODUTO.find(t => t.key === produto.tipo)?.label || produto.tipo
-  return (
-    <div className={`card flex items-start gap-3 ${!produto.ativo ? 'opacity-60' : ''}`}>
-      <div className="w-10 h-10 rounded-xl bg-primary-100 text-primary-700 flex items-center justify-center flex-shrink-0">
-        <Package size={18} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-semibold text-gray-900">{produto.nome}</span>
-          {!produto.ativo && (
-            <span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">Inativo</span>
-          )}
-        </div>
-        <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-          <span>{tipoLabel}</span>
-          <span className="font-mono font-semibold text-gray-700">
