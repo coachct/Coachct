@@ -42,9 +42,9 @@ O presente contrato regula as condições de uso do serviço Coach CT, que consi
 6. ACEITE
 Ao concluir o cadastro, o cliente declara ter lido e concordado com todos os termos acima.`
 
-function HalterSVG({ estado, onClick }: { estado: 'livre' | 'ocupado' | 'meu' | 'fila', onClick?: () => void }) {
-  const cor = estado === 'ocupado' ? '#333' : estado === 'meu' ? CYAN : estado === 'fila' ? AMARELO : ACCENT
-  const opacity = estado === 'ocupado' ? 0.3 : 1
+function HalterSVG({ estado, onClick }: { estado: 'livre' | 'ocupado' | 'meu' | 'fila' | 'bloqueado', onClick?: () => void }) {
+  const cor = estado === 'ocupado' ? '#333' : estado === 'meu' ? CYAN : estado === 'fila' ? AMARELO : estado === 'bloqueado' ? '#ff4444' : ACCENT
+  const opacity = estado === 'ocupado' ? 0.3 : estado === 'bloqueado' ? 0.4 : 1
   return (
     <svg width="36" height="36" viewBox="0 0 48 28"
       style={{ opacity, flexShrink: 0, cursor: estado === 'livre' ? 'pointer' : 'default' }}
@@ -156,12 +156,13 @@ export default function AgendarPage() {
     const horaAtual = `${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}`
     const isDiaDe = dataStr === hoje
 
-    const [{ data: hors }, { data: ags }, { data: agCliente }, { data: filas }, { data: filaGeralData }] = await Promise.all([
+    const [{ data: hors }, { data: ags }, { data: agCliente }, { data: filas }, { data: filaGeralData }, { data: bloqueadas }] = await Promise.all([
       supabase.from('coach_horarios').select('hora').eq('dia_semana', diaSem).eq('ativo', true),
       supabase.from('agendamentos').select('horario, status').eq('data', dataStr).neq('status', 'cancelado'),
       supabase.from('agendamentos').select('horario, tipo_credito, status').eq('data', dataStr).eq('cliente_id', cliente.id),
       supabase.from('fila_espera').select('horario').eq('data', dataStr).eq('cliente_id', cliente.id),
       supabase.from('fila_espera').select('horario').eq('data', dataStr).eq('status', 'aguardando'),
+      supabase.from('vagas_bloqueadas').select('horario, quantidade').eq('data', dataStr).eq('ativo', true),
     ])
 
     const porHora: Record<string, number> = {}
@@ -177,11 +178,23 @@ export default function AgendarPage() {
       ocupados[hora] = (ocupados[hora] || 0) + 1
     }
 
-    const resultado = Object.entries(porHora).map(([hora, total]) => ({
-      hora, total,
-      ocupados: ocupados[hora] || 0,
-      livres: total - (ocupados[hora] || 0),
-    })).sort((a, b) => a.hora.localeCompare(b.hora))
+    const bloqueadasMap: Record<string, number> = {}
+    for (const b of (bloqueadas || [])) {
+      const hora = (b.horario || '').slice(0, 5)
+      bloqueadasMap[hora] = (bloqueadasMap[hora] || 0) + (b.quantidade || 1)
+    }
+
+    const resultado = Object.entries(porHora).map(([hora, total]) => {
+      const bloq = bloqueadasMap[hora] || 0
+      const ocup = ocupados[hora] || 0
+      return {
+        hora,
+        total,
+        ocupados: ocup,
+        bloqueadas: bloq,
+        livres: Math.max(0, total - ocup - bloq),
+      }
+    }).sort((a, b) => a.hora.localeCompare(b.hora))
 
     setHorarios(resultado)
     setAgendamentosNoDia(agCliente || [])
@@ -463,12 +476,19 @@ export default function AgendarPage() {
                   style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', padding: '1rem 1.25rem', borderRadius: 12, border: `1px solid ${jaAgendado ? CYAN + '44' : clienteNaFila ? AMARELO + '44' : '#222'}`, background: jaAgendado ? '#00e5ff08' : clienteNaFila ? '#ffaa0008' : '#111' }}>
                   <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, fontWeight: 500, color: '#fff', width: 58, flexShrink: 0 }}>{h.hora}</div>
                   <div style={{ display: 'flex', gap: 6, flex: 1, alignItems: 'center', flexWrap: 'wrap' as const }}>
-                    {Array.from({ length: h.total }).map((_, vi) => (
-                      <HalterSVG key={vi}
-                        estado={jaAgendado && vi === 0 ? 'meu' : clienteNaFila && vi === 0 ? 'fila' : vi < h.ocupados ? 'ocupado' : 'livre'}
-                        onClick={() => !lotado && !semCredito && !jaAgendado && abrirModalReserva(h.hora, h.livres)}
-                      />
-                    ))}
+                    {Array.from({ length: h.total }).map((_, vi) => {
+                      let estado: 'livre' | 'ocupado' | 'meu' | 'fila' | 'bloqueado' = 'livre'
+                      if (jaAgendado && vi === 0) estado = 'meu'
+                      else if (clienteNaFila && vi === 0) estado = 'fila'
+                      else if (vi < h.ocupados) estado = 'ocupado'
+                      else if (vi < h.ocupados + h.bloqueadas) estado = 'bloqueado'
+                      return (
+                        <HalterSVG key={vi}
+                          estado={estado}
+                          onClick={() => !lotado && !semCredito && !jaAgendado && abrirModalReserva(h.hora, h.livres)}
+                        />
+                      )
+                    })}
                   </div>
                   <div style={{ flexShrink: 0, minWidth: 90, textAlign: 'right' as const }}>
                     {jaAgendado ? (
@@ -480,6 +500,11 @@ export default function AgendarPage() {
                         <div style={{ fontSize: 11, fontFamily: "'DM Mono', monospace", color: lotado ? '#ff4444' : h.livres <= 2 ? AMARELO : ACCENT, fontWeight: 600, marginBottom: 4 }}>
                           {lotado ? 'LOTADO' : h.livres === 1 ? '1 VAGA' : `${h.livres} VAGAS`}
                         </div>
+                        {h.bloqueadas > 0 && !lotado && (
+                          <div style={{ fontSize: 9, color: '#ff4444', marginBottom: 4 }}>
+                            {h.bloqueadas} bloq.
+                          </div>
+                        )}
                         {temFilaEsperaAqui && !lotado && (
                           <div style={{ fontSize: 9, color: AMARELO, marginBottom: 4 }}>⏳ há fila</div>
                         )}
