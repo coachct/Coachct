@@ -5,14 +5,6 @@ import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle } from 'lucide-react'
 
-const HORARIOS = [
-  '05:30','06:00','06:30','07:00','07:30','08:00','08:30',
-  '09:00','09:30','10:00','10:30','11:00','11:30','12:00',
-  '12:30','13:00','13:30','14:00','14:30','15:00','15:30',
-  '16:00','16:30','17:00','17:30','18:00','18:30','19:00',
-  '19:30','20:00'
-]
-
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
 const LIMITE_PLANO: Record<string, number> = {
@@ -70,21 +62,26 @@ export default function RecepcaoClientesPage() {
     if (loading) return
     if (!perfil) { router.push('/'); return }
     if ((perfil.role as any) !== 'recepcao' && (perfil.role as any) !== 'admin') { router.push('/'); return }
-    buscarClientes()
   }, [loading, perfil])
 
+  // Só busca quando tiver pelo menos 2 caracteres
   useEffect(() => {
     if (!perfil) return
-    buscarClientes()
+    if (busca.trim().length >= 2) {
+      buscarClientes()
+    } else {
+      setClientes([])
+    }
   }, [busca])
 
   async function buscarClientes() {
     setLoadingClientes(true)
-    let query = supabase.from('clientes').select('*').order('nome').limit(50)
-    if (busca.trim()) {
-      query = query.or(`nome.ilike.%${busca}%,cpf.ilike.%${busca}%,email.ilike.%${busca}%`)
-    }
-    const { data } = await query
+    const { data } = await supabase
+      .from('clientes')
+      .select('*')
+      .or(`nome.ilike.%${busca}%,cpf.ilike.%${busca}%,email.ilike.%${busca}%`)
+      .order('nome')
+      .limit(20)
     setClientes(data || [])
     setLoadingClientes(false)
   }
@@ -168,7 +165,6 @@ export default function RecepcaoClientesPage() {
     if (!confirm('Desbloquear este cliente?')) return
     await supabase.from('clientes').update({ bloqueado: false, motivo_bloqueio: null }).eq('id', clienteSel.id)
     setClienteSel({ ...clienteSel, bloqueado: false, motivo_bloqueio: null })
-    buscarClientes()
   }
 
   async function criarCliente() {
@@ -188,7 +184,8 @@ export default function RecepcaoClientesPage() {
     } else {
       setNovoCliente(false)
       setFormNovo({ nome: '', email: '', telefone: '', cpf: '', planos: ['wellhub'], creditos_avulso: 0 })
-      buscarClientes()
+      setBusca('')
+      setClientes([])
     }
     setCriando(false)
   }
@@ -291,11 +288,11 @@ export default function RecepcaoClientesPage() {
   return (
     <div className="min-h-screen bg-gray-50">
 
-      {/* Header limpo — sem botões de nav */}
+      {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-3">
           {clienteSel && (
-            <button onClick={() => setClienteSel(null)} className="text-gray-400 hover:text-gray-600">
+            <button onClick={() => { setClienteSel(null); setBusca(''); setClientes([]) }} className="text-gray-400 hover:text-gray-600">
               <X size={18} />
             </button>
           )}
@@ -304,7 +301,7 @@ export default function RecepcaoClientesPage() {
               {clienteSel ? clienteSel.nome : 'Clientes'}
             </div>
             {!clienteSel && (
-              <div className="text-xs text-gray-400">{clientes.length} cadastrado{clientes.length !== 1 ? 's' : ''}</div>
+              <div className="text-xs text-gray-400">Digite para buscar</div>
             )}
           </div>
         </div>
@@ -317,21 +314,37 @@ export default function RecepcaoClientesPage() {
 
       <div className="max-w-3xl mx-auto px-6 py-5">
 
-        {/* LISTA */}
+        {/* BUSCA */}
         {!clienteSel && (
           <>
             <div className="relative mb-4">
               <Search size={14} className="absolute left-3 top-3 text-gray-400" />
-              <input className="input pl-9 w-full" placeholder="Buscar por nome, CPF ou email..."
-                value={busca} onChange={e => setBusca(e.target.value)} />
+              <input
+                className="input pl-9 w-full"
+                placeholder="Buscar por nome, CPF ou email..."
+                value={busca}
+                onChange={e => setBusca(e.target.value)}
+                autoFocus
+              />
             </div>
 
-            {loadingClientes ? (
+            {busca.trim().length < 2 ? (
+              <div className="text-center py-16">
+                <Search size={32} className="mx-auto text-gray-200 mb-3" />
+                <div className="text-sm text-gray-400">Digite ao menos 2 caracteres para buscar</div>
+              </div>
+            ) : loadingClientes ? (
               <div className="flex justify-center py-12">
                 <div className="w-8 h-8 border-4 border-primary-400 border-t-transparent rounded-full animate-spin" />
               </div>
             ) : clientes.length === 0 ? (
-              <div className="card text-center py-12 text-gray-400 text-sm">Nenhum cliente encontrado.</div>
+              <div className="card text-center py-12 text-gray-400 text-sm">
+                Nenhum cliente encontrado para "{busca}".
+                <br />
+                <button onClick={() => setNovoCliente(true)} className="mt-3 text-primary-600 text-sm font-medium">
+                  + Cadastrar novo cliente
+                </button>
+              </div>
             ) : (
               <div className="space-y-2">
                 {clientes.map(c => {
