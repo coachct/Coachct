@@ -73,7 +73,7 @@ export default function AgendarPage() {
   const [creditos, setCreditos] = useState<Record<string, { usado: number; limite: number }>>({})
   const [agendamentosNoDia, setAgendamentosNoDia] = useState<any[]>([])
   const [filasDoCliente, setFilasDoCliente] = useState<any[]>([])
-  const [filaGeral, setFilaGeral] = useState<any[]>([]) // fila de qualquer cliente
+  const [filaGeral, setFilaGeral] = useState<any[]>([])
 
   const [modalSlot, setModalSlot] = useState<{ data: string; hora: string; vagas: number } | null>(null)
   const [tipoCredito, setTipoCredito] = useState<string>('')
@@ -498,7 +498,7 @@ export default function AgendarPage() {
                         {lotado && !semCredito && (
                           <button onClick={() => abrirModalFila(h.hora)}
                             style={{ background: 'transparent', color: AMARELO, border: `1px solid ${AMARELO}`, borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                            Fila
+                            Entrar na fila
                           </button>
                         )}
                         {semCredito && (
@@ -583,7 +583,6 @@ export default function AgendarPage() {
               )}
             </div>
 
-            {/* Aviso de cancelamento dinâmico */}
             <div style={{
               background: temFila ? '#1a1000' : '#0a0a0a',
               border: `1px solid ${temFila ? AMARELO + '44' : '#1a1a1a'}`,
@@ -628,7 +627,7 @@ export default function AgendarPage() {
       {modalFila && !mostrarContrato && (
         <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: '#111', border: `1px solid ${AMARELO}33`, borderRadius: 20, width: '100%', maxWidth: 440, padding: '1.5rem', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: AMARELO, marginBottom: 4 }}>Entrar na fila DE ESPERA</div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: AMARELO, marginBottom: 4 }}>FILA DE ESPERA</div>
             <div style={{ fontSize: 13, color: '#555', marginBottom: '1.5rem', textTransform: 'capitalize' as const }}>
               {dataFormatada(modalFila.data)} · {modalFila.hora}
             </div>
@@ -637,8 +636,8 @@ export default function AgendarPage() {
               <div style={{ color: AMARELO, fontWeight: 600, marginBottom: 6 }}>⚠️ Atenção antes de entrar na fila</div>
               <ul style={{ paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <li>Se alguém cancelar a reserva, <strong style={{ color: '#fff' }}>você será automaticamente reservado na aula</strong> — até 3h antes do treino.</li>
-<li>Após confirmado, você pode cancelar <strong style={{ color: '#fff' }}>até 3h antes</strong> — mas só se houver outra pessoa na fila.</li>
-<li>Se não houver mais fila, <strong style={{ color: '#fff' }}>cancelamento bloqueado</strong> e falta sem aviso gera multa.</li>
+                <li>Após confirmado, você pode cancelar <strong style={{ color: '#fff' }}>até 3h antes</strong> — mas só se houver outra pessoa na fila.</li>
+                <li>Se não houver mais fila, <strong style={{ color: '#fff' }}>cancelamento bloqueado</strong> e falta sem aviso gera multa.</li>
               </ul>
             </div>
 
