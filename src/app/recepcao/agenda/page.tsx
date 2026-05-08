@@ -40,6 +40,11 @@ export default function RecepcaoAgendaPage() {
   const [salvandoBloqueio, setSalvandoBloqueio] = useState(false)
   const [erroBloqueio, setErroBloqueio] = useState('')
 
+  // Modal de desbloqueio parcial
+  const [modalDesbloquear, setModalDesbloquear] = useState<any>(null)
+  const [qtdLiberar, setQtdLiberar] = useState(1)
+  const [desbloqueando, setDesbloqueando] = useState(false)
+
   const scrollRef = useRef<number>(0)
   const dateInputRef = useRef<HTMLInputElement>(null)
   const hoje = new Date().toISOString().split('T')[0]
@@ -176,20 +181,45 @@ export default function RecepcaoAgendaPage() {
     await loadData(true)
   }
 
-  async function desbloquearVaga(bloqueioId: string) {
-    if (!confirm('Desbloquear esta(s) vaga(s)?')) return
-    await supabase.from('vagas_bloqueadas').update({
-      ativo: false,
-      desbloqueado_em: new Date().toISOString(),
-      desbloqueado_por: perfil?.id,
-    }).eq('id', bloqueioId)
+  function abrirModalDesbloquear(bloqueio: any) {
+    setModalDesbloquear(bloqueio)
+    setQtdLiberar(1)
+  }
+
+  async function confirmarDesbloqueio() {
+    if (!modalDesbloquear) return
+    if (qtdLiberar < 1 || qtdLiberar > modalDesbloquear.quantidade) return
+
+    setDesbloqueando(true)
+
+    const { data: result, error } = await supabase.rpc('desbloquear_vagas_parcial', {
+      p_bloqueio_id: modalDesbloquear.id,
+      p_quantidade_liberar: qtdLiberar,
+      p_desbloqueado_por: perfil?.id,
+    })
+
+    setDesbloqueando(false)
+
+    if (error) {
+      alert('Erro ao desbloquear: ' + error.message)
+      return
+    }
+
+    setModalDesbloquear(null)
+    // Fecha o modal de bloqueio também se ficou vazio
     await loadData(true)
+
+    // Se o modal de bloqueio está aberto, atualiza a lista
     if (modalBloqueio) {
-      const novosBloqueios = modalBloqueio.bloqueiosAtivos.filter(b => b.id !== bloqueioId)
+      const novosBloqueios = bloqueiosPorHorario(modalBloqueio.horario)
       if (novosBloqueios.length === 0) {
         setModalBloqueio(null)
       } else {
-        setModalBloqueio({ ...modalBloqueio, bloqueiosAtivos: novosBloqueios })
+        setModalBloqueio({
+          ...modalBloqueio,
+          bloqueiosAtivos: novosBloqueios,
+          vagasLivres: vagasDisponiveis(modalBloqueio.horario),
+        })
       }
     }
   }
@@ -226,7 +256,6 @@ export default function RecepcaoAgendaPage() {
   return (
     <div className="min-h-screen bg-gray-50">
 
-      {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
         <h1 className="text-lg font-semibold text-gray-900 capitalize">{diaSemana}</h1>
         <div className="flex gap-4 mt-1 text-sm text-gray-500">
@@ -241,7 +270,6 @@ export default function RecepcaoAgendaPage() {
 
       <div className="max-w-3xl mx-auto px-6 py-5">
 
-        {/* Abas */}
         <div className="flex gap-2 mb-5">
           <button onClick={() => setAbaAtiva('agendamentos')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
@@ -276,7 +304,6 @@ export default function RecepcaoAgendaPage() {
           </div>
         ) : (
           <>
-            {/* ABA CLIENTES */}
             {abaAtiva === 'agendamentos' && (
               <div>
                 <div className="card mb-4">
@@ -376,10 +403,8 @@ export default function RecepcaoAgendaPage() {
               </div>
             )}
 
-            {/* ABA GRADE */}
             {abaAtiva === 'grade' && (
               <div>
-                {/* Navegação de data */}
                 <div className="card mb-4 flex items-center gap-3">
                   <button
                     onClick={() => { setData(addDias(data, -1)); setLoadingData(true) }}
@@ -495,7 +520,7 @@ export default function RecepcaoAgendaPage() {
                                     )}
                                   </div>
                                   <button
-                                    onClick={() => desbloquearVaga(b.id)}
+                                    onClick={() => abrirModalDesbloquear(b)}
                                     className="text-green-600 hover:bg-green-50 rounded px-1.5 py-0.5 flex items-center gap-1">
                                     <Unlock size={10} /> Liberar
                                   </button>
@@ -547,7 +572,7 @@ export default function RecepcaoAgendaPage() {
                         )}
                       </div>
                       <button
-                        onClick={() => desbloquearVaga(b.id)}
+                        onClick={() => abrirModalDesbloquear(b)}
                         className="btn btn-sm gap-1 text-green-600 hover:bg-green-50">
                         <Unlock size={12} /> Liberar
                       </button>
@@ -608,6 +633,73 @@ export default function RecepcaoAgendaPage() {
                 Sem vagas livres para bloquear neste horário.
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal de desbloqueio parcial */}
+      {modalDesbloquear && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <div className="font-bold text-gray-900 flex items-center gap-2">
+                  <Unlock size={18} className="text-green-600" /> Liberar vagas
+                </div>
+                <div className="text-sm text-gray-400 mt-0.5">
+                  {norm(modalDesbloquear.horario)} · {modalDesbloquear.quantidade} vaga(s) bloqueada(s)
+                </div>
+              </div>
+              <button onClick={() => setModalDesbloquear(null)} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            </div>
+
+            {modalDesbloquear.motivo && (
+              <div className="bg-gray-50 rounded-lg p-3 mb-4 text-xs text-gray-600">
+                <span className="font-medium">Motivo do bloqueio:</span> {modalDesbloquear.motivo}
+              </div>
+            )}
+
+            {modalDesbloquear.quantidade === 1 ? (
+              <div className="bg-green-50 border border-green-100 rounded-lg p-3 mb-4 text-sm text-green-700">
+                Confirma a liberação desta vaga? Se houver clientes na fila, o próximo será confirmado automaticamente.
+              </div>
+            ) : (
+              <>
+                <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-3 text-xs text-blue-700 flex items-start gap-2">
+                  <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
+                  <span>Você pode liberar parte ou todas as vagas. Para cada vaga liberada, se houver fila, o próximo cliente é confirmado automaticamente.</span>
+                </div>
+
+                <div className="mb-4">
+                  <label className="text-xs text-gray-500 mb-1 block font-medium">Quantas vagas liberar?</label>
+                  <div className="flex items-center gap-3">
+                    <input type="number" min={1} max={modalDesbloquear.quantidade}
+                      value={qtdLiberar}
+                      onChange={e => setQtdLiberar(Math.min(modalDesbloquear.quantidade, Math.max(1, parseInt(e.target.value) || 1)))}
+                      className="input w-20" />
+                    <span className="text-sm text-gray-500">de {modalDesbloquear.quantidade}</span>
+                    <button
+                      onClick={() => setQtdLiberar(modalDesbloquear.quantidade)}
+                      className="btn btn-sm text-primary-600 ml-auto">
+                      Liberar todas
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div className="flex gap-2">
+              <button onClick={() => setModalDesbloquear(null)}
+                className="btn flex-1 text-gray-500 border border-gray-200">
+                Cancelar
+              </button>
+              <button onClick={confirmarDesbloqueio} disabled={desbloqueando}
+                className="btn flex-1 bg-green-500 text-white hover:bg-green-600 gap-1">
+                <Unlock size={12} /> {desbloqueando ? 'Liberando...' : `Liberar ${qtdLiberar > 1 ? `${qtdLiberar} vagas` : '1 vaga'}`}
+              </button>
+            </div>
           </div>
         </div>
       )}
