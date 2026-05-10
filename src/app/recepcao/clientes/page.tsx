@@ -142,7 +142,7 @@ export default function RecepcaoClientesPage() {
       p_cliente_id: clienteId,
       p_mes: mes,
       p_ano: ano,
-      p_unidade_id: null,  // null = todas as unidades
+      p_unidade_id: null,
     })
     setSaldoMes(data || {})
   }
@@ -299,17 +299,48 @@ export default function RecepcaoClientesPage() {
   async function ativarPlano(planoId: string) {
     if (!clienteSel) return
     setSalvandoPlano(true)
-    const { error } = await supabase.from('cliente_planos').insert({
+
+    // 1. Ativa o plano
+    const { error: errPlano } = await supabase.from('cliente_planos').insert({
       cliente_id: clienteSel.id,
       plano_id: planoId,
       ativo: true,
       contrato_aceito_em: new Date().toISOString(),
     })
-    setSalvandoPlano(false)
-    if (error) {
-      alert('Erro ao ativar plano: ' + error.message)
+
+    if (errPlano) {
+      setSalvandoPlano(false)
+      alert('Erro ao ativar plano: ' + errPlano.message)
       return
     }
+
+    // 2. Busca info do plano para gerar créditos do mês atual
+    const planoInfo = planosDisponiveis.find(p => p.id === planoId)
+    if (planoInfo) {
+      const agora = new Date()
+      const mes = agora.getMonth() + 1
+      const ano = agora.getFullYear()
+
+      // Cria os créditos do mês atual (integrais, independente da data de ativação)
+      const { error: errCreditos } = await supabase.from('cliente_creditos').insert({
+        cliente_id: clienteSel.id,
+        tipo: planoInfo.tipo,
+        mes,
+        ano,
+        total: planoInfo.creditos_mes,
+        usado: 0,
+        unidade_id: planoInfo.unidade_id,
+        gerado_automatico: false,
+        observacao: 'Gerado na ativação do plano pela recepção',
+      })
+
+      // Ignora erro se já existir (unique constraint)
+      if (errCreditos && !errCreditos.message.includes('duplicate')) {
+        console.error('Erro ao gerar créditos:', errCreditos)
+      }
+    }
+
+    setSalvandoPlano(false)
     setModalAtivarPlano(null)
     await carregarPlanosCliente(clienteSel.id)
     await carregarSaldo(clienteSel.id)
@@ -325,7 +356,6 @@ export default function RecepcaoClientesPage() {
     await carregarSaldo(clienteSel.id)
   }
 
-  // Planos da unidade ativa que o cliente AINDA não tem
   function planosDisponiveisParaAtivar() {
     if (!unidadeAtiva) return []
     const planosAtivos = planosCliente.filter(p => p.ativo).map(p => p.planos_disponiveis?.id)
@@ -456,12 +486,10 @@ export default function RecepcaoClientesPage() {
     { key: 'agendar', label: '+ Agendar' },
   ]
 
-  // Saldos disponíveis para agendar na unidade ativa
   const saldosUnidadeAtiva = Object.entries(saldoMes).filter(([_, info]: [string, any]) =>
     info.unidade_id === unidadeAtiva?.id
   )
 
-  // Planos do cliente agrupados por unidade
   const planosPorUnidade: Record<string, any[]> = {}
   for (const cp of planosCliente.filter(p => p.ativo)) {
     const u = cp.planos_disponiveis?.unidades
