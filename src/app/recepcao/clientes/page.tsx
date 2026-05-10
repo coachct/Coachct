@@ -300,13 +300,34 @@ export default function RecepcaoClientesPage() {
     if (!clienteSel) return
     setSalvandoPlano(true)
 
-    // 1. Ativa o plano
-    const { error: errPlano } = await supabase.from('cliente_planos').insert({
-      cliente_id: clienteSel.id,
-      plano_id: planoId,
-      ativo: true,
-      contrato_aceito_em: new Date().toISOString(),
-    })
+    // 1. Verifica se já existe um registro (ativo ou inativo) para esse cliente+plano
+    const { data: existente } = await supabase
+      .from('cliente_planos')
+      .select('id, ativo')
+      .eq('cliente_id', clienteSel.id)
+      .eq('plano_id', planoId)
+      .maybeSingle()
+
+    let errPlano = null
+
+    if (existente) {
+      // Já existe: reativa
+      const { error } = await supabase.from('cliente_planos').update({
+        ativo: true,
+        contrato_aceito_em: new Date().toISOString(),
+        fim: null,
+      }).eq('id', existente.id)
+      errPlano = error
+    } else {
+      // Não existe: cria novo
+      const { error } = await supabase.from('cliente_planos').insert({
+        cliente_id: clienteSel.id,
+        plano_id: planoId,
+        ativo: true,
+        contrato_aceito_em: new Date().toISOString(),
+      })
+      errPlano = error
+    }
 
     if (errPlano) {
       setSalvandoPlano(false)
@@ -334,7 +355,6 @@ export default function RecepcaoClientesPage() {
         observacao: 'Gerado na ativação do plano pela recepção',
       })
 
-      // Ignora erro se já existir (unique constraint)
       if (errCreditos && !errCreditos.message.includes('duplicate')) {
         console.error('Erro ao gerar créditos:', errCreditos)
       }
