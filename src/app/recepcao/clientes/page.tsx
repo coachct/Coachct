@@ -76,6 +76,8 @@ export default function RecepcaoClientesPage() {
   const [modalAtivarPlano, setModalAtivarPlano] = useState<any>(null)
   const [salvandoPlano, setSalvandoPlano] = useState(false)
 
+  const [cancelandoId, setCancelandoId] = useState<string | null>(null)
+
   useEffect(() => {
     if (loading) return
     if (!perfil) { router.push('/'); return }
@@ -300,7 +302,6 @@ export default function RecepcaoClientesPage() {
     if (!clienteSel) return
     setSalvandoPlano(true)
 
-    // 1. Verifica se já existe um registro (ativo ou inativo) para esse cliente+plano
     const { data: existente } = await supabase
       .from('cliente_planos')
       .select('id, ativo')
@@ -311,7 +312,6 @@ export default function RecepcaoClientesPage() {
     let errPlano = null
 
     if (existente) {
-      // Já existe: reativa
       const { error } = await supabase.from('cliente_planos').update({
         ativo: true,
         contrato_aceito_em: new Date().toISOString(),
@@ -319,7 +319,6 @@ export default function RecepcaoClientesPage() {
       }).eq('id', existente.id)
       errPlano = error
     } else {
-      // Não existe: cria novo
       const { error } = await supabase.from('cliente_planos').insert({
         cliente_id: clienteSel.id,
         plano_id: planoId,
@@ -335,14 +334,12 @@ export default function RecepcaoClientesPage() {
       return
     }
 
-    // 2. Busca info do plano para gerar créditos do mês atual
     const planoInfo = planosDisponiveis.find(p => p.id === planoId)
     if (planoInfo) {
       const agora = new Date()
       const mes = agora.getMonth() + 1
       const ano = agora.getFullYear()
 
-      // Cria os créditos do mês atual (integrais, independente da data de ativação)
       const { error: errCreditos } = await supabase.from('cliente_creditos').insert({
         cliente_id: clienteSel.id,
         tipo: planoInfo.tipo,
@@ -374,6 +371,29 @@ export default function RecepcaoClientesPage() {
     }).eq('id', cpId)
     await carregarPlanosCliente(clienteSel.id)
     await carregarSaldo(clienteSel.id)
+  }
+
+  async function cancelarAgendamento(agId: string) {
+    if (!confirm('Cancelar este agendamento? O crédito será devolvido ao cliente.')) return
+    setCancelandoId(agId)
+
+    const { error } = await supabase.from('agendamentos').update({
+      status: 'cancelado',
+      cancelado_em: new Date().toISOString(),
+      motivo_cancelamento: 'Cancelado pela recepção',
+    }).eq('id', agId)
+
+    setCancelandoId(null)
+
+    if (error) {
+      alert('Erro ao cancelar: ' + error.message)
+      return
+    }
+
+    await Promise.all([
+      carregarSaldo(clienteSel.id),
+      carregarHistorico(clienteSel.id),
+    ])
   }
 
   function planosDisponiveisParaAtivar() {
@@ -885,6 +905,12 @@ export default function RecepcaoClientesPage() {
                             </div>
                             <div className="text-xs text-gray-400 mt-0.5">{ag.tipo_credito}</div>
                           </div>
+                          <button
+                            onClick={() => cancelarAgendamento(ag.id)}
+                            disabled={cancelandoId === ag.id}
+                            className="btn btn-sm gap-1 text-red-500 hover:bg-red-50 flex-shrink-0">
+                            <X size={12} /> {cancelandoId === ag.id ? 'Cancelando...' : 'Cancelar'}
+                          </button>
                         </div>
                       </div>
                     ))}
