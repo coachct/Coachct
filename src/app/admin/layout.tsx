@@ -3,6 +3,7 @@ const nav = [
   { label: 'Dashboard', href: '/admin/dashboard' },
   { label: 'Agenda', href: '/admin/agenda' },
   { label: 'Clientes', href: '/admin/clientes' },
+  { label: 'Unidades', href: '/admin/unidades' },
   { label: 'Produtos', href: '/admin/produtos' },
   { label: 'Faturamento & Margem', href: '/admin/financeiro' },
   { label: 'Coaches', href: '/admin/coaches' },
