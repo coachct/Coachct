@@ -6,6 +6,7 @@ const nav = [
   { label: 'Unidades', href: '/admin/unidades' },
   { label: 'Planos', href: '/admin/planos' },
   { label: 'Produtos', href: '/admin/produtos' },
+  { label: 'Permissões', href: '/admin/permissoes' },
   { label: 'Faturamento & Margem', href: '/admin/financeiro' },
   { label: 'Coaches', href: '/admin/coaches' },
   { label: 'Custo × Retorno', href: '/admin/relatorios/custo' },
