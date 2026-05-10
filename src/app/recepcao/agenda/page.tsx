@@ -2,8 +2,10 @@
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { useUnidade } from '@/hooks/useUnidade'
 import { useRouter } from 'next/navigation'
 import { Clock, CheckCircle, XCircle, Search, Users, Calendar, ChevronLeft, ChevronRight, Lock, Unlock, X, AlertCircle } from 'lucide-react'
+import UnidadeSelector from '@/components/UnidadeSelector'
 
 const HORARIOS = [
   '05:30','06:00','06:30','07:00','07:30','08:00','08:30',
@@ -21,6 +23,7 @@ function addDias(dataStr: string, dias: number) {
 
 export default function RecepcaoAgendaPage() {
   const { perfil, loading } = useAuth()
+  const { unidadeAtiva, loading: loadingUnidade } = useUnidade()
   const router = useRouter()
   const supabase = createClient()
 
@@ -58,17 +61,30 @@ export default function RecepcaoAgendaPage() {
   }, [perfil, loading])
 
   useEffect(() => {
-    if (perfil) loadData()
-  }, [data, perfil])
+    if (perfil && unidadeAtiva) loadData()
+  }, [data, perfil, unidadeAtiva?.id])
 
   async function loadData(manter_scroll = false) {
+    if (!unidadeAtiva) return
     if (manter_scroll) scrollRef.current = window.scrollY
     const diaSem = new Date(data + 'T12:00:00').getDay()
 
     const [{ data: ags }, { data: coachs }, { data: bloqs }] = await Promise.all([
-      supabase.from('agendamentos').select('*, clientes(nome, cpf, telefone)').eq('data', data).order('horario'),
-      supabase.from('coach_horarios').select('*, coaches(id, nome)').eq('dia_semana', diaSem).eq('ativo', true),
-      supabase.from('vagas_bloqueadas').select('*, perfis:bloqueado_por(nome)').eq('data', data).eq('ativo', true),
+      supabase.from('agendamentos')
+        .select('*, clientes(nome, cpf, telefone)')
+        .eq('data', data)
+        .eq('unidade_id', unidadeAtiva.id)
+        .order('horario'),
+      supabase.from('coach_horarios')
+        .select('*, coaches(id, nome)')
+        .eq('dia_semana', diaSem)
+        .eq('unidade_id', unidadeAtiva.id)
+        .eq('ativo', true),
+      supabase.from('vagas_bloqueadas')
+        .select('*, perfis:bloqueado_por(nome)')
+        .eq('data', data)
+        .eq('unidade_id', unidadeAtiva.id)
+        .eq('ativo', true),
     ])
 
     setAgendamentos(ags || [])
@@ -95,8 +111,8 @@ export default function RecepcaoAgendaPage() {
     return Math.max(0, total - ocupadas - bloqueadas)
   }
 
-  // Cria a notificação para o coach quando cliente chega
   async function criarNotificacaoCoach(agendamentoId: string, coachId: string) {
+    if (!unidadeAtiva) return
     const { data: ag } = await supabase
       .from('agendamentos')
       .select('*, clientes(id, nome)')
@@ -112,6 +128,7 @@ export default function RecepcaoAgendaPage() {
       coach_id: coachId,
       cliente_id: ag.clientes.id,
       agendamento_id: agendamentoId,
+      unidade_id: unidadeAtiva.id,
       tipo: 'cliente_chegou',
       mensagem,
     })
@@ -120,7 +137,6 @@ export default function RecepcaoAgendaPage() {
   async function alocarCoach(agendamentoId: string, coachId: string) {
     setAlocandoId(agendamentoId)
 
-    // Verifica se a presença já foi marcada antes
     const { data: agAtual } = await supabase
       .from('agendamentos')
       .select('status')
@@ -134,7 +150,6 @@ export default function RecepcaoAgendaPage() {
       status: 'confirmado'
     }).eq('id', agendamentoId)
 
-    // Se já tinha presença, notifica o coach agora
     if (agAtual?.status === 'realizado') {
       await criarNotificacaoCoach(agendamentoId, coachId)
     }
@@ -146,7 +161,6 @@ export default function RecepcaoAgendaPage() {
   async function marcarPresenca(agendamentoId: string) {
     await supabase.from('agendamentos').update({ status: 'realizado' }).eq('id', agendamentoId)
 
-    // Busca o agendamento pra ver se tem coach alocado
     const { data: ag } = await supabase
       .from('agendamentos')
       .select('coach_id')
@@ -193,7 +207,7 @@ export default function RecepcaoAgendaPage() {
   }
 
   async function salvarBloqueio() {
-    if (!modalBloqueio) return
+    if (!modalBloqueio || !unidadeAtiva) return
     if (!motivoBloqueio.trim()) {
       setErroBloqueio('Informe o motivo do bloqueio.')
       return
@@ -213,6 +227,7 @@ export default function RecepcaoAgendaPage() {
       motivo: motivoBloqueio.trim(),
       bloqueado_por: perfil?.id,
       bloqueado_por_role: perfil?.role,
+      unidade_id: unidadeAtiva.id,
       ativo: true,
     })
 
@@ -238,7 +253,7 @@ export default function RecepcaoAgendaPage() {
 
     setDesbloqueando(true)
 
-    const { data: result, error } = await supabase.rpc('desbloquear_vagas_parcial', {
+    const { error } = await supabase.rpc('desbloquear_vagas_parcial', {
       p_bloqueio_id: modalDesbloquear.id,
       p_quantidade_liberar: qtdLiberar,
       p_desbloqueado_por: perfil?.id,
@@ -291,9 +306,22 @@ export default function RecepcaoAgendaPage() {
       )
     : null
 
-  if (loading) return (
+  if (loading || loadingUnidade) return (
     <div className="flex items-center justify-center h-screen">
       <div className="w-8 h-8 border-4 border-primary-400 border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+
+  if (!unidadeAtiva) return (
+    <div className="flex items-center justify-center h-screen p-6 text-center">
+      <div>
+        <AlertCircle size={32} className="text-orange-500 mx-auto mb-3" />
+        <h2 className="text-lg font-semibold text-gray-900">Sem acesso a unidades</h2>
+        <p className="text-sm text-gray-500 mt-2">
+          Você não tem permissão para acessar nenhuma unidade.<br />
+          Solicite ao administrador para configurar suas permissões.
+        </p>
+      </div>
     </div>
   )
 
@@ -301,8 +329,11 @@ export default function RecepcaoAgendaPage() {
     <div className="min-h-screen bg-gray-50">
 
       <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
-        <h1 className="text-lg font-semibold text-gray-900 capitalize">{diaSemana}</h1>
-        <div className="flex gap-4 mt-1 text-sm text-gray-500">
+        <div className="flex items-center justify-between gap-3 mb-1">
+          <h1 className="text-lg font-semibold text-gray-900 capitalize">{diaSemana}</h1>
+          <UnidadeSelector />
+        </div>
+        <div className="flex gap-4 mt-1 text-sm text-gray-500 flex-wrap">
           <span>📅 {agendamentosAtivos.length} agendamentos</span>
           <span>✅ {agendamentos.filter(a => a.status === 'realizado').length} realizados</span>
           <span>❌ {agendamentos.filter(a => a.status === 'falta').length} faltas</span>
@@ -643,7 +674,7 @@ export default function RecepcaoAgendaPage() {
 
                 <div className="mb-3">
                   <label className="text-xs text-gray-500 mb-1 block font-medium">
-                    Motivo {(perfil?.role as any) === 'recepcao' && <span className="text-red-500">*</span>}
+                    Motivo <span className="text-red-500">*</span>
                   </label>
                   <textarea
                     value={motivoBloqueio}
