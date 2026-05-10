@@ -33,14 +33,12 @@ export default function RecepcaoAgendaPage() {
   const [busca, setBusca] = useState('')
   const [abaAtiva, setAbaAtiva] = useState<'agendamentos' | 'grade'>('agendamentos')
 
-  // Modal de bloqueio
   const [modalBloqueio, setModalBloqueio] = useState<{ horario: string; vagasLivres: number; bloqueiosAtivos: any[] } | null>(null)
   const [qtdBloquear, setQtdBloquear] = useState(1)
   const [motivoBloqueio, setMotivoBloqueio] = useState('')
   const [salvandoBloqueio, setSalvandoBloqueio] = useState(false)
   const [erroBloqueio, setErroBloqueio] = useState('')
 
-  // Modal de desbloqueio parcial
   const [modalDesbloquear, setModalDesbloquear] = useState<any>(null)
   const [qtdLiberar, setQtdLiberar] = useState(1)
   const [desbloqueando, setDesbloqueando] = useState(false)
@@ -97,20 +95,68 @@ export default function RecepcaoAgendaPage() {
     return Math.max(0, total - ocupadas - bloqueadas)
   }
 
+  // Cria a notificação para o coach quando cliente chega
+  async function criarNotificacaoCoach(agendamentoId: string, coachId: string) {
+    const { data: ag } = await supabase
+      .from('agendamentos')
+      .select('*, clientes(id, nome)')
+      .eq('id', agendamentoId)
+      .maybeSingle()
+
+    if (!ag || !ag.clientes) return
+
+    const horario = (ag.horario || '').slice(0, 5)
+    const mensagem = `${ag.clientes.nome} chegou e te aguarda na recepção para o treino das ${horario}.`
+
+    await supabase.from('notificacoes_coach').insert({
+      coach_id: coachId,
+      cliente_id: ag.clientes.id,
+      agendamento_id: agendamentoId,
+      tipo: 'cliente_chegou',
+      mensagem,
+    })
+  }
+
   async function alocarCoach(agendamentoId: string, coachId: string) {
     setAlocandoId(agendamentoId)
+
+    // Verifica se a presença já foi marcada antes
+    const { data: agAtual } = await supabase
+      .from('agendamentos')
+      .select('status')
+      .eq('id', agendamentoId)
+      .maybeSingle()
+
     await supabase.from('agendamentos').update({
       coach_id: coachId,
       alocado_em: new Date().toISOString(),
       alocado_por: perfil?.id,
       status: 'confirmado'
     }).eq('id', agendamentoId)
+
+    // Se já tinha presença, notifica o coach agora
+    if (agAtual?.status === 'realizado') {
+      await criarNotificacaoCoach(agendamentoId, coachId)
+    }
+
     await loadData(true)
     setAlocandoId(null)
   }
 
   async function marcarPresenca(agendamentoId: string) {
     await supabase.from('agendamentos').update({ status: 'realizado' }).eq('id', agendamentoId)
+
+    // Busca o agendamento pra ver se tem coach alocado
+    const { data: ag } = await supabase
+      .from('agendamentos')
+      .select('coach_id')
+      .eq('id', agendamentoId)
+      .maybeSingle()
+
+    if (ag?.coach_id) {
+      await criarNotificacaoCoach(agendamentoId, ag.coach_id)
+    }
+
     await loadData(true)
   }
 
@@ -206,10 +252,8 @@ export default function RecepcaoAgendaPage() {
     }
 
     setModalDesbloquear(null)
-    // Fecha o modal de bloqueio também se ficou vazio
     await loadData(true)
 
-    // Se o modal de bloqueio está aberto, atualiza a lista
     if (modalBloqueio) {
       const novosBloqueios = bloqueiosPorHorario(modalBloqueio.horario)
       if (novosBloqueios.length === 0) {
@@ -539,7 +583,6 @@ export default function RecepcaoAgendaPage() {
         )}
       </div>
 
-      {/* Modal de bloqueio */}
       {modalBloqueio && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6">
@@ -637,7 +680,6 @@ export default function RecepcaoAgendaPage() {
         </div>
       )}
 
-      {/* Modal de desbloqueio parcial */}
       {modalDesbloquear && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm p-6">
