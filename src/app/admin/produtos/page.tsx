@@ -9,8 +9,12 @@ const TIPOS_PRODUTO = [
   { key: 'credito_coach', label: 'Crédito Avulso Coach CT', precisaValidade: true, descricao: 'Gera N créditos individuais com validade própria' },
 ]
 
-function ProdutoCard({ produto, onEditar, onAlternar }: any) {
+function ProdutoCard({ produto, unidades, onEditar, onAlternar }: any) {
   const tipoLabel = TIPOS_PRODUTO.find(t => t.key === produto.tipo)?.label || produto.tipo
+  const unidadeNome = produto.unidade_id 
+    ? unidades.find((u: any) => u.id === produto.unidade_id)?.nome || '—'
+    : 'Rede (todas as unidades)'
+  
   return (
     <div className={`card flex items-start gap-3 ${!produto.ativo ? 'opacity-60' : ''}`}>
       <div className="w-10 h-10 rounded-xl bg-primary-100 text-primary-700 flex items-center justify-center flex-shrink-0">
@@ -19,6 +23,11 @@ function ProdutoCard({ produto, onEditar, onAlternar }: any) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-semibold text-gray-900">{produto.nome}</span>
+          {!produto.unidade_id ? (
+            <span className="text-xs px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">Rede</span>
+          ) : (
+            <span className="text-xs px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">{unidadeNome}</span>
+          )}
           {!produto.ativo && (
             <span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">Inativo</span>
           )}
@@ -54,6 +63,7 @@ export default function AdminProdutosPage() {
   const supabase = createClient()
 
   const [produtos, setProdutos] = useState<any[]>([])
+  const [unidades, setUnidades] = useState<any[]>([])
   const [loadingData, setLoadingData] = useState(true)
 
   const [modalProduto, setModalProduto] = useState<any>(null)
@@ -64,6 +74,7 @@ export default function AdminProdutosPage() {
     dias_validade: 30,
     descricao: '',
     ativo: true,
+    unidade_id: '' as string | '',  // '' = rede
   })
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
@@ -75,16 +86,16 @@ export default function AdminProdutosPage() {
   }, [perfil, loading])
 
   useEffect(() => {
-    if (perfil) loadProdutos()
+    if (perfil) carregar()
   }, [perfil])
 
-  async function loadProdutos() {
-    const { data } = await supabase
-      .from('produtos')
-      .select('*')
-      .order('ativo', { ascending: false })
-      .order('nome')
-    setProdutos(data || [])
+  async function carregar() {
+    const [{ data: produtosData }, { data: unidadesData }] = await Promise.all([
+      supabase.from('produtos').select('*').order('ativo', { ascending: false }).order('nome'),
+      supabase.from('unidades').select('id, nome, tipo').eq('ativo', true).order('nome'),
+    ])
+    setProdutos(produtosData || [])
+    setUnidades(unidadesData || [])
     setLoadingData(false)
   }
 
@@ -96,6 +107,7 @@ export default function AdminProdutosPage() {
       dias_validade: 30,
       descricao: '',
       ativo: true,
+      unidade_id: '',
     })
     setErro('')
     setModalProduto({ id: null })
@@ -109,6 +121,7 @@ export default function AdminProdutosPage() {
       dias_validade: produto.dias_validade || 30,
       descricao: produto.descricao || '',
       ativo: produto.ativo,
+      unidade_id: produto.unidade_id || '',
     })
     setErro('')
     setModalProduto(produto)
@@ -128,6 +141,7 @@ export default function AdminProdutosPage() {
       dias_validade: form.dias_validade,
       descricao: form.descricao.trim() || null,
       ativo: form.ativo,
+      unidade_id: form.unidade_id || null,
     }
 
     const op = modalProduto?.id
@@ -144,12 +158,12 @@ export default function AdminProdutosPage() {
 
     setModalProduto(null)
     setSalvando(false)
-    await loadProdutos()
+    await carregar()
   }
 
   async function alternarAtivo(produto: any) {
     await supabase.from('produtos').update({ ativo: !produto.ativo }).eq('id', produto.id)
-    await loadProdutos()
+    await carregar()
   }
 
   if (loading || loadingData) {
@@ -192,7 +206,7 @@ export default function AdminProdutosPage() {
                 <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Ativos</div>
                 <div className="space-y-2">
                   {ativos.map(p => (
-                    <ProdutoCard key={p.id} produto={p} onEditar={() => abrirEditar(p)} onAlternar={() => alternarAtivo(p)} />
+                    <ProdutoCard key={p.id} produto={p} unidades={unidades} onEditar={() => abrirEditar(p)} onAlternar={() => alternarAtivo(p)} />
                   ))}
                 </div>
               </div>
@@ -202,7 +216,7 @@ export default function AdminProdutosPage() {
                 <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Inativos</div>
                 <div className="space-y-2">
                   {inativos.map(p => (
-                    <ProdutoCard key={p.id} produto={p} onEditar={() => abrirEditar(p)} onAlternar={() => alternarAtivo(p)} />
+                    <ProdutoCard key={p.id} produto={p} unidades={unidades} onEditar={() => abrirEditar(p)} onAlternar={() => alternarAtivo(p)} />
                   ))}
                 </div>
               </div>
@@ -230,6 +244,38 @@ export default function AdminProdutosPage() {
                   value={form.nome}
                   onChange={e => setForm({ ...form, nome: e.target.value })}
                   placeholder="Ex: Crédito Avulso Coach CT" />
+              </div>
+
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block font-medium">Disponível em</label>
+                <div className="space-y-2">
+                  <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                    form.unidade_id === '' ? 'border-purple-400 bg-purple-50' : 'border-gray-200'
+                  }`}>
+                    <input type="radio" checked={form.unidade_id === ''}
+                      onChange={() => setForm({ ...form, unidade_id: '' })}
+                      className="mt-1 accent-purple-600" />
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-gray-900">Rede (todas as unidades)</div>
+                      <div className="text-xs text-gray-500 mt-0.5">Produto disponível em qualquer unidade</div>
+                    </div>
+                  </label>
+                  {unidades.map(u => (
+                    <label key={u.id} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                      form.unidade_id === u.id ? 'border-primary-400 bg-primary-50' : 'border-gray-200'
+                    }`}>
+                      <input type="radio" checked={form.unidade_id === u.id}
+                        onChange={() => setForm({ ...form, unidade_id: u.id })}
+                        className="mt-1 accent-primary-600" />
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-gray-900">{u.nome}</div>
+                        <div className="text-xs text-gray-500 mt-0.5">
+                          Produto exclusivo desta unidade
+                        </div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
               </div>
 
               <div>
