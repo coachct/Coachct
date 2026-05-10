@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { Plus, X, Edit2, Check, Package, AlertCircle } from 'lucide-react'
 
 const TIPOS_PRODUTO = [
-  { key: 'credito_coach', label: 'Crédito Avulso Coach CT', precisaValidade: true, descricao: 'Gera N créditos individuais com validade própria' },
+{ key: 'credito_coach', label: 'Pacote de Créditos', precisaValidade: true, descricao: 'Gera N créditos individuais com validade própria, válidos para qualquer unidade configurada' },
 ]
 
 function ProdutoCard({ produto, unidades, onEditar, onAlternar }: any) {
