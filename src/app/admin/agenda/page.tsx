@@ -31,16 +31,14 @@ export default function AdminAgendaPage() {
   const [loadingData, setLoadingData] = useState(true)
   const [alocandoId, setAlocandoId] = useState<string | null>(null)
   const [busca, setBusca] = useState('')
-  const [abaAtiva, setAbaAtiva] = useState<'agendamentos' | 'grade'>('grade')
+  const [abaAtiva, setAbaAtiva] = useState<'agendamentos' | 'grade'>('agendamentos')
 
-  // Modal de bloqueio
   const [modalBloqueio, setModalBloqueio] = useState<{ horario: string; vagasLivres: number; bloqueiosAtivos: any[] } | null>(null)
   const [qtdBloquear, setQtdBloquear] = useState(1)
   const [motivoBloqueio, setMotivoBloqueio] = useState('')
   const [salvandoBloqueio, setSalvandoBloqueio] = useState(false)
   const [erroBloqueio, setErroBloqueio] = useState('')
 
-  // Modal de desbloqueio parcial
   const [modalDesbloquear, setModalDesbloquear] = useState<any>(null)
   const [qtdLiberar, setQtdLiberar] = useState(1)
   const [desbloqueando, setDesbloqueando] = useState(false)
@@ -97,20 +95,68 @@ export default function AdminAgendaPage() {
     return Math.max(0, total - ocupadas - bloqueadas)
   }
 
+  // Cria a notificação para o coach quando cliente chega
+  async function criarNotificacaoCoach(agendamentoId: string, coachId: string) {
+    const { data: ag } = await supabase
+      .from('agendamentos')
+      .select('*, clientes(id, nome)')
+      .eq('id', agendamentoId)
+      .maybeSingle()
+
+    if (!ag || !ag.clientes) return
+
+    const horario = (ag.horario || '').slice(0, 5)
+    const mensagem = `${ag.clientes.nome} chegou e te aguarda na recepção para o treino das ${horario}.`
+
+    await supabase.from('notificacoes_coach').insert({
+      coach_id: coachId,
+      cliente_id: ag.clientes.id,
+      agendamento_id: agendamentoId,
+      tipo: 'cliente_chegou',
+      mensagem,
+    })
+  }
+
   async function alocarCoach(agendamentoId: string, coachId: string) {
     setAlocandoId(agendamentoId)
+
+    // Verifica se a presença já foi marcada antes
+    const { data: agAtual } = await supabase
+      .from('agendamentos')
+      .select('status')
+      .eq('id', agendamentoId)
+      .maybeSingle()
+
     await supabase.from('agendamentos').update({
       coach_id: coachId,
       alocado_em: new Date().toISOString(),
       alocado_por: perfil?.id,
       status: 'confirmado'
     }).eq('id', agendamentoId)
+
+    // Se já tinha presença, notifica o coach agora
+    if (agAtual?.status === 'realizado') {
+      await criarNotificacaoCoach(agendamentoId, coachId)
+    }
+
     await loadData(true)
     setAlocandoId(null)
   }
 
   async function marcarPresenca(agendamentoId: string) {
     await supabase.from('agendamentos').update({ status: 'realizado' }).eq('id', agendamentoId)
+
+    // Busca o agendamento pra ver se tem coach alocado
+    const { data: ag } = await supabase
+      .from('agendamentos')
+      .select('coach_id')
+      .eq('id', agendamentoId)
+      .maybeSingle()
+
+    if (ag?.coach_id) {
+      await criarNotificacaoCoach(agendamentoId, ag.coach_id)
+    }
+
     await loadData(true)
   }
 
@@ -162,7 +208,7 @@ export default function AdminAgendaPage() {
       quantidade: qtdBloquear,
       motivo: motivoBloqueio.trim() || null,
       bloqueado_por: perfil?.id,
-      bloqueado_por_role: 'admin',
+      bloqueado_por_role: perfil?.role,
       ativo: true,
     })
 
@@ -188,7 +234,7 @@ export default function AdminAgendaPage() {
 
     setDesbloqueando(true)
 
-    const { error } = await supabase.rpc('desbloquear_vagas_parcial', {
+    const { data: result, error } = await supabase.rpc('desbloquear_vagas_parcial', {
       p_bloqueio_id: modalDesbloquear.id,
       p_quantidade_liberar: qtdLiberar,
       p_desbloqueado_por: perfil?.id,
@@ -265,15 +311,6 @@ export default function AdminAgendaPage() {
       <div className="max-w-3xl mx-auto px-6 py-5">
 
         <div className="flex gap-2 mb-5">
-          <button onClick={() => setAbaAtiva('grade')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-              abaAtiva === 'grade'
-                ? 'bg-primary-600 text-white'
-                : 'bg-white border border-gray-200 text-gray-600 hover:border-primary-300'
-            }`}>
-            <Calendar size={14} />
-            Grade do dia
-          </button>
           <button onClick={() => setAbaAtiva('agendamentos')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
               abaAtiva === 'agendamentos'
@@ -289,6 +326,15 @@ export default function AdminAgendaPage() {
                 {agendamentosAtivos.length}
               </span>
             )}
+          </button>
+          <button onClick={() => setAbaAtiva('grade')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+              abaAtiva === 'grade'
+                ? 'bg-primary-600 text-white'
+                : 'bg-white border border-gray-200 text-gray-600 hover:border-primary-300'
+            }`}>
+            <Calendar size={14} />
+            Grade do dia
           </button>
         </div>
 
@@ -512,9 +558,6 @@ export default function AdminAgendaPage() {
                                     {b.perfis?.nome && (
                                       <span className="text-gray-400"> · por {b.perfis.nome.split(' ')[0]}</span>
                                     )}
-                                    {b.bloqueado_por_role && (
-                                      <span className="text-gray-300"> ({b.bloqueado_por_role})</span>
-                                    )}
                                   </div>
                                   <button
                                     onClick={() => abrirModalDesbloquear(b)}
@@ -536,7 +579,6 @@ export default function AdminAgendaPage() {
         )}
       </div>
 
-      {/* Modal de bloqueio */}
       {modalBloqueio && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6">
@@ -565,9 +607,7 @@ export default function AdminAgendaPage() {
                         <div className="font-medium text-red-700">{b.quantidade} vaga(s)</div>
                         <div className="text-xs text-gray-600 mt-0.5">{b.motivo || 'Sem motivo registrado'}</div>
                         {b.perfis?.nome && (
-                          <div className="text-xs text-gray-400 mt-0.5">
-                            por {b.perfis.nome} {b.bloqueado_por_role && <span>({b.bloqueado_por_role})</span>}
-                          </div>
+                          <div className="text-xs text-gray-400 mt-0.5">por {b.perfis.nome}</div>
                         )}
                       </div>
                       <button
@@ -598,9 +638,7 @@ export default function AdminAgendaPage() {
                 </div>
 
                 <div className="mb-3">
-                  <label className="text-xs text-gray-500 mb-1 block font-medium">
-                    Motivo <span className="text-gray-400 font-normal">(opcional)</span>
-                  </label>
+                  <label className="text-xs text-gray-500 mb-1 block font-medium">Motivo (opcional)</label>
                   <textarea
                     value={motivoBloqueio}
                     onChange={e => setMotivoBloqueio(e.target.value)}
@@ -636,7 +674,6 @@ export default function AdminAgendaPage() {
         </div>
       )}
 
-      {/* Modal de desbloqueio parcial */}
       {modalDesbloquear && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm p-6">
