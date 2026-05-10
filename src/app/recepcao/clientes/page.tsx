@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
 import { useRouter } from 'next/navigation'
-import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2 } from 'lucide-react'
+import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap } from 'lucide-react'
 import UnidadeSelector from '@/components/UnidadeSelector'
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
@@ -538,6 +538,15 @@ export default function RecepcaoClientesPage() {
     planosPorUnidade[u.id].push(cp)
   }
 
+  // Saldos agrupados por unidade (para o card "Dados")
+  const saldosPorUnidade: Record<string, any[]> = {}
+  for (const [key, info] of Object.entries(saldoMes)) {
+    const uid = (info as any).unidade_id
+    if (!uid) continue
+    if (!saldosPorUnidade[uid]) saldosPorUnidade[uid] = []
+    saldosPorUnidade[uid].push({ key, ...info as any })
+  }
+
   if (loading || loadingUnidade || !perfil) return (
     <div className="flex items-center justify-center h-screen">
       <div className="w-8 h-8 border-4 border-primary-400 border-t-transparent rounded-full animate-spin" />
@@ -682,6 +691,54 @@ export default function RecepcaoClientesPage() {
                     <div className="text-primary-200 text-sm mt-0.5">{clienteSel.email || '—'}</div>
                   </div>
                 </div>
+
+                {Object.keys(saldosPorUnidade).length > 0 && (
+                  <div className="card">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Zap size={16} className="text-primary-600" />
+                      <div className="text-sm font-semibold text-gray-900">Créditos disponíveis</div>
+                      <span className="text-xs text-gray-400">· este mês</span>
+                    </div>
+                    <div className="space-y-3">
+                      {todasUnidades.map(u => {
+                        const saldosU = saldosPorUnidade[u.id]
+                        if (!saldosU || saldosU.length === 0) return null
+
+                        return (
+                          <div key={u.id} className="border border-gray-100 rounded-xl p-3 bg-gray-50">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                u.tipo === 'ct' ? 'bg-primary-100 text-primary-700' : 'bg-blue-100 text-blue-700'
+                              }`}>
+                                {u.tipo === 'ct' ? 'CT' : 'Club'}
+                              </span>
+                              <span className="text-xs font-semibold text-gray-700">{u.nome}</span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              {saldosU.map((s: any) => (
+                                <div key={s.key} className="bg-white rounded-lg p-2 text-center border border-gray-100">
+                                  <div className={`text-2xl font-bold ${
+                                    s.disponivel === 0 ? 'text-gray-300' :
+                                    s.disponivel <= 2 ? 'text-orange-500' :
+                                    'text-primary-600'
+                                  }`}>
+                                    {s.disponivel}
+                                  </div>
+                                  <div className="text-xs text-gray-500 capitalize mt-0.5 truncate">
+                                    {s.tipo_plano}
+                                  </div>
+                                  <div className="text-xs text-gray-400 mt-0.5">
+                                    de {s.total}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 <div className="card">
                   <div className="flex items-center justify-between mb-4">
