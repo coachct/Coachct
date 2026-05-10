@@ -8,9 +8,9 @@ const supabase = createClient(
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
-  const aluno_id = searchParams.get('aluno_id')
-  const aluno_info = searchParams.get('aluno_info')
-  const lista_alunos = searchParams.get('lista_alunos')
+  const cliente_id = searchParams.get('cliente_id') || searchParams.get('aluno_id')
+  const cliente_info = searchParams.get('cliente_info') || searchParams.get('aluno_info')
+  const lista_clientes = searchParams.get('lista_clientes') || searchParams.get('lista_alunos')
   const insights = searchParams.get('insights')
   const aula_id = searchParams.get('aula_id')
   const painel = searchParams.get('painel')
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
       .from('aulas')
       .select(`
         id, iniciada_em, finalizada_em, status, observacoes,
-        alunos(id, nome),
+        clientes:cliente_id(id, nome),
         treinos(id, nome, descricao,
           treino_exercicios(id, exercicio_id, ordem, series_override, reps_override, observacoes_override, conjugado,
             exercicios(id, nome, numero_maquina))),
@@ -32,6 +32,11 @@ export async function GET(req: NextRequest) {
       .eq('id', aula_id)
       .maybeSingle()
     if (error) return NextResponse.json({ error }, { status: 400 })
+    // Compatibilidade: retorna como "alunos" para o frontend antigo
+    if (aula) {
+      const aulaCompat: any = aula
+      aulaCompat.alunos = aulaCompat.clientes
+    }
     return NextResponse.json({ data: aula })
   }
 
@@ -70,10 +75,10 @@ export async function GET(req: NextRequest) {
         .gte('horario_agendado', inicioMesPassado).lte('horario_agendado', fimMesPassado),
       supabase.from('coach_horarios').select('*')
         .eq('coach_id', coach_id).eq('ativo', true),
-      supabase.from('aulas').select('*, treinos(nome), alunos(nome)')
+      supabase.from('aulas').select('*, treinos(nome), clientes:cliente_id(nome)')
         .eq('coach_id', coach_id).eq('status', 'finalizada')
         .order('finalizada_em', { ascending: false }).limit(5),
-      supabase.from('aulas').select('aluno_id, horario_agendado, finalizada_em')
+      supabase.from('aulas').select('cliente_id, horario_agendado, finalizada_em')
         .eq('coach_id', coach_id).eq('status', 'finalizada')
         .order('horario_agendado', { ascending: false }),
       supabase.from('aulas').select('*, treinos(nome)')
@@ -82,21 +87,30 @@ export async function GET(req: NextRequest) {
     ])
 
     const todosIds = [...new Set([
-      ...(ultimas || []).map((a: any) => a.aluno_id),
-      ...(todasAulas || []).map((a: any) => a.aluno_id),
+      ...(ultimas || []).map((a: any) => a.cliente_id),
+      ...(todasAulas || []).map((a: any) => a.cliente_id),
     ])]
 
     let alunosMap: Record<string, string> = {}
     if (todosIds.length > 0) {
-      const { data: alunosData } = await supabase
-        .from('alunos').select('id, nome').in('id', todosIds)
-      for (const a of (alunosData || [])) alunosMap[a.id] = a.nome
+      const { data: clientesData } = await supabase
+        .from('clientes').select('id, nome').in('id', todosIds)
+      for (const a of (clientesData || [])) alunosMap[a.id] = a.nome
     }
 
     let aulaPendenteComAluno = null
     if (aulaPendente) {
-      const nomeAluno = alunosMap[(aulaPendente as any).aluno_id] || 'Aluno'
-      aulaPendenteComAluno = { ...aulaPendente, alunos: { nome: nomeAluno } }
+      // Busca o nome do cliente para a aula pendente
+      const { data: clienteData } = await supabase
+        .from('clientes').select('id, nome')
+        .eq('id', (aulaPendente as any).cliente_id)
+        .maybeSingle()
+      const nomeAluno = clienteData?.nome || 'Cliente'
+      aulaPendenteComAluno = { 
+        ...aulaPendente, 
+        aluno_id: (aulaPendente as any).cliente_id, // compat
+        alunos: { nome: nomeAluno } 
+      }
     }
 
     return NextResponse.json({
@@ -107,17 +121,21 @@ export async function GET(req: NextRequest) {
         horarios: horarios || [],
         ultimas: (ultimas || []).map((a: any) => ({
           ...a,
-          alunos: { nome: a.alunos?.nome || alunosMap[a.aluno_id] || 'Aluno' }
+          aluno_id: a.cliente_id, // compat
+          alunos: { nome: a.clientes?.nome || alunosMap[a.cliente_id] || 'Cliente' }
         })),
-        todasAulas: todasAulas || [],
+        todasAulas: (todasAulas || []).map((a: any) => ({
+          ...a,
+          aluno_id: a.cliente_id, // compat
+        })),
         alunosMap,
         aulaPendente: aulaPendenteComAluno,
       }
     })
   }
 
-  // Insights do aluno
-  if (insights && aluno_id && aula_id) {
+  // Insights do cliente
+  if (insights && cliente_id && aula_id) {
     const hoje = new Date()
     const ha7dias = new Date(hoje); ha7dias.setDate(hoje.getDate() - 7)
     const inicioSemana = new Date(hoje); inicioSemana.setDate(hoje.getDate() - hoje.getDay())
@@ -131,20 +149,20 @@ export async function GET(req: NextRequest) {
       { data: cargasAnteriores },
     ] = await Promise.all([
       supabase.from('aulas').select('*, treinos(nome, descricao)')
-        .eq('aluno_id', aluno_id).eq('status', 'finalizada')
+        .eq('cliente_id', cliente_id).eq('status', 'finalizada')
         .gte('finalizada_em', ha7dias.toISOString())
         .order('finalizada_em', { ascending: false }),
       supabase.from('aulas').select('id')
-        .eq('aluno_id', aluno_id).eq('status', 'finalizada')
+        .eq('cliente_id', cliente_id).eq('status', 'finalizada')
         .gte('finalizada_em', inicioMes.toISOString()),
       supabase.from('aulas').select('id')
-        .eq('aluno_id', aluno_id).eq('status', 'finalizada')
+        .eq('cliente_id', cliente_id).eq('status', 'finalizada')
         .gte('finalizada_em', inicioSemana.toISOString()),
       supabase.from('registros_carga').select('exercicio_id, carga_kg')
         .eq('aula_id', aula_id),
       supabase.from('registros_carga')
-        .select('exercicio_id, carga_kg, aulas!inner(aluno_id, status)')
-        .eq('aulas.aluno_id', aluno_id)
+        .select('exercicio_id, carga_kg, aulas!inner(cliente_id, status)')
+        .eq('aulas.cliente_id', cliente_id)
         .eq('aulas.status', 'finalizada')
         .neq('aula_id', aula_id),
     ])
@@ -160,43 +178,43 @@ export async function GET(req: NextRequest) {
     })
   }
 
-  // Lista todos os alunos com suas aulas
-  if (lista_alunos) {
-    const { data: alunos, error: alunosError } = await supabase
-      .from('alunos').select('id, nome').order('nome', { ascending: true })
-    if (alunosError) return NextResponse.json({ error: alunosError }, { status: 400 })
+  // Lista todos os clientes que já tiveram aulas (ou todos)
+  if (lista_clientes) {
+    const { data: clientes, error: clientesError } = await supabase
+      .from('clientes').select('id, nome').order('nome', { ascending: true })
+    if (clientesError) return NextResponse.json({ error: clientesError }, { status: 400 })
 
     const { data: aulas, error: aulasError } = await supabase
-      .from('aulas').select('aluno_id, finalizada_em, status').eq('status', 'finalizada')
+      .from('aulas').select('cliente_id, finalizada_em, status').eq('status', 'finalizada')
     if (aulasError) return NextResponse.json({ error: aulasError }, { status: 400 })
 
-    const resultado = (alunos || []).map((a: any) => {
-      const aulasAluno = (aulas || []).filter(
-        (au: any) => au.aluno_id === a.id && au.finalizada_em
+    const resultado = (clientes || []).map((c: any) => {
+      const aulasCliente = (aulas || []).filter(
+        (au: any) => au.cliente_id === c.id && au.finalizada_em
       )
-      aulasAluno.sort((x: any, y: any) =>
+      aulasCliente.sort((x: any, y: any) =>
         new Date(y.finalizada_em).getTime() - new Date(x.finalizada_em).getTime()
       )
       return {
-        id: a.id,
-        nome: a.nome,
-        ultima_aula: aulasAluno[0]?.finalizada_em ?? null,
-        total_aulas: aulasAluno.length,
+        id: c.id,
+        nome: c.nome,
+        ultima_aula: aulasCliente[0]?.finalizada_em ?? null,
+        total_aulas: aulasCliente.length,
       }
     })
     return NextResponse.json({ data: resultado })
   }
 
-  // Info do aluno
-  if (aluno_info && aluno_id) {
+  // Info do cliente
+  if (cliente_info && cliente_id) {
     const { data, error } = await supabase
-      .from('alunos').select('*').eq('id', aluno_id).single()
+      .from('clientes').select('*').eq('id', cliente_id).single()
     if (error) return NextResponse.json({ error }, { status: 400 })
     return NextResponse.json({ data })
   }
 
-  // Histórico de aulas do aluno
-  if (aluno_id) {
+  // Histórico de aulas do cliente
+  if (cliente_id) {
     const { data, error } = await supabase
       .from('aulas')
       .select(`
@@ -207,7 +225,7 @@ export async function GET(req: NextRequest) {
           exercicios ( nome, numero_maquina )
         )
       `)
-      .eq('aluno_id', aluno_id)
+      .eq('cliente_id', cliente_id)
       .eq('status', 'finalizada')
       .order('finalizada_em', { ascending: false })
       .limit(30)
@@ -220,10 +238,12 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { id, coach_id, aluno_id, treino_id, horario_agendado, iniciada_em, status } = body
+  // Aceita tanto cliente_id quanto aluno_id (compatibilidade)
+  const cliente_id = body.cliente_id || body.aluno_id
+  const { id, coach_id, treino_id, horario_agendado, iniciada_em, status } = body
 
   const { data, error } = await supabase.from('aulas').insert({
-    id, coach_id, aluno_id, treino_id, horario_agendado, iniciada_em, status
+    id, coach_id, cliente_id, treino_id, horario_agendado, iniciada_em, status
   }).select().maybeSingle()
 
   if (error) return NextResponse.json({ error }, { status: 400 })
@@ -233,6 +253,12 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const body = await req.json()
   const { id, registros_carga, ...updates } = body
+
+  // Se vier aluno_id, renomeia para cliente_id
+  if (updates.aluno_id !== undefined) {
+    updates.cliente_id = updates.aluno_id
+    delete updates.aluno_id
+  }
 
   // Atualiza dados da aula
   if (Object.keys(updates).length > 0) {
