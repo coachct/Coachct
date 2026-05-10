@@ -1,7 +1,8 @@
 'use client'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, Suspense } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { useSearchParams } from 'next/navigation'
 import { PageHeader, Spinner } from '@/components/ui'
 import { Search, Plus, ChevronRight, CheckCircle, Link, AlertTriangle, Clock } from 'lucide-react'
 
@@ -22,8 +23,11 @@ function gerarUUID(): string {
   })
 }
 
-export default function CoachTreinoPage() {
+function CoachTreinoPageInner() {
   const { perfil } = useAuth()
+  const searchParams = useSearchParams()
+  const clienteIdQuery = searchParams.get('cliente_id')
+
   const [coach, setCoach] = useState<any>(null)
   const [etapa, setEtapa] = useState<Etapa>('buscar_aluno')
   const [loading, setLoading] = useState(true)
@@ -55,7 +59,6 @@ export default function CoachTreinoPage() {
   const [insights, setInsights] = useState<Insight[]>([])
   const [loadingInsights, setLoadingInsights] = useState(false)
 
-  // ✅ ref para controlar duplo disparo do finalizar
   const finalizandoRef = useRef(false)
 
   const supabase = createClient()
@@ -70,6 +73,24 @@ export default function CoachTreinoPage() {
       if (timerRef.current) clearInterval(timerRef.current)
     }
   }, [perfil])
+
+  // Se veio com cliente_id na URL, busca o cliente e vai direto pra escolha de treino
+  useEffect(() => {
+    if (!coach || !clienteIdQuery) return
+    abrirClienteDireto(clienteIdQuery)
+  }, [coach, clienteIdQuery])
+
+  async function abrirClienteDireto(clienteId: string) {
+    const { data: cliente } = await supabase
+      .from('clientes')
+      .select('id, nome, cpf')
+      .eq('id', clienteId)
+      .maybeSingle()
+
+    if (cliente) {
+      await selecionarAluno(cliente)
+    }
+  }
 
   useEffect(() => {
     if (!fimSlot || etapa !== 'registrando') return
@@ -106,11 +127,11 @@ export default function CoachTreinoPage() {
     return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
   }
 
-  async function buscarUltimasCargas(alunoId: string) {
+  async function buscarUltimasCargas(clienteId: string) {
     const { data: hist } = await supabase
       .from('registros_carga')
-      .select('exercicio_id, carga_kg, aulas!inner(aluno_id)')
-      .eq('aulas.aluno_id', alunoId)
+      .select('exercicio_id, carga_kg, aulas!inner(cliente_id)')
+      .eq('aulas.cliente_id', clienteId)
     const maxCargas: Record<string, number> = {}
     for (const r of (hist || [])) {
       if (!r.exercicio_id) continue
@@ -129,7 +150,7 @@ export default function CoachTreinoPage() {
 
       const { data: aulaPendente } = await supabase
         .from('aulas')
-        .select(`*, alunos(id, nome, cpf), treinos(id, nome, descricao,
+        .select(`*, clientes:cliente_id(id, nome, cpf), treinos(id, nome, descricao,
           treino_exercicios(id, exercicio_id, ordem, series_override, reps_override, descanso_override, observacoes_override, conjugado,
             exercicios(id, nome, numero_maquina, observacoes)))`)
         .eq('coach_id', coachData.id)
@@ -150,7 +171,7 @@ export default function CoachTreinoPage() {
   }
 
   async function continuarAula(aula: any) {
-    setAlunoSel(aula.alunos)
+    setAlunoSel(aula.clientes)
     setTreinoSel({ treinos: aula.treinos })
     const exs = (aula.treinos?.treino_exercicios || [])
       .sort((a: any, b: any) => (a.ordem ?? 0) - (b.ordem ?? 0))
@@ -176,7 +197,7 @@ export default function CoachTreinoPage() {
     }
     setCargas(cargasIniciais)
 
-    const maxCargas = await buscarUltimasCargas(aula.alunos?.id)
+    const maxCargas = await buscarUltimasCargas(aula.clientes?.id)
     setUltimasCargas(maxCargas)
 
     const inicio = new Date(aula.iniciada_em)
@@ -192,8 +213,8 @@ export default function CoachTreinoPage() {
     setBusca(q)
     if (q.length < 2) { setAlunos([]); return }
     setBuscando(true)
-    const { data } = await supabase.from('alunos')
-      .select('*').or(`nome.ilike.%${q}%,cpf.ilike.%${q}%`).limit(10)
+    const { data } = await supabase.from('clientes')
+      .select('id, nome, cpf').or(`nome.ilike.%${q}%,cpf.ilike.%${q}%`).limit(10)
     setAlunos(data || [])
     setBuscando(false)
   }
@@ -201,8 +222,13 @@ export default function CoachTreinoPage() {
   async function cadastrarAluno() {
     if (!novoNome.trim()) return
     setSalvandoAluno(true)
-    const { data } = await supabase.from('alunos').insert({
-      nome: novoNome.trim(), cpf: novoCPF.trim() || null, cadastrado_por: coach?.id,
+    const { data } = await supabase.from('clientes').insert({
+      nome: novoNome.trim(),
+      cpf: novoCPF.trim() || null,
+      cadastrado_por: coach?.id,
+      planos: [],
+      creditos_avulso: 0,
+      bloqueado: false,
     }).select().maybeSingle()
     if (data) await selecionarAluno(data)
     setSalvandoAluno(false)
@@ -260,7 +286,7 @@ export default function CoachTreinoPage() {
         body: JSON.stringify({
           id: novoAulaId,
           coach_id: coach.id,
-          aluno_id: alunoAtual.id,
+          cliente_id: alunoAtual.id,
           treino_id: pub.treinos?.id,
           horario_agendado: agora.toISOString(),
           iniciada_em: agora.toISOString(),
@@ -294,8 +320,8 @@ export default function CoachTreinoPage() {
     setSalvando(null)
   }
 
-  async function gerarInsights(alunoId: string, aulaIdAtual: string) {
-    const res = await fetch(`/api/aulas?insights=1&aluno_id=${alunoId}&aula_id=${aulaIdAtual}`)
+  async function gerarInsights(clienteId: string, aulaIdAtual: string) {
+    const res = await fetch(`/api/aulas?insights=1&cliente_id=${clienteId}&aula_id=${aulaIdAtual}`)
     const json = await res.json()
     const { aulasRecentes, aulasMes, aulasSemana, cargasHoje, cargasAnteriores } = json.data
 
@@ -384,7 +410,6 @@ export default function CoachTreinoPage() {
   }
 
   async function finalizarAula() {
-    // ✅ evita duplo disparo
     if (finalizandoRef.current) return
     finalizandoRef.current = true
 
@@ -393,7 +418,7 @@ export default function CoachTreinoPage() {
 
     const agora = new Date()
     const foraPrazo = fimSlot ? agora > fimSlot : false
-    const alunoIdAtual = alunoSel?.id
+    const clienteIdAtual = alunoSel?.id
 
     if (timerRef.current) clearInterval(timerRef.current)
 
@@ -411,7 +436,7 @@ export default function CoachTreinoPage() {
     setEtapa('finalizado')
     setLoadingInsights(true)
 
-    if (alunoIdAtual) await gerarInsights(alunoIdAtual, aulaIdAtual)
+    if (clienteIdAtual) await gerarInsights(clienteIdAtual, aulaIdAtual)
     finalizandoRef.current = false
   }
 
@@ -438,10 +463,10 @@ export default function CoachTreinoPage() {
 
   if (etapa === 'buscar_aluno') return (
     <div>
-      <PageHeader title="Registrar aula" subtitle="Busque o aluno ou cadastre um novo" />
+      <PageHeader title="Registrar aula" subtitle="Busque o cliente ou cadastre um novo" />
       <div className="max-w-lg">
         <div className="card mb-4">
-          <label className="label">Buscar aluno por nome ou CPF</label>
+          <label className="label">Buscar cliente por nome ou CPF</label>
           <div className="relative">
             <Search size={14} className="absolute left-3 top-3 text-gray-400" />
             <input className="input pl-9" placeholder="Digite o nome ou CPF..."
@@ -482,19 +507,19 @@ export default function CoachTreinoPage() {
             </div>
           )}
           {busca.length >= 2 && alunos.length === 0 && !buscando && (
-            <div className="text-sm text-gray-400 mt-3 text-center">Nenhum aluno encontrado.</div>
+            <div className="text-sm text-gray-400 mt-3 text-center">Nenhum cliente encontrado.</div>
           )}
         </div>
         <button onClick={() => setShowCadastro(!showCadastro)} className="btn btn-sm gap-2 w-full">
-          <Plus size={13} /> Cadastrar novo aluno
+          <Plus size={13} /> Cadastrar novo cliente
         </button>
         {showCadastro && (
           <div className="card mt-3">
-            <h3 className="text-sm font-semibold text-gray-900 mb-3">Novo aluno</h3>
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Novo cliente</h3>
             <div className="space-y-3">
               <div>
                 <label className="label">Nome completo *</label>
-                <input className="input" value={novoNome} onChange={e => setNovoNome(e.target.value)} placeholder="Nome do aluno" />
+                <input className="input" value={novoNome} onChange={e => setNovoNome(e.target.value)} placeholder="Nome do cliente" />
               </div>
               <div>
                 <label className="label">CPF</label>
@@ -512,7 +537,7 @@ export default function CoachTreinoPage() {
 
   if (etapa === 'escolher_treino') return (
     <div>
-      <PageHeader title="Escolher treino" subtitle={`Aluno: ${alunoSel?.nome} · Treinos de ${mesNome}`} />
+      <PageHeader title="Escolher treino" subtitle={`Cliente: ${alunoSel?.nome} · Treinos de ${mesNome}`} />
       <div className="max-w-lg space-y-3">
         {treinos.length === 0 && (
           <div className="card text-center py-8 text-gray-400 text-sm">
@@ -597,7 +622,6 @@ export default function CoachTreinoPage() {
                 {foraPrazo ? 'Fora do prazo' : formatarTempo(tempoRestante)}
               </div>
             )}
-            {/* ✅ botão finalizar com proteção contra scroll e duplo toque */}
             <button
               onTouchStart={e => { (e.currentTarget as any)._touchY = e.touches[0].clientY }}
               onTouchEnd={e => {
@@ -680,7 +704,6 @@ export default function CoachTreinoPage() {
             )
           })}
 
-          {/* ✅ botão finalizar do rodapé com mesma proteção */}
           <button
             onTouchStart={e => { (e.currentTarget as any)._touchY = e.touches[0].clientY }}
             onTouchEnd={e => {
@@ -713,7 +736,7 @@ export default function CoachTreinoPage() {
       {loadingInsights ? (
         <div className="text-center py-4">
           <div className="w-6 h-6 border-4 border-primary-400 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-          <p className="text-xs text-gray-400">Gerando insights do aluno...</p>
+          <p className="text-xs text-gray-400">Gerando insights do cliente...</p>
         </div>
       ) : insights.length > 0 && (
         <div className="mb-6">
@@ -763,5 +786,13 @@ export default function CoachTreinoPage() {
         </button>
       </div>
     </div>
+  )
+}
+
+export default function CoachTreinoPage() {
+  return (
+    <Suspense fallback={<Spinner />}>
+      <CoachTreinoPageInner />
+    </Suspense>
   )
 }
