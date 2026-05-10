@@ -2,21 +2,12 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { useUnidade } from '@/hooks/useUnidade'
 import { useRouter } from 'next/navigation'
-import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle, ShoppingCart, Package, DollarSign } from 'lucide-react'
+import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2 } from 'lucide-react'
+import UnidadeSelector from '@/components/UnidadeSelector'
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
-
-const LIMITE_PLANO: Record<string, number> = {
-  wellhub: 8,
-  totalpass: 10,
-}
-
-const planoConfig: Record<string, { label: string; cor: string; bg: string; barra: string }> = {
-  wellhub:   { label: 'Wellhub Diamond', cor: 'text-purple-700', bg: 'bg-purple-50 border-purple-200', barra: 'bg-purple-400' },
-  totalpass: { label: 'TotalPass TP6',   cor: 'text-blue-700',   bg: 'bg-blue-50 border-blue-200',     barra: 'bg-blue-400' },
-  avulso:    { label: 'Avulso Coach CT', cor: 'text-pink-700',   bg: 'bg-pink-50 border-pink-200',     barra: 'bg-pink-400' },
-}
 
 const statusConfig: Record<string, { label: string; color: string }> = {
   agendado:   { label: 'Agendado',   color: 'bg-blue-100 text-blue-700' },
@@ -35,6 +26,7 @@ const FORMAS_PAGAMENTO = [
 
 export default function RecepcaoClientesPage() {
   const { perfil, loading } = useAuth()
+  const { unidadeAtiva, unidadesPermitidas, loading: loadingUnidade } = useUnidade()
   const router = useRouter()
   const supabase = createClient()
 
@@ -51,6 +43,9 @@ export default function RecepcaoClientesPage() {
   const [historico, setHistorico] = useState<any[]>([])
   const [saldoMes, setSaldoMes] = useState<Record<string, any>>({})
   const [vendas, setVendas] = useState<any[]>([])
+  const [planosCliente, setPlanosCliente] = useState<any[]>([])
+  const [planosDisponiveis, setPlanosDisponiveis] = useState<any[]>([])
+  const [todasUnidades, setTodasUnidades] = useState<any[]>([])
 
   const [diaSel, setDiaSel] = useState(0)
   const [semanaOffset, setSemanaOffset] = useState(0)
@@ -62,11 +57,10 @@ export default function RecepcaoClientesPage() {
   const [erroModal, setErroModal] = useState('')
 
   const [novoCliente, setNovoCliente] = useState(false)
-  const [formNovo, setFormNovo] = useState({ nome: '', email: '', telefone: '', cpf: '', planos: ['wellhub'], creditos_avulso: 0 })
+  const [formNovo, setFormNovo] = useState({ nome: '', email: '', telefone: '', cpf: '' })
   const [criando, setCriando] = useState(false)
   const [erroCriar, setErroCriar] = useState('')
 
-  // Modal de venda
   const [modalVenda, setModalVenda] = useState(false)
   const [produtosDisp, setProdutosDisp] = useState<any[]>([])
   const [formVenda, setFormVenda] = useState({
@@ -78,6 +72,9 @@ export default function RecepcaoClientesPage() {
   })
   const [vendendo, setVendendo] = useState(false)
   const [erroVenda, setErroVenda] = useState('')
+
+  const [modalAtivarPlano, setModalAtivarPlano] = useState<any>(null)
+  const [salvandoPlano, setSalvandoPlano] = useState(false)
 
   useEffect(() => {
     if (loading) return
@@ -94,6 +91,19 @@ export default function RecepcaoClientesPage() {
     }
   }, [busca])
 
+  useEffect(() => {
+    if (perfil) carregarUnidadesEPlanos()
+  }, [perfil])
+
+  async function carregarUnidadesEPlanos() {
+    const [{ data: unidades }, { data: planos }] = await Promise.all([
+      supabase.from('unidades').select('*').eq('ativo', true).order('nome'),
+      supabase.from('planos_disponiveis').select('*').eq('ativo', true),
+    ])
+    setTodasUnidades(unidades || [])
+    setPlanosDisponiveis(planos || [])
+  }
+
   async function buscarClientes() {
     setLoadingClientes(true)
     const { data } = await supabase
@@ -108,7 +118,7 @@ export default function RecepcaoClientesPage() {
 
   async function abrirCliente(cliente: any) {
     setClienteSel(cliente)
-    setForm({ ...cliente, planos: cliente.planos || ['wellhub'] })
+    setForm({ ...cliente })
     setEditando(false)
     setAba('dados')
     setHistorico([])
@@ -119,6 +129,7 @@ export default function RecepcaoClientesPage() {
       carregarSaldo(cliente.id),
       carregarHistorico(cliente.id),
       carregarVendas(cliente.id),
+      carregarPlanosCliente(cliente.id),
     ])
   }
 
@@ -131,6 +142,7 @@ export default function RecepcaoClientesPage() {
       p_cliente_id: clienteId,
       p_mes: mes,
       p_ano: ano,
+      p_unidade_id: null,  // null = todas as unidades
     })
     setSaldoMes(data || {})
   }
@@ -138,7 +150,7 @@ export default function RecepcaoClientesPage() {
   async function carregarHistorico(clienteId: string) {
     const { data } = await supabase
       .from('agendamentos')
-      .select('*')
+      .select('*, unidades(nome)')
       .eq('cliente_id', clienteId)
       .order('data', { ascending: false })
       .limit(50)
@@ -148,11 +160,23 @@ export default function RecepcaoClientesPage() {
   async function carregarVendas(clienteId: string) {
     const { data } = await supabase
       .from('vendas')
-      .select('*, produtos(nome, tipo), perfis:vendido_por(nome)')
+      .select('*, produtos(nome, tipo), perfis:vendido_por(nome), unidades(nome)')
       .eq('cliente_id', clienteId)
       .order('vendido_em', { ascending: false })
       .limit(50)
     setVendas(data || [])
+  }
+
+  async function carregarPlanosCliente(clienteId: string) {
+    const { data } = await supabase
+      .from('cliente_planos')
+      .select(`
+        id, ativo, contrato_aceito_em, inicio, fim,
+        planos_disponiveis(id, nome, tipo, creditos_mes, unidade_id, unidades(id, nome, tipo))
+      `)
+      .eq('cliente_id', clienteId)
+      .order('contrato_aceito_em', { ascending: false })
+    setPlanosCliente(data || [])
   }
 
   async function salvarEdicao() {
@@ -162,8 +186,6 @@ export default function RecepcaoClientesPage() {
       email: form.email,
       telefone: form.telefone,
       cpf: form.cpf,
-      planos: form.planos,
-      creditos_avulso: form.creditos_avulso || 0,
     }).eq('id', clienteSel.id)
 
     if (!error) {
@@ -187,18 +209,16 @@ export default function RecepcaoClientesPage() {
     setErroCriar('')
     const { error } = await supabase.from('clientes').insert({
       nome: formNovo.nome,
-      email: formNovo.email,
+      email: formNovo.email || null,
       telefone: formNovo.telefone,
       cpf: formNovo.cpf.replace(/\D/g, ''),
-      planos: formNovo.planos,
-      creditos_avulso: formNovo.creditos_avulso,
       bloqueado: false,
     })
     if (error) {
       setErroCriar('Erro ao cadastrar. Verifique os dados.')
     } else {
       setNovoCliente(false)
-      setFormNovo({ nome: '', email: '', telefone: '', cpf: '', planos: ['wellhub'], creditos_avulso: 0 })
+      setFormNovo({ nome: '', email: '', telefone: '', cpf: '' })
       setBusca('')
       setClientes([])
     }
@@ -206,10 +226,12 @@ export default function RecepcaoClientesPage() {
   }
 
   async function abrirVenda() {
+    if (!unidadeAtiva) return
     const { data } = await supabase
       .from('produtos')
       .select('*')
       .eq('ativo', true)
+      .or(`unidade_id.eq.${unidadeAtiva.id},unidade_id.is.null`)
       .order('nome')
     setProdutosDisp(data || [])
     setFormVenda({
@@ -235,6 +257,7 @@ export default function RecepcaoClientesPage() {
   }
 
   async function confirmarVenda() {
+    if (!unidadeAtiva) return
     if (!formVenda.produto_id) { setErroVenda('Selecione um produto.'); return }
     if (formVenda.quantidade < 1 || formVenda.quantidade > 20) { setErroVenda('Quantidade deve ser entre 1 e 20.'); return }
     if (formVenda.valor_unitario <= 0) { setErroVenda('Informe um valor válido.'); return }
@@ -249,6 +272,7 @@ export default function RecepcaoClientesPage() {
       p_valor_unitario: formVenda.valor_unitario,
       p_forma_pagamento: formVenda.forma_pagamento,
       p_vendido_por: perfil?.id,
+      p_unidade_id: unidadeAtiva.id,
       p_observacao: formVenda.observacao.trim() || null,
     })
 
@@ -272,6 +296,44 @@ export default function RecepcaoClientesPage() {
     setAba('vendas')
   }
 
+  async function ativarPlano(planoId: string) {
+    if (!clienteSel) return
+    setSalvandoPlano(true)
+    const { error } = await supabase.from('cliente_planos').insert({
+      cliente_id: clienteSel.id,
+      plano_id: planoId,
+      ativo: true,
+      contrato_aceito_em: new Date().toISOString(),
+    })
+    setSalvandoPlano(false)
+    if (error) {
+      alert('Erro ao ativar plano: ' + error.message)
+      return
+    }
+    setModalAtivarPlano(null)
+    await carregarPlanosCliente(clienteSel.id)
+    await carregarSaldo(clienteSel.id)
+  }
+
+  async function desativarPlano(cpId: string) {
+    if (!confirm('Desativar este plano? O cliente perderá acesso aos créditos dessa unidade.')) return
+    await supabase.from('cliente_planos').update({
+      ativo: false,
+      fim: new Date().toISOString().split('T')[0],
+    }).eq('id', cpId)
+    await carregarPlanosCliente(clienteSel.id)
+    await carregarSaldo(clienteSel.id)
+  }
+
+  // Planos da unidade ativa que o cliente AINDA não tem
+  function planosDisponiveisParaAtivar() {
+    if (!unidadeAtiva) return []
+    const planosAtivos = planosCliente.filter(p => p.ativo).map(p => p.planos_disponiveis?.id)
+    return planosDisponiveis.filter(p =>
+      p.unidade_id === unidadeAtiva.id && !planosAtivos.includes(p.id)
+    )
+  }
+
   const diasSemana = Array.from({ length: 7 }, (_, i) => {
     const d = new Date()
     d.setDate(d.getDate() + semanaOffset * 7 + i)
@@ -279,18 +341,28 @@ export default function RecepcaoClientesPage() {
   })
 
   useEffect(() => {
-    if (aba === 'agendar') carregarHorariosAgendar()
-  }, [aba, diaSel, semanaOffset])
+    if (aba === 'agendar' && unidadeAtiva) carregarHorariosAgendar()
+  }, [aba, diaSel, semanaOffset, unidadeAtiva?.id])
 
   async function carregarHorariosAgendar() {
+    if (!unidadeAtiva) return
     const dataSel = diasSemana[diaSel]
     const diaSemNum = dataSel.getDay()
     const dataStr = dataSel.toISOString().split('T')[0]
 
     const [{ data: hors }, { data: ags }, { data: bloqueadas }] = await Promise.all([
-      supabase.from('coach_horarios').select('hora').eq('dia_semana', diaSemNum).eq('ativo', true),
-      supabase.from('agendamentos').select('horario').eq('data', dataStr).neq('status', 'cancelado'),
-      supabase.from('vagas_bloqueadas').select('horario, quantidade').eq('data', dataStr).eq('ativo', true),
+      supabase.from('coach_horarios').select('hora')
+        .eq('dia_semana', diaSemNum)
+        .eq('unidade_id', unidadeAtiva.id)
+        .eq('ativo', true),
+      supabase.from('agendamentos').select('horario')
+        .eq('data', dataStr)
+        .eq('unidade_id', unidadeAtiva.id)
+        .neq('status', 'cancelado'),
+      supabase.from('vagas_bloqueadas').select('horario, quantidade')
+        .eq('data', dataStr)
+        .eq('unidade_id', unidadeAtiva.id)
+        .eq('ativo', true),
     ])
 
     const porHora: Record<string, number> = {}
@@ -324,12 +396,14 @@ export default function RecepcaoClientesPage() {
   }
 
   async function abrirModal(hora: string) {
+    if (!unidadeAtiva) return
     const dataStr = diasSemana[diaSel].toISOString().split('T')[0]
     const dataObj = diasSemana[diaSel]
     const { data: saldoData } = await supabase.rpc('saldo_creditos_cliente', {
       p_cliente_id: clienteSel.id,
       p_mes: dataObj.getMonth() + 1,
       p_ano: dataObj.getFullYear(),
+      p_unidade_id: unidadeAtiva.id,
     })
     setSaldoMes(saldoData || {})
 
@@ -340,7 +414,7 @@ export default function RecepcaoClientesPage() {
 
   async function confirmarAgendamento() {
     if (!tipoCredito) { setErroModal('Selecione o tipo de crédito.'); return }
-    if (!modalSlot || !clienteSel) return
+    if (!modalSlot || !clienteSel || !unidadeAtiva) return
     setAgendando(true)
     setErroModal('')
 
@@ -350,6 +424,7 @@ export default function RecepcaoClientesPage() {
       horario: modalSlot.hora + ':00',
       status: 'agendado',
       tipo_credito: tipoCredito,
+      unidade_id: unidadeAtiva.id,
     })
 
     if (error) {
@@ -381,9 +456,32 @@ export default function RecepcaoClientesPage() {
     { key: 'agendar', label: '+ Agendar' },
   ]
 
-  if (loading || !perfil) return (
+  // Saldos disponíveis para agendar na unidade ativa
+  const saldosUnidadeAtiva = Object.entries(saldoMes).filter(([_, info]: [string, any]) =>
+    info.unidade_id === unidadeAtiva?.id
+  )
+
+  // Planos do cliente agrupados por unidade
+  const planosPorUnidade: Record<string, any[]> = {}
+  for (const cp of planosCliente.filter(p => p.ativo)) {
+    const u = cp.planos_disponiveis?.unidades
+    if (!u) continue
+    if (!planosPorUnidade[u.id]) planosPorUnidade[u.id] = []
+    planosPorUnidade[u.id].push(cp)
+  }
+
+  if (loading || loadingUnidade || !perfil) return (
     <div className="flex items-center justify-center h-screen">
       <div className="w-8 h-8 border-4 border-primary-400 border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+
+  if (!unidadeAtiva) return (
+    <div className="flex items-center justify-center h-screen p-6 text-center">
+      <div>
+        <AlertCircle size={32} className="text-orange-500 mx-auto mb-3" />
+        <h2 className="text-lg font-semibold text-gray-900">Sem acesso a unidades</h2>
+      </div>
     </div>
   )
 
@@ -406,11 +504,14 @@ export default function RecepcaoClientesPage() {
             )}
           </div>
         </div>
-        {!clienteSel && (
-          <button onClick={() => setNovoCliente(true)} className="btn btn-sm gap-1 bg-primary-600 text-white hover:bg-primary-700">
-            <Plus size={14} /> Novo
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          <UnidadeSelector />
+          {!clienteSel && (
+            <button onClick={() => setNovoCliente(true)} className="btn btn-sm gap-1 bg-primary-600 text-white hover:bg-primary-700">
+              <Plus size={14} /> Novo
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="max-w-3xl mx-auto px-6 py-5">
@@ -447,31 +548,25 @@ export default function RecepcaoClientesPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                {clientes.map(c => {
-                  const planos = c.planos || ['wellhub']
-                  return (
-                    <div key={c.id} onClick={() => abrirCliente(c)}
-                      className="card flex items-center gap-3 cursor-pointer hover:border-primary-200 transition-all">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-700 text-white text-sm font-bold flex items-center justify-center flex-shrink-0">
-                        {c.nome?.slice(0, 2).toUpperCase()}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-semibold text-gray-900">{c.nome}</span>
-                          {c.bloqueado && <span className="text-xs px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">Bloqueado</span>}
-                        </div>
-                        <div className="flex gap-1 mt-1 flex-wrap">
-                          {planos.map((p: string) => (
-                            <span key={p} className={`text-xs px-2 py-0.5 rounded-full border ${planoConfig[p]?.bg} ${planoConfig[p]?.cor}`}>
-                              {planoConfig[p]?.label || p}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      <ChevronRight size={14} className="text-gray-300 flex-shrink-0" />
+                {clientes.map(c => (
+                  <div key={c.id} onClick={() => abrirCliente(c)}
+                    className="card flex items-center gap-3 cursor-pointer hover:border-primary-200 transition-all">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-700 text-white text-sm font-bold flex items-center justify-center flex-shrink-0">
+                      {c.nome?.slice(0, 2).toUpperCase()}
                     </div>
-                  )
-                })}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-semibold text-gray-900">{c.nome}</span>
+                        {c.bloqueado && <span className="text-xs px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">Bloqueado</span>}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {c.cpf && <span className="font-mono">{c.cpf}</span>}
+                        {c.email && <span> · {c.email}</span>}
+                      </div>
+                    </div>
+                    <ChevronRight size={14} className="text-gray-300 flex-shrink-0" />
+                  </div>
+                ))}
               </div>
             )}
           </>
@@ -492,10 +587,9 @@ export default function RecepcaoClientesPage() {
               </div>
             )}
 
-            {/* Botão grande de Vender produto */}
             <button onClick={abrirVenda}
               className="w-full mb-4 btn gap-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 py-3 font-semibold shadow-sm">
-              <ShoppingCart size={16} /> Vender produto
+              <ShoppingCart size={16} /> Vender produto · {unidadeAtiva.nome}
             </button>
 
             <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
@@ -518,11 +612,6 @@ export default function RecepcaoClientesPage() {
                   <div>
                     <div className="font-bold text-lg leading-tight">{clienteSel.nome}</div>
                     <div className="text-primary-200 text-sm mt-0.5">{clienteSel.email || '—'}</div>
-                    <div className="flex gap-1 mt-2 flex-wrap">
-                      {(clienteSel.planos || ['wellhub']).map((p: string) => (
-                        <span key={p} className="text-xs px-2 py-0.5 rounded-full bg-white/20 text-white">{planoConfig[p]?.label}</span>
-                      ))}
-                    </div>
                   </div>
                 </div>
 
@@ -564,71 +653,89 @@ export default function RecepcaoClientesPage() {
 
             {aba === 'planos' && (
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  {Object.entries(saldoMes).map(([plano, info]: [string, any]) => {
-                    const restante = info.disponivel
-                    const pct = info.total > 0 ? Math.round((info.usado / info.total) * 100) : 0
-                    const cfg = planoConfig[plano]
+                {Object.keys(planosPorUnidade).length === 0 ? (
+                  <div className="card text-center py-8 text-gray-400 text-sm">
+                    Cliente sem planos ativos.
+                  </div>
+                ) : (
+                  todasUnidades.map(u => {
+                    const planosU = planosPorUnidade[u.id] || []
+                    if (planosU.length === 0) return null
+                    const podeMexer = u.id === unidadeAtiva.id || perfil?.role === 'admin'
+
                     return (
-                      <div key={plano} className={`rounded-2xl border p-4 ${cfg?.bg || 'bg-gray-50 border-gray-200'}`}>
-                        <div className={`text-xs font-semibold mb-2 ${cfg?.cor || 'text-gray-700'}`}>{cfg?.label || plano}</div>
-                        <div className="flex items-end gap-1">
-                          <span className={`text-4xl font-bold ${cfg?.cor || 'text-gray-700'}`}>{restante}</span>
-                          <span className="text-xs text-gray-400 mb-1">/ {info.total}</span>
+                      <div key={u.id} className="card">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Building2 size={14} className="text-gray-400" />
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            u.tipo === 'ct' ? 'bg-primary-100 text-primary-700' : 'bg-blue-100 text-blue-700'
+                          }`}>
+                            {u.tipo === 'ct' ? 'CT' : 'Club'}
+                          </span>
+                          <span className="text-sm font-semibold text-gray-900">{u.nome}</span>
+                          {!podeMexer && (
+                            <span className="text-xs text-gray-400 italic">(somente leitura)</span>
+                          )}
                         </div>
-                        <div className="text-xs text-gray-400 mt-1">sessões restantes</div>
-                        <div className="mt-3 h-2 bg-white rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full transition-all ${cfg?.barra || 'bg-gray-400'}`}
-                            style={{ width: `${Math.min(pct, 100)}%` }} />
+
+                        <div className="space-y-2">
+                          {planosU.map(cp => {
+                            const pd = cp.planos_disponiveis
+                            const saldoKey = Object.keys(saldoMes).find(k =>
+                              saldoMes[k]?.unidade_id === u.id && saldoMes[k]?.tipo_plano === pd?.tipo
+                            )
+                            const saldo = saldoKey ? saldoMes[saldoKey] : null
+
+                            return (
+                              <div key={cp.id} className="border border-gray-200 rounded-xl p-3 flex items-center gap-3">
+                                <div className="flex-1">
+                                  <div className="text-sm font-medium text-gray-900">{pd?.nome}</div>
+                                  <div className="text-xs text-gray-500 mt-0.5">
+                                    {pd?.creditos_mes} sessões/mês
+                                    {saldo && (
+                                      <> · <span className="font-bold text-primary-600">{saldo.disponivel}</span> disponível este mês</>
+                                    )}
+                                  </div>
+                                  {cp.contrato_aceito_em && (
+                                    <div className="text-xs text-gray-400 mt-0.5">
+                                      Contrato aceito em {new Date(cp.contrato_aceito_em).toLocaleDateString('pt-BR')}
+                                    </div>
+                                  )}
+                                </div>
+                                {podeMexer && (
+                                  <button onClick={() => desativarPlano(cp.id)}
+                                    className="btn btn-sm gap-1 text-red-500 hover:bg-red-50">
+                                    <Trash2 size={12} /> Desativar
+                                  </button>
+                                )}
+                              </div>
+                            )
+                          })}
                         </div>
-                        <div className="text-xs text-gray-400 mt-1">{info.usado} usadas este mês</div>
                       </div>
                     )
-                  })}
-                </div>
+                  })
+                )}
 
-                <div className="card">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="text-sm font-semibold text-gray-900">Planos ativos</div>
-                    {!editando ? (
-                      <button onClick={() => setEditando(true)} className="btn btn-sm text-primary-600">Editar</button>
-                    ) : (
-                      <div className="flex gap-2">
-                        <button onClick={() => { setEditando(false); setForm(clienteSel) }} className="btn btn-sm text-gray-500">Cancelar</button>
-                        <button onClick={salvarEdicao} disabled={salvando} className="btn btn-sm gap-1 bg-primary-600 text-white">
-                          <Check size={12} /> {salvando ? 'Salvando...' : 'Salvar'}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  {editando ? (
-                    <div className="space-y-3">
-                      {['wellhub', 'totalpass'].map(p => (
-                        <label key={p} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                          (form.planos || []).includes(p) ? `${planoConfig[p].bg}` : 'border-gray-200'
-                        }`}>
-                          <input type="checkbox" checked={(form.planos || []).includes(p)}
-                            onChange={e => {
-                              const atual = form.planos || []
-                              setForm({ ...form, planos: e.target.checked ? [...atual, p] : atual.filter((x: string) => x !== p) })
-                            }}
-                            className="w-4 h-4 accent-primary-600" />
-                          <span className={`text-sm font-medium ${planoConfig[p].cor}`}>{planoConfig[p].label}</span>
-                          <span className="text-xs text-gray-400 ml-auto">{LIMITE_PLANO[p]} sessões/mês</span>
-                        </label>
-                      ))}
+                {planosDisponiveisParaAtivar().length > 0 && (
+                  <div className="card border-2 border-dashed border-primary-200 bg-primary-50">
+                    <div className="text-sm font-semibold text-primary-800 mb-3 flex items-center gap-2">
+                      <Plus size={14} /> Ativar plano em {unidadeAtiva.nome}
                     </div>
-                  ) : (
                     <div className="space-y-2">
-                      {(clienteSel.planos || ['wellhub']).map((p: string) => (
-                        <div key={p} className={`flex items-center justify-between p-3 rounded-xl border ${planoConfig[p]?.bg}`}>
-                          <span className={`text-sm font-medium ${planoConfig[p]?.cor}`}>{planoConfig[p]?.label}</span>
-                          <span className="text-xs text-gray-500">{LIMITE_PLANO[p]} sessões/mês</span>
-                        </div>
+                      {planosDisponiveisParaAtivar().map(p => (
+                        <button key={p.id} onClick={() => setModalAtivarPlano(p)}
+                          className="w-full bg-white border border-gray-200 rounded-xl p-3 flex items-center justify-between hover:border-primary-400 transition-all text-left">
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">{p.nome}</div>
+                            <div className="text-xs text-gray-500">{p.creditos_mes} sessões/mês</div>
+                          </div>
+                          <Plus size={16} className="text-primary-600" />
+                        </button>
                       ))}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -660,6 +767,11 @@ export default function RecepcaoClientesPage() {
                               <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">
                                 {v.quantidade}x
                               </span>
+                              {v.unidades?.nome && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
+                                  {v.unidades.nome}
+                                </span>
+                              )}
                             </div>
                             <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 flex-wrap">
                               <span className="font-mono font-bold text-green-700">
@@ -694,10 +806,6 @@ export default function RecepcaoClientesPage() {
                 {agendamentosFuturos.length === 0 ? (
                   <div className="card text-center py-12 text-gray-400 text-sm">
                     Nenhum agendamento futuro.
-                    <br />
-                    <button onClick={() => setAba('agendar')} className="mt-3 text-primary-600 text-sm font-medium">
-                      + Fazer agendamento
-                    </button>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -721,8 +829,13 @@ export default function RecepcaoClientesPage() {
                               <span className={`text-xs px-2 py-0.5 rounded-full ${statusConfig[ag.status]?.color}`}>
                                 {statusConfig[ag.status]?.label}
                               </span>
+                              {ag.unidades?.nome && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                                  {ag.unidades.nome}
+                                </span>
+                              )}
                             </div>
-                            <div className="text-xs text-gray-400 mt-0.5">{planoConfig[ag.tipo_credito]?.label || ag.tipo_credito}</div>
+                            <div className="text-xs text-gray-400 mt-0.5">{ag.tipo_credito}</div>
                           </div>
                         </div>
                       </div>
@@ -770,8 +883,13 @@ export default function RecepcaoClientesPage() {
                             <span className={`text-xs px-2 py-0.5 rounded-full ${statusConfig[ag.status]?.color}`}>
                               {statusConfig[ag.status]?.label}
                             </span>
+                            {ag.unidades?.nome && (
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                                {ag.unidades.nome}
+                              </span>
+                            )}
                           </div>
-                          <div className="text-xs text-gray-400 mt-0.5">{planoConfig[ag.tipo_credito]?.label || ag.tipo_credito}</div>
+                          <div className="text-xs text-gray-400 mt-0.5">{ag.tipo_credito}</div>
                         </div>
                       </div>
                     ))}
@@ -782,7 +900,9 @@ export default function RecepcaoClientesPage() {
 
             {aba === 'agendar' && (
               <div>
-                <div className="text-sm font-semibold text-gray-900 mb-4">Escolha o dia e horário</div>
+                <div className="text-sm font-semibold text-gray-900 mb-4">
+                  Agendar em {unidadeAtiva.nome}
+                </div>
                 <div className="card">
                   <div className="flex items-center gap-2 mb-3">
                     <button onClick={() => { setSemanaOffset(o => Math.max(0, o - 1)); setDiaSel(0) }}
@@ -840,6 +960,7 @@ export default function RecepcaoClientesPage() {
                 <div className="text-sm text-gray-400 mt-0.5 capitalize">
                   {new Date(modalSlot.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })} · {modalSlot.hora}
                 </div>
+                <div className="text-xs text-gray-400">{unidadeAtiva.nome}</div>
               </div>
               <button onClick={() => setModalSlot(null)} className="text-gray-400 hover:text-gray-600">
                 <X size={18} />
@@ -849,28 +970,28 @@ export default function RecepcaoClientesPage() {
             <div className="mb-4">
               <div className="text-xs text-gray-400 mb-2 uppercase tracking-wide font-semibold">Usar crédito de</div>
               <div className="space-y-2">
-                {Object.keys(saldoMes).length === 0 ? (
+                {saldosUnidadeAtiva.length === 0 ? (
                   <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-sm text-orange-700">
-                    Cliente sem créditos disponíveis para esta data.
+                    Cliente sem créditos disponíveis nesta unidade.
                   </div>
                 ) : (
-                  Object.entries(saldoMes).map(([p, info]: [string, any]) => {
+                  saldosUnidadeAtiva.map(([key, info]: [string, any]) => {
                     const restante = info.disponivel
                     const semSaldo = restante <= 0
                     return (
-                      <div key={p} onClick={() => !semSaldo && setTipoCredito(p)}
+                      <div key={key} onClick={() => !semSaldo && setTipoCredito(info.tipo_plano)}
                         className={`border rounded-xl p-3 flex items-center gap-3 transition-all ${
                           semSaldo ? 'opacity-40 cursor-not-allowed border-gray-100 bg-gray-50' :
-                          tipoCredito === p ? `${planoConfig[p]?.bg} border-primary-400 cursor-pointer` :
+                          tipoCredito === info.tipo_plano ? 'bg-primary-50 border-primary-400 cursor-pointer' :
                           'border-gray-200 hover:border-primary-200 cursor-pointer bg-white'
                         }`}>
                         <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                          tipoCredito === p ? 'border-primary-600 bg-primary-600' : 'border-gray-300'
+                          tipoCredito === info.tipo_plano ? 'border-primary-600 bg-primary-600' : 'border-gray-300'
                         }`}>
-                          {tipoCredito === p && <div className="w-2 h-2 rounded-full bg-white" />}
+                          {tipoCredito === info.tipo_plano && <div className="w-2 h-2 rounded-full bg-white" />}
                         </div>
                         <div className="flex-1">
-                          <div className={`text-sm font-semibold ${planoConfig[p]?.cor}`}>{planoConfig[p]?.label || p}</div>
+                          <div className="text-sm font-semibold text-gray-900 capitalize">{info.tipo_plano}</div>
                           <div className="text-xs text-gray-400">{restante} sessão{restante !== 1 ? 'ões' : ''} restante{restante !== 1 ? 's' : ''}</div>
                         </div>
                         {semSaldo && <span className="text-xs text-red-400 font-medium">Sem saldo</span>}
@@ -903,7 +1024,6 @@ export default function RecepcaoClientesPage() {
         </div>
       )}
 
-      {/* Modal de Venda */}
       {modalVenda && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
@@ -912,7 +1032,7 @@ export default function RecepcaoClientesPage() {
                 <div className="font-bold text-gray-900 flex items-center gap-2">
                   <ShoppingCart size={18} className="text-green-600" /> Vender produto
                 </div>
-                <div className="text-xs text-gray-400 mt-0.5">para {clienteSel?.nome}</div>
+                <div className="text-xs text-gray-400 mt-0.5">para {clienteSel?.nome} · {unidadeAtiva.nome}</div>
               </div>
               <button onClick={() => setModalVenda(false)} className="text-gray-400 hover:text-gray-600">
                 <X size={18} />
@@ -921,7 +1041,7 @@ export default function RecepcaoClientesPage() {
 
             {produtosDisp.length === 0 ? (
               <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 text-sm text-orange-700">
-                Nenhum produto ativo cadastrado. Peça ao admin para cadastrar produtos.
+                Nenhum produto ativo disponível para esta unidade.
               </div>
             ) : (
               <div className="space-y-4">
@@ -939,6 +1059,7 @@ export default function RecepcaoClientesPage() {
                           <div className="text-sm font-medium text-gray-900">{p.nome}</div>
                           <div className="text-xs text-gray-500 mt-0.5">
                             R$ {Number(p.valor).toFixed(2).replace('.', ',')}
+                            {p.creditos_por_venda > 1 && ` · ${p.creditos_por_venda} créditos por venda`}
                             {p.dias_validade && ` · validade ${p.dias_validade} dias`}
                           </div>
                         </div>
@@ -1017,6 +1138,40 @@ export default function RecepcaoClientesPage() {
         </div>
       )}
 
+      {modalAtivarPlano && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="font-bold text-gray-900">Ativar plano</div>
+              <button onClick={() => setModalAtivarPlano(null)} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="bg-primary-50 border border-primary-200 rounded-xl p-4 mb-4">
+              <div className="font-semibold text-primary-900">{modalAtivarPlano.nome}</div>
+              <div className="text-xs text-primary-700 mt-1">
+                {modalAtivarPlano.creditos_mes} sessões/mês em {unidadeAtiva.nome}
+              </div>
+            </div>
+
+            <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 mb-4 text-xs text-yellow-800">
+              ⚠️ Esta ação simula o aceite de contrato pelo cliente. O cliente precisa estar presente e ciente da ativação.
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={() => setModalAtivarPlano(null)} className="btn flex-1 text-gray-500 border border-gray-200">
+                Cancelar
+              </button>
+              <button onClick={() => ativarPlano(modalAtivarPlano.id)} disabled={salvandoPlano}
+                className="btn flex-1 bg-primary-600 text-white hover:bg-primary-700">
+                {salvandoPlano ? 'Ativando...' : 'Ativar plano'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {novoCliente && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
@@ -1039,23 +1194,6 @@ export default function RecepcaoClientesPage() {
                     onChange={e => setFormNovo({ ...formNovo, [f.key]: e.target.value })} />
                 </div>
               ))}
-              <div>
-                <label className="text-xs text-gray-500 mb-2 block font-medium">Planos</label>
-                {['wellhub', 'totalpass'].map(p => (
-                  <label key={p} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer mb-2 transition-all ${
-                    formNovo.planos.includes(p) ? `${planoConfig[p].bg}` : 'border-gray-200'
-                  }`}>
-                    <input type="checkbox" checked={formNovo.planos.includes(p)}
-                      onChange={e => setFormNovo({
-                        ...formNovo,
-                        planos: e.target.checked ? [...formNovo.planos, p] : formNovo.planos.filter(x => x !== p)
-                      })}
-                      className="w-4 h-4 accent-primary-600" />
-                    <span className={`text-sm font-medium ${planoConfig[p].cor}`}>{planoConfig[p].label}</span>
-                    <span className="text-xs text-gray-400 ml-auto">{LIMITE_PLANO[p]} sess/mês</span>
-                  </label>
-                ))}
-              </div>
             </div>
 
             {erroCriar && <div className="mt-3 text-sm text-red-600">{erroCriar}</div>}
