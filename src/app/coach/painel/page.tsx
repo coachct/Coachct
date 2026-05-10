@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { fmt } from '@/lib/utils'
-import { Users, BarChart2, TrendingUp, TrendingDown, Clock, PlayCircle, AlertTriangle, Pencil } from 'lucide-react'
+import { Users, BarChart2, TrendingUp, TrendingDown, Clock, PlayCircle, AlertTriangle, Pencil, Bell } from 'lucide-react'
 
 const TURNOS = [{ label: 'Manhã' }, { label: 'Tarde' }, { label: 'Noite' }]
 const DIAS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
@@ -21,6 +21,7 @@ export default function CoachPainelPage() {
   const [loading, setLoading] = useState(true)
   const [aulaAberta, setAulaAberta] = useState<any>(null)
   const [cancelando, setCancelando] = useState(false)
+  const [notificacoes, setNotificacoes] = useState<any[]>([])
   const supabase = createClient()
 
   const hoje = new Date()
@@ -34,6 +35,41 @@ export default function CoachPainelPage() {
   useEffect(() => {
     if (perfil?.id) loadData()
   }, [perfil?.id])
+
+  // Polling de 5s para notificações
+  useEffect(() => {
+    if (!coach?.id) return
+
+    carregarNotificacoes(coach.id)
+    const interval = setInterval(() => {
+      carregarNotificacoes(coach.id)
+    }, 5000)
+
+    return () => clearInterval(interval)
+  }, [coach?.id])
+
+  async function carregarNotificacoes(coachId: string) {
+    const { data } = await supabase
+      .from('notificacoes_coach')
+      .select('*, clientes(id, nome), agendamentos(horario, data)')
+      .eq('coach_id', coachId)
+      .eq('lida', false)
+      .order('criado_em', { ascending: false })
+      .limit(10)
+
+    setNotificacoes(data || [])
+  }
+
+  async function clicarNotificacao(notif: any) {
+    // Marca como lida
+    await supabase
+      .from('notificacoes_coach')
+      .update({ lida: true, lida_em: new Date().toISOString() })
+      .eq('id', notif.id)
+
+    // Vai para a tela de treino com o cliente já selecionado
+    router.push(`/coach/treino?cliente_id=${notif.cliente_id}`)
+  }
 
   async function loadData() {
     try {
@@ -163,6 +199,27 @@ export default function CoachPainelPage() {
         <h1 className="text-xl font-semibold text-gray-900">Olá, {coach?.nome.split(' ')[0]}! 👋</h1>
         <p className="text-sm text-gray-400 capitalize">{diaSemana}</p>
       </div>
+
+      {/* Cards de notificação — clientes que chegaram */}
+      {notificacoes.length > 0 && (
+        <div className="mb-5 space-y-2">
+          {notificacoes.map(notif => (
+            <button
+              key={notif.id}
+              onClick={() => clicarNotificacao(notif)}
+              className="w-full bg-gradient-to-r from-orange-400 to-red-500 text-white rounded-2xl p-5 flex items-center gap-4 transition-all shadow-lg hover:shadow-xl active:scale-[0.98] animate-pulse">
+              <div className="w-14 h-14 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                <Bell size={28} className="text-white" />
+              </div>
+              <div className="text-left flex-1">
+                <div className="text-base font-bold text-white">🔔 Cliente chegou!</div>
+                <div className="text-sm text-white/90 mt-0.5">{notif.mensagem}</div>
+                <div className="text-xs text-white/70 mt-1">Toque para iniciar o treino agora</div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
 
       <button onClick={() => router.push('/coach/treino')}
         className="w-full mb-5 bg-primary-400 hover:bg-primary-500 text-white rounded-2xl p-5 flex items-center gap-4 transition-colors shadow-sm">
@@ -340,7 +397,6 @@ export default function CoachPainelPage() {
                     {aula.treinos?.nome} · {new Date(aula.finalizada_em).toLocaleDateString('pt-BR')}
                   </div>
                 </div>
-                {/* ✅ botão editar — só aparece se dentro de 1h */}
                 {podeEditar(aula) && (
                   <button
                     onClick={() => router.push(`/coach/aulas/${aula.id}`)}
