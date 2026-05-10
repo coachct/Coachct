@@ -32,10 +32,13 @@ function ProdutoCard({ produto, unidades, onEditar, onAlternar }: any) {
             <span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">Inativo</span>
           )}
         </div>
-        <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+        <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 flex-wrap">
           <span>{tipoLabel}</span>
           <span className="font-mono font-semibold text-gray-700">
             R$ {Number(produto.valor).toFixed(2).replace('.', ',')}
+          </span>
+          <span className="bg-green-50 text-green-700 px-2 py-0.5 rounded-full font-medium">
+            {produto.creditos_por_venda || 1} crédito{(produto.creditos_por_venda || 1) > 1 ? 's' : ''} por unidade
           </span>
           {produto.dias_validade && (
             <span>Validade: {produto.dias_validade} dias</span>
@@ -71,10 +74,11 @@ export default function AdminProdutosPage() {
     nome: '',
     tipo: 'credito_coach',
     valor: 0,
+    creditos_por_venda: 1,
     dias_validade: 30,
     descricao: '',
     ativo: true,
-    unidade_id: '' as string | '',  // '' = rede
+    unidade_id: '' as string | '',
   })
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
@@ -104,6 +108,7 @@ export default function AdminProdutosPage() {
       nome: '',
       tipo: 'credito_coach',
       valor: 0,
+      creditos_por_venda: 1,
       dias_validade: 30,
       descricao: '',
       ativo: true,
@@ -118,6 +123,7 @@ export default function AdminProdutosPage() {
       nome: produto.nome,
       tipo: produto.tipo,
       valor: produto.valor,
+      creditos_por_venda: produto.creditos_por_venda || 1,
       dias_validade: produto.dias_validade || 30,
       descricao: produto.descricao || '',
       ativo: produto.ativo,
@@ -130,6 +136,7 @@ export default function AdminProdutosPage() {
   async function salvar() {
     if (!form.nome.trim()) { setErro('Informe o nome do produto.'); return }
     if (form.valor <= 0) { setErro('Informe um valor válido.'); return }
+    if (form.creditos_por_venda < 1) { setErro('A quantidade de créditos por venda deve ser pelo menos 1.'); return }
 
     setSalvando(true)
     setErro('')
@@ -138,6 +145,7 @@ export default function AdminProdutosPage() {
       nome: form.nome.trim(),
       tipo: form.tipo,
       valor: form.valor,
+      creditos_por_venda: form.creditos_por_venda,
       dias_validade: form.dias_validade,
       descricao: form.descricao.trim() || null,
       ativo: form.ativo,
@@ -304,15 +312,28 @@ export default function AdminProdutosPage() {
                     value={form.valor}
                     onChange={e => setForm({ ...form, valor: parseFloat(e.target.value) || 0 })} />
                 </div>
-                {tipoForm?.precisaValidade && (
-                  <div>
-                    <label className="text-xs text-gray-500 mb-1 block font-medium">Validade (dias)</label>
-                    <input type="number" min={1} className="input w-full"
-                      value={form.dias_validade}
-                      onChange={e => setForm({ ...form, dias_validade: parseInt(e.target.value) || 30 })} />
-                  </div>
-                )}
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block font-medium">Créditos por venda</label>
+                  <input type="number" min={1} max={100} className="input w-full"
+                    value={form.creditos_por_venda}
+                    onChange={e => setForm({ ...form, creditos_por_venda: parseInt(e.target.value) || 1 })} />
+                </div>
               </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800">
+                <div className="font-semibold mb-1">💡 Como funciona "Créditos por venda":</div>
+                <div>• <strong>1 crédito:</strong> a recepção define quantas unidades vender (ex: 5 créditos avulsos)</div>
+                <div>• <strong>5/10/40 créditos:</strong> pacotes fechados, vendido como 1 unidade que dá N treinos</div>
+              </div>
+
+              {tipoForm?.precisaValidade && (
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block font-medium">Validade (dias)</label>
+                  <input type="number" min={1} className="input w-full"
+                    value={form.dias_validade}
+                    onChange={e => setForm({ ...form, dias_validade: parseInt(e.target.value) || 30 })} />
+                </div>
+              )}
 
               <div>
                 <label className="text-xs text-gray-500 mb-1 block font-medium">Descrição (opcional)</label>
