@@ -32,7 +32,7 @@ export default function SidebarLayout({ children, navItems, role }: SidebarLayou
   const home = homeHref[role]
 
   const NavLinks = () => (
-    <nav className="flex-1 px-2 py-4 space-y-0.5">
+    <nav className="flex-1 min-h-0 overflow-y-auto px-2 py-4 space-y-0.5">
       <Link
         href={home}
         onClick={() => setOpen(false)}
@@ -67,8 +67,8 @@ export default function SidebarLayout({ children, navItems, role }: SidebarLayou
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
       {/* Sidebar desktop */}
-      <aside className="hidden md:flex w-56 flex-col bg-white border-r border-gray-100 shrink-0">
-        <div className="px-4 py-4 border-b border-gray-100">
+      <aside className="hidden md:flex w-56 flex-col bg-white border-r border-gray-100 shrink-0 h-screen">
+        <div className="px-4 py-4 border-b border-gray-100 shrink-0">
           <Link href={home} className="text-primary-800 font-semibold text-sm tracking-wider hover:text-primary-600 transition-colors">
             ● COACH CT
           </Link>
@@ -78,7 +78,7 @@ export default function SidebarLayout({ children, navItems, role }: SidebarLayou
           </div>
         </div>
         <NavLinks />
-        <div className="p-3 border-t border-gray-100">
+        <div className="p-3 border-t border-gray-100 shrink-0">
           <div className="flex items-center gap-2 px-2 py-2">
             <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-xs font-medium text-primary-800">
               {perfil?.nome?.slice(0,2).toUpperCase()}
@@ -109,11 +109,11 @@ export default function SidebarLayout({ children, navItems, role }: SidebarLayou
         <div className="md:hidden fixed inset-0 z-40 flex">
           <div className="fixed inset-0 bg-black/30" onClick={() => setOpen(false)} />
           <aside className="relative w-64 bg-white flex flex-col h-full shadow-xl">
-            <div className="px-4 py-4 border-b border-gray-100 mt-14">
+            <div className="px-4 py-4 border-b border-gray-100 mt-14 shrink-0">
               <div className="text-xs text-gray-500">{roleLabel[role]} · {perfil?.nome}</div>
             </div>
             <NavLinks />
-            <div className="p-4 border-t border-gray-100">
+            <div className="p-4 border-t border-gray-100 shrink-0">
               <button onClick={handleSignOut} className="btn w-full text-xs gap-2">
                 <LogOut size={14} /> Sair
               </button>
