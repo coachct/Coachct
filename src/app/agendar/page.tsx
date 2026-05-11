@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import { useUnidade } from '@/hooks/useUnidade'
 import { createClient } from '@/lib/supabase'
 
 const ACCENT = '#ff2d9b'
@@ -41,6 +42,36 @@ O presente contrato regula as condições de uso do serviço Coach CT, que consi
 6. ACEITE
 Ao concluir o cadastro, o cliente declara ter lido e concordado com todos os termos acima.`
 
+// Parseia chave "wellhub_just_ct" → label e ícone legíveis
+function parsePlanoKey(key: string): { label: string; icon: string } {
+  const lower = key.toLowerCase()
+  let tipo = ''
+  let icon = '🏋️'
+
+  if (lower.startsWith('wellhub')) { tipo = 'Wellhub'; icon = '💜' }
+  else if (lower.startsWith('totalpass')) { tipo = 'TotalPass'; icon = '🔵' }
+  else if (lower.startsWith('avulso') || lower.startsWith('credito')) { tipo = 'Crédito Avulso'; icon = '🎟️' }
+  else { tipo = key }
+
+  // Extrai parte da unidade depois do primeiro "_"
+  const partes = key.split('_')
+  // Remove o prefixo do tipo (wellhub, totalpass, avulso, credito)
+  const tipoPartes = tipo === 'TotalPass' ? 2 : 1 // totalpass ocupa 1 segmento, wellhub 1
+  // Slug da unidade: tudo depois do tipo
+  const slugPartes = lower.startsWith('totalpass') ? partes.slice(1) : partes.slice(1)
+  const slugUnidade = slugPartes.join('_')
+
+  // Mapeia slugs conhecidos para nomes curtos
+  const nomeUnidade: Record<string, string> = {
+    just_ct: 'Just CT',
+    just_club_vila_olimpia: 'Vila Olímpia',
+    just_club_pinheiros: 'Pinheiros',
+  }
+  const unidadeLabel = nomeUnidade[slugUnidade] || slugUnidade.replace(/_/g, ' ')
+
+  return { label: `${tipo} — ${unidadeLabel}`, icon }
+}
+
 function HalterSVG({ estado, onClick }: { estado: 'livre' | 'ocupado' | 'meu' | 'fila' | 'bloqueado', onClick?: () => void }) {
   const cor = estado === 'ocupado' ? '#333' : estado === 'meu' ? CYAN : estado === 'fila' ? AMARELO : estado === 'bloqueado' ? '#ff4444' : ACCENT
   const opacity = estado === 'ocupado' ? 0.3 : estado === 'bloqueado' ? 0.4 : 1
@@ -59,6 +90,7 @@ function HalterSVG({ estado, onClick }: { estado: 'livre' | 'ocupado' | 'meu' | 
 
 export default function AgendarPage() {
   const { perfil, loading } = useAuth()
+  const { unidadeAtiva, setUnidadeAtiva, unidadesPermitidas, loading: loadingUnidade } = useUnidade()
   const router = useRouter()
   const supabase = createClient()
 
@@ -69,7 +101,6 @@ export default function AgendarPage() {
   const [cliente, setCliente] = useState<any>(null)
   const [loadingHorarios, setLoadingHorarios] = useState(false)
 
-  // Saldo do mês atual e do próximo (para agendamentos futuros)
   const [saldoMesAtual, setSaldoMesAtual] = useState<Record<string, { total: number; usado: number; disponivel: number }>>({})
   const [saldoMesProximo, setSaldoMesProximo] = useState<Record<string, { total: number; usado: number; disponivel: number }>>({})
   const [agendamentosNoDia, setAgendamentosNoDia] = useState<any[]>([])
@@ -101,9 +132,16 @@ export default function AgendarPage() {
     if (perfil) loadCliente()
   }, [perfil])
 
+  // Quando unidade muda, recarrega saldos e horários
   useEffect(() => {
-    if (perfil && cliente) loadHorarios()
-  }, [diaSel, semanaOffset, perfil, cliente])
+    if (perfil && cliente && unidadeAtiva) {
+      carregarSaldos(cliente.id, unidadeAtiva.id)
+    }
+  }, [unidadeAtiva?.id, cliente?.id])
+
+  useEffect(() => {
+    if (perfil && cliente && unidadeAtiva) loadHorarios()
+  }, [diaSel, semanaOffset, perfil, cliente, unidadeAtiva?.id])
 
   async function loadCliente() {
     const { data } = await supabase.from('clientes').select('*').eq('user_id', perfil!.id).maybeSingle()
@@ -112,11 +150,10 @@ export default function AgendarPage() {
       const { count } = await supabase.from('agendamentos').select('*', { count: 'exact', head: true }).eq('cliente_id', data.id)
       setContratoAssinado((count || 0) > 0)
       setNotifFila(data.notificacao_preferida || 'whatsapp')
-      await carregarSaldos(data.id)
     }
   }
 
-  async function carregarSaldos(clienteId: string) {
+  async function carregarSaldos(clienteId: string, unidadeId: string) {
     const agora = new Date()
     const mesAtual = agora.getMonth() + 1
     const anoAtual = agora.getFullYear()
@@ -128,11 +165,13 @@ export default function AgendarPage() {
         p_cliente_id: clienteId,
         p_mes: mesAtual,
         p_ano: anoAtual,
+        p_unidade_id: unidadeId,
       }),
       supabase.rpc('saldo_creditos_cliente', {
         p_cliente_id: clienteId,
         p_mes: mesProximo,
         p_ano: anoProximo,
+        p_unidade_id: unidadeId,
       }),
     ])
 
@@ -141,6 +180,7 @@ export default function AgendarPage() {
   }
 
   async function loadHorarios() {
+    if (!unidadeAtiva) return
     setLoadingHorarios(true)
     const dataSel = diasSemana[diaSel]
     const diaSem = dataSel.getDay()
@@ -151,12 +191,12 @@ export default function AgendarPage() {
     const isDiaDe = dataStr === hoje
 
     const [{ data: hors }, { data: ags }, { data: agCliente }, { data: filas }, { data: filaGeralData }, { data: bloqueadas }] = await Promise.all([
-      supabase.from('coach_horarios').select('hora').eq('dia_semana', diaSem).eq('ativo', true),
-      supabase.from('agendamentos').select('horario, status').eq('data', dataStr).neq('status', 'cancelado'),
-      supabase.from('agendamentos').select('horario, tipo_credito, status').eq('data', dataStr).eq('cliente_id', cliente.id),
-      supabase.from('fila_espera').select('horario').eq('data', dataStr).eq('cliente_id', cliente.id),
-      supabase.from('fila_espera').select('horario').eq('data', dataStr).eq('status', 'aguardando'),
-      supabase.from('vagas_bloqueadas').select('horario, quantidade').eq('data', dataStr).eq('ativo', true),
+      supabase.from('coach_horarios').select('hora').eq('dia_semana', diaSem).eq('ativo', true).eq('unidade_id', unidadeAtiva.id),
+      supabase.from('agendamentos').select('horario, status').eq('data', dataStr).eq('unidade_id', unidadeAtiva.id).neq('status', 'cancelado'),
+      supabase.from('agendamentos').select('horario, tipo_credito, status').eq('data', dataStr).eq('cliente_id', cliente.id).eq('unidade_id', unidadeAtiva.id),
+      supabase.from('fila_espera').select('horario').eq('data', dataStr).eq('cliente_id', cliente.id).eq('unidade_id', unidadeAtiva.id),
+      supabase.from('fila_espera').select('horario').eq('data', dataStr).eq('status', 'aguardando').eq('unidade_id', unidadeAtiva.id),
+      supabase.from('vagas_bloqueadas').select('horario, quantidade').eq('data', dataStr).eq('ativo', true).eq('unidade_id', unidadeAtiva.id),
     ])
 
     const porHora: Record<string, number> = {}
@@ -225,7 +265,6 @@ export default function AgendarPage() {
     return filaGeral.some(f => (f.horario || '').slice(0, 5) === hora)
   }
 
-  // Identifica qual saldo usar baseado na data selecionada (mês atual ou próximo)
   function saldoParaData(): Record<string, any> {
     const dataSel = diasSemana[diaSel]
     const agora = new Date()
@@ -244,16 +283,6 @@ export default function AgendarPage() {
     return disponiveis
   }
 
-  const planoLabel: Record<string, string> = {
-    wellhub: 'Wellhub Diamond',
-    totalpass: 'TotalPass TP6',
-    avulso: 'Crédito Avulso Coach CT',
-  }
-  const planoIcon: Record<string, string> = {
-    wellhub: '💜',
-    totalpass: '🔵',
-    avulso: '🏋️',
-  }
   const notifOpcoes = [
     { key: 'whatsapp', label: 'WhatsApp', icon: '💬' },
     { key: 'email', label: 'Email', icon: '📧' },
@@ -280,9 +309,10 @@ export default function AgendarPage() {
 
   async function confirmarAgendamento() {
     if (!tipoCredito) { setErroModal('Selecione como vai usar esta sessão.'); return }
-    if (!modalSlot || !cliente) return
+    if (!modalSlot || !cliente || !unidadeAtiva) return
     if (jaAgendouNoDia(tipoCredito)) {
-      setErroModal(`Você já tem um agendamento com ${planoLabel[tipoCredito]} neste dia.`)
+      const { label } = parsePlanoKey(tipoCredito)
+      setErroModal(`Você já tem um agendamento com ${label} neste dia nesta unidade.`)
       return
     }
     const saldo = saldoParaData()
@@ -299,6 +329,7 @@ export default function AgendarPage() {
       horario: modalSlot.hora + ':00',
       status: 'agendado',
       tipo_credito: tipoCredito,
+      unidade_id: unidadeAtiva.id,
     })
 
     if (error) { setErroModal('Erro ao agendar. Tente novamente.'); setConfirmando(false); return }
@@ -311,7 +342,7 @@ export default function AgendarPage() {
   async function confirmarFila() {
     if (!tipoFilaCredito) { setErroFila('Selecione como vai usar esta sessão.'); return }
     if (!filaAceite) { setErroFila('Confirme que entendeu as regras da fila.'); return }
-    if (!modalFila || !cliente) return
+    if (!modalFila || !cliente || !unidadeAtiva) return
 
     setEntrandoFila(true)
     setErroFila('')
@@ -327,6 +358,7 @@ export default function AgendarPage() {
       horario: modalFila.hora + ':00',
       tipo_credito: tipoFilaCredito,
       status: 'aguardando',
+      unidade_id: unidadeAtiva.id,
     })
 
     if (error) { setErroFila('Erro ao entrar na fila. Tente novamente.'); setEntrandoFila(false); return }
@@ -342,7 +374,7 @@ export default function AgendarPage() {
     return d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
   }
 
-  if (loading) return (
+  if (loading || loadingUnidade) return (
     <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ width: 32, height: 32, border: `4px solid ${ACCENT}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
       <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
@@ -365,8 +397,10 @@ export default function AgendarPage() {
         .slot-row-h { transition: all .2s; }
         .slot-row-h:hover { border-color: ${ACCENT} !important; background: #ff2d9b08 !important; }
         .nav-semana-btn:hover:not(:disabled) { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
+        .unidade-tab:hover { border-color: ${ACCENT} !important; color: #fff !important; }
       `}</style>
 
+      {/* Header */}
       <div style={{ background: '#08080895', backdropFilter: 'blur(16px)', borderBottom: '1px solid #1a1a1a', padding: '0 2rem', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
         <div onClick={() => router.push('/')} style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', letterSpacing: 2, cursor: 'pointer' }}>
           JUST<span style={{ color: ACCENT }}>CT</span>
@@ -378,23 +412,69 @@ export default function AgendarPage() {
 
       <div style={{ maxWidth: 700, margin: '0 auto', padding: '2rem 1.5rem' }}>
         <div style={{ marginBottom: '1.5rem' }}>
-          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: '#fff' }}>AGENDAR COACH CT</div>
+          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: '#fff' }}>AGENDAR SESSÃO</div>
           <div style={{ fontSize: 14, color: '#555', marginTop: 4 }}>Cada halter = uma vaga disponível</div>
         </div>
 
-        {todosSemSaldo && (
-          <div style={{ background: '#1a0a00', border: '1px solid #ff660033', borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1.5rem' }}>
-            <div style={{ fontSize: 14, color: AMARELO, fontWeight: 600, marginBottom: 4 }}>⚠️ Sem créditos disponíveis</div>
-            <div style={{ fontSize: 13, color: '#666', lineHeight: 1.6 }}>
-              {dataSelEhProximoMes 
-                ? 'Você não tem créditos para o mês selecionado.' 
-                : 'Seus créditos renovam no dia 1º do próximo mês. Você ainda pode treinar comprando sessões avulsas Coach CT na recepção.'}
+        {/* Seletor de Unidade */}
+        {unidadesPermitidas.length > 1 && (
+          <div style={{ marginBottom: '1.5rem' }}>
+            <div style={{ fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Unidade</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {unidadesPermitidas.map(u => {
+                const ativa = unidadeAtiva?.id === u.id
+                return (
+                  <button key={u.id} className="unidade-tab"
+                    onClick={() => {
+                      setUnidadeAtiva(u)
+                      setHorarios([])
+                      setDiaSel(0)
+                      setSemanaOffset(0)
+                    }}
+                    style={{
+                      padding: '0.5rem 1.25rem',
+                      borderRadius: 10,
+                      border: `1.5px solid ${ativa ? ACCENT : '#333'}`,
+                      background: ativa ? `${ACCENT}18` : 'transparent',
+                      color: ativa ? ACCENT : '#666',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      fontFamily: "'DM Sans', sans-serif",
+                      transition: 'all .2s',
+                    }}>
+                    {u.nome}
+                  </button>
+                )
+              })}
             </div>
           </div>
         )}
 
+        {/* Unidade única: só mostra o nome como tag */}
+        {unidadesPermitidas.length === 1 && unidadeAtiva && (
+          <div style={{ marginBottom: '1.5rem' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: `${ACCENT}15`, border: `1px solid ${ACCENT}44`, borderRadius: 8, padding: '0.35rem 0.85rem' }}>
+              <span style={{ fontSize: 12, color: ACCENT, fontWeight: 600 }}>{unidadeAtiva.nome}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Aviso sem créditos */}
+        {todosSemSaldo && (
+          <div style={{ background: '#1a0a00', border: '1px solid #ff660033', borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1.5rem' }}>
+            <div style={{ fontSize: 14, color: AMARELO, fontWeight: 600, marginBottom: 4 }}>⚠️ Sem créditos disponíveis</div>
+            <div style={{ fontSize: 13, color: '#666', lineHeight: 1.6 }}>
+              {dataSelEhProximoMes
+                ? 'Você não tem créditos para o mês selecionado nesta unidade.'
+                : 'Seus créditos renovam no dia 1º do próximo mês. Você ainda pode treinar comprando sessões avulsas na recepção.'}
+            </div>
+          </div>
+        )}
+
+        {/* Cards de saldo */}
         {Object.keys(saldoExibir).length > 0 && (
-          <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap' as const, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
             {dataSelEhProximoMes && (
               <span style={{ fontSize: 11, color: AMARELO, fontWeight: 600, marginRight: 4 }}>
                 Saldo do próximo mês:
@@ -402,6 +482,7 @@ export default function AgendarPage() {
             )}
             {Object.entries(saldoExibir).map(([plano, info]: [string, any]) => {
               const restante = info.disponivel
+              const { label } = parsePlanoKey(plano)
               return (
                 <div key={plano} style={{
                   background: '#111', border: `1px solid ${restante === 0 ? '#333' : restante <= 2 ? '#ffaa0044' : '#ff2d9b33'}`,
@@ -409,13 +490,14 @@ export default function AgendarPage() {
                   color: restante === 0 ? '#444' : restante <= 2 ? AMARELO : ACCENT,
                 }}>
                   <span style={{ fontWeight: 600 }}>{restante}</span>
-                  <span style={{ color: '#555', marginLeft: 4 }}>/ {info.total} {planoLabel[plano]}</span>
+                  <span style={{ color: '#555', marginLeft: 4 }}>/ {info.total} {label}</span>
                 </div>
               )
             })}
           </div>
         )}
 
+        {/* Navegação de semana */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
           <button className="nav-semana-btn"
             onClick={() => { setSemanaOffset(o => Math.max(0, o - 1)); setDiaSel(0) }}
@@ -428,11 +510,11 @@ export default function AgendarPage() {
               return (
                 <div key={i} className="dia-btn-h" onClick={() => setDiaSel(i)}
                   style={{ padding: '0.6rem 0.25rem', borderRadius: 10, border: `1.5px solid ${isSel ? ACCENT : '#222'}`, background: isSel ? `${ACCENT}15` : 'transparent', textAlign: 'center' }}>
-                  <div style={{ fontSize: 9, textTransform: 'uppercase' as const, letterSpacing: 1, color: isSel ? ACCENT : '#555', fontWeight: 600, marginBottom: 2 }}>
+                  <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, color: isSel ? ACCENT : '#555', fontWeight: 600, marginBottom: 2 }}>
                     {isHoje ? 'HOJE' : DIAS_SEMANA[d.getDay()]}
                   </div>
                   <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 20, color: isSel ? '#fff' : '#888', lineHeight: 1 }}>{d.getDate()}</div>
-                  <div style={{ fontSize: 9, color: isSel ? ACCENT : '#444', textTransform: 'uppercase' as const }}>
+                  <div style={{ fontSize: 9, color: isSel ? ACCENT : '#444', textTransform: 'uppercase' }}>
                     {d.toLocaleDateString('pt-BR', { month: 'short' })}
                   </div>
                 </div>
@@ -445,7 +527,8 @@ export default function AgendarPage() {
             style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #333', background: 'transparent', color: semanaOffset === 3 ? '#333' : '#fff', fontSize: 18, cursor: semanaOffset === 3 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .2s' }}>›</button>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap' as const }}>
+        {/* Filtro de período */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap' }}>
           {[
             { key: 'todos', label: 'Todos' },
             { key: 'manha', label: '🌅 Manhã' },
@@ -459,7 +542,12 @@ export default function AgendarPage() {
           ))}
         </div>
 
-        {loadingHorarios ? (
+        {/* Grade de horários */}
+        {!unidadeAtiva ? (
+          <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#444' }}>
+            Selecione uma unidade para ver os horários.
+          </div>
+        ) : loadingHorarios ? (
           <div style={{ textAlign: 'center', padding: '3rem', color: '#555' }}>Carregando horários...</div>
         ) : horariosFiltrados.length === 0 ? (
           <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#444' }}>
@@ -473,7 +561,7 @@ export default function AgendarPage() {
               const lotado = h.livres <= 0
               const clienteNaFila = naFila(h.hora)
               const jaAgendado = agendamentosNoDia.some(a =>
-                (a.horario || '').slice(0, 5) === h.hora && ['agendado','confirmado'].includes(a.status)
+                (a.horario || '').slice(0, 5) === h.hora && ['agendado', 'confirmado'].includes(a.status)
               )
               const semCredito = planosDisp.length === 0
               const temFilaEsperaAqui = temFilaNoHorario(h.hora)
@@ -482,7 +570,7 @@ export default function AgendarPage() {
                 <div key={i} className="slot-row-h"
                   style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', padding: '1rem 1.25rem', borderRadius: 12, border: `1px solid ${jaAgendado ? CYAN + '44' : clienteNaFila ? AMARELO + '44' : '#222'}`, background: jaAgendado ? '#00e5ff08' : clienteNaFila ? '#ffaa0008' : '#111' }}>
                   <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, fontWeight: 500, color: '#fff', width: 58, flexShrink: 0 }}>{h.hora}</div>
-                  <div style={{ display: 'flex', gap: 6, flex: 1, alignItems: 'center', flexWrap: 'wrap' as const }}>
+                  <div style={{ display: 'flex', gap: 6, flex: 1, alignItems: 'center', flexWrap: 'wrap' }}>
                     {Array.from({ length: h.total }).map((_, vi) => {
                       let estado: 'livre' | 'ocupado' | 'meu' | 'fila' | 'bloqueado' = 'livre'
                       if (jaAgendado && vi === 0) estado = 'meu'
@@ -497,7 +585,7 @@ export default function AgendarPage() {
                       )
                     })}
                   </div>
-                  <div style={{ flexShrink: 0, minWidth: 90, textAlign: 'right' as const }}>
+                  <div style={{ flexShrink: 0, minWidth: 90, textAlign: 'right' }}>
                     {jaAgendado ? (
                       <div style={{ fontSize: 11, color: CYAN, fontWeight: 600 }}>RESERVADO ✓</div>
                     ) : clienteNaFila ? (
@@ -540,6 +628,7 @@ export default function AgendarPage() {
         )}
       </div>
 
+      {/* Modal Contrato */}
       {mostrarContrato && (
         <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: '#111', border: '1px solid #333', borderRadius: 20, width: '100%', maxWidth: 500, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
@@ -574,36 +663,45 @@ export default function AgendarPage() {
         </div>
       )}
 
+      {/* Modal Reserva */}
       {modalSlot && !mostrarContrato && (
         <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: '#111', border: '1px solid #333', borderRadius: 20, width: '100%', maxWidth: 440, padding: '1.5rem' }}>
             <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: 4 }}>CONFIRMAR RESERVA</div>
-            <div style={{ fontSize: 13, color: '#555', marginBottom: '1.5rem', textTransform: 'capitalize' as const }}>
-              {dataFormatada(modalSlot.data)} · {modalSlot.hora} · {modalSlot.vagas} vaga{modalSlot.vagas !== 1 ? 's' : ''} disponível{modalSlot.vagas !== 1 ? 'is' : ''}
+            <div style={{ fontSize: 13, color: '#555', marginBottom: 2, textTransform: 'capitalize' }}>
+              {dataFormatada(modalSlot.data)} · {modalSlot.hora}
             </div>
+            {unidadeAtiva && (
+              <div style={{ fontSize: 12, color: ACCENT, marginBottom: '1.5rem', fontWeight: 600 }}>
+                📍 {unidadeAtiva.nome}
+              </div>
+            )}
 
             <div style={{ marginBottom: '1.5rem' }}>
-              <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase' as const, letterSpacing: 1 }}>Como vai usar esta sessão?</div>
+              <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Como vai usar esta sessão?</div>
               {planosDisp.length === 0 ? (
                 <div style={{ background: '#1a0a00', border: '1px solid #ff660033', borderRadius: 10, padding: '1rem', fontSize: 13, color: AMARELO, lineHeight: 1.6 }}>
-                  ⚠️ Você não tem créditos disponíveis. Compre sessões avulsas na recepção do Just CT.
+                  ⚠️ Você não tem créditos disponíveis. Compre sessões avulsas na recepção.
                 </div>
               ) : (
-                planosDisp.map(p => (
-                  <div key={p} onClick={() => setTipoCredito(p)}
-                    style={{ border: `1.5px solid ${tipoCredito === p ? ACCENT : '#333'}`, background: tipoCredito === p ? `${ACCENT}12` : 'transparent', borderRadius: 10, padding: '0.75rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: 8, transition: 'all .15s' }}>
-                    <span style={{ fontSize: 18 }}>{planoIcon[p]}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: tipoCredito === p ? '#fff' : '#888' }}>{planoLabel[p]}</div>
-                      {saldoExibir[p] && (
-                        <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>
-                          {saldoExibir[p].disponivel} sessões restantes {dataSelEhProximoMes ? 'no próximo mês' : 'este mês'}
-                        </div>
-                      )}
+                planosDisp.map(p => {
+                  const { label, icon } = parsePlanoKey(p)
+                  return (
+                    <div key={p} onClick={() => setTipoCredito(p)}
+                      style={{ border: `1.5px solid ${tipoCredito === p ? ACCENT : '#333'}`, background: tipoCredito === p ? `${ACCENT}12` : 'transparent', borderRadius: 10, padding: '0.75rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: 8, transition: 'all .15s' }}>
+                      <span style={{ fontSize: 18 }}>{icon}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: tipoCredito === p ? '#fff' : '#888' }}>{label}</div>
+                        {saldoExibir[p] && (
+                          <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>
+                            {saldoExibir[p].disponivel} sessões restantes {dataSelEhProximoMes ? 'no próximo mês' : 'este mês'}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${tipoCredito === p ? ACCENT : '#444'}`, background: tipoCredito === p ? ACCENT : 'transparent', flexShrink: 0 }} />
                     </div>
-                    <div style={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${tipoCredito === p ? ACCENT : '#444'}`, background: tipoCredito === p ? ACCENT : 'transparent', flexShrink: 0 }} />
-                  </div>
-                ))
+                  )
+                })
               )}
             </div>
 
@@ -647,13 +745,19 @@ export default function AgendarPage() {
         </div>
       )}
 
+      {/* Modal Fila */}
       {modalFila && !mostrarContrato && (
         <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: '#111', border: `1px solid ${AMARELO}33`, borderRadius: 20, width: '100%', maxWidth: 440, padding: '1.5rem', maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: AMARELO, marginBottom: 4 }}>FILA DE ESPERA</div>
-            <div style={{ fontSize: 13, color: '#555', marginBottom: '1.5rem', textTransform: 'capitalize' as const }}>
+            <div style={{ fontSize: 13, color: '#555', marginBottom: 2, textTransform: 'capitalize' }}>
               {dataFormatada(modalFila.data)} · {modalFila.hora}
             </div>
+            {unidadeAtiva && (
+              <div style={{ fontSize: 12, color: AMARELO, marginBottom: '1.5rem', fontWeight: 600 }}>
+                📍 {unidadeAtiva.nome}
+              </div>
+            )}
 
             <div style={{ background: '#1a1000', border: `1px solid ${AMARELO}33`, borderRadius: 10, padding: '1rem', marginBottom: '1.5rem', fontSize: 13, color: '#aaa', lineHeight: 1.7 }}>
               <div style={{ color: AMARELO, fontWeight: 600, marginBottom: 6 }}>⚠️ Atenção antes de entrar na fila</div>
@@ -665,26 +769,29 @@ export default function AgendarPage() {
             </div>
 
             <div style={{ marginBottom: '1.5rem' }}>
-              <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase' as const, letterSpacing: 1 }}>Usar crédito de qual plano?</div>
-              {planosDisp.map(p => (
-                <div key={p} onClick={() => setTipoFilaCredito(p)}
-                  style={{ border: `1.5px solid ${tipoFilaCredito === p ? AMARELO : '#333'}`, background: tipoFilaCredito === p ? `${AMARELO}12` : 'transparent', borderRadius: 10, padding: '0.75rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: 8, transition: 'all .15s' }}>
-                  <span style={{ fontSize: 18 }}>{planoIcon[p]}</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: tipoFilaCredito === p ? '#fff' : '#888' }}>{planoLabel[p]}</div>
-                    {saldoExibir[p] && (
-                      <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>
-                        {saldoExibir[p].disponivel} sessões restantes
-                      </div>
-                    )}
+              <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Usar crédito de qual plano?</div>
+              {planosDisp.map(p => {
+                const { label, icon } = parsePlanoKey(p)
+                return (
+                  <div key={p} onClick={() => setTipoFilaCredito(p)}
+                    style={{ border: `1.5px solid ${tipoFilaCredito === p ? AMARELO : '#333'}`, background: tipoFilaCredito === p ? `${AMARELO}12` : 'transparent', borderRadius: 10, padding: '0.75rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: 8, transition: 'all .15s' }}>
+                    <span style={{ fontSize: 18 }}>{icon}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: tipoFilaCredito === p ? '#fff' : '#888' }}>{label}</div>
+                      {saldoExibir[p] && (
+                        <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>
+                          {saldoExibir[p].disponivel} sessões restantes
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${tipoFilaCredito === p ? AMARELO : '#444'}`, background: tipoFilaCredito === p ? AMARELO : 'transparent', flexShrink: 0 }} />
                   </div>
-                  <div style={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${tipoFilaCredito === p ? AMARELO : '#444'}`, background: tipoFilaCredito === p ? AMARELO : 'transparent', flexShrink: 0 }} />
-                </div>
-              ))}
+                )
+              })}
             </div>
 
             <div style={{ marginBottom: '1.5rem' }}>
-              <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase' as const, letterSpacing: 1 }}>Como quer ser avisado quando a vaga abrir?</div>
+              <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Como quer ser avisado quando a vaga abrir?</div>
               <div style={{ display: 'flex', gap: 8 }}>
                 {notifOpcoes.map(op => (
                   <div key={op.key} onClick={() => setNotifFila(op.key as any)}
@@ -692,7 +799,7 @@ export default function AgendarPage() {
                       flex: 1, border: `1.5px solid ${notifFila === op.key ? AMARELO : '#333'}`,
                       background: notifFila === op.key ? `${AMARELO}12` : 'transparent',
                       borderRadius: 10, padding: '0.6rem 0.5rem', cursor: 'pointer',
-                      textAlign: 'center' as const, transition: 'all .15s',
+                      textAlign: 'center', transition: 'all .15s',
                     }}>
                     <div style={{ fontSize: 20, marginBottom: 4 }}>{op.icon}</div>
                     <div style={{ fontSize: 12, fontWeight: 600, color: notifFila === op.key ? '#fff' : '#666' }}>{op.label}</div>
@@ -701,7 +808,7 @@ export default function AgendarPage() {
               </div>
               {notifFila === 'whatsapp' && cliente?.telefone && (
                 <div style={{ fontSize: 11, color: '#555', marginTop: 6 }}>
-                  📱 Aviso para ({cliente.telefone.slice(0,2)}) {cliente.telefone.slice(2,7)}-{cliente.telefone.slice(7)}
+                  📱 Aviso para ({cliente.telefone.slice(0, 2)}) {cliente.telefone.slice(2, 7)}-{cliente.telefone.slice(7)}
                 </div>
               )}
               {notifFila === 'email' && cliente?.email && (
