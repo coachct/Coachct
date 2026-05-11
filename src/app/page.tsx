@@ -1,44 +1,13 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { createClient } from '@/lib/supabase'
 
 const ACCENT = '#ff2d9b'
-const CYAN = '#00e5ff'
-
-function HalterSVG({ estado }: { estado: 'livre' | 'ocupado' | 'meu' }) {
-  const cor = estado === 'ocupado' ? '#333' : estado === 'meu' ? CYAN : ACCENT
-  const opacity = estado === 'ocupado' ? 0.3 : 1
-  return (
-    <svg width="36" height="36" viewBox="0 0 48 28" style={{ opacity, flexShrink: 0 }}>
-      <rect x="15" y="11.5" width="18" height="5" rx="2" fill={cor} />
-      <rect x="2" y="5" width="5" height="18" rx="3" fill={cor} />
-      <rect x="8" y="7.5" width="4" height="13" rx="2" fill={cor} />
-      <rect x="36" y="7.5" width="4" height="13" rx="2" fill={cor} />
-      <rect x="41" y="5" width="5" height="18" rx="3" fill={cor} />
-    </svg>
-  )
-}
-
-const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
-const HORARIOS_DEMO = [
-  { hora: '06:00', total: 4, ocupados: 2 },
-  { hora: '07:00', total: 3, ocupados: 3 },
-  { hora: '08:00', total: 5, ocupados: 1 },
-  { hora: '09:00', total: 4, ocupados: 4 },
-  { hora: '17:00', total: 3, ocupados: 0 },
-  { hora: '18:00', total: 5, ocupados: 3 },
-  { hora: '19:00', total: 4, ocupados: 2 },
-]
 
 export default function LandingPage() {
   const { perfil, loading } = useAuth()
   const router = useRouter()
-  const supabase = createClient()
-  const [diaSel, setDiaSel] = useState(0)
-  const [semanaOffset, setSemanaOffset] = useState(0)
-  const [periodo, setPeriodo] = useState<'todos' | 'manha' | 'tarde' | 'noite'>('todos')
 
   useEffect(() => {
     if (!loading && perfil) {
@@ -54,30 +23,16 @@ export default function LandingPage() {
   const isCliente = perfil?.role === 'cliente'
   const isLogado = !!perfil
 
+  // "Agendar Treino" — visitante vai pra grade pública, cliente vai pra agendar
   function irParaAgendar() {
     if (isCliente) router.push('/agendar')
-    else if (isLogado) router.push('/')
-    else router.push('/cadastro')
+    else router.push('/grade')
   }
-
-  const diasSemana = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date()
-    d.setDate(d.getDate() + semanaOffset * 7 + i)
-    return d
-  })
-
-  const horariosFiltrados = HORARIOS_DEMO.filter(h => {
-    const hr = parseInt(h.hora)
-    if (periodo === 'manha') return hr < 12
-    if (periodo === 'tarde') return hr >= 12 && hr < 18
-    if (periodo === 'noite') return hr >= 18
-    return true
-  })
 
   const s: Record<string, any> = {
     page: { background: '#080808', minHeight: '100vh', color: '#f0f0f0', fontFamily: "'DM Sans', sans-serif" },
     nav: { position: 'fixed' as const, top: 0, left: 0, right: 0, zIndex: 50, padding: '0 2rem', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#08080895', backdropFilter: 'blur(16px)', borderBottom: '1px solid #1a1a1a' },
-    logo: { fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: '#fff', letterSpacing: 2 },
+    logo: { fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: '#fff', letterSpacing: 2, cursor: 'pointer' },
     navLinks: { display: 'flex', gap: '2rem', alignItems: 'center' },
     navLink: { color: '#555', fontSize: 13, fontWeight: 500, cursor: 'pointer', textDecoration: 'none', transition: 'color .2s' },
     navCta: { background: ACCENT, color: '#fff', border: 'none', borderRadius: 6, padding: '0.45rem 1.25rem', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
@@ -108,14 +63,8 @@ export default function LandingPage() {
         .btn-ghost-h:hover { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
         .plano-card-h { transition: all .25s; }
         .plano-card-h:hover { border-color: ${ACCENT} !important; transform: translateY(-4px); }
-        .dia-btn-h { transition: all .2s; cursor: pointer; flex: 1; min-width: 0; }
-        .dia-btn-h:hover { border-color: ${ACCENT} !important; }
-        .slot-row-h { transition: all .2s; }
-        .slot-row-h:hover { border-color: ${ACCENT} !important; background: #ff2d9b08 !important; cursor: pointer; }
-        .periodo-btn-h { transition: all .15s; cursor: pointer; }
         .feature-h { transition: all .2s; }
         .feature-h:hover { border-color: ${ACCENT} !important; }
-        .nav-semana-btn:hover:not(:disabled) { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
         .maps-btn:hover { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
         @media (max-width: 768px) {
           .nav-links-d { display: none !important; }
@@ -133,7 +82,6 @@ export default function LandingPage() {
           <a href="#coach-ct" className="nav-link-h" style={s.navLink}>Coach CT</a>
           <a href="#espaco" className="nav-link-h" style={s.navLink}>Espaço</a>
           <a href="#planos" className="nav-link-h" style={s.navLink}>Planos</a>
-          <a href="#agenda" className="nav-link-h" style={s.navLink}>Agenda</a>
           <a href="#localizacao" className="nav-link-h" style={s.navLink}>Localização</a>
         </div>
 
@@ -143,7 +91,7 @@ export default function LandingPage() {
               <button onClick={() => router.push('/minha-conta')} className="nav-auth-h" style={s.navAuth}>
                 Minha conta
               </button>
-              <button onClick={irParaAgendar} style={s.navCta}>Agendar</button>
+              <button onClick={irParaAgendar} style={s.navCta}>Agendar Treino</button>
             </>
           ) : (
             <>
@@ -153,7 +101,7 @@ export default function LandingPage() {
               <button onClick={() => router.push('/cadastro')} className="nav-auth-h" style={s.navAuth}>
                 Cadastro
               </button>
-              <button onClick={irParaAgendar} style={s.navCta}>Agendar agora</button>
+              <button onClick={irParaAgendar} style={s.navCta}>Agendar Treino</button>
             </>
           )}
         </div>
@@ -175,7 +123,7 @@ export default function LandingPage() {
             <strong style={{ color: '#fff' }}>Coach CT</strong> — seu personal exclusivo, agendado no horário que você escolher, focado só em você.
           </div>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <button onClick={irParaAgendar} style={s.btnPrimary}>Agendar Coach CT →</button>
+            <button onClick={irParaAgendar} style={s.btnPrimary}>Agendar Treino →</button>
             <a href="#coach-ct"><button className="btn-ghost-h" style={s.btnGhost}>Como funciona</button></a>
           </div>
           <div className="stats-r" style={{ display: 'flex', gap: '3rem', marginTop: '4rem', flexWrap: 'wrap' }}>
@@ -327,95 +275,6 @@ export default function LandingPage() {
 
       <div style={s.divider} />
 
-      {/* AGENDA */}
-      <div id="agenda" style={{ ...s.section, paddingBottom: '8rem' }}>
-        <div style={s.sTag}>// agende agora</div>
-        <div style={s.sTitle}>ESCOLHA SEU HORÁRIO</div>
-        <div style={{ ...s.sSub, marginBottom: '3rem' }}>Veja as vagas disponíveis e reserve seu Coach CT. Cada halter representa uma vaga.</div>
-        <div style={{ maxWidth: 700 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
-            <button className="nav-semana-btn"
-              onClick={() => { setSemanaOffset(o => Math.max(0, o - 1)); setDiaSel(0) }}
-              disabled={semanaOffset === 0}
-              style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #333', background: 'transparent', color: semanaOffset === 0 ? '#333' : '#fff', fontSize: 18, cursor: semanaOffset === 0 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .2s' }}>‹</button>
-            <div style={{ display: 'flex', gap: 6, flex: 1 }}>
-              {diasSemana.map((d, i) => {
-                const isHoje = semanaOffset === 0 && i === 0
-                const isSel = i === diaSel
-                return (
-                  <div key={i} className="dia-btn-h" onClick={() => setDiaSel(i)}
-                    style={{ padding: '0.6rem 0.25rem', borderRadius: 10, border: `1.5px solid ${isSel ? ACCENT : '#222'}`, background: isSel ? `${ACCENT}15` : 'transparent', textAlign: 'center' }}>
-                    <div style={{ fontSize: 9, textTransform: 'uppercase' as const, letterSpacing: 1, color: isSel ? ACCENT : '#555', fontWeight: 600, marginBottom: 2 }}>
-                      {isHoje ? 'HOJE' : DIAS_SEMANA[d.getDay()]}
-                    </div>
-                    <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 20, color: isSel ? '#fff' : '#888', lineHeight: 1 }}>{d.getDate()}</div>
-                    <div style={{ fontSize: 9, color: isSel ? ACCENT : '#444', textTransform: 'uppercase' as const }}>
-                      {d.toLocaleDateString('pt-BR', { month: 'short' })}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-            <button className="nav-semana-btn"
-              onClick={() => { setSemanaOffset(o => Math.min(2, o + 1)); setDiaSel(0) }}
-              disabled={semanaOffset === 2}
-              style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #333', background: 'transparent', color: semanaOffset === 2 ? '#333' : '#fff', fontSize: 18, cursor: semanaOffset === 2 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .2s' }}>›</button>
-          </div>
-          <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap' as const }}>
-            {[
-              { key: 'todos', label: 'Todos' },
-              { key: 'manha', label: '🌅 Manhã' },
-              { key: 'tarde', label: '☀️ Tarde' },
-              { key: 'noite', label: '🌙 Noite' },
-            ].map(p => (
-              <button key={p.key} className="periodo-btn-h" onClick={() => setPeriodo(p.key as any)}
-                style={{ padding: '0.35rem 1rem', borderRadius: 20, border: `1px solid ${periodo === p.key ? ACCENT : '#333'}`, background: periodo === p.key ? `${ACCENT}20` : 'transparent', color: periodo === p.key ? ACCENT : '#555', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                {p.label}
-              </button>
-            ))}
-          </div>
-          {horariosFiltrados.map((h, i) => {
-            const livres = h.total - h.ocupados
-            const lotado = livres === 0
-            return (
-              <div key={i} className="slot-row-h" onClick={irParaAgendar}
-                style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', padding: '1rem 1.25rem', borderRadius: 12, border: '1px solid #222', background: '#111', marginBottom: 8, opacity: lotado ? 0.5 : 1 }}>
-                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, fontWeight: 500, color: '#fff', width: 58, flexShrink: 0 }}>{h.hora}</div>
-                <div style={{ display: 'flex', gap: 6, flex: 1, alignItems: 'center', flexWrap: 'wrap' as const }}>
-                  {Array.from({ length: h.total }).map((_, vi) => (
-                    <HalterSVG key={vi} estado={vi < h.ocupados ? 'ocupado' : 'livre'} />
-                  ))}
-                </div>
-                <div style={{ flexShrink: 0, minWidth: 80, textAlign: 'right' as const }}>
-                  <div style={{ fontSize: 11, fontFamily: "'DM Mono', monospace", color: lotado ? '#ff4444' : livres <= 2 ? '#ffaa00' : ACCENT, fontWeight: 600 }}>
-                    {lotado ? 'LOTADO' : livres === 1 ? '1 VAGA' : `${livres} VAGAS`}
-                  </div>
-                  {!lotado && (
-                    <button onClick={e => { e.stopPropagation(); irParaAgendar() }}
-                      style={{ marginTop: 4, background: ACCENT, color: '#fff', border: 'none', borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                      Reservar
-                    </button>
-                  )}
-                  {lotado && (
-                    <button onClick={e => { e.stopPropagation(); irParaAgendar() }}
-                      style={{ marginTop: 4, background: 'transparent', color: '#ffaa00', border: '1px solid #ffaa00', borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                      Fila
-                    </button>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-          <div style={{ textAlign: 'center' as const, marginTop: '2rem' }}>
-            <button onClick={irParaAgendar} style={s.btnPrimary}>
-              {isCliente ? 'Ir para agendamento →' : 'Criar conta e reservar →'}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div style={s.divider} />
-
       {/* LOCALIZAÇÃO */}
       <div id="localizacao" style={s.section}>
         <div style={s.sTag}>// onde estamos</div>
@@ -449,6 +308,17 @@ export default function LandingPage() {
             />
           </div>
         </div>
+      </div>
+
+      {/* CTA FINAL */}
+      <div style={{ ...s.section, paddingTop: '4rem', paddingBottom: '8rem', textAlign: 'center' as const }}>
+        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(32px, 3.5vw, 44px)', color: '#fff', lineHeight: 1.05, marginBottom: '1rem' }}>
+          PRONTO PARA TREINAR?
+        </div>
+        <div style={{ ...s.sSub, margin: '0 auto 2rem' }}>
+          {isCliente ? 'Você já está dentro. Bora marcar seu próximo treino.' : 'Crie sua conta em menos de 1 minuto e agende seu primeiro treino.'}
+        </div>
+        <button onClick={irParaAgendar} style={s.btnPrimary}>Agendar Treino →</button>
       </div>
 
       {/* FOOTER */}
