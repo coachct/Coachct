@@ -115,7 +115,7 @@ export default function MeusPlanosPage() {
   const anoAtual = agora.getFullYear()
 
   useEffect(() => {
-    if (!loading && !perfil) router.push('/login')
+    if (!loading && !perfil) router.push('/')
     if (!loading && perfil && !['cliente'].includes(perfil.role as string)) router.push('/equipe')
   }, [perfil, loading])
 
