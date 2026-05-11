@@ -269,15 +269,31 @@ export default function MinhaContaPage() {
         @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
         .btn-acao:hover { transform: translateY(-1px); }
+        .nav-link-cliente:hover { color: ${ACCENT} !important; }
+        @media (max-width: 640px) {
+          .header-nav-r { gap: 0.5rem !important; }
+          .header-nav-r .link-init { display: none !important; }
+        }
       `}</style>
 
       {/* Header */}
-      <div style={{ background: '#08080895', backdropFilter: 'blur(16px)', borderBottom: '1px solid #1a1a1a', padding: '0 2rem', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
+      <div style={{ background: '#08080895', backdropFilter: 'blur(16px)', borderBottom: '1px solid #1a1a1a', padding: '0 1.5rem', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
         <div onClick={() => router.push('/')} style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', letterSpacing: 2, cursor: 'pointer' }}>
           JUST<span style={{ color: ACCENT }}>CT</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <span style={{ fontSize: 13, color: '#aaa' }}>Olá, {perfil?.nome?.split(' ')[0]}</span>
+        <div className="header-nav-r" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+          <span onClick={() => router.push('/')} className="nav-link-cliente link-init"
+            style={{ fontSize: 13, color: '#888', cursor: 'pointer', transition: 'color .2s' }}>
+            Início
+          </span>
+          <span onClick={() => router.push('/meus-planos')} className="nav-link-cliente"
+            style={{ fontSize: 13, color: '#888', cursor: 'pointer', transition: 'color .2s' }}>
+            Meus planos
+          </span>
+          <span style={{ fontSize: 13, color: '#aaa', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: ACCENT }} />
+            {perfil?.nome?.split(' ')[0]}
+          </span>
           <button onClick={sair} style={{ background: 'transparent', border: '1px solid #444', borderRadius: 8, padding: '0.4rem 1rem', color: '#bbb', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
             Sair
           </button>
