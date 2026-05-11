@@ -42,7 +42,6 @@ O presente contrato regula as condições de uso do serviço Coach CT, que consi
 6. ACEITE
 Ao concluir o cadastro, o cliente declara ter lido e concordado com todos os termos acima.`
 
-// Parseia chave "wellhub_just_ct" → label e ícone legíveis
 function parsePlanoKey(key: string): { label: string; icon: string } {
   const lower = key.toLowerCase()
   let tipo = ''
@@ -53,15 +52,9 @@ function parsePlanoKey(key: string): { label: string; icon: string } {
   else if (lower.startsWith('avulso') || lower.startsWith('credito')) { tipo = 'Crédito Avulso'; icon = '🎟️' }
   else { tipo = key }
 
-  // Extrai parte da unidade depois do primeiro "_"
   const partes = key.split('_')
-  // Remove o prefixo do tipo (wellhub, totalpass, avulso, credito)
-  const tipoPartes = tipo === 'TotalPass' ? 2 : 1 // totalpass ocupa 1 segmento, wellhub 1
-  // Slug da unidade: tudo depois do tipo
-  const slugPartes = lower.startsWith('totalpass') ? partes.slice(1) : partes.slice(1)
-  const slugUnidade = slugPartes.join('_')
+  const slugUnidade = partes.slice(1).join('_')
 
-  // Mapeia slugs conhecidos para nomes curtos
   const nomeUnidade: Record<string, string> = {
     just_ct: 'Just CT',
     just_club_vila_olimpia: 'Vila Olímpia',
@@ -132,7 +125,6 @@ export default function AgendarPage() {
     if (perfil) loadCliente()
   }, [perfil])
 
-  // Quando unidade muda, recarrega saldos e horários
   useEffect(() => {
     if (perfil && cliente && unidadeAtiva) {
       carregarSaldos(cliente.id, unidadeAtiva.id)
@@ -369,6 +361,11 @@ export default function AgendarPage() {
     router.push('/minha-conta')
   }
 
+  async function sair() {
+    await supabase.auth.signOut()
+    router.push('/')
+  }
+
   const dataFormatada = (dataStr: string) => {
     const d = new Date(dataStr + 'T12:00:00')
     return d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
@@ -398,16 +395,35 @@ export default function AgendarPage() {
         .slot-row-h:hover { border-color: ${ACCENT} !important; background: #ff2d9b08 !important; }
         .nav-semana-btn:hover:not(:disabled) { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
         .unidade-tab:hover { border-color: ${ACCENT} !important; color: #fff !important; }
+        .nav-link-cliente:hover { color: ${ACCENT} !important; }
+        @media (max-width: 640px) {
+          .header-nav-r { gap: 0.5rem !important; }
+          .header-nav-r .link-init { display: none !important; }
+        }
       `}</style>
 
       {/* Header */}
-      <div style={{ background: '#08080895', backdropFilter: 'blur(16px)', borderBottom: '1px solid #1a1a1a', padding: '0 2rem', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
+      <div style={{ background: '#08080895', backdropFilter: 'blur(16px)', borderBottom: '1px solid #1a1a1a', padding: '0 1.5rem', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
         <div onClick={() => router.push('/')} style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', letterSpacing: 2, cursor: 'pointer' }}>
           JUST<span style={{ color: ACCENT }}>CT</span>
         </div>
-        <button onClick={() => router.push('/minha-conta')} style={{ background: 'transparent', border: '1px solid #333', borderRadius: 8, padding: '0.4rem 1rem', color: '#888', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-          Minha conta
-        </button>
+        <div className="header-nav-r" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+          <span onClick={() => router.push('/')} className="nav-link-cliente link-init"
+            style={{ fontSize: 13, color: '#888', cursor: 'pointer', transition: 'color .2s' }}>
+            Início
+          </span>
+          <span onClick={() => router.push('/minha-conta')} className="nav-link-cliente"
+            style={{ fontSize: 13, color: '#888', cursor: 'pointer', transition: 'color .2s' }}>
+            Minha conta
+          </span>
+          <span onClick={() => router.push('/meus-planos')} className="nav-link-cliente"
+            style={{ fontSize: 13, color: '#888', cursor: 'pointer', transition: 'color .2s' }}>
+            Meus planos
+          </span>
+          <button onClick={sair} style={{ background: 'transparent', border: '1px solid #444', borderRadius: 8, padding: '0.4rem 1rem', color: '#bbb', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+            Sair
+          </button>
+        </div>
       </div>
 
       <div style={{ maxWidth: 700, margin: '0 auto', padding: '2rem 1.5rem' }}>
@@ -451,7 +467,6 @@ export default function AgendarPage() {
           </div>
         )}
 
-        {/* Unidade única: só mostra o nome como tag */}
         {unidadesPermitidas.length === 1 && unidadeAtiva && (
           <div style={{ marginBottom: '1.5rem' }}>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: `${ACCENT}15`, border: `1px solid ${ACCENT}44`, borderRadius: 8, padding: '0.35rem 0.85rem' }}>
@@ -527,7 +542,6 @@ export default function AgendarPage() {
             style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #333', background: 'transparent', color: semanaOffset === 3 ? '#333' : '#fff', fontSize: 18, cursor: semanaOffset === 3 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .2s' }}>›</button>
         </div>
 
-        {/* Filtro de período */}
         <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap' }}>
           {[
             { key: 'todos', label: 'Todos' },
