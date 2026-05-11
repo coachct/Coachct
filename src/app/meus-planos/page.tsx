@@ -218,19 +218,19 @@ export default function MeusPlanosPage() {
       return
     }
 
-    // Gera créditos do mês atual
-    await supabase.rpc('gerar_creditos_mes', {
+    // Gera créditos do mês atual pra ESSE cliente (sem checar inatividade)
+    await supabase.rpc('gerar_creditos_cliente_ativacao', {
+      p_cliente_id: cliente.id,
       p_mes: mesAtual,
       p_ano: anoAtual,
-      p_dias_inatividade: 60,
     })
 
     // Gera créditos do próximo mês SÓ se faltam 7 dias ou menos para virar o mês
     if (dentroDaJanelaProximoMes()) {
-      await supabase.rpc('gerar_creditos_mes', {
+      await supabase.rpc('gerar_creditos_cliente_ativacao', {
+        p_cliente_id: cliente.id,
         p_mes: mesProximo,
         p_ano: anoProximo,
-        p_dias_inatividade: 60,
       })
     }
 
