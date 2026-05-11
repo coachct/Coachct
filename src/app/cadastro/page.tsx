@@ -116,8 +116,7 @@ export default function CadastroPage() {
 
     setSalvando(false)
     setSucesso(true)
-    await supabase.auth.signOut()
-    setTimeout(() => router.push('/login'), 2500)
+    setTimeout(() => router.push('/minha-conta'), 1500)
   }
 
   const inputStyle = {
@@ -169,7 +168,7 @@ export default function CadastroPage() {
             <div style={{ textAlign: 'center', padding: '2rem 0' }}>
               <div style={{ fontSize: 48, marginBottom: '1rem' }}>🎉</div>
               <div style={{ fontSize: 20, fontWeight: 600, color: '#fff', marginBottom: 8 }}>Conta criada!</div>
-              <div style={{ fontSize: 14, color: '#555' }}>Redirecionando para o login...</div>
+              <div style={{ fontSize: 14, color: '#555' }}>Redirecionando para sua conta...</div>
             </div>
           ) : (
             <>
