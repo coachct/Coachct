@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import { createClient } from '@/lib/supabase'
 
 const ACCENT = '#ff2d9b'
 const CYAN = '#00e5ff'
@@ -34,10 +35,13 @@ const HORARIOS_DEMO = [
 export default function LandingPage() {
   const { perfil, loading } = useAuth()
   const router = useRouter()
+  const supabase = createClient()
   const [diaSel, setDiaSel] = useState(0)
   const [semanaOffset, setSemanaOffset] = useState(0)
   const [periodo, setPeriodo] = useState<'todos' | 'manha' | 'tarde' | 'noite'>('todos')
 
+  // NÃO redireciona mais automaticamente — cliente fica vendo a home se quiser
+  // Mas a equipe (admin/coach/recepcao/coordenadora) continua sendo redirecionada
   useEffect(() => {
     if (!loading && perfil) {
       const role = (perfil.role as string)
@@ -45,9 +49,24 @@ export default function LandingPage() {
       else if (role === 'coach') router.push('/coach/painel')
       else if (role === 'coordenadora') router.push('/ju/biblioteca')
       else if (role === 'recepcao') router.push('/recepcao/agenda')
-      else if (role === 'cliente') router.push('/minha-conta')
+      // cliente NÃO redireciona — fica vendo a home
     }
   }, [perfil, loading])
+
+  const isCliente = perfil?.role === 'cliente'
+  const isLogado = !!perfil
+
+  // Botão "Agendar" vai pra rota correta dependendo do estado
+  function irParaAgendar() {
+    if (isCliente) router.push('/agendar')
+    else if (isLogado) router.push('/') // equipe logada já foi redirecionada
+    else router.push('/cadastro')
+  }
+
+  async function sair() {
+    await supabase.auth.signOut()
+    router.push('/')
+  }
 
   const diasSemana = Array.from({ length: 7 }, (_, i) => {
     const d = new Date()
@@ -70,6 +89,7 @@ export default function LandingPage() {
     navLinks: { display: 'flex', gap: '2rem', alignItems: 'center' },
     navLink: { color: '#555', fontSize: 13, fontWeight: 500, cursor: 'pointer', textDecoration: 'none', transition: 'color .2s' },
     navCta: { background: ACCENT, color: '#fff', border: 'none', borderRadius: 6, padding: '0.45rem 1.25rem', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    navAuth: { background: 'transparent', color: '#aaa', border: '1px solid #333', borderRadius: 6, padding: '0.45rem 1rem', fontWeight: 500, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", transition: 'all .2s' },
     section: { padding: '6rem 2.5rem', maxWidth: 1100, margin: '0 auto' },
     sTag: { fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 3, color: ACCENT, fontFamily: "'DM Mono', monospace", marginBottom: '1rem' },
     sTitle: { fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(32px, 3.5vw, 48px)', color: '#fff', lineHeight: 1.05, marginBottom: '1rem' },
@@ -92,6 +112,7 @@ export default function LandingPage() {
         * { box-sizing: border-box; margin: 0; padding: 0; }
         @keyframes spin { to { transform: rotate(360deg) } }
         .nav-link-h:hover { color: ${ACCENT} !important; }
+        .nav-auth-h:hover { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
         .btn-ghost-h:hover { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
         .plano-card-h { transition: all .25s; }
         .plano-card-h:hover { border-color: ${ACCENT} !important; transform: translateY(-4px); }
@@ -110,12 +131,13 @@ export default function LandingPage() {
           .stats-r { gap: 1.5rem !important; }
           .grid3-r { grid-template-columns: 1fr !important; }
           .grid2-r { grid-template-columns: 1fr !important; }
+          .nav-auth-text { display: none !important; }
         }
       `}</style>
 
       {/* NAV */}
       <nav style={s.nav}>
-        <div style={s.logo}>JUST<span style={{ color: ACCENT }}>CT</span></div>
+        <div style={s.logo} onClick={() => router.push('/')}>JUST<span style={{ color: ACCENT }}>CT</span></div>
         <div className="nav-links-d" style={s.navLinks}>
           <a href="#coach-ct" className="nav-link-h" style={s.navLink}>Coach CT</a>
           <a href="#espaco" className="nav-link-h" style={s.navLink}>Espaço</a>
@@ -123,12 +145,29 @@ export default function LandingPage() {
           <a href="#agenda" className="nav-link-h" style={s.navLink}>Agenda</a>
           <a href="#localizacao" className="nav-link-h" style={s.navLink}>Localização</a>
         </div>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <button onClick={() => router.push('/login')} className="nav-link-h"
-            style={{ ...s.navLink, background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-            Login
-          </button>
-          <button onClick={() => router.push('/cadastro')} style={s.navCta}>Agendar agora</button>
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {isCliente ? (
+            <>
+              <button onClick={() => router.push('/minha-conta')} className="nav-auth-h" style={s.navAuth}>
+                Minha conta
+              </button>
+              <button onClick={sair} className="nav-auth-h" style={{ ...s.navAuth, color: '#888' }}>
+                Sair
+              </button>
+              <button onClick={irParaAgendar} style={s.navCta}>Agendar</button>
+            </>
+          ) : (
+            <>
+              <button onClick={() => router.push('/login')} className="nav-auth-h" style={s.navAuth}>
+                Login
+              </button>
+              <button onClick={() => router.push('/cadastro')} className="nav-auth-h" style={s.navAuth}>
+                Cadastro
+              </button>
+              <button onClick={irParaAgendar} style={s.navCta}>Agendar agora</button>
+            </>
+          )}
         </div>
       </nav>
 
@@ -148,7 +187,7 @@ export default function LandingPage() {
             <strong style={{ color: '#fff' }}>Coach CT</strong> — seu personal exclusivo, agendado no horário que você escolher, focado só em você.
           </div>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <button onClick={() => router.push('/cadastro')} style={s.btnPrimary}>Agendar Coach CT →</button>
+            <button onClick={irParaAgendar} style={s.btnPrimary}>Agendar Coach CT →</button>
             <a href="#coach-ct"><button className="btn-ghost-h" style={s.btnGhost}>Como funciona</button></a>
           </div>
           <div className="stats-r" style={{ display: 'flex', gap: '3rem', marginTop: '4rem', flexWrap: 'wrap' }}>
@@ -351,7 +390,7 @@ export default function LandingPage() {
             const livres = h.total - h.ocupados
             const lotado = livres === 0
             return (
-              <div key={i} className="slot-row-h" onClick={() => router.push('/login')}
+              <div key={i} className="slot-row-h" onClick={irParaAgendar}
                 style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', padding: '1rem 1.25rem', borderRadius: 12, border: '1px solid #222', background: '#111', marginBottom: 8, opacity: lotado ? 0.5 : 1 }}>
                 <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, fontWeight: 500, color: '#fff', width: 58, flexShrink: 0 }}>{h.hora}</div>
                 <div style={{ display: 'flex', gap: 6, flex: 1, alignItems: 'center', flexWrap: 'wrap' as const }}>
@@ -364,13 +403,13 @@ export default function LandingPage() {
                     {lotado ? 'LOTADO' : livres === 1 ? '1 VAGA' : `${livres} VAGAS`}
                   </div>
                   {!lotado && (
-                    <button onClick={e => { e.stopPropagation(); router.push('/login') }}
+                    <button onClick={e => { e.stopPropagation(); irParaAgendar() }}
                       style={{ marginTop: 4, background: ACCENT, color: '#fff', border: 'none', borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
                       Reservar
                     </button>
                   )}
                   {lotado && (
-                    <button onClick={e => { e.stopPropagation(); router.push('/login') }}
+                    <button onClick={e => { e.stopPropagation(); irParaAgendar() }}
                       style={{ marginTop: 4, background: 'transparent', color: '#ffaa00', border: '1px solid #ffaa00', borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
                       Fila
                     </button>
@@ -380,8 +419,8 @@ export default function LandingPage() {
             )
           })}
           <div style={{ textAlign: 'center' as const, marginTop: '2rem' }}>
-            <button onClick={() => router.push('/cadastro')} style={s.btnPrimary}>
-              Criar conta e reservar →
+            <button onClick={irParaAgendar} style={s.btnPrimary}>
+              {isCliente ? 'Ir para agendamento →' : 'Criar conta e reservar →'}
             </button>
           </div>
         </div>
@@ -431,8 +470,17 @@ export default function LandingPage() {
         </div>
         <div style={{ fontSize: 12, color: '#444' }}>© 2025 Just CT — Serious Training. Todos os direitos reservados.</div>
         <div style={{ display: 'flex', gap: '1.5rem' }}>
-          <span onClick={() => router.push('/login')} style={{ fontSize: 12, color: '#555', cursor: 'pointer' }}>Login</span>
-          <span onClick={() => router.push('/cadastro')} style={{ fontSize: 12, color: ACCENT, cursor: 'pointer' }}>Criar conta</span>
+          {isCliente ? (
+            <>
+              <span onClick={() => router.push('/minha-conta')} style={{ fontSize: 12, color: '#555', cursor: 'pointer' }}>Minha conta</span>
+              <span onClick={sair} style={{ fontSize: 12, color: ACCENT, cursor: 'pointer' }}>Sair</span>
+            </>
+          ) : (
+            <>
+              <span onClick={() => router.push('/login')} style={{ fontSize: 12, color: '#555', cursor: 'pointer' }}>Login</span>
+              <span onClick={() => router.push('/cadastro')} style={{ fontSize: 12, color: ACCENT, cursor: 'pointer' }}>Criar conta</span>
+            </>
+          )}
         </div>
       </footer>
     </div>
