@@ -40,8 +40,6 @@ export default function LandingPage() {
   const [semanaOffset, setSemanaOffset] = useState(0)
   const [periodo, setPeriodo] = useState<'todos' | 'manha' | 'tarde' | 'noite'>('todos')
 
-  // NÃO redireciona mais automaticamente — cliente fica vendo a home se quiser
-  // Mas a equipe (admin/coach/recepcao/coordenadora) continua sendo redirecionada
   useEffect(() => {
     if (!loading && perfil) {
       const role = (perfil.role as string)
@@ -56,16 +54,10 @@ export default function LandingPage() {
   const isCliente = perfil?.role === 'cliente'
   const isLogado = !!perfil
 
-  // Botão "Agendar" vai pra rota correta dependendo do estado
   function irParaAgendar() {
     if (isCliente) router.push('/agendar')
-    else if (isLogado) router.push('/') // equipe logada já foi redirecionada
+    else if (isLogado) router.push('/')
     else router.push('/cadastro')
-  }
-
-  async function sair() {
-    await supabase.auth.signOut()
-    router.push('/')
   }
 
   const diasSemana = Array.from({ length: 7 }, (_, i) => {
@@ -131,7 +123,6 @@ export default function LandingPage() {
           .stats-r { gap: 1.5rem !important; }
           .grid3-r { grid-template-columns: 1fr !important; }
           .grid2-r { grid-template-columns: 1fr !important; }
-          .nav-auth-text { display: none !important; }
         }
       `}</style>
 
@@ -151,9 +142,6 @@ export default function LandingPage() {
             <>
               <button onClick={() => router.push('/minha-conta')} className="nav-auth-h" style={s.navAuth}>
                 Minha conta
-              </button>
-              <button onClick={sair} className="nav-auth-h" style={{ ...s.navAuth, color: '#888' }}>
-                Sair
               </button>
               <button onClick={irParaAgendar} style={s.navCta}>Agendar</button>
             </>
@@ -471,10 +459,7 @@ export default function LandingPage() {
         <div style={{ fontSize: 12, color: '#444' }}>© 2025 Just CT — Serious Training. Todos os direitos reservados.</div>
         <div style={{ display: 'flex', gap: '1.5rem' }}>
           {isCliente ? (
-            <>
-              <span onClick={() => router.push('/minha-conta')} style={{ fontSize: 12, color: '#555', cursor: 'pointer' }}>Minha conta</span>
-              <span onClick={sair} style={{ fontSize: 12, color: ACCENT, cursor: 'pointer' }}>Sair</span>
-            </>
+            <span onClick={() => router.push('/minha-conta')} style={{ fontSize: 12, color: ACCENT, cursor: 'pointer' }}>Minha conta</span>
           ) : (
             <>
               <span onClick={() => router.push('/login')} style={{ fontSize: 12, color: '#555', cursor: 'pointer' }}>Login</span>
