@@ -65,7 +65,7 @@ export default function MinhaContaPage() {
   const nomeMesProximo = MESES[mesProximo - 1]
 
   useEffect(() => {
-    if (!loading && !perfil) router.push('/login')
+    if (!loading && !perfil) router.push('/')
     if (!loading && perfil && !['cliente'].includes(perfil.role as string)) router.push('/equipe')
   }, [perfil, loading])
 
@@ -336,7 +336,7 @@ export default function MinhaContaPage() {
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10, marginBottom: '1.5rem' }}>
               <button className="btn-acao" onClick={() => router.push('/agendar')}
                 style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 12, padding: '0.95rem', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", transition: 'transform .15s' }}>
-                + Agendar Coach CT
+                + Agendar Treino
               </button>
               <button className="btn-acao" onClick={() => router.push('/meus-planos')}
                 style={{ background: 'transparent', color: '#fff', border: `1.5px solid ${ACCENT}66`, borderRadius: 12, padding: '0.95rem', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", transition: 'transform .15s' }}>
