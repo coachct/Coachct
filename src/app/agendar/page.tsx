@@ -117,7 +117,7 @@ export default function AgendarPage() {
   const [aceiteCheck, setAceiteCheck] = useState(false)
 
   useEffect(() => {
-    if (!loading && !perfil) router.push('/login')
+    if (!loading && !perfil) router.push('/')
     if (!loading && perfil && !['cliente'].includes(perfil.role as string)) router.push('/equipe')
   }, [perfil, loading])
 
@@ -428,7 +428,7 @@ export default function AgendarPage() {
 
       <div style={{ maxWidth: 700, margin: '0 auto', padding: '2rem 1.5rem' }}>
         <div style={{ marginBottom: '1.5rem' }}>
-          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: '#fff' }}>AGENDAR SESSÃO</div>
+          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: '#fff' }}>AGENDAR TREINO</div>
           <div style={{ fontSize: 14, color: '#555', marginTop: 4 }}>Cada halter = uma vaga disponível</div>
         </div>
 
