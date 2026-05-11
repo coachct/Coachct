@@ -120,7 +120,6 @@ function parsePlanoKey(key: string): { label: string; icon: string } {
     just_club_pinheiros: 'Pinheiros',
   }
   const unidadeLabel = nomeUnidade[slugUnidade] || slugUnidade.replace(/_/g, ' ')
-
   return { label: `${tipo} — ${unidadeLabel}`, icon }
 }
 
@@ -137,12 +136,9 @@ export default function MinhaContaPage() {
   const [agendamentosProximoMes, setAgendamentosProximoMes] = useState(0)
   const [loadingData, setLoadingData] = useState(true)
 
-  // Planos disponíveis na rede (da tabela planos_disponiveis)
   const [planosDisponiveis, setPlanosDisponiveis] = useState<any[]>([])
-  // Planos já ativos do cliente (da tabela cliente_planos)
   const [clientePlanos, setClientePlanos] = useState<any[]>([])
 
-  // Modal ativação de plano
   const [modalPlano, setModalPlano] = useState<any>(null)
   const [nomeAceite, setNomeAceite] = useState('')
   const [aceiteCheck, setAceiteCheck] = useState(false)
@@ -228,14 +224,12 @@ export default function MinhaContaPage() {
       setPlanosDisponiveis(planos || [])
       setClientePlanos(cliPlanos || [])
 
-      // Carrega saldos por unidade (todas as unidades ativas dos planos do cliente)
       await carregarTodosSaldos(cli.id, cliPlanos || [])
     }
     setLoadingData(false)
   }
 
   async function carregarTodosSaldos(clienteId: string, cliPlanos: any[]) {
-    // Pega unidades únicas dos planos ativos
     const unidadeIds = [...new Set(
       cliPlanos.map((cp: any) => cp.planos_disponiveis?.unidade_id).filter(Boolean)
     )] as string[]
@@ -246,7 +240,6 @@ export default function MinhaContaPage() {
       return
     }
 
-    // Chama RPC para cada unidade e mescla os resultados
     const [saldosAtual, saldosProximo] = await Promise.all([
       Promise.all(unidadeIds.map(uid =>
         supabase.rpc('saldo_creditos_cliente', {
@@ -295,7 +288,6 @@ export default function MinhaContaPage() {
     setAtivando(true)
     setErroAtivacao('')
 
-    // Verifica se já existe (inativo) para reativar ou insere novo
     const { data: existente } = await supabase
       .from('cliente_planos')
       .select('id')
@@ -334,10 +326,11 @@ export default function MinhaContaPage() {
       return
     }
 
-    // Gera créditos do mês atual imediatamente
+    // Gera créditos do mês atual imediatamente — parâmetros corretos
     await supabase.rpc('gerar_creditos_mes', {
-      mes: mesAtual,
-      ano: anoAtual,
+      p_mes: mesAtual,
+      p_ano: anoAtual,
+      p_dias_inatividade: 60,
     })
 
     setModalPlano(null)
@@ -351,21 +344,12 @@ export default function MinhaContaPage() {
     const diffHoras = (dataHoraAula.getTime() - agora.getTime()) / (1000 * 60 * 60)
 
     if (diffHoras <= 3) {
-      return {
-        pode: false,
-        aviso: 'Não é possível cancelar com menos de 3h de antecedência. Faltar gera bloqueio de conta e multa.',
-      }
+      return { pode: false, aviso: 'Não é possível cancelar com menos de 3h de antecedência. Faltar gera bloqueio de conta e multa.' }
     }
     if (diffHoras <= 12) {
-      return {
-        pode: true,
-        aviso: 'Como há clientes na fila de espera, você pode cancelar normalmente. Seu crédito será devolvido e a vaga repassada.',
-      }
+      return { pode: true, aviso: 'Como há clientes na fila de espera, você pode cancelar normalmente. Seu crédito será devolvido e a vaga repassada.' }
     }
-    return {
-      pode: true,
-      aviso: 'Você está cancelando com mais de 12h de antecedência. Seu crédito será devolvido integralmente.',
-    }
+    return { pode: true, aviso: 'Você está cancelando com mais de 12h de antecedência. Seu crédito será devolvido integralmente.' }
   }
 
   async function abrirModalCancelar(ag: any) {
@@ -444,19 +428,14 @@ export default function MinhaContaPage() {
   )
 
   const agendamentosAtivos = agendamentos.filter(a => a.status !== 'cancelado')
-  const todoSaldoMesEsgotado = Object.keys(saldoAtual).length > 0 &&
-    Object.values(saldoAtual).every((s: any) => s.disponivel === 0)
-  const temSaldoNoProximoMes = Object.keys(saldoProximo).length > 0 &&
-    Object.values(saldoProximo).some((s: any) => s.disponivel > 0)
+  const temPlanoAtivo = Object.keys(saldoAtual).length > 0
+  const todoSaldoMesEsgotado = temPlanoAtivo && Object.values(saldoAtual).every((s: any) => s.disponivel === 0)
+  const temSaldoNoProximoMes = Object.keys(saldoProximo).length > 0 && Object.values(saldoProximo).some((s: any) => s.disponivel > 0)
   const planosProximoMes = Object.entries(saldoProximo)
     .filter(([_, s]: [string, any]) => s.disponivel > 0)
-    .map(([plano, s]: [string, any]) => {
-      const { label } = parsePlanoKey(plano)
-      return `${s.disponivel} ${label}`
-    })
+    .map(([plano, s]: [string, any]) => { const { label } = parsePlanoKey(plano); return `${s.disponivel} ${label}` })
     .join(', ')
 
-  // Agrupa planos disponíveis por tipo de agregador para exibição
   const planosWellhub = planosDisponiveis.filter(p => p.tipo === 'wellhub')
   const plansTotalPass = planosDisponiveis.filter(p => p.tipo === 'totalpass')
 
@@ -491,8 +470,8 @@ export default function MinhaContaPage() {
           <div style={{ fontSize: 14, color: '#aaa', marginTop: 4 }}>Bem-vindo à sua área do aluno</div>
         </div>
 
-        {/* CARDS DE SALDO */}
-        {Object.keys(saldoAtual).length > 0 ? (
+        {/* CARDS DE SALDO — só aparece se tem plano ativo */}
+        {temPlanoAtivo && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
             {Object.entries(saldoAtual).map(([plano, info]: [string, any]) => {
               const restante = info.disponivel
@@ -513,24 +492,12 @@ export default function MinhaContaPage() {
                 </div>
               )
             })}
-            {/* Card próximos treinos */}
             <div style={{ background: '#111', border: '1px solid #333', borderRadius: 16, padding: '1.25rem' }}>
               <div style={{ fontSize: 11, color: '#aaa', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 8 }}>Próximos treinos</div>
               <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 48, color: '#fff', lineHeight: 1 }}>
                 {agendamentosAtivos.length}
               </div>
               <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>agendamentos ativos</div>
-            </div>
-          </div>
-        ) : (
-          // Sem planos ativos ainda — mostra card de convite
-          <div style={{ background: '#111', border: `1px solid ${ACCENT}33`, borderRadius: 16, padding: '1.5rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div style={{ fontSize: 36 }}>👇</div>
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: '#fff', marginBottom: 4 }}>Ative seu plano para começar</div>
-              <div style={{ fontSize: 13, color: '#888', lineHeight: 1.5 }}>
-                Você ainda não tem nenhum plano ativo. Selecione seu plano Wellhub ou TotalPass abaixo para liberar seus agendamentos.
-              </div>
             </div>
           </div>
         )}
@@ -547,7 +514,7 @@ export default function MinhaContaPage() {
           </div>
         )}
 
-        {/* Card saldo próximo mês se já agendou */}
+        {/* Card saldo próximo mês */}
         {agendamentosProximoMes > 0 && Object.keys(saldoProximo).length > 0 && (
           <div style={{ background: '#0a0a14', border: '1px solid #333', borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1rem' }}>
             <div style={{ fontSize: 11, color: '#aaa', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 8 }}>
@@ -567,8 +534,8 @@ export default function MinhaContaPage() {
           </div>
         )}
 
-        {/* Botão agendar */}
-        {Object.keys(saldoAtual).length > 0 && (
+        {/* Botão agendar — só aparece com plano ativo */}
+        {temPlanoAtivo && (
           <button onClick={() => router.push('/agendar')}
             style={{ width: '100%', background: ACCENT, color: '#fff', border: 'none', borderRadius: 12, padding: '1rem', fontWeight: 600, fontSize: 16, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", marginBottom: '2rem' }}>
             + Agendar Coach CT
@@ -581,6 +548,22 @@ export default function MinhaContaPage() {
             Meus Planos
           </div>
 
+          {/* Card de convite — sempre visível, mais destacado se não tem plano ativo */}
+          <div style={{
+            background: temPlanoAtivo ? '#0d0d0d' : '#110008',
+            border: `1.5px solid ${temPlanoAtivo ? '#333' : ACCENT + '55'}`,
+            borderRadius: 14, padding: '1.25rem', marginBottom: '1.25rem',
+          }}>
+            {!temPlanoAtivo && (
+              <div style={{ fontSize: 13, color: ACCENT, fontWeight: 700, marginBottom: 6 }}>
+                ⚡ Você ainda não tem um plano ativo
+              </div>
+            )}
+            <div style={{ fontSize: 13, color: temPlanoAtivo ? '#666' : '#ccc', lineHeight: 1.7 }}>
+              Você precisa de um plano ativo para agendar seus treinos. Escolha uma das nossas opções abaixo — ou, se já possui os apps parceiros <strong style={{ color: '#fff' }}>Wellhub</strong> ou <strong style={{ color: '#fff' }}>TotalPass</strong>, clique em <strong style={{ color: ACCENT }}>Ativar</strong> para liberar suas sessões Coach CT incluídas no seu plano.
+            </div>
+          </div>
+
           {/* Wellhub */}
           {planosWellhub.length > 0 && (
             <div style={{ marginBottom: '1rem' }}>
@@ -588,17 +571,17 @@ export default function MinhaContaPage() {
                 <span style={{ fontSize: 16 }}>💜</span>
                 <span style={{ fontSize: 13, color: '#888', fontWeight: 600 }}>Wellhub</span>
               </div>
-              <div style={{ background: '#0d0010', border: '1px solid #9b59b633', borderRadius: 12, padding: '1rem', marginBottom: 8, fontSize: 13, color: '#aaa', lineHeight: 1.6 }}>
-                Você tem o app Wellhub? Ative seu plano aqui e libere até <strong style={{ color: '#fff' }}>8 sessões Coach CT por mês</strong>, já incluídas no seu plano.
+              <div style={{ background: '#0d0010', border: '1px solid #9b59b633', borderRadius: 12, padding: '0.85rem 1rem', marginBottom: 8, fontSize: 13, color: '#aaa', lineHeight: 1.6 }}>
+                Tem o app Wellhub? Ative e libere até <strong style={{ color: '#fff' }}>8 sessões Coach CT por mês</strong>, já incluídas no seu plano.
               </div>
               {planosWellhub.map(plano => {
                 const ativo = planoJaAtivo(plano.id)
                 return (
                   <div key={plano.id} className="plano-card"
-                    style={{ background: '#111', border: `1.5px solid ${ativo ? '#9b59b6' : '#333'}`, borderRadius: 12, padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: 8, transition: 'border-color .2s' }}>
+                    style={{ background: '#111', border: `1.5px solid ${ativo ? '#9b59b6' : '#2a2a2a'}`, borderRadius: 12, padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: 8, transition: 'border-color .2s' }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{plano.nome}</div>
-                      <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
+                      <div style={{ fontSize: 12, color: '#555', marginTop: 2 }}>
                         {plano.unidades?.nome} · {plano.creditos_mes} sessões/mês
                       </div>
                     </div>
@@ -625,17 +608,17 @@ export default function MinhaContaPage() {
                 <span style={{ fontSize: 16 }}>🔵</span>
                 <span style={{ fontSize: 13, color: '#888', fontWeight: 600 }}>TotalPass</span>
               </div>
-              <div style={{ background: '#000d1a', border: '1px solid #2980b933', borderRadius: 12, padding: '1rem', marginBottom: 8, fontSize: 13, color: '#aaa', lineHeight: 1.6 }}>
-                Você tem o app TotalPass? Ative seu plano aqui e libere até <strong style={{ color: '#fff' }}>10 sessões Coach CT por mês</strong>, já incluídas no seu plano.
+              <div style={{ background: '#000d1a', border: '1px solid #2980b933', borderRadius: 12, padding: '0.85rem 1rem', marginBottom: 8, fontSize: 13, color: '#aaa', lineHeight: 1.6 }}>
+                Tem o app TotalPass? Ative e libere até <strong style={{ color: '#fff' }}>10 sessões Coach CT por mês</strong>, já incluídas no seu plano.
               </div>
               {plansTotalPass.map(plano => {
                 const ativo = planoJaAtivo(plano.id)
                 return (
                   <div key={plano.id} className="plano-card"
-                    style={{ background: '#111', border: `1.5px solid ${ativo ? '#2980b9' : '#333'}`, borderRadius: 12, padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: 8, transition: 'border-color .2s' }}>
+                    style={{ background: '#111', border: `1.5px solid ${ativo ? '#2980b9' : '#2a2a2a'}`, borderRadius: 12, padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: 8, transition: 'border-color .2s' }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{plano.nome}</div>
-                      <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
+                      <div style={{ fontSize: 12, color: '#555', marginTop: 2 }}>
                         {plano.unidades?.nome} · {plano.creditos_mes} sessões/mês
                       </div>
                     </div>
@@ -666,8 +649,8 @@ export default function MinhaContaPage() {
         <div style={{ marginBottom: '2rem' }}>
           <div style={{ fontSize: 11, color: '#aaa', fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: '1rem' }}>Meus agendamentos</div>
           {agendamentosAtivos.length === 0 ? (
-            <div style={{ background: '#111', border: '1px solid #333', borderRadius: 16, padding: '2rem', textAlign: 'center', color: '#555', fontSize: 14 }}>
-              Nenhum agendamento. {Object.keys(saldoAtual).length > 0 ? 'Que tal reservar uma sessão?' : 'Ative um plano para começar.'}
+            <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '2rem', textAlign: 'center', color: '#555', fontSize: 14 }}>
+              {temPlanoAtivo ? 'Nenhum agendamento. Que tal reservar uma sessão?' : 'Ative um plano acima para começar a agendar.'}
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -677,9 +660,8 @@ export default function MinhaContaPage() {
                 }
                 const podeTentarCancelar = ['agendado', 'confirmado'].includes(ag.status)
                 const { label } = parsePlanoKey(ag.tipo_credito || '')
-
                 return (
-                  <div key={ag.id} style={{ background: '#111', border: '1px solid #333', borderRadius: 12, padding: '1rem 1.25rem' }}>
+                  <div key={ag.id} style={{ background: '#111', border: '1px solid #222', borderRadius: 12, padding: '1rem 1.25rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                       <div style={{ textAlign: 'center', flexShrink: 0 }}>
                         <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: '#fff', lineHeight: 1 }}>
@@ -689,12 +671,12 @@ export default function MinhaContaPage() {
                           {new Date(ag.data + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' })}
                         </div>
                       </div>
-                      <div style={{ width: 1, height: 36, background: '#333', flexShrink: 0 }} />
+                      <div style={{ width: 1, height: 36, background: '#2a2a2a', flexShrink: 0 }} />
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 15, fontWeight: 600, color: '#fff' }}>
                           {ag.unidades?.nome || 'Coach CT'} — {ag.horario?.slice(0, 5)}
                         </div>
-                        <div style={{ fontSize: 12, color: '#666' }}>{label}</div>
+                        <div style={{ fontSize: 12, color: '#555' }}>{label}</div>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
                         <div style={{ fontSize: 11, fontWeight: 600, color: statusColor[ag.status] || '#888', textTransform: 'uppercase' as const }}>
@@ -702,7 +684,7 @@ export default function MinhaContaPage() {
                         </div>
                         {podeTentarCancelar && (
                           <button onClick={() => abrirModalCancelar(ag)}
-                            style={{ background: 'transparent', border: '1px solid #444', borderRadius: 6, padding: '0.2rem 0.6rem', fontSize: 11, color: '#bbb', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                            style={{ background: 'transparent', border: '1px solid #333', borderRadius: 6, padding: '0.2rem 0.6rem', fontSize: 11, color: '#888', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
                             Cancelar
                           </button>
                         )}
@@ -752,7 +734,7 @@ export default function MinhaContaPage() {
 
         {/* ===== DADOS DA CONTA ===== */}
         {cliente && (
-          <div style={{ background: '#111', border: '1px solid #333', borderRadius: 16, padding: '1.25rem' }}>
+          <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.25rem' }}>
             <div style={{ fontSize: 11, color: '#aaa', fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: '1rem' }}>Minha conta</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {[
@@ -761,8 +743,8 @@ export default function MinhaContaPage() {
                 { label: 'Telefone', value: cliente.telefone },
                 { label: 'Notificações', value: cliente.notificacao_preferida === 'whatsapp' ? '💬 WhatsApp' : cliente.notificacao_preferida === 'email' ? '📧 Email' : '🔕 Desativadas' },
               ].map((item, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #222' }}>
-                  <span style={{ fontSize: 13, color: '#666' }}>{item.label}</span>
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #1a1a1a' }}>
+                  <span style={{ fontSize: 13, color: '#555' }}>{item.label}</span>
                   <span style={{ fontSize: 13, color: '#fff' }}>{item.value}</span>
                 </div>
               ))}
@@ -775,31 +757,22 @@ export default function MinhaContaPage() {
       {modalPlano && (
         <div style={{ position: 'fixed', inset: 0, background: '#000000dd', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: '#111', border: '1px solid #333', borderRadius: 20, width: '100%', maxWidth: 520, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
-
-            {/* Header modal */}
             <div style={{ padding: '1.5rem 1.5rem 1rem', borderBottom: '1px solid #222' }}>
-              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', letterSpacing: 1 }}>
-                ATIVAR PLANO
-              </div>
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', letterSpacing: 1 }}>ATIVAR PLANO</div>
               <div style={{ fontSize: 14, color: ACCENT, fontWeight: 600, marginTop: 4 }}>{modalPlano.nome}</div>
-              <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
+              <div style={{ fontSize: 12, color: '#555', marginTop: 2 }}>
                 {modalPlano.unidades?.nome} · {modalPlano.creditos_mes} sessões por mês
               </div>
             </div>
-
-            {/* Contrato scrollável */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.5rem' }}>
               <div style={{ fontSize: 11, color: ACCENT, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 8 }}>
                 📄 Termo de Adesão — Wellhub / TotalPass
               </div>
-              <pre style={{ fontSize: 12, color: '#888', lineHeight: 1.8, whiteSpace: 'pre-wrap', fontFamily: "'DM Sans', sans-serif" }}>
+              <pre style={{ fontSize: 12, color: '#777', lineHeight: 1.8, whiteSpace: 'pre-wrap', fontFamily: "'DM Sans', sans-serif" }}>
                 {CONTRATO_AGREGADORES}
               </pre>
             </div>
-
-            {/* Footer modal */}
             <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid #222' }}>
-              {/* Campo nome */}
               <div style={{ marginBottom: '1rem' }}>
                 <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>
                   Digite seu nome completo para confirmar o aceite:
@@ -810,14 +783,13 @@ export default function MinhaContaPage() {
                   onChange={e => setNomeAceite(e.target.value)}
                   placeholder="Nome Sobrenome"
                   style={{
-                    width: '100%', background: '#0a0a0a', border: `1px solid ${nomeAceite.length > 3 ? ACCENT + '66' : '#333'}`,
+                    width: '100%', background: '#0a0a0a',
+                    border: `1px solid ${nomeAceite.length > 3 ? ACCENT + '66' : '#333'}`,
                     borderRadius: 8, padding: '0.65rem 1rem', color: '#fff', fontSize: 14,
                     fontFamily: "'DM Sans', sans-serif", outline: 'none',
                   }}
                 />
               </div>
-
-              {/* Checkbox aceite */}
               <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer', marginBottom: '1rem' }}>
                 <input type="checkbox" checked={aceiteCheck} onChange={e => setAceiteCheck(e.target.checked)}
                   style={{ marginTop: 3, accentColor: ACCENT, width: 16, height: 16, flexShrink: 0 }} />
@@ -825,13 +797,11 @@ export default function MinhaContaPage() {
                   Li e aceito o Termo de Adesão Just CT — Wellhub / TotalPass, incluindo as regras de agendamento, cancelamento, multa por no-show e conduta nas dependências da academia.
                 </span>
               </label>
-
               {erroAtivacao && (
                 <div style={{ background: '#ff2d9b15', border: '1px solid #ff2d9b44', borderRadius: 8, padding: '0.6rem 1rem', fontSize: 13, color: ACCENT, marginBottom: '1rem' }}>
                   {erroAtivacao}
                 </div>
               )}
-
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={() => setModalPlano(null)}
                   style={{ flex: 1, background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.75rem', color: '#888', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
@@ -847,7 +817,7 @@ export default function MinhaContaPage() {
         </div>
       )}
 
-      {/* Modal Cancelar Agendamento */}
+      {/* Modal Cancelar */}
       {modalCancelar && (
         <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: '#111', border: '1px solid #333', borderRadius: 20, width: '100%', maxWidth: 420, padding: '1.5rem' }}>
