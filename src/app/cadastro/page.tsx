@@ -37,6 +37,7 @@ export default function CadastroPage() {
   async function cadastrar() {
     setErro('')
     if (!nome.trim()) { setErro('Preencha seu nome completo.'); return }
+    if (nome.trim().split(' ').length < 2) { setErro('Digite seu nome completo (nome e sobrenome).'); return }
     if (cpf.replace(/\D/g, '').length < 11) { setErro('CPF inválido.'); return }
     if (telefone.replace(/\D/g, '').length < 10) { setErro('Telefone inválido.'); return }
     if (!email.trim()) { setErro('Preencha o email.'); return }
@@ -103,8 +104,8 @@ export default function CadastroPage() {
       whatsapp: telefone.replace(/\D/g, ''),
       email: email.trim(),
       notificacao_preferida: notificacao,
-      planos: ['wellhub'],
       bloqueado: false,
+      ativo: true,
     })
 
     if (clienteError) {
@@ -256,7 +257,7 @@ export default function CadastroPage() {
                 </button>
 
                 <p style={{ fontSize: 12, color: '#444', textAlign: 'center' as const, lineHeight: 1.5 }}>
-                  Ao criar sua conta você concorda com nossas políticas de uso. O contrato de agendamento Coach CT será apresentado na sua primeira reserva.
+                  Após criar a conta, você poderá ativar seus planos Wellhub ou TotalPass e começar a agendar seus treinos.
                 </p>
               </div>
             </>
