@@ -11,6 +11,14 @@ const AMARELO = '#ffaa00'
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
+// Helper: faltam <= 7 dias para virar o mês?
+function dentroDaJanelaProximoMes(): boolean {
+  const hoje = new Date()
+  const ultimoDiaMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).getDate()
+  const diasAteFimMes = ultimoDiaMes - hoje.getDate()
+  return diasAteFimMes <= 7
+}
+
 const CONTRATO = `CONTRATO DE ADESÃO — COACH CT / JUST CT
 
 1. OBJETO
@@ -21,7 +29,7 @@ O presente contrato regula as condições de uso do serviço Coach CT, que consi
 2.2. TotalPass TP6: até 10 sessões Coach CT por mês-calendário.
 2.3. Plano Avulso Coach CT: crédito válido por 30 dias a partir da compra.
 2.4. Os créditos dos planos Wellhub e TotalPass não são acumulativos e renovam-se todo dia 1º de cada mês.
-2.5. É permitido agendar para o mês seguinte, consumindo créditos do período correspondente.
+2.5. Agendamentos para o mês seguinte são liberados a partir de 7 dias antes da virada.
 
 3. CANCELAMENTO
 3.1. Cancelamentos até 12h antes resultam na devolução do crédito.
@@ -116,6 +124,9 @@ export default function AgendarPage() {
   const [contratoAssinado, setContratoAssinado] = useState(false)
   const [aceiteCheck, setAceiteCheck] = useState(false)
 
+  // Janela do próximo mês liberada?
+  const janelaProximoMesAberta = dentroDaJanelaProximoMes()
+
   useEffect(() => {
     if (!loading && !perfil) router.push('/')
     if (!loading && perfil && !['cliente'].includes(perfil.role as string)) router.push('/equipe')
@@ -152,23 +163,26 @@ export default function AgendarPage() {
     const mesProximo = mesAtual === 12 ? 1 : mesAtual + 1
     const anoProximo = mesAtual === 12 ? anoAtual + 1 : anoAtual
 
-    const [{ data: atual }, { data: proximo }] = await Promise.all([
-      supabase.rpc('saldo_creditos_cliente', {
-        p_cliente_id: clienteId,
-        p_mes: mesAtual,
-        p_ano: anoAtual,
-        p_unidade_id: unidadeId,
-      }),
-      supabase.rpc('saldo_creditos_cliente', {
+    const { data: atual } = await supabase.rpc('saldo_creditos_cliente', {
+      p_cliente_id: clienteId,
+      p_mes: mesAtual,
+      p_ano: anoAtual,
+      p_unidade_id: unidadeId,
+    })
+    setSaldoMesAtual(atual || {})
+
+    // Só busca saldo do próximo mês se a janela estiver aberta
+    if (janelaProximoMesAberta) {
+      const { data: proximo } = await supabase.rpc('saldo_creditos_cliente', {
         p_cliente_id: clienteId,
         p_mes: mesProximo,
         p_ano: anoProximo,
         p_unidade_id: unidadeId,
-      }),
-    ])
-
-    setSaldoMesAtual(atual || {})
-    setSaldoMesProximo(proximo || {})
+      })
+      setSaldoMesProximo(proximo || {})
+    } else {
+      setSaldoMesProximo({})
+    }
   }
 
   async function loadHorarios() {
@@ -229,12 +243,25 @@ export default function AgendarPage() {
     setLoadingHorarios(false)
   }
 
+  // Calcula quantos dias podem ser mostrados (limita à janela do mês atual + próximo se aberta)
+  const hojeRef = new Date()
+  const mesAtualRef = hojeRef.getMonth()
+  const anoAtualRef = hojeRef.getFullYear()
+  const ultimoDiaMesAtual = new Date(anoAtualRef, mesAtualRef + 1, 0)
+  const ultimoDiaMesProximo = new Date(anoAtualRef, mesAtualRef + 2, 0)
+  const dataMaxima = janelaProximoMesAberta ? ultimoDiaMesProximo : ultimoDiaMesAtual
+
+  // Calcula máximo de semanas que faz sentido navegar
+  const diasAteDataMaxima = Math.floor((dataMaxima.getTime() - hojeRef.getTime()) / (1000 * 60 * 60 * 24))
+  const semanasMaximas = Math.floor(diasAteDataMaxima / 7)
+
   const diasSemana = Array.from({ length: 7 }, (_, i) => {
     const d = new Date()
     d.setDate(d.getDate() + semanaOffset * 7 + i)
     return d
   })
 
+  // Filtra horários e oculta dias depois da data máxima
   const horariosFiltrados = horarios.filter(h => {
     const hr = parseInt(h.hora)
     if (periodo === 'manha') return hr < 12
@@ -242,6 +269,9 @@ export default function AgendarPage() {
     if (periodo === 'noite') return hr >= 18
     return true
   })
+
+  const dataSelecionada = diasSemana[diaSel]
+  const dataSelAposLimite = dataSelecionada > dataMaxima
 
   function jaAgendouNoDia(plano: string) {
     return agendamentosNoDia.some(a =>
@@ -391,6 +421,7 @@ export default function AgendarPage() {
         * { box-sizing: border-box; margin: 0; padding: 0; }
         .dia-btn-h { transition: all .2s; cursor: pointer; flex: 1; min-width: 0; }
         .dia-btn-h:hover { border-color: ${ACCENT} !important; }
+        .dia-btn-disabled { opacity: 0.25; cursor: not-allowed !important; }
         .slot-row-h { transition: all .2s; }
         .slot-row-h:hover { border-color: ${ACCENT} !important; background: #ff2d9b08 !important; }
         .nav-semana-btn:hover:not(:disabled) { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
@@ -431,6 +462,13 @@ export default function AgendarPage() {
           <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: '#fff' }}>AGENDAR TREINO</div>
           <div style={{ fontSize: 14, color: '#555', marginTop: 4 }}>Cada halter = uma vaga disponível</div>
         </div>
+
+        {/* Aviso da janela de próximo mês quando aberta */}
+        {janelaProximoMesAberta && (
+          <div style={{ background: '#0a0014', border: `1px solid ${ACCENT}33`, borderRadius: 12, padding: '0.85rem 1.25rem', marginBottom: '1.5rem', fontSize: 13, color: '#ccc', lineHeight: 1.6 }}>
+            ✨ Agendamentos para o próximo mês já estão liberados.
+          </div>
+        )}
 
         {/* Seletor de Unidade */}
         {unidadesPermitidas.length > 1 && (
@@ -476,7 +514,7 @@ export default function AgendarPage() {
         )}
 
         {/* Aviso sem créditos */}
-        {todosSemSaldo && (
+        {todosSemSaldo && !dataSelAposLimite && (
           <div style={{ background: '#1a0a00', border: '1px solid #ff660033', borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1.5rem' }}>
             <div style={{ fontSize: 14, color: AMARELO, fontWeight: 600, marginBottom: 4 }}>⚠️ Sem créditos disponíveis</div>
             <div style={{ fontSize: 13, color: '#666', lineHeight: 1.6 }}>
@@ -488,7 +526,7 @@ export default function AgendarPage() {
         )}
 
         {/* Cards de saldo */}
-        {Object.keys(saldoExibir).length > 0 && (
+        {Object.keys(saldoExibir).length > 0 && !dataSelAposLimite && (
           <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
             {dataSelEhProximoMes && (
               <span style={{ fontSize: 11, color: AMARELO, fontWeight: 600, marginRight: 4 }}>
@@ -522,8 +560,11 @@ export default function AgendarPage() {
             {diasSemana.map((d, i) => {
               const isHoje = semanaOffset === 0 && i === 0
               const isSel = i === diaSel
+              const diaForaLimite = d > dataMaxima
               return (
-                <div key={i} className="dia-btn-h" onClick={() => setDiaSel(i)}
+                <div key={i}
+                  className={`dia-btn-h ${diaForaLimite ? 'dia-btn-disabled' : ''}`}
+                  onClick={() => !diaForaLimite && setDiaSel(i)}
                   style={{ padding: '0.6rem 0.25rem', borderRadius: 10, border: `1.5px solid ${isSel ? ACCENT : '#222'}`, background: isSel ? `${ACCENT}15` : 'transparent', textAlign: 'center' }}>
                   <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, color: isSel ? ACCENT : '#555', fontWeight: 600, marginBottom: 2 }}>
                     {isHoje ? 'HOJE' : DIAS_SEMANA[d.getDay()]}
@@ -537,9 +578,9 @@ export default function AgendarPage() {
             })}
           </div>
           <button className="nav-semana-btn"
-            onClick={() => { setSemanaOffset(o => Math.min(3, o + 1)); setDiaSel(0) }}
-            disabled={semanaOffset === 3}
-            style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #333', background: 'transparent', color: semanaOffset === 3 ? '#333' : '#fff', fontSize: 18, cursor: semanaOffset === 3 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .2s' }}>›</button>
+            onClick={() => { setSemanaOffset(o => Math.min(semanasMaximas, o + 1)); setDiaSel(0) }}
+            disabled={semanaOffset >= semanasMaximas}
+            style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #333', background: 'transparent', color: semanaOffset >= semanasMaximas ? '#333' : '#fff', fontSize: 18, cursor: semanaOffset >= semanasMaximas ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .2s' }}>›</button>
         </div>
 
         <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap' }}>
@@ -557,7 +598,14 @@ export default function AgendarPage() {
         </div>
 
         {/* Grade de horários */}
-        {!unidadeAtiva ? (
+        {dataSelAposLimite ? (
+          <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#666' }}>
+            <div style={{ fontSize: 14, marginBottom: 8 }}>📅 Data ainda não liberada</div>
+            <div style={{ fontSize: 12, color: '#555', lineHeight: 1.6 }}>
+              Os agendamentos para o próximo mês são liberados nos últimos 7 dias do mês atual.
+            </div>
+          </div>
+        ) : !unidadeAtiva ? (
           <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#444' }}>
             Selecione uma unidade para ver os horários.
           </div>
