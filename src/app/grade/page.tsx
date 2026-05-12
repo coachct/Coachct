@@ -26,7 +26,7 @@ function HalterSVG({ estado }: { estado: 'livre' | 'ocupado' | 'bloqueado' }) {
 }
 
 export default function GradePublicaPage() {
-  const { perfil, loading } = useAuth()
+  const { user, perfil, loading } = useAuth()
   const router = useRouter()
   const supabase = createClient()
 
@@ -41,9 +41,8 @@ export default function GradePublicaPage() {
   const [loadingHorarios, setLoadingHorarios] = useState(false)
 
   const isCliente = perfil?.role === 'cliente'
-  const isLogado = !!perfil
+  const isLogado = !!user
 
-  // CALCULAR diasSemana ANTES de usar nas funções (fix do bug do spinner travado)
   const diasSemana = Array.from({ length: 7 }, (_, i) => {
     const d = new Date()
     d.setDate(d.getDate() + semanaOffset * 7 + i)
@@ -73,11 +72,7 @@ export default function GradePublicaPage() {
 
     try {
       const dataSel = diasSemana[diaSel]
-      if (!dataSel) {
-        setHorarios([])
-        setLoadingHorarios(false)
-        return
-      }
+      if (!dataSel) { setHorarios([]); setLoadingHorarios(false); return }
 
       const diaSem = dataSel.getDay()
       const dataStr = dataSel.toISOString().split('T')[0]
@@ -87,39 +82,21 @@ export default function GradePublicaPage() {
       const isDiaDe = dataStr === hoje
 
       const { data: feriadoData } = await supabase
-        .from('feriados')
-        .select('*')
-        .eq('unidade_id', unidadeAtiva.id)
-        .eq('data', dataStr)
-        .eq('ativo', true)
-        .maybeSingle()
+        .from('feriados').select('*').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr).eq('ativo', true).maybeSingle()
 
       const ehFeriado = !!feriadoData
       const ehFds = diaSem === 0 || diaSem === 6
       const usaEscalaFds = ehFeriado || ehFds
 
-      if (ehFeriado) {
-        setTipoDia('feriado')
-        setFeriadoDescricao(feriadoData.descricao || '')
-      } else if (ehFds) {
-        setTipoDia('fds')
-        setFeriadoDescricao('')
-      } else {
-        setTipoDia('util')
-        setFeriadoDescricao('')
-      }
+      if (ehFeriado) { setTipoDia('feriado'); setFeriadoDescricao(feriadoData.descricao || '') }
+      else if (ehFds) { setTipoDia('fds'); setFeriadoDescricao('') }
+      else { setTipoDia('util'); setFeriadoDescricao('') }
 
       let porHora: Record<string, number> = {}
 
       if (usaEscalaFds) {
-        const { data: escala } = await supabase
-          .from('escala_fds')
-          .select('coach_id')
-          .eq('unidade_id', unidadeAtiva.id)
-          .eq('data', dataStr)
-
+        const { data: escala } = await supabase.from('escala_fds').select('coach_id').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr)
         const qtdCoaches = (escala || []).length
-
         if (qtdCoaches > 0) {
           for (const hora of HORARIOS_FDS) {
             if (isDiaDe && hora <= horaAtual) continue
@@ -127,13 +104,7 @@ export default function GradePublicaPage() {
           }
         }
       } else {
-        const { data: hors } = await supabase
-          .from('coach_horarios')
-          .select('hora')
-          .eq('dia_semana', diaSem)
-          .eq('ativo', true)
-          .eq('unidade_id', unidadeAtiva.id)
-
+        const { data: hors } = await supabase.from('coach_horarios').select('hora').eq('dia_semana', diaSem).eq('ativo', true).eq('unidade_id', unidadeAtiva.id)
         for (const h of (hors || [])) {
           const hora = (h.hora || '').slice(0, 5)
           if (isDiaDe && hora <= horaAtual) continue
@@ -161,13 +132,7 @@ export default function GradePublicaPage() {
       const resultado = Object.entries(porHora).map(([hora, total]) => {
         const bloq = bloqueadasMap[hora] || 0
         const ocup = ocupados[hora] || 0
-        return {
-          hora,
-          total,
-          ocupados: ocup,
-          bloqueadas: bloq,
-          livres: Math.max(0, total - ocup - bloq),
-        }
+        return { hora, total, ocupados: ocup, bloqueadas: bloq, livres: Math.max(0, total - ocup - bloq) }
       }).sort((a, b) => a.hora.localeCompare(b.hora))
 
       setHorarios(resultado)
@@ -189,7 +154,6 @@ export default function GradePublicaPage() {
 
   function clickReservar() {
     if (isCliente) router.push('/agendar')
-    else if (isLogado) router.push('/')
     else router.push('/cadastro')
   }
 
@@ -262,24 +226,8 @@ export default function GradePublicaPage() {
                 const ativa = unidadeAtiva?.id === u.id
                 return (
                   <button key={u.id} className="unidade-tab"
-                    onClick={() => {
-                      setUnidadeAtiva(u)
-                      setHorarios([])
-                      setDiaSel(0)
-                      setSemanaOffset(0)
-                    }}
-                    style={{
-                      padding: '0.5rem 1.25rem',
-                      borderRadius: 10,
-                      border: `1.5px solid ${ativa ? ACCENT : '#333'}`,
-                      background: ativa ? `${ACCENT}18` : 'transparent',
-                      color: ativa ? ACCENT : '#666',
-                      fontSize: 13,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      fontFamily: "'DM Sans', sans-serif",
-                      transition: 'all .2s',
-                    }}>
+                    onClick={() => { setUnidadeAtiva(u); setHorarios([]); setDiaSel(0); setSemanaOffset(0) }}
+                    style={{ padding: '0.5rem 1.25rem', borderRadius: 10, border: `1.5px solid ${ativa ? ACCENT : '#333'}`, background: ativa ? `${ACCENT}18` : 'transparent', color: ativa ? ACCENT : '#666', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", transition: 'all .2s' }}>
                     {u.nome}
                   </button>
                 )
@@ -308,13 +256,9 @@ export default function GradePublicaPage() {
               return (
                 <div key={i} className="dia-btn-h" onClick={() => setDiaSel(i)}
                   style={{ padding: '0.6rem 0.25rem', borderRadius: 10, border: `1.5px solid ${isSel ? ACCENT : '#222'}`, background: isSel ? `${ACCENT}15` : 'transparent', textAlign: 'center' }}>
-                  <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, color: isSel ? ACCENT : '#555', fontWeight: 600, marginBottom: 2 }}>
-                    {isHoje ? 'HOJE' : DIAS_SEMANA[d.getDay()]}
-                  </div>
+                  <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, color: isSel ? ACCENT : '#555', fontWeight: 600, marginBottom: 2 }}>{isHoje ? 'HOJE' : DIAS_SEMANA[d.getDay()]}</div>
                   <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 20, color: isSel ? '#fff' : '#888', lineHeight: 1 }}>{d.getDate()}</div>
-                  <div style={{ fontSize: 9, color: isSel ? ACCENT : '#444', textTransform: 'uppercase' }}>
-                    {d.toLocaleDateString('pt-BR', { month: 'short' })}
-                  </div>
+                  <div style={{ fontSize: 9, color: isSel ? ACCENT : '#444', textTransform: 'uppercase' }}>{d.toLocaleDateString('pt-BR', { month: 'short' })}</div>
                 </div>
               )
             })}
@@ -332,12 +276,7 @@ export default function GradePublicaPage() {
         )}
 
         <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-          {[
-            { key: 'todos', label: 'Todos' },
-            { key: 'manha', label: '🌅 Manhã' },
-            { key: 'tarde', label: '☀️ Tarde' },
-            { key: 'noite', label: '🌙 Noite' },
-          ].map(p => (
+          {[{ key: 'todos', label: 'Todos' }, { key: 'manha', label: '🌅 Manhã' }, { key: 'tarde', label: '☀️ Tarde' }, { key: 'noite', label: '🌙 Noite' }].map(p => (
             <button key={p.key} onClick={() => setPeriodo(p.key as any)}
               style={{ padding: '0.35rem 1rem', borderRadius: 20, border: `1px solid ${periodo === p.key ? ACCENT : '#333'}`, background: periodo === p.key ? `${ACCENT}20` : 'transparent', color: periodo === p.key ? ACCENT : '#555', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
               {p.label}
@@ -346,27 +285,14 @@ export default function GradePublicaPage() {
         </div>
 
         {!unidadeAtiva ? (
-          <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#444' }}>
-            Carregando unidades...
-          </div>
+          <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#444' }}>Carregando unidades...</div>
         ) : loadingHorarios ? (
           <div style={{ textAlign: 'center', padding: '3rem', color: '#555' }}>Carregando horários...</div>
         ) : horariosFiltrados.length === 0 ? (
           <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#666', lineHeight: 1.7 }}>
-            {tipoDia === 'fds'
-              ? <>
-                <div style={{ fontSize: 32, marginBottom: 8 }}>📅</div>
-                <div style={{ fontSize: 14, color: '#888' }}>Não há coaches escalados neste dia ainda.</div>
-                <div style={{ fontSize: 12, color: '#555', marginTop: 4 }}>A escala de fim de semana é definida pela equipe.</div>
-              </>
-              : tipoDia === 'feriado'
-                ? <>
-                  <div style={{ fontSize: 32, marginBottom: 8 }}>⭐</div>
-                  <div style={{ fontSize: 14, color: '#888' }}>Feriado sem coaches escalados.</div>
-                </>
-                : semanaOffset === 0 && diaSel === 0
-                  ? 'Não há mais horários disponíveis para hoje.'
-                  : 'Nenhum horário disponível neste dia.'}
+            {tipoDia === 'fds' ? (<><div style={{ fontSize: 32, marginBottom: 8 }}>📅</div><div style={{ fontSize: 14, color: '#888' }}>Não há coaches escalados neste dia ainda.</div><div style={{ fontSize: 12, color: '#555', marginTop: 4 }}>A escala de fim de semana é definida pela equipe.</div></>)
+              : tipoDia === 'feriado' ? (<><div style={{ fontSize: 32, marginBottom: 8 }}>⭐</div><div style={{ fontSize: 14, color: '#888' }}>Feriado sem coaches escalados.</div></>)
+              : semanaOffset === 0 && diaSel === 0 ? 'Não há mais horários disponíveis para hoje.' : 'Nenhum horário disponível neste dia.'}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -401,12 +327,8 @@ export default function GradePublicaPage() {
 
         {!isCliente && horariosFiltrados.length > 0 && (
           <div style={{ marginTop: '3rem', background: '#0d0010', border: `1px solid ${ACCENT}44`, borderRadius: 16, padding: '2rem', textAlign: 'center' }}>
-            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', marginBottom: 8, letterSpacing: 1 }}>
-              GOSTOU DO QUE VIU?
-            </div>
-            <div style={{ fontSize: 14, color: '#aaa', marginBottom: '1.5rem', lineHeight: 1.6 }}>
-              Crie sua conta gratuitamente, ative seu plano Wellhub ou TotalPass e reserve seu primeiro treino.
-            </div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', marginBottom: 8, letterSpacing: 1 }}>GOSTOU DO QUE VIU?</div>
+            <div style={{ fontSize: 14, color: '#aaa', marginBottom: '1.5rem', lineHeight: 1.6 }}>Crie sua conta gratuitamente, ative seu plano Wellhub ou TotalPass e reserve seu primeiro treino.</div>
             <button onClick={() => router.push('/cadastro')}
               style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.85rem 2rem', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
               Criar conta gratuita →
