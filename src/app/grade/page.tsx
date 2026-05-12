@@ -9,6 +9,7 @@ const CYAN = '#00e5ff'
 const AMARELO = '#ffaa00'
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+const HORARIOS_FDS = ['08:00', '09:00', '10:00', '11:00', '12:00']
 
 function HalterSVG({ estado }: { estado: 'livre' | 'ocupado' | 'bloqueado' }) {
   const cor = estado === 'ocupado' ? '#333' : estado === 'bloqueado' ? '#ff4444' : ACCENT
@@ -35,12 +36,13 @@ export default function GradePublicaPage() {
   const [semanaOffset, setSemanaOffset] = useState(0)
   const [periodo, setPeriodo] = useState<'todos' | 'manha' | 'tarde' | 'noite'>('todos')
   const [horarios, setHorarios] = useState<any[]>([])
+  const [tipoDia, setTipoDia] = useState<'util' | 'fds' | 'feriado'>('util')
+  const [feriadoDescricao, setFeriadoDescricao] = useState<string>('')
   const [loadingHorarios, setLoadingHorarios] = useState(false)
 
   const isCliente = perfil?.role === 'cliente'
   const isLogado = !!perfil
 
-  // Carrega unidades ativas
   useEffect(() => {
     async function carregarUnidades() {
       const { data } = await supabase
@@ -54,7 +56,6 @@ export default function GradePublicaPage() {
     carregarUnidades()
   }, [])
 
-  // Carrega horários da unidade ativa quando muda
   useEffect(() => {
     if (unidadeAtiva) loadHorarios()
   }, [unidadeAtiva?.id, diaSel, semanaOffset])
@@ -62,6 +63,7 @@ export default function GradePublicaPage() {
   async function loadHorarios() {
     if (!unidadeAtiva) return
     setLoadingHorarios(true)
+
     const dataSel = diasSemana[diaSel]
     const diaSem = dataSel.getDay()
     const dataStr = dataSel.toISOString().split('T')[0]
@@ -70,18 +72,67 @@ export default function GradePublicaPage() {
     const horaAtual = `${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}`
     const isDiaDe = dataStr === hoje
 
-    const [{ data: hors }, { data: ags }, { data: bloqueadas }] = await Promise.all([
-      supabase.from('coach_horarios').select('hora').eq('dia_semana', diaSem).eq('ativo', true).eq('unidade_id', unidadeAtiva.id),
+    // PASSO 1: verifica se essa data é feriado ATIVO nesta unidade
+    const { data: feriadoData } = await supabase
+      .from('feriados')
+      .select('*')
+      .eq('unidade_id', unidadeAtiva.id)
+      .eq('data', dataStr)
+      .eq('ativo', true)
+      .maybeSingle()
+
+    const ehFeriado = !!feriadoData
+    const ehFds = diaSem === 0 || diaSem === 6
+    const usaEscalaFds = ehFeriado || ehFds
+
+    if (ehFeriado) {
+      setTipoDia('feriado')
+      setFeriadoDescricao(feriadoData.descricao || '')
+    } else if (ehFds) {
+      setTipoDia('fds')
+      setFeriadoDescricao('')
+    } else {
+      setTipoDia('util')
+      setFeriadoDescricao('')
+    }
+
+    // PASSO 2: busca a base de horários certa
+    let porHora: Record<string, number> = {}
+
+    if (usaEscalaFds) {
+      // FDS ou feriado ativo → escala_fds + horários fixos
+      const { data: escala } = await supabase
+        .from('escala_fds')
+        .select('coach_id')
+        .eq('unidade_id', unidadeAtiva.id)
+        .eq('data', dataStr)
+
+      const qtdCoaches = (escala || []).length
+      for (const hora of HORARIOS_FDS) {
+        if (isDiaDe && hora <= horaAtual) continue
+        porHora[hora] = qtdCoaches
+      }
+    } else {
+      // Dia útil → coach_horarios (grade fixa)
+      const { data: hors } = await supabase
+        .from('coach_horarios')
+        .select('hora')
+        .eq('dia_semana', diaSem)
+        .eq('ativo', true)
+        .eq('unidade_id', unidadeAtiva.id)
+
+      for (const h of (hors || [])) {
+        const hora = (h.hora || '').slice(0, 5)
+        if (isDiaDe && hora <= horaAtual) continue
+        porHora[hora] = (porHora[hora] || 0) + 1
+      }
+    }
+
+    // PASSO 3: busca agendamentos e bloqueios da data
+    const [{ data: ags }, { data: bloqueadas }] = await Promise.all([
       supabase.from('agendamentos').select('horario, status').eq('data', dataStr).eq('unidade_id', unidadeAtiva.id).neq('status', 'cancelado'),
       supabase.from('vagas_bloqueadas').select('horario, quantidade').eq('data', dataStr).eq('ativo', true).eq('unidade_id', unidadeAtiva.id),
     ])
-
-    const porHora: Record<string, number> = {}
-    for (const h of (hors || [])) {
-      const hora = (h.hora || '').slice(0, 5)
-      if (isDiaDe && hora <= horaAtual) continue
-      porHora[hora] = (porHora[hora] || 0) + 1
-    }
 
     const ocupados: Record<string, number> = {}
     for (const a of (ags || [])) {
@@ -125,7 +176,6 @@ export default function GradePublicaPage() {
     return true
   })
 
-  // Botão "Reservar" — visitante vai pra cadastro; cliente vai pra agendar
   function clickReservar() {
     if (isCliente) router.push('/agendar')
     else if (isLogado) router.push('/')
@@ -180,14 +230,11 @@ export default function GradePublicaPage() {
       </div>
 
       <div style={{ maxWidth: 700, margin: '0 auto', padding: '2rem 1.5rem' }}>
-
-        {/* Título */}
         <div style={{ marginBottom: '1.5rem' }}>
           <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: '#fff' }}>HORÁRIOS DISPONÍVEIS</div>
           <div style={{ fontSize: 14, color: '#666', marginTop: 4 }}>Cada halter = uma vaga · Para reservar, faça login ou cadastre-se</div>
         </div>
 
-        {/* Aviso pra visitante */}
         {!isCliente && (
           <div style={{ background: '#110008', border: `1px solid ${ACCENT}44`, borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1.5rem', fontSize: 13, color: '#ccc', lineHeight: 1.7 }}>
             👀 Você está visualizando os horários como visitante. Para fazer uma reserva,{' '}
@@ -197,7 +244,6 @@ export default function GradePublicaPage() {
           </div>
         )}
 
-        {/* Seletor de Unidade */}
         {unidades.length > 1 && (
           <div style={{ marginBottom: '1.5rem' }}>
             <div style={{ fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Unidade</div>
@@ -270,6 +316,13 @@ export default function GradePublicaPage() {
             style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #333', background: 'transparent', color: semanaOffset === 3 ? '#333' : '#fff', fontSize: 18, cursor: semanaOffset === 3 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .2s' }}>›</button>
         </div>
 
+        {/* Aviso de feriado */}
+        {tipoDia === 'feriado' && unidadeAtiva && (
+          <div style={{ background: '#1a1000', border: `1px solid ${AMARELO}44`, borderRadius: 12, padding: '0.85rem 1.25rem', marginBottom: '1rem', fontSize: 13, color: '#ddd', lineHeight: 1.6 }}>
+            ⭐ <strong style={{ color: AMARELO }}>{feriadoDescricao}</strong> — funcionando com escala especial e horários de fim de semana.
+          </div>
+        )}
+
         {/* Filtro de período */}
         <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap' }}>
           {[
@@ -294,9 +347,13 @@ export default function GradePublicaPage() {
           <div style={{ textAlign: 'center', padding: '3rem', color: '#555' }}>Carregando horários...</div>
         ) : horariosFiltrados.length === 0 ? (
           <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#444' }}>
-            {semanaOffset === 0 && diaSel === 0
-              ? 'Não há mais horários disponíveis para hoje.'
-              : 'Nenhum horário disponível neste dia.'}
+            {tipoDia === 'fds'
+              ? 'Não há coaches escalados neste dia ainda.'
+              : tipoDia === 'feriado'
+                ? 'Feriado sem coaches escalados.'
+                : semanaOffset === 0 && diaSel === 0
+                  ? 'Não há mais horários disponíveis para hoje.'
+                  : 'Nenhum horário disponível neste dia.'}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -329,7 +386,6 @@ export default function GradePublicaPage() {
           </div>
         )}
 
-        {/* CTA inferior */}
         {!isCliente && horariosFiltrados.length > 0 && (
           <div style={{ marginTop: '3rem', background: '#0d0010', border: `1px solid ${ACCENT}44`, borderRadius: 16, padding: '2rem', textAlign: 'center' }}>
             <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', marginBottom: 8, letterSpacing: 1 }}>
