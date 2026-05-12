@@ -1,15 +1,9 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { useAuth } from '@/hooks/useAuth'
-import { useUnidade } from '@/hooks/useUnidade'
 import { createClient } from '@/lib/supabase'
+import { useUnidade } from '@/hooks/useUnidade'
+import { PageHeader, Spinner } from '@/components/ui'
 
-const ACCENT = '#ff2d9b'
-const VERDE = '#aaff88'
-const AMARELO = '#ffaa00'
-
-const HORARIOS_FDS = ['08:00', '09:00', '10:00', '11:00', '12:00']
 const DIAS_SEMANA_LABEL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
 
 function formatarData(d: Date): string {
@@ -22,23 +16,19 @@ function formatarDataPT(dataStr: string): string {
 }
 
 export default function AdminEscalaPage() {
-  const { perfil, loading } = useAuth()
-  const { unidadeAtiva, setUnidadeAtiva, unidadesPermitidas, loading: loadingUnidade } = useUnidade()
-  const router = useRouter()
   const supabase = createClient()
+  const { unidadeAtiva, setUnidadeAtiva, unidadesPermitidas, loading: loadingUnidade } = useUnidade()
 
   const [aba, setAba] = useState<'fds' | 'feriados'>('fds')
   const [coachesDisponiveis, setCoachesDisponiveis] = useState<any[]>([])
   const [escalas, setEscalas] = useState<any[]>([])
   const [feriados, setFeriados] = useState<any[]>([])
-  const [loadingDados, setLoadingDados] = useState(true)
+  const [loading, setLoading] = useState(true)
 
-  // Modal adicionar coach
-  const [modalAdicionar, setModalAdicionar] = useState<{ data: string; tipo: 'fds' | 'feriado' } | null>(null)
+  const [modalAdicionar, setModalAdicionar] = useState<{ data: string } | null>(null)
   const [coachSelecionado, setCoachSelecionado] = useState<string>('')
   const [salvandoCoach, setSalvandoCoach] = useState(false)
 
-  // Modal novo feriado
   const [modalNovoFeriado, setModalNovoFeriado] = useState(false)
   const [novoFeriadoData, setNovoFeriadoData] = useState('')
   const [novoFeriadoDescricao, setNovoFeriadoDescricao] = useState('')
@@ -46,31 +36,19 @@ export default function AdminEscalaPage() {
   const [erroFeriado, setErroFeriado] = useState('')
 
   useEffect(() => {
-    if (!loading && !perfil) router.push('/login')
-    if (!loading && perfil && !['admin', 'coordenadora'].includes(perfil.role as string)) {
-      router.push('/')
-    }
-  }, [perfil, loading])
+    if (unidadeAtiva) loadDados()
+  }, [unidadeAtiva?.id])
 
-  useEffect(() => {
-    if (perfil && unidadeAtiva) loadDados()
-  }, [perfil, unidadeAtiva?.id])
-
-  // Calcula os próximos 6 fins de semana
   const proximosFDS = (() => {
     const datas: { data: string; nome: string }[] = []
     const hoje = new Date()
     hoje.setHours(12, 0, 0, 0)
-
     let count = 0
     let cursor = new Date(hoje)
     while (count < 12) {
       const diaSem = cursor.getDay()
       if (diaSem === 0 || diaSem === 6) {
-        datas.push({
-          data: formatarData(cursor),
-          nome: DIAS_SEMANA_LABEL[diaSem],
-        })
+        datas.push({ data: formatarData(cursor), nome: DIAS_SEMANA_LABEL[diaSem] })
         count++
       }
       cursor.setDate(cursor.getDate() + 1)
@@ -80,8 +58,7 @@ export default function AdminEscalaPage() {
 
   async function loadDados() {
     if (!unidadeAtiva) return
-    setLoadingDados(true)
-
+    setLoading(true)
     const dataInicio = formatarData(new Date())
     const dataLimite = new Date()
     dataLimite.setMonth(dataLimite.getMonth() + 3)
@@ -104,28 +81,25 @@ export default function AdminEscalaPage() {
     setCoachesDisponiveis(coaches || [])
     setEscalas(esc || [])
     setFeriados(fer || [])
-    setLoadingDados(false)
+    setLoading(false)
   }
 
   function coachesDaData(data: string): any[] {
     return escalas.filter(e => e.data === data)
   }
-
   function coachesNaoEscalados(data: string): any[] {
-    const escaladosIds = new Set(coachesDaData(data).map(e => e.coach_id))
-    return coachesDisponiveis.filter(c => !escaladosIds.has(c.id))
+    const ids = new Set(coachesDaData(data).map(e => e.coach_id))
+    return coachesDisponiveis.filter(c => !ids.has(c.id))
   }
 
   async function adicionarCoachNaEscala() {
     if (!coachSelecionado || !modalAdicionar || !unidadeAtiva) return
     setSalvandoCoach(true)
-
     const { error } = await supabase.from('escala_fds').insert({
       unidade_id: unidadeAtiva.id,
       data: modalAdicionar.data,
       coach_id: coachSelecionado,
     })
-
     if (!error) {
       setModalAdicionar(null)
       setCoachSelecionado('')
@@ -144,24 +118,20 @@ export default function AdminEscalaPage() {
     if (!novoFeriadoData) { setErroFeriado('Selecione a data.'); return }
     if (!novoFeriadoDescricao.trim()) { setErroFeriado('Descreva o feriado.'); return }
     if (!unidadeAtiva) return
-
     setSalvandoFeriado(true)
     setErroFeriado('')
-
     const { error } = await supabase.from('feriados').insert({
       unidade_id: unidadeAtiva.id,
       data: novoFeriadoData,
       descricao: novoFeriadoDescricao.trim(),
       ativo: true,
     })
-
     if (error) {
-      if (error.code === '23505') setErroFeriado('Já existe feriado cadastrado nesta data.')
+      if (error.code === '23505') setErroFeriado('Já existe feriado nesta data.')
       else setErroFeriado('Erro ao criar feriado.')
       setSalvandoFeriado(false)
       return
     }
-
     setModalNovoFeriado(false)
     setNovoFeriadoData('')
     setNovoFeriadoDescricao('')
@@ -169,151 +139,193 @@ export default function AdminEscalaPage() {
     await loadDados()
   }
 
-  async function toggleFeriadoAtivo(feriadoId: string, ativoAtual: boolean) {
-    await supabase.from('feriados').update({ ativo: !ativoAtual }).eq('id', feriadoId)
+  async function toggleFeriadoAtivo(id: string, ativo: boolean) {
+    await supabase.from('feriados').update({ ativo: !ativo }).eq('id', id)
     await loadDados()
   }
 
-  async function removerFeriado(feriadoId: string) {
+  async function removerFeriado(id: string) {
     if (!confirm('Remover este feriado? A grade fixa voltará a valer nesta data.')) return
-    await supabase.from('feriados').delete().eq('id', feriadoId)
+    await supabase.from('feriados').delete().eq('id', id)
     await loadDados()
   }
 
-  if (loading || loadingUnidade) return (
-    <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ width: 32, height: 32, border: `4px solid ${ACCENT}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
-    </div>
-  )
+  if (loadingUnidade || loading) return <Spinner />
 
   return (
-    <div style={{ minHeight: '100vh', background: '#080808', fontFamily: "'DM Sans', sans-serif", color: '#f0f0f0', padding: '2rem 1.5rem' }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap');
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        .tab-btn { transition: all .2s; cursor: pointer; }
-        .tab-btn:hover { border-color: ${ACCENT} !important; }
-        .card-dia { transition: border-color .2s; }
-        .card-dia:hover { border-color: ${ACCENT}55 !important; }
-        .coach-tag { transition: all .15s; }
-        .coach-tag:hover { background: #2a1018 !important; }
-        .btn-add:hover { background: ${ACCENT}22 !important; }
-        .unidade-tab:hover { border-color: ${ACCENT} !important; color: #fff !important; }
-      `}</style>
+    <div>
+      <PageHeader title="Escala" subtitle="Final de semana e feriados — coaches escalados pontualmente" />
 
-      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-        {/* Header */}
-        <div style={{ marginBottom: '2rem' }}>
-          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 36, color: '#fff', letterSpacing: 1 }}>
-            ESCALA
-          </div>
-          <div style={{ fontSize: 14, color: '#aaa', marginTop: 4 }}>
-            Final de semana e feriados — coaches escalados pontualmente
+      {/* Seletor de unidade */}
+      {unidadesPermitidas.length > 1 && (
+        <div className="mb-6">
+          <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Unidade</div>
+          <div className="flex gap-2 flex-wrap">
+            {unidadesPermitidas.map(u => {
+              const ativa = unidadeAtiva?.id === u.id
+              return (
+                <button key={u.id} onClick={() => setUnidadeAtiva(u)}
+                  className={`px-4 py-2 rounded-lg border text-sm font-medium transition ${
+                    ativa
+                      ? 'border-primary-500 bg-primary-50 text-primary-700'
+                      : 'border-gray-200 bg-white text-gray-600 hover:border-primary-300'
+                  }`}>
+                  {u.nome}
+                </button>
+              )
+            })}
           </div>
         </div>
+      )}
 
-        {/* Seletor de unidade */}
-        {unidadesPermitidas.length > 1 && (
-          <div style={{ marginBottom: '1.5rem' }}>
-            <div style={{ fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Unidade</div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {unidadesPermitidas.map(u => {
-                const ativa = unidadeAtiva?.id === u.id
-                return (
-                  <button key={u.id} className="unidade-tab"
-                    onClick={() => setUnidadeAtiva(u)}
-                    style={{
-                      padding: '0.5rem 1.25rem',
-                      borderRadius: 10,
-                      border: `1.5px solid ${ativa ? ACCENT : '#333'}`,
-                      background: ativa ? `${ACCENT}18` : 'transparent',
-                      color: ativa ? ACCENT : '#666',
-                      fontSize: 13,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      fontFamily: "'DM Sans', sans-serif",
-                      transition: 'all .2s',
-                    }}>
-                    {u.nome}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )}
+      {/* Abas */}
+      <div className="flex gap-2 border-b border-gray-200 mb-6">
+        {[
+          { key: 'fds', label: 'Final de Semana' },
+          { key: 'feriados', label: 'Feriados' },
+        ].map(t => (
+          <button key={t.key} onClick={() => setAba(t.key as any)}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition ${
+              aba === t.key
+                ? 'border-primary-500 text-primary-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-        {/* Abas */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: '2rem', borderBottom: '1px solid #1a1a1a', paddingBottom: 8 }}>
-          {[
-            { key: 'fds', label: '🗓️ Final de Semana' },
-            { key: 'feriados', label: '⭐ Feriados' },
-          ].map(t => (
-            <button key={t.key} className="tab-btn"
-              onClick={() => setAba(t.key as any)}
-              style={{
-                padding: '0.6rem 1.25rem',
-                borderRadius: 10,
-                border: `1.5px solid ${aba === t.key ? ACCENT : '#222'}`,
-                background: aba === t.key ? `${ACCENT}18` : 'transparent',
-                color: aba === t.key ? '#fff' : '#888',
-                fontSize: 14,
-                fontWeight: 600,
-                fontFamily: "'DM Sans', sans-serif",
-              }}>
-              {t.label}
-            </button>
-          ))}
+      {!unidadeAtiva ? (
+        <div className="card text-center text-gray-400 py-8">
+          Selecione uma unidade.
         </div>
-
-        {loadingDados ? (
-          <div style={{ textAlign: 'center', padding: '3rem', color: '#555' }}>Carregando...</div>
-        ) : !unidadeAtiva ? (
-          <div style={{ background: '#111', border: '1px solid #222', borderRadius: 12, padding: '2rem', textAlign: 'center', color: '#555' }}>
-            Selecione uma unidade.
+      ) : aba === 'fds' ? (
+        <>
+          <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 mb-4">
+            <p className="text-sm text-blue-700">
+              💡 Horários no FDS: <strong>08:00, 09:00, 10:00, 11:00, 12:00</strong>. Cada coach escalado cobre todos os 5 horários.
+            </p>
           </div>
-        ) : aba === 'fds' ? (
-          <>
-            {/* ===== ABA FDS ===== */}
-            <div style={{ background: '#0d0010', border: `1px solid ${ACCENT}33`, borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1.5rem', fontSize: 13, color: '#bbb', lineHeight: 1.6 }}>
-              💡 Horários no FDS: <strong style={{ color: '#fff' }}>08:00, 09:00, 10:00, 11:00, 12:00</strong>. Cada coach escalado cobre todos os 5 horários.
-            </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
-              {proximosFDS.map(({ data, nome }) => {
-                const coachesEscalados = coachesDaData(data)
-                const disponíveis = coachesNaoEscalados(data)
-                const dataObj = new Date(data + 'T12:00:00')
-                const diaNum = dataObj.getDate()
-                const mesNome = dataObj.toLocaleDateString('pt-BR', { month: 'short' })
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {proximosFDS.map(({ data, nome }) => {
+              const coachesEsc = coachesDaData(data)
+              const disp = coachesNaoEscalados(data)
+              const dataObj = new Date(data + 'T12:00:00')
+              const diaNum = dataObj.getDate()
+              const mesNome = dataObj.toLocaleDateString('pt-BR', { month: 'short' })
 
-                return (
-                  <div key={data} className="card-dia"
-                    style={{ background: '#111', border: '1px solid #222', borderRadius: 14, padding: '1.25rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                      <div style={{ textAlign: 'center', minWidth: 56 }}>
-                        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: '#fff', lineHeight: 1 }}>{diaNum}</div>
-                        <div style={{ fontSize: 11, color: '#888', textTransform: 'uppercase' }}>{mesNome}</div>
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{nome}</div>
-                        <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
-                          {coachesEscalados.length === 0
-                            ? 'Nenhum coach escalado'
-                            : `${coachesEscalados.length} coach${coachesEscalados.length > 1 ? 'es' : ''} · ${coachesEscalados.length} vaga${coachesEscalados.length > 1 ? 's' : ''}/horário`}
-                        </div>
+              return (
+                <div key={data} className="card">
+                  <div className="flex items-start gap-3 mb-3">
+                    <div className="text-center flex-shrink-0 w-14">
+                      <div className="text-2xl font-bold text-gray-800 leading-none">{diaNum}</div>
+                      <div className="text-xs text-gray-400 uppercase mt-0.5">{mesNome}</div>
+                    </div>
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-gray-900">{nome}</div>
+                      <div className="text-xs text-gray-400 mt-0.5">
+                        {coachesEsc.length === 0
+                          ? 'Nenhum coach escalado'
+                          : `${coachesEsc.length} coach${coachesEsc.length > 1 ? 'es' : ''} · ${coachesEsc.length} vaga${coachesEsc.length > 1 ? 's' : ''}/horário`}
                       </div>
                     </div>
+                  </div>
 
-                    {/* Lista de coaches escalados */}
-                    {coachesEscalados.length > 0 && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
-                        {coachesEscalados.map(e => (
-                          <div key={e.id} className="coach-tag"
-                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#1a1a1a', borderRadius: 8, padding: '0.5rem 0.75rem', fontSize: 13 }}>
-                            <span style={{ color: '#fff' }}>{e.perfis?.nome || 'Coach'}</span>
+                  {coachesEsc.length > 0 && (
+                    <div className="space-y-1.5 mb-3">
+                      {coachesEsc.map(e => (
+                        <div key={e.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 text-sm">
+                          <span className="text-gray-800">{e.perfis?.nome || 'Coach'}</span>
+                          <button onClick={() => removerCoachDaEscala(e.id)}
+                            className="text-gray-400 hover:text-danger-500 text-lg leading-none px-1">
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {disp.length > 0 ? (
+                    <button onClick={() => { setModalAdicionar({ data }); setCoachSelecionado('') }}
+                      className="w-full border border-dashed border-primary-300 text-primary-600 hover:bg-primary-50 rounded-lg py-2 text-sm font-medium transition">
+                      + Adicionar coach
+                    </button>
+                  ) : (
+                    <div className="text-center text-xs text-gray-400 py-2">
+                      Todos os coaches escalados
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 mb-4">
+            <p className="text-sm text-blue-700">
+              💡 Datas marcadas como <strong>feriado ativo</strong> ignoram a grade fixa e usam só os coaches escalados aqui, com horários de FDS.
+            </p>
+          </div>
+
+          <div className="mb-4">
+            <button onClick={() => setModalNovoFeriado(true)}
+              className="bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
+              + Novo feriado
+            </button>
+          </div>
+
+          {feriados.length === 0 ? (
+            <div className="card text-center text-gray-400 py-8 border-dashed">
+              Nenhum feriado cadastrado para esta unidade.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {feriados.map(f => {
+                const coachesEsc = coachesDaData(f.data)
+                const disp = coachesNaoEscalados(f.data)
+                const dataObj = new Date(f.data + 'T12:00:00')
+                const diaNum = dataObj.getDate()
+                const mesNome = dataObj.toLocaleDateString('pt-BR', { month: 'short' })
+                const diaSemNome = DIAS_SEMANA_LABEL[dataObj.getDay()]
+
+                return (
+                  <div key={f.id} className={`card ${f.ativo ? 'border-orange-200' : ''}`}>
+                    <div className="flex items-start gap-3 mb-3">
+                      <div className="text-center flex-shrink-0 w-14">
+                        <div className={`text-2xl font-bold leading-none ${f.ativo ? 'text-orange-500' : 'text-gray-400'}`}>{diaNum}</div>
+                        <div className="text-xs text-gray-400 uppercase mt-0.5">{mesNome}</div>
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-gray-900">{f.descricao}</div>
+                        <div className="text-xs text-gray-400 mt-0.5">{diaSemNome}</div>
+                        <div className={`text-xs font-medium mt-1 ${f.ativo ? 'text-orange-600' : 'text-gray-400'}`}>
+                          {f.ativo ? '● Ativo' : '○ Inativo'}
+                        </div>
+                      </div>
+                      <button onClick={() => removerFeriado(f.id)}
+                        className="text-gray-400 hover:text-danger-500 text-xl leading-none px-1">
+                        ×
+                      </button>
+                    </div>
+
+                    <button onClick={() => toggleFeriadoAtivo(f.id, f.ativo)}
+                      className={`w-full border rounded-lg py-1.5 text-xs font-medium transition mb-3 ${
+                        f.ativo
+                          ? 'border-orange-300 text-orange-600 hover:bg-orange-50'
+                          : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                      }`}>
+                      {f.ativo ? 'Desativar feriado' : 'Ativar feriado'}
+                    </button>
+
+                    {coachesEsc.length > 0 && (
+                      <div className="space-y-1.5 mb-3">
+                        {coachesEsc.map(e => (
+                          <div key={e.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 text-sm">
+                            <span className="text-gray-800">{e.perfis?.nome || 'Coach'}</span>
                             <button onClick={() => removerCoachDaEscala(e.id)}
-                              style={{ background: 'transparent', border: 'none', color: '#666', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '0 4px' }}>
+                              className="text-gray-400 hover:text-danger-500 text-lg leading-none px-1">
                               ×
                             </button>
                           </div>
@@ -321,190 +333,106 @@ export default function AdminEscalaPage() {
                       </div>
                     )}
 
-                    {/* Botão adicionar coach */}
-                    {disponíveis.length > 0 ? (
-                      <button className="btn-add"
-                        onClick={() => { setModalAdicionar({ data, tipo: 'fds' }); setCoachSelecionado('') }}
-                        style={{ width: '100%', background: 'transparent', border: `1px dashed ${ACCENT}66`, borderRadius: 8, padding: '0.6rem', color: ACCENT, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", transition: 'all .15s' }}>
+                    {coachesEsc.length === 0 && (
+                      <div className="text-center text-xs text-gray-400 mb-2">
+                        Nenhum coach escalado
+                      </div>
+                    )}
+
+                    {disp.length > 0 && (
+                      <button onClick={() => { setModalAdicionar({ data: f.data }); setCoachSelecionado('') }}
+                        className="w-full border border-dashed border-primary-300 text-primary-600 hover:bg-primary-50 rounded-lg py-2 text-sm font-medium transition">
                         + Adicionar coach
                       </button>
-                    ) : (
-                      <div style={{ background: '#0a0a0a', border: '1px dashed #222', borderRadius: 8, padding: '0.5rem', textAlign: 'center', fontSize: 11, color: '#555' }}>
-                        Todos os coaches escalados
-                      </div>
                     )}
                   </div>
                 )
               })}
             </div>
-          </>
-        ) : (
-          <>
-            {/* ===== ABA FERIADOS ===== */}
-            <div style={{ background: '#0d0010', border: `1px solid ${ACCENT}33`, borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1.5rem', fontSize: 13, color: '#bbb', lineHeight: 1.6 }}>
-              💡 Datas marcadas como <strong style={{ color: '#fff' }}>feriado ativo</strong> ignoram a grade fixa e usam só os coaches escalados aqui, com horários de FDS (08, 09, 10, 11, 12h).
-            </div>
+          )}
+        </>
+      )}
 
-            <div style={{ marginBottom: '1.5rem' }}>
-              <button onClick={() => setModalNovoFeriado(true)}
-                style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.65rem 1.25rem', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                + Novo feriado
-              </button>
-            </div>
-
-            {feriados.length === 0 ? (
-              <div style={{ background: '#111', border: '1px dashed #333', borderRadius: 12, padding: '3rem', textAlign: 'center', color: '#555', fontSize: 14 }}>
-                Nenhum feriado cadastrado para esta unidade.
-              </div>
-            ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
-                {feriados.map(f => {
-                  const coachesEscalados = coachesDaData(f.data)
-                  const disponíveis = coachesNaoEscalados(f.data)
-                  const dataObj = new Date(f.data + 'T12:00:00')
-                  const diaNum = dataObj.getDate()
-                  const mesNome = dataObj.toLocaleDateString('pt-BR', { month: 'short' })
-                  const diaSemNome = DIAS_SEMANA_LABEL[dataObj.getDay()]
-
-                  return (
-                    <div key={f.id} className="card-dia"
-                      style={{ background: '#111', border: `1px solid ${f.ativo ? AMARELO + '44' : '#222'}`, borderRadius: 14, padding: '1.25rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
-                        <div style={{ textAlign: 'center', minWidth: 56 }}>
-                          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: f.ativo ? AMARELO : '#666', lineHeight: 1 }}>{diaNum}</div>
-                          <div style={{ fontSize: 11, color: '#888', textTransform: 'uppercase' }}>{mesNome}</div>
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{f.descricao}</div>
-                          <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>{diaSemNome}</div>
-                          <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{ fontSize: 11, color: f.ativo ? AMARELO : '#555', fontWeight: 600 }}>
-                              {f.ativo ? '● ATIVO' : '○ Inativo'}
-                            </span>
-                          </div>
-                        </div>
-                        <button onClick={() => removerFeriado(f.id)}
-                          style={{ background: 'transparent', border: 'none', color: '#666', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 4px' }}>
-                          ×
-                        </button>
-                      </div>
-
-                      {/* Toggle ativo */}
-                      <button onClick={() => toggleFeriadoAtivo(f.id, f.ativo)}
-                        style={{ width: '100%', background: 'transparent', border: `1px solid ${f.ativo ? AMARELO + '66' : '#333'}`, borderRadius: 8, padding: '0.4rem', color: f.ativo ? AMARELO : '#666', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", marginBottom: 10 }}>
-                        {f.ativo ? 'Desativar feriado' : 'Ativar feriado'}
-                      </button>
-
-                      {/* Lista de coaches escalados */}
-                      {coachesEscalados.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
-                          {coachesEscalados.map(e => (
-                            <div key={e.id} className="coach-tag"
-                              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#1a1a1a', borderRadius: 8, padding: '0.5rem 0.75rem', fontSize: 13 }}>
-                              <span style={{ color: '#fff' }}>{e.perfis?.nome || 'Coach'}</span>
-                              <button onClick={() => removerCoachDaEscala(e.id)}
-                                style={{ background: 'transparent', border: 'none', color: '#666', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '0 4px' }}>
-                                ×
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {coachesEscalados.length === 0 && (
-                        <div style={{ fontSize: 11, color: '#666', textAlign: 'center', marginBottom: 8 }}>
-                          Nenhum coach escalado
-                        </div>
-                      )}
-
-                      {/* Botão adicionar coach */}
-                      {disponíveis.length > 0 && (
-                        <button className="btn-add"
-                          onClick={() => { setModalAdicionar({ data: f.data, tipo: 'feriado' }); setCoachSelecionado('') }}
-                          style={{ width: '100%', background: 'transparent', border: `1px dashed ${ACCENT}66`, borderRadius: 8, padding: '0.6rem', color: ACCENT, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", transition: 'all .15s' }}>
-                          + Adicionar coach
-                        </button>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* ===== MODAL ADICIONAR COACH ===== */}
+      {/* Modal adicionar coach */}
       {modalAdicionar && (
-        <div style={{ position: 'fixed', inset: 0, background: '#000000dd', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-          <div style={{ background: '#111', border: '1px solid #333', borderRadius: 20, width: '100%', maxWidth: 420, padding: '1.5rem' }}>
-            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: 4 }}>ADICIONAR COACH</div>
-            <div style={{ fontSize: 13, color: '#888', marginBottom: '1.5rem', textTransform: 'capitalize' }}>
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl w-full max-w-md p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-1">Adicionar coach</h3>
+            <p className="text-sm text-gray-500 mb-4 capitalize">
               {formatarDataPT(modalAdicionar.data)}
-            </div>
+            </p>
 
-            <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>
-              Coach
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: '1.5rem', maxHeight: 300, overflowY: 'auto' }}>
+            <div className="space-y-2 mb-4 max-h-80 overflow-y-auto">
               {coachesNaoEscalados(modalAdicionar.data).map(c => (
-                <div key={c.id} onClick={() => setCoachSelecionado(c.id)}
-                  style={{ border: `1.5px solid ${coachSelecionado === c.id ? ACCENT : '#333'}`, background: coachSelecionado === c.id ? `${ACCENT}12` : 'transparent', borderRadius: 8, padding: '0.65rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, transition: 'all .15s' }}>
-                  <div style={{ width: 14, height: 14, borderRadius: '50%', border: `2px solid ${coachSelecionado === c.id ? ACCENT : '#444'}`, background: coachSelecionado === c.id ? ACCENT : 'transparent', flexShrink: 0 }} />
-                  <span style={{ fontSize: 14, color: coachSelecionado === c.id ? '#fff' : '#888' }}>{c.nome}</span>
-                </div>
+                <button key={c.id} onClick={() => setCoachSelecionado(c.id)}
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg border text-left transition ${
+                    coachSelecionado === c.id
+                      ? 'border-primary-500 bg-primary-50'
+                      : 'border-gray-200 hover:border-primary-300'
+                  }`}>
+                  <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${
+                    coachSelecionado === c.id ? 'border-primary-500 bg-primary-500' : 'border-gray-300'
+                  }`} />
+                  <span className="text-sm text-gray-800">{c.nome}</span>
+                </button>
               ))}
             </div>
 
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div className="flex gap-2">
               <button onClick={() => { setModalAdicionar(null); setCoachSelecionado('') }}
-                style={{ flex: 1, background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.75rem', color: '#888', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 text-sm font-medium hover:bg-gray-50">
                 Cancelar
               </button>
               <button onClick={adicionarCoachNaEscala} disabled={!coachSelecionado || salvandoCoach}
-                style={{ flex: 2, background: coachSelecionado ? ACCENT : '#333', color: '#fff', border: 'none', borderRadius: 10, padding: '0.75rem', fontWeight: 600, fontSize: 14, cursor: coachSelecionado && !salvandoCoach ? 'pointer' : 'default', fontFamily: "'DM Sans', sans-serif", opacity: salvandoCoach ? 0.7 : 1 }}>
-                {salvandoCoach ? 'Salvando...' : 'Adicionar coach ✓'}
+                className={`flex-[2] rounded-lg py-2 text-sm font-medium text-white transition ${
+                  coachSelecionado && !salvandoCoach
+                    ? 'bg-primary-500 hover:bg-primary-600'
+                    : 'bg-gray-300 cursor-not-allowed'
+                }`}>
+                {salvandoCoach ? 'Salvando...' : 'Adicionar'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ===== MODAL NOVO FERIADO ===== */}
+      {/* Modal novo feriado */}
       {modalNovoFeriado && (
-        <div style={{ position: 'fixed', inset: 0, background: '#000000dd', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-          <div style={{ background: '#111', border: '1px solid #333', borderRadius: 20, width: '100%', maxWidth: 420, padding: '1.5rem' }}>
-            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: 16 }}>NOVO FERIADO</div>
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl w-full max-w-md p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Novo feriado</h3>
 
-            <div style={{ marginBottom: '1rem' }}>
-              <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>Data:</div>
+            <div className="mb-3">
+              <label className="text-xs font-medium text-gray-600 mb-1 block">Data</label>
               <input type="date" value={novoFeriadoData}
                 onChange={e => setNovoFeriadoData(e.target.value)}
-                style={{ width: '100%', background: '#0a0a0a', border: '1px solid #333', borderRadius: 8, padding: '0.65rem 1rem', color: '#fff', fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', colorScheme: 'dark' }} />
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-500" />
             </div>
 
-            <div style={{ marginBottom: '1.5rem' }}>
-              <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>Descrição:</div>
+            <div className="mb-4">
+              <label className="text-xs font-medium text-gray-600 mb-1 block">Descrição</label>
               <input type="text" value={novoFeriadoDescricao}
                 onChange={e => setNovoFeriadoDescricao(e.target.value)}
                 placeholder="Ex: Corpus Christi"
-                style={{ width: '100%', background: '#0a0a0a', border: '1px solid #333', borderRadius: 8, padding: '0.65rem 1rem', color: '#fff', fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none' }} />
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary-500" />
             </div>
 
             {erroFeriado && (
-              <div style={{ background: '#ff2d9b15', border: '1px solid #ff2d9b44', borderRadius: 8, padding: '0.6rem 1rem', fontSize: 13, color: ACCENT, marginBottom: '1rem' }}>
+              <div className="bg-danger-50 border border-danger-200 text-danger-700 rounded-lg px-3 py-2 text-sm mb-3">
                 {erroFeriado}
               </div>
             )}
 
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div className="flex gap-2">
               <button onClick={() => { setModalNovoFeriado(false); setNovoFeriadoData(''); setNovoFeriadoDescricao(''); setErroFeriado('') }}
-                style={{ flex: 1, background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.75rem', color: '#888', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 text-sm font-medium hover:bg-gray-50">
                 Cancelar
               </button>
               <button onClick={criarFeriado} disabled={salvandoFeriado}
-                style={{ flex: 2, background: ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.75rem', fontWeight: 600, fontSize: 14, cursor: salvandoFeriado ? 'default' : 'pointer', fontFamily: "'DM Sans', sans-serif", opacity: salvandoFeriado ? 0.7 : 1 }}>
-                {salvandoFeriado ? 'Salvando...' : 'Criar feriado ✓'}
+                className={`flex-[2] rounded-lg py-2 text-sm font-medium text-white transition ${
+                  salvandoFeriado ? 'bg-gray-300' : 'bg-primary-500 hover:bg-primary-600'
+                }`}>
+                {salvandoFeriado ? 'Salvando...' : 'Criar feriado'}
               </button>
             </div>
           </div>
