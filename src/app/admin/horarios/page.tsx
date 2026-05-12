@@ -27,7 +27,7 @@ export default function HorariosPage() {
       const map: Record<string, number> = {}
       ;(data || []).forEach((a: any) => {
         const d = new Date(a.data + 'T12:00:00')
-        const hora = parseInt((a.horario || '').slice(0, 2))
+        const hora = (a.horario || '').slice(0, 5) // "06:00"
         const key = `${d.getDay()}-${hora}`
         map[key] = (map[key] || 0) + 1
       })
@@ -48,23 +48,25 @@ export default function HorariosPage() {
     return 'bg-primary-100 text-primary-700'
   }
 
-  const pico = Object.entries(heatmap).reduce((a, b) => b[1] > a[1] ? b : a, ['', 0])
-  const [picoDia, picoHora] = pico[0] ? pico[0].split('-').map(Number) : [null, null]
+  const entries = Object.entries(heatmap)
+
+  const picoEntry = entries.reduce((a, b) => b[1] > a[1] ? b : a, ['', 0])
+  const [picoKey] = picoEntry
+  const [picoDiaStr, picoHora] = picoKey ? picoKey.split(/-(.+)/) : [null, null]
+  const picoDia = picoDiaStr ? parseInt(picoDiaStr) : null
 
   const totalAulas = Object.values(heatmap).reduce((a, b) => a + b, 0)
 
   const dayTotals = [1,2,3,4,5,6].map(d => ({
     d,
-    v: Object.entries(heatmap).filter(([k]) => k.startsWith(`${d}-`)).reduce((s, [, v]) => s + v, 0)
+    v: entries.filter(([k]) => k.startsWith(`${d}-`)).reduce((s, [, v]) => s + v, 0)
   }))
-  const diaMaisMovimentado = dayTotals.sort((a, b) => b.v - a.v)[0]?.d ?? 1
-  const diaMaisVazio = dayTotals.sort((a, b) => a.v - b.v)[0]?.d ?? 6
-
+  const diaMaisMovimentado = [...dayTotals].sort((a, b) => b.v - a.v)[0]?.d ?? 1
   const horaTotals = HORARIOS.map(h => ({
     h,
-    v: Object.entries(heatmap).filter(([k]) => k.endsWith(`-${h}`)).reduce((s, [, v]) => s + v, 0)
+    v: entries.filter(([k]) => k.endsWith(`-${h}`)).reduce((s, [, v]) => s + v, 0)
   }))
-  const horaMaisVazia = horaTotals.sort((a, b) => a.v - b.v)[0]
+  const horaMaisVazia = [...horaTotals].sort((a, b) => a.v - b.v)[0]
 
   if (loading) return <Spinner />
 
@@ -75,8 +77,8 @@ export default function HorariosPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <div className="bg-gray-50 rounded-xl p-4">
           <div className="text-xs text-gray-400 mb-1">Horário de pico</div>
-          <div className="text-lg font-semibold text-gray-900">{picoHora !== null ? `${picoHora}h` : '—'}</div>
-          <div className="text-xs text-gray-400">{picoDia !== null ? DIAS_SEMANA[picoDia] : ''} · {pico[1]} agend.</div>
+          <div className="text-lg font-semibold text-gray-900">{picoHora ?? '—'}</div>
+          <div className="text-xs text-gray-400">{picoDia !== null ? DIAS_SEMANA[picoDia] : ''} · {picoEntry[1]} agend.</div>
         </div>
         <div className="bg-gray-50 rounded-xl p-4">
           <div className="text-xs text-gray-400 mb-1">Total de aulas</div>
@@ -88,7 +90,7 @@ export default function HorariosPage() {
         </div>
         <div className="bg-gray-50 rounded-xl p-4">
           <div className="text-xs text-gray-400 mb-1">Horário mais vazio</div>
-          <div className="text-lg font-semibold text-gray-900">{horaMaisVazia ? `${horaMaisVazia.h}h` : '—'}</div>
+          <div className="text-lg font-semibold text-gray-900">{horaMaisVazia?.h ?? '—'}</div>
           <div className="text-xs text-primary-600">oportunidade de atrair alunos</div>
         </div>
       </div>
@@ -100,7 +102,7 @@ export default function HorariosPage() {
         <table className="text-xs">
           <thead>
             <tr>
-              <th className="text-gray-400 font-normal w-10 pr-2 pb-2 text-left">Hora</th>
+              <th className="text-gray-400 font-normal w-14 pr-2 pb-2 text-left">Hora</th>
               {DIAS_SEMANA.slice(1).map(d => (
                 <th key={d} className="text-gray-400 font-normal pb-2 px-1 text-center min-w-[36px]">{d}</th>
               ))}
@@ -109,7 +111,7 @@ export default function HorariosPage() {
           <tbody>
             {HORARIOS.map(hora => (
               <tr key={hora}>
-                <td className="text-gray-400 pr-2 py-0.5">{hora}h</td>
+                <td className="text-gray-400 pr-2 py-0.5">{hora}</td>
                 {[1, 2, 3, 4, 5, 6].map(dia => {
                   const v = heatmap[`${dia}-${hora}`] || 0
                   return (
