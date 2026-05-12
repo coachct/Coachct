@@ -1,5 +1,4 @@
 'use client'
-import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -9,21 +8,14 @@ export default function LandingPage() {
   const { perfil, loading } = useAuth()
   const router = useRouter()
 
-  useEffect(() => {
-    if (!loading && perfil) {
-      const role = (perfil.role as string)
-      if (role === 'admin') router.push('/admin/dashboard')
-      else if (role === 'coach') router.push('/coach/painel')
-      else if (role === 'coordenadora') router.push('/ju/biblioteca')
-      else if (role === 'recepcao') router.push('/recepcao/agenda')
-      // cliente NÃO redireciona — fica vendo a home
-    }
-  }, [perfil, loading])
+  // Equipe interna (admin, coach, coordenadora, recepção) também pode ver a home pública.
+  // Cada um acessa sua área pelo seu próprio link/menu.
 
   const isCliente = perfil?.role === 'cliente'
   const isLogado = !!perfil
+  const isEquipe = isLogado && !isCliente
 
-  // "Agendar Treino" — visitante vai pra grade pública, cliente vai pra agendar
+  // "Agendar Treino" — visitante e equipe vão pra grade pública, cliente vai pra agendar
   function irParaAgendar() {
     if (isCliente) router.push('/agendar')
     else router.push('/grade')
@@ -44,6 +36,16 @@ export default function LandingPage() {
     divider: { borderTop: '1px solid #1a1a1a' },
     btnPrimary: { background: ACCENT, color: '#fff', border: 'none', borderRadius: 8, padding: '0.9rem 2rem', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
     btnGhost: { background: 'transparent', color: '#f0f0f0', border: '1.5px solid #333', borderRadius: 8, padding: '0.9rem 2rem', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+  }
+
+  // Rota da área de cada papel da equipe (pra botão "Minha área")
+  function rotaEquipe(): string {
+    const role = perfil?.role as string
+    if (role === 'admin') return '/admin/dashboard'
+    if (role === 'coach') return '/coach/painel'
+    if (role === 'coordenadora') return '/ju/biblioteca'
+    if (role === 'recepcao') return '/recepcao/agenda'
+    return '/'
   }
 
   if (loading) return (
@@ -90,6 +92,13 @@ export default function LandingPage() {
             <>
               <button onClick={() => router.push('/minha-conta')} className="nav-auth-h" style={s.navAuth}>
                 Minha conta
+              </button>
+              <button onClick={irParaAgendar} style={s.navCta}>Agendar Treino</button>
+            </>
+          ) : isEquipe ? (
+            <>
+              <button onClick={() => router.push(rotaEquipe())} className="nav-auth-h" style={s.navAuth}>
+                Minha área
               </button>
               <button onClick={irParaAgendar} style={s.navCta}>Agendar Treino</button>
             </>
@@ -330,6 +339,8 @@ export default function LandingPage() {
         <div style={{ display: 'flex', gap: '1.5rem' }}>
           {isCliente ? (
             <span onClick={() => router.push('/minha-conta')} style={{ fontSize: 12, color: ACCENT, cursor: 'pointer' }}>Minha conta</span>
+          ) : isEquipe ? (
+            <span onClick={() => router.push(rotaEquipe())} style={{ fontSize: 12, color: ACCENT, cursor: 'pointer' }}>Minha área</span>
           ) : (
             <>
               <span onClick={() => router.push('/login')} style={{ fontSize: 12, color: '#555', cursor: 'pointer' }}>Login</span>
