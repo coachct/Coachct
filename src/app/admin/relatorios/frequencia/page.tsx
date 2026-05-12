@@ -14,18 +14,24 @@ export default function FrequenciaPage() {
   useEffect(() => {
     async function load() {
       const inicioMes = `${ano}-${String(mes).padStart(2,'0')}-01`
+      const fimMes = `${ano}-${String(mes).padStart(2,'0')}-31`
+
       const { data } = await supabase
-        .from('aulas')
-        .select('aluno_id, alunos(nome, cpf), coaches(nome)')
-        .gte('horario_agendado', inicioMes)
-        .eq('status', 'finalizada')
-      // Agrupar por aluno
+        .from('agendamentos')
+        .select('cliente_id, clientes(nome, cpf), coaches(nome)')
+        .gte('data', inicioMes)
+        .lte('data', fimMes)
+        .neq('status', 'cancelado')
+
       const map: Record<string, any> = {}
       ;(data || []).forEach((a: any) => {
-        if (!map[a.aluno_id]) map[a.aluno_id] = { aluno: a.alunos, coaches: new Set(), aulas: 0 }
-        map[a.aluno_id].aulas++
-        map[a.aluno_id].coaches.add(a.coaches?.nome)
+        if (!map[a.cliente_id]) {
+          map[a.cliente_id] = { aluno: a.clientes, coaches: new Set(), aulas: 0 }
+        }
+        map[a.cliente_id].aulas++
+        if (a.coaches?.nome) map[a.cliente_id].coaches.add(a.coaches.nome)
       })
+
       const sorted = Object.values(map).sort((a: any, b: any) => b.aulas - a.aulas)
       setDados(sorted)
       setLoading(false)
@@ -37,7 +43,10 @@ export default function FrequenciaPage() {
 
   return (
     <div>
-      <PageHeader title="Frequência de alunos" subtitle={`${new Date(ano, mes-1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}`} />
+      <PageHeader
+        title="Frequência de alunos"
+        subtitle={`${new Date(ano, mes - 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}`}
+      />
       <div className="card">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -53,7 +62,7 @@ export default function FrequenciaPage() {
             <tbody className="divide-y divide-gray-50">
               {dados.map((d: any, i) => (
                 <tr key={i}>
-                  <td className="py-2.5 pr-3 text-gray-400 text-xs">{i+1}</td>
+                  <td className="py-2.5 pr-3 text-gray-400 text-xs">{i + 1}</td>
                   <td className="py-2.5 pr-3 font-medium text-gray-900">{d.aluno?.nome}</td>
                   <td className="py-2.5 pr-3 text-xs text-gray-400">{d.aluno?.cpf}</td>
                   <td className="py-2.5 pr-3 text-right font-semibold text-primary-700">{d.aulas}</td>
@@ -62,7 +71,9 @@ export default function FrequenciaPage() {
               ))}
             </tbody>
           </table>
-          {dados.length === 0 && <div className="text-center py-8 text-gray-400 text-sm">Nenhum dado encontrado para este mês.</div>}
+          {dados.length === 0 && (
+            <div className="text-center py-8 text-gray-400 text-sm">Nenhum dado encontrado para este mês.</div>
+          )}
         </div>
       </div>
     </div>
