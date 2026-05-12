@@ -20,12 +20,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
 
-  async function loadPerfil(userId: string) {
+  async function loadPerfil(userId: string, tentativas = 0) {
     const { data } = await supabase
       .from('perfis')
       .select('*')
       .eq('id', userId)
       .maybeSingle()
+
+    if (!data && tentativas < 5) {
+      // Perfil ainda não foi gravado (race condition pós-cadastro) — tenta de novo
+      await new Promise(res => setTimeout(res, 500))
+      return loadPerfil(userId, tentativas + 1)
+    }
+
     setPerfil(data)
   }
 
