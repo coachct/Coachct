@@ -15,11 +15,20 @@ export default function HorariosPage() {
   useEffect(() => {
     async function load() {
       const inicioMes = `${ano}-${String(mes).padStart(2,'0')}-01`
-      const { data } = await supabase.from('aulas').select('horario_agendado').gte('horario_agendado', inicioMes).eq('status','finalizada')
+      const fimMes = `${ano}-${String(mes).padStart(2,'0')}-31`
+
+      const { data } = await supabase
+        .from('agendamentos')
+        .select('data, horario')
+        .gte('data', inicioMes)
+        .lte('data', fimMes)
+        .neq('status', 'cancelado')
+
       const map: Record<string, number> = {}
       ;(data || []).forEach((a: any) => {
-        const d = new Date(a.horario_agendado)
-        const key = `${d.getDay()}-${d.getHours()}`
+        const d = new Date(a.data + 'T12:00:00')
+        const hora = parseInt((a.horario || '').slice(0, 2))
+        const key = `${d.getDay()}-${hora}`
         map[key] = (map[key] || 0) + 1
       })
       setHeatmap(map)
@@ -42,6 +51,21 @@ export default function HorariosPage() {
   const pico = Object.entries(heatmap).reduce((a, b) => b[1] > a[1] ? b : a, ['', 0])
   const [picoDia, picoHora] = pico[0] ? pico[0].split('-').map(Number) : [null, null]
 
+  const totalAulas = Object.values(heatmap).reduce((a, b) => a + b, 0)
+
+  const dayTotals = [1,2,3,4,5,6].map(d => ({
+    d,
+    v: Object.entries(heatmap).filter(([k]) => k.startsWith(`${d}-`)).reduce((s, [, v]) => s + v, 0)
+  }))
+  const diaMaisMovimentado = dayTotals.sort((a, b) => b.v - a.v)[0]?.d ?? 1
+  const diaMaisVazio = dayTotals.sort((a, b) => a.v - b.v)[0]?.d ?? 6
+
+  const horaTotals = HORARIOS.map(h => ({
+    h,
+    v: Object.entries(heatmap).filter(([k]) => k.endsWith(`-${h}`)).reduce((s, [, v]) => s + v, 0)
+  }))
+  const horaMaisVazia = horaTotals.sort((a, b) => a.v - b.v)[0]
+
   if (loading) return <Spinner />
 
   return (
@@ -56,38 +80,37 @@ export default function HorariosPage() {
         </div>
         <div className="bg-gray-50 rounded-xl p-4">
           <div className="text-xs text-gray-400 mb-1">Total de aulas</div>
-          <div className="text-lg font-semibold text-gray-900">{Object.values(heatmap).reduce((a,b)=>a+b,0)}</div>
+          <div className="text-lg font-semibold text-gray-900">{totalAulas}</div>
         </div>
         <div className="bg-gray-50 rounded-xl p-4">
           <div className="text-xs text-gray-400 mb-1">Dias com mais aulas</div>
-          <div className="text-lg font-semibold text-gray-900">
-            {DIAS_SEMANA[HORARIOS.reduce((best, h) => {
-              const dayTotals = [1,2,3,4,5,6].map(d => ({ d, v: Object.entries(heatmap).filter(([k])=>k.startsWith(`${d}-`)).reduce((s,[,v])=>s+v,0) }))
-              return dayTotals.sort((a,b)=>b.v-a.v)[0]?.d || 1
-            }, 1)]}
-          </div>
+          <div className="text-lg font-semibold text-gray-900">{DIAS_SEMANA[diaMaisMovimentado]}</div>
         </div>
         <div className="bg-gray-50 rounded-xl p-4">
           <div className="text-xs text-gray-400 mb-1">Horário mais vazio</div>
-          <div className="text-lg font-semibold text-gray-900">11h–12h</div>
+          <div className="text-lg font-semibold text-gray-900">{horaMaisVazia ? `${horaMaisVazia.h}h` : '—'}</div>
           <div className="text-xs text-primary-600">oportunidade de atrair alunos</div>
         </div>
       </div>
 
       <div className="card overflow-x-auto">
-        <h2 className="text-sm font-semibold text-gray-900 mb-4">Mapa de calor — {new Date(ano, mes-1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</h2>
+        <h2 className="text-sm font-semibold text-gray-900 mb-4">
+          Mapa de calor — {new Date(ano, mes - 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+        </h2>
         <table className="text-xs">
           <thead>
             <tr>
               <th className="text-gray-400 font-normal w-10 pr-2 pb-2 text-left">Hora</th>
-              {DIAS_SEMANA.slice(1).map(d => <th key={d} className="text-gray-400 font-normal pb-2 px-1 text-center min-w-[36px]">{d}</th>)}
+              {DIAS_SEMANA.slice(1).map(d => (
+                <th key={d} className="text-gray-400 font-normal pb-2 px-1 text-center min-w-[36px]">{d}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {HORARIOS.map(hora => (
               <tr key={hora}>
                 <td className="text-gray-400 pr-2 py-0.5">{hora}h</td>
-                {[1,2,3,4,5,6].map(dia => {
+                {[1, 2, 3, 4, 5, 6].map(dia => {
                   const v = heatmap[`${dia}-${hora}`] || 0
                   return (
                     <td key={dia} className="px-0.5 py-0.5">
@@ -103,7 +126,7 @@ export default function HorariosPage() {
         </table>
         <div className="flex items-center gap-2 mt-4 text-xs text-gray-400">
           <span>Menos</span>
-          {['bg-gray-100','bg-primary-100','bg-primary-200','bg-primary-400','bg-primary-800'].map(c => (
+          {['bg-gray-100', 'bg-primary-100', 'bg-primary-200', 'bg-primary-400', 'bg-primary-800'].map(c => (
             <div key={c} className={`w-4 h-4 rounded ${c}`} />
           ))}
           <span>Mais</span>
