@@ -36,7 +36,7 @@ function parsePlanoKey(key: string): { label: string; icon: string } {
 }
 
 export default function MinhaContaPage() {
-  const { perfil, loading } = useAuth()
+  const { user, perfil, loading } = useAuth()
   const router = useRouter()
   const supabase = createClient()
 
@@ -65,9 +65,9 @@ export default function MinhaContaPage() {
   const nomeMesProximo = MESES[mesProximo - 1]
 
   useEffect(() => {
-    if (!loading && !perfil) router.push('/')
+    if (!loading && !user) router.push('/')
     if (!loading && perfil && !['cliente'].includes(perfil.role as string)) router.push('/equipe')
-  }, [perfil, loading])
+  }, [user, perfil, loading])
 
   useEffect(() => {
     if (perfil) loadDados()
@@ -276,75 +276,44 @@ export default function MinhaContaPage() {
         }
       `}</style>
 
-      {/* Header */}
       <div style={{ background: '#08080895', backdropFilter: 'blur(16px)', borderBottom: '1px solid #1a1a1a', padding: '0 1.5rem', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
         <div onClick={() => router.push('/')} style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', letterSpacing: 2, cursor: 'pointer' }}>
           JUST<span style={{ color: ACCENT }}>CT</span>
         </div>
         <div className="header-nav-r" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-          <span onClick={() => router.push('/')} className="nav-link-cliente link-init"
-            style={{ fontSize: 13, color: '#888', cursor: 'pointer', transition: 'color .2s' }}>
-            Início
-          </span>
-          <span onClick={() => router.push('/meus-planos')} className="nav-link-cliente"
-            style={{ fontSize: 13, color: '#888', cursor: 'pointer', transition: 'color .2s' }}>
-            Meus planos
-          </span>
+          <span onClick={() => router.push('/')} className="nav-link-cliente link-init" style={{ fontSize: 13, color: '#888', cursor: 'pointer', transition: 'color .2s' }}>Início</span>
+          <span onClick={() => router.push('/meus-planos')} className="nav-link-cliente" style={{ fontSize: 13, color: '#888', cursor: 'pointer', transition: 'color .2s' }}>Meus planos</span>
           <span style={{ fontSize: 13, color: '#aaa', display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: ACCENT }} />
             {perfil?.nome?.split(' ')[0]}
           </span>
-          <button onClick={sair} style={{ background: 'transparent', border: '1px solid #444', borderRadius: 8, padding: '0.4rem 1rem', color: '#bbb', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-            Sair
-          </button>
+          <button onClick={sair} style={{ background: 'transparent', border: '1px solid #444', borderRadius: 8, padding: '0.4rem 1rem', color: '#bbb', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Sair</button>
         </div>
       </div>
 
       <div style={{ maxWidth: 700, margin: '0 auto', padding: '2rem 1.5rem' }}>
-
-        {/* Título */}
         <div style={{ marginBottom: '1.5rem' }}>
-          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: '#fff', letterSpacing: 1 }}>
-            Olá, {perfil?.nome?.split(' ')[0]}! 👋
-          </div>
+          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: '#fff', letterSpacing: 1 }}>Olá, {perfil?.nome?.split(' ')[0]}! 👋</div>
           <div style={{ fontSize: 14, color: '#aaa', marginTop: 4 }}>Bem-vindo à sua área do aluno</div>
         </div>
 
-        {/* ============ SEM PLANO ATIVO ============ */}
         {!temPlanoAtivo ? (
-          <div style={{
-            background: '#110008',
-            border: `1.5px solid ${ACCENT}55`,
-            borderRadius: 16, padding: '1.5rem', marginBottom: '1.5rem',
-          }}>
-            <div style={{ fontSize: 13, color: ACCENT, fontWeight: 700, marginBottom: 8 }}>
-              ⚡ Você ainda não tem um plano ativo
-            </div>
+          <div style={{ background: '#110008', border: `1.5px solid ${ACCENT}55`, borderRadius: 16, padding: '1.5rem', marginBottom: '1.5rem' }}>
+            <div style={{ fontSize: 13, color: ACCENT, fontWeight: 700, marginBottom: 8 }}>⚡ Você ainda não tem um plano ativo</div>
             <div style={{ fontSize: 14, color: '#ccc', lineHeight: 1.7, marginBottom: '1.25rem' }}>
               Você precisa de um plano ativo para agendar seus treinos. Se você possui os apps parceiros <strong style={{ color: '#fff' }}>Wellhub</strong> ou <strong style={{ color: '#fff' }}>TotalPass</strong>, clique abaixo para ativar e liberar suas sessões Coach CT incluídas no seu plano.
             </div>
-            <button onClick={() => router.push('/meus-planos')}
-              style={{ width: '100%', background: ACCENT, color: '#fff', border: 'none', borderRadius: 12, padding: '0.9rem', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+            <button onClick={() => router.push('/meus-planos')} style={{ width: '100%', background: ACCENT, color: '#fff', border: 'none', borderRadius: 12, padding: '0.9rem', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
               Ver planos disponíveis →
             </button>
           </div>
         ) : (
           <>
-            {/* ============ COM PLANO ATIVO ============ */}
-
-            {/* Botões de ação */}
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10, marginBottom: '1.5rem' }}>
-              <button className="btn-acao" onClick={() => router.push('/agendar')}
-                style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 12, padding: '0.95rem', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", transition: 'transform .15s' }}>
-                + Agendar Treino
-              </button>
-              <button className="btn-acao" onClick={() => router.push('/meus-planos')}
-                style={{ background: 'transparent', color: '#fff', border: `1.5px solid ${ACCENT}66`, borderRadius: 12, padding: '0.95rem', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", transition: 'transform .15s' }}>
-                Meus Planos
-              </button>
+              <button className="btn-acao" onClick={() => router.push('/agendar')} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 12, padding: '0.95rem', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", transition: 'transform .15s' }}>+ Agendar Treino</button>
+              <button className="btn-acao" onClick={() => router.push('/meus-planos')} style={{ background: 'transparent', color: '#fff', border: `1.5px solid ${ACCENT}66`, borderRadius: 12, padding: '0.95rem', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", transition: 'transform .15s' }}>Meus Planos</button>
             </div>
 
-            {/* Cards de saldo */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
               {Object.entries(saldoAtual).map(([plano, info]: [string, any]) => {
                 const restante = info.disponivel
@@ -352,46 +321,30 @@ export default function MinhaContaPage() {
                 const isCyan = plano.startsWith('avulso') || plano.startsWith('credito')
                 return (
                   <div key={plano} style={{ background: '#111', border: `1px solid ${restante === 0 ? '#333' : isCyan ? CYAN + '33' : ACCENT + '33'}`, borderRadius: 16, padding: '1.25rem' }}>
-                    <div style={{ fontSize: 11, color: restante === 0 ? '#555' : isCyan ? CYAN : ACCENT, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 8 }}>
-                      {icon} {label}
-                    </div>
-                    <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 48, color: restante === 0 ? '#333' : '#fff', lineHeight: 1 }}>
-                      {restante}
-                    </div>
+                    <div style={{ fontSize: 11, color: restante === 0 ? '#555' : isCyan ? CYAN : ACCENT, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 8 }}>{icon} {label}</div>
+                    <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 48, color: restante === 0 ? '#333' : '#fff', lineHeight: 1 }}>{restante}</div>
                     <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>de {info.total} sessões em {nomeMesAtual}</div>
-                    {restante === 0 && (
-                      <div style={{ fontSize: 11, color: '#ff6b6b', marginTop: 6 }}>Esgotado neste mês</div>
-                    )}
+                    {restante === 0 && <div style={{ fontSize: 11, color: '#ff6b6b', marginTop: 6 }}>Esgotado neste mês</div>}
                   </div>
                 )
               })}
               <div style={{ background: '#111', border: '1px solid #333', borderRadius: 16, padding: '1.25rem' }}>
                 <div style={{ fontSize: 11, color: '#aaa', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 8 }}>Próximos treinos</div>
-                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 48, color: '#fff', lineHeight: 1 }}>
-                  {agendamentosAtivos.length}
-                </div>
+                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 48, color: '#fff', lineHeight: 1 }}>{agendamentosAtivos.length}</div>
                 <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>agendamentos ativos</div>
               </div>
             </div>
 
-            {/* Mensagem mês esgotado */}
             {todoSaldoMesEsgotado && temSaldoNoProximoMes && (
               <div style={{ background: '#0a1a0a', border: '1px solid #aaff0033', borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1rem' }}>
-                <div style={{ fontSize: 13, color: '#aaff88', fontWeight: 600, marginBottom: 4 }}>
-                  ✅ Você usou todas as sessões de {nomeMesAtual}
-                </div>
-                <div style={{ fontSize: 13, color: '#bbb', lineHeight: 1.6 }}>
-                  Você já pode agendar treinos para <strong style={{ color: '#fff' }}>{nomeMesProximo}</strong>. Seus créditos: <strong style={{ color: '#fff' }}>{planosProximoMes}</strong>.
-                </div>
+                <div style={{ fontSize: 13, color: '#aaff88', fontWeight: 600, marginBottom: 4 }}>✅ Você usou todas as sessões de {nomeMesAtual}</div>
+                <div style={{ fontSize: 13, color: '#bbb', lineHeight: 1.6 }}>Você já pode agendar treinos para <strong style={{ color: '#fff' }}>{nomeMesProximo}</strong>. Seus créditos: <strong style={{ color: '#fff' }}>{planosProximoMes}</strong>.</div>
               </div>
             )}
 
-            {/* Card saldo próximo mês */}
             {agendamentosProximoMes > 0 && Object.keys(saldoProximo).length > 0 && (
               <div style={{ background: '#0a0a14', border: '1px solid #333', borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1rem' }}>
-                <div style={{ fontSize: 11, color: '#aaa', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 8 }}>
-                  📅 Já reservados para {nomeMesProximo}
-                </div>
+                <div style={{ fontSize: 11, color: '#aaa', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 8 }}>📅 Já reservados para {nomeMesProximo}</div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
                   {Object.entries(saldoProximo).map(([plano, info]: [string, any]) => {
                     const { label } = parsePlanoKey(plano)
@@ -408,49 +361,33 @@ export default function MinhaContaPage() {
           </>
         )}
 
-        {/* ============ AGENDAMENTOS ============ */}
         {temPlanoAtivo && (
           <div style={{ marginTop: '2rem', marginBottom: '2rem' }}>
             <div style={{ fontSize: 11, color: '#aaa', fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: '1rem' }}>Meus agendamentos</div>
             {agendamentosAtivos.length === 0 ? (
-              <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '2rem', textAlign: 'center', color: '#555', fontSize: 14 }}>
-                Nenhum agendamento. Que tal reservar uma sessão?
-              </div>
+              <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '2rem', textAlign: 'center', color: '#555', fontSize: 14 }}>Nenhum agendamento. Que tal reservar uma sessão?</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {agendamentosAtivos.map(ag => {
-                  const statusColor: Record<string, string> = {
-                    agendado: CYAN, confirmado: '#aaff00', realizado: '#888', cancelado: '#ff6b6b', falta: '#ff8c00',
-                  }
+                  const statusColor: Record<string, string> = { agendado: CYAN, confirmado: '#aaff00', realizado: '#888', cancelado: '#ff6b6b', falta: '#ff8c00' }
                   const podeTentarCancelar = ['agendado', 'confirmado'].includes(ag.status)
                   const { label } = parsePlanoKey(ag.tipo_credito || '')
                   return (
                     <div key={ag.id} style={{ background: '#111', border: '1px solid #222', borderRadius: 12, padding: '1rem 1.25rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                         <div style={{ textAlign: 'center', flexShrink: 0 }}>
-                          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: '#fff', lineHeight: 1 }}>
-                            {new Date(ag.data + 'T12:00:00').getDate()}
-                          </div>
-                          <div style={{ fontSize: 10, color: '#aaa', textTransform: 'uppercase' as const }}>
-                            {new Date(ag.data + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' })}
-                          </div>
+                          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: '#fff', lineHeight: 1 }}>{new Date(ag.data + 'T12:00:00').getDate()}</div>
+                          <div style={{ fontSize: 10, color: '#aaa', textTransform: 'uppercase' as const }}>{new Date(ag.data + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' })}</div>
                         </div>
                         <div style={{ width: 1, height: 36, background: '#2a2a2a', flexShrink: 0 }} />
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 15, fontWeight: 600, color: '#fff' }}>
-                            {ag.unidades?.nome || 'Coach CT'} — {ag.horario?.slice(0, 5)}
-                          </div>
+                          <div style={{ fontSize: 15, fontWeight: 600, color: '#fff' }}>{ag.unidades?.nome || 'Coach CT'} — {ag.horario?.slice(0, 5)}</div>
                           <div style={{ fontSize: 12, color: '#555' }}>{label}</div>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-                          <div style={{ fontSize: 11, fontWeight: 600, color: statusColor[ag.status] || '#888', textTransform: 'uppercase' as const }}>
-                            {ag.status}
-                          </div>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: statusColor[ag.status] || '#888', textTransform: 'uppercase' as const }}>{ag.status}</div>
                           {podeTentarCancelar && (
-                            <button onClick={() => abrirModalCancelar(ag)}
-                              style={{ background: 'transparent', border: '1px solid #333', borderRadius: 6, padding: '0.2rem 0.6rem', fontSize: 11, color: '#888', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                              Cancelar
-                            </button>
+                            <button onClick={() => abrirModalCancelar(ag)} style={{ background: 'transparent', border: '1px solid #333', borderRadius: 6, padding: '0.2rem 0.6rem', fontSize: 11, color: '#888', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Cancelar</button>
                           )}
                         </div>
                       </div>
@@ -462,7 +399,6 @@ export default function MinhaContaPage() {
           </div>
         )}
 
-        {/* ============ FILA ============ */}
         {filas.length > 0 && (
           <div style={{ marginBottom: '2rem' }}>
             <div style={{ fontSize: 11, color: AMARELO, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: '1rem' }}>⏳ Aguardando na fila de espera</div>
@@ -471,25 +407,16 @@ export default function MinhaContaPage() {
                 <div key={f.id} style={{ background: '#1a1000', border: `1px solid ${AMARELO}44`, borderRadius: 12, padding: '1rem 1.25rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     <div style={{ textAlign: 'center', flexShrink: 0 }}>
-                      <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: AMARELO, lineHeight: 1 }}>
-                        {new Date(f.data + 'T12:00:00').getDate()}
-                      </div>
-                      <div style={{ fontSize: 10, color: AMARELO, textTransform: 'uppercase' as const, opacity: 0.85 }}>
-                        {new Date(f.data + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' })}
-                      </div>
+                      <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: AMARELO, lineHeight: 1 }}>{new Date(f.data + 'T12:00:00').getDate()}</div>
+                      <div style={{ fontSize: 10, color: AMARELO, textTransform: 'uppercase' as const, opacity: 0.85 }}>{new Date(f.data + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' })}</div>
                     </div>
                     <div style={{ width: 1, height: 36, background: '#332200', flexShrink: 0 }} />
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 15, fontWeight: 600, color: '#fff' }}>
-                        {f.unidades?.nome || 'Coach CT'} — {f.horario?.slice(0, 5)}
-                      </div>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: '#fff' }}>{f.unidades?.nome || 'Coach CT'} — {f.horario?.slice(0, 5)}</div>
                       <div style={{ fontSize: 12, color: '#bbb' }}>{parsePlanoKey(f.tipo_credito || '').label}</div>
                       <div style={{ fontSize: 11, color: AMARELO, marginTop: 4 }}>Você será avisado se uma vaga abrir</div>
                     </div>
-                    <button onClick={() => setModalSairFila(f)}
-                      style={{ background: 'transparent', border: `1px solid ${AMARELO}77`, borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, color: AMARELO, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", flexShrink: 0 }}>
-                      Sair da fila
-                    </button>
+                    <button onClick={() => setModalSairFila(f)} style={{ background: 'transparent', border: `1px solid ${AMARELO}77`, borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, color: AMARELO, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", flexShrink: 0 }}>Sair da fila</button>
                   </div>
                 </div>
               ))}
@@ -497,7 +424,6 @@ export default function MinhaContaPage() {
           </div>
         )}
 
-        {/* ============ DADOS DA CONTA ============ */}
         {cliente && (
           <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.25rem' }}>
             <div style={{ fontSize: 11, color: '#aaa', fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: '1rem' }}>Minha conta</div>
@@ -518,7 +444,6 @@ export default function MinhaContaPage() {
         )}
       </div>
 
-      {/* Modal Cancelar */}
       {modalCancelar && (
         <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: '#111', border: '1px solid #333', borderRadius: 20, width: '100%', maxWidth: 420, padding: '1.5rem' }}>
@@ -529,19 +454,11 @@ export default function MinhaContaPage() {
             <div style={{ background: modalCancelar.pode ? '#0a1a0a' : '#1a0a0a', border: `1px solid ${modalCancelar.pode ? '#aaff0044' : '#ff444444'}`, borderRadius: 10, padding: '1rem', marginBottom: '1.5rem', fontSize: 13, color: modalCancelar.pode ? '#cfc' : '#ffaaaa', lineHeight: 1.6 }}>
               {modalCancelar.pode ? '✅ ' : '❌ '}{modalCancelar.aviso}
             </div>
-            {erroCancelar && (
-              <div style={{ background: '#ff2d9b15', border: '1px solid #ff2d9b44', borderRadius: 8, padding: '0.6rem 1rem', fontSize: 13, color: ACCENT, marginBottom: '1rem' }}>
-                {erroCancelar}
-              </div>
-            )}
+            {erroCancelar && <div style={{ background: '#ff2d9b15', border: '1px solid #ff2d9b44', borderRadius: 8, padding: '0.6rem 1rem', fontSize: 13, color: ACCENT, marginBottom: '1rem' }}>{erroCancelar}</div>}
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => setModalCancelar(null)}
-                style={{ flex: 1, background: 'transparent', border: '1px solid #444', borderRadius: 10, padding: '0.85rem', color: '#bbb', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                Voltar
-              </button>
+              <button onClick={() => setModalCancelar(null)} style={{ flex: 1, background: 'transparent', border: '1px solid #444', borderRadius: 10, padding: '0.85rem', color: '#bbb', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Voltar</button>
               {modalCancelar.pode && (
-                <button onClick={confirmarCancelamento} disabled={cancelando}
-                  style={{ flex: 2, background: '#ff4444', color: '#fff', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 600, fontSize: 15, cursor: cancelando ? 'default' : 'pointer', fontFamily: "'DM Sans', sans-serif", opacity: cancelando ? 0.7 : 1 }}>
+                <button onClick={confirmarCancelamento} disabled={cancelando} style={{ flex: 2, background: '#ff4444', color: '#fff', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 600, fontSize: 15, cursor: cancelando ? 'default' : 'pointer', fontFamily: "'DM Sans', sans-serif", opacity: cancelando ? 0.7 : 1 }}>
                   {cancelando ? 'Cancelando...' : 'Confirmar cancelamento'}
                 </button>
               )}
@@ -550,7 +467,6 @@ export default function MinhaContaPage() {
         </div>
       )}
 
-      {/* Modal Sair da Fila */}
       {modalSairFila && (
         <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: '#111', border: `1px solid ${AMARELO}44`, borderRadius: 20, width: '100%', maxWidth: 420, padding: '1.5rem' }}>
@@ -562,12 +478,8 @@ export default function MinhaContaPage() {
               Você ainda não foi confirmado neste horário. Pode sair da fila a qualquer momento sem multa ou desconto de crédito.
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => setModalSairFila(null)}
-                style={{ flex: 1, background: 'transparent', border: '1px solid #444', borderRadius: 10, padding: '0.85rem', color: '#bbb', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                Voltar
-              </button>
-              <button onClick={sairDaFila} disabled={saindoFila}
-                style={{ flex: 2, background: AMARELO, color: '#000', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 700, fontSize: 15, cursor: saindoFila ? 'default' : 'pointer', fontFamily: "'DM Sans', sans-serif", opacity: saindoFila ? 0.7 : 1 }}>
+              <button onClick={() => setModalSairFila(null)} style={{ flex: 1, background: 'transparent', border: '1px solid #444', borderRadius: 10, padding: '0.85rem', color: '#bbb', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Voltar</button>
+              <button onClick={sairDaFila} disabled={saindoFila} style={{ flex: 2, background: AMARELO, color: '#000', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 700, fontSize: 15, cursor: saindoFila ? 'default' : 'pointer', fontFamily: "'DM Sans', sans-serif", opacity: saindoFila ? 0.7 : 1 }}>
                 {saindoFila ? 'Saindo...' : 'Sair da fila'}
               </button>
             </div>
