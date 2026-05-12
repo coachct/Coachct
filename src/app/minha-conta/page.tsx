@@ -304,7 +304,7 @@ export default function MinhaContaPage() {
               Você precisa de um plano ativo para agendar seus treinos. Se você possui os apps parceiros <strong style={{ color: '#fff' }}>Wellhub</strong> ou <strong style={{ color: '#fff' }}>TotalPass</strong>, clique abaixo para ativar e liberar suas sessões Coach CT incluídas no seu plano.
             </div>
             <button onClick={() => router.push('/meus-planos')} style={{ width: '100%', background: ACCENT, color: '#fff', border: 'none', borderRadius: 12, padding: '0.9rem', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-              Ver planos disponíveis →
+              Ative seu plano →
             </button>
           </div>
         ) : (
