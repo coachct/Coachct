@@ -36,15 +36,12 @@ export default function CoachPainelPage() {
     if (perfil?.id) loadData()
   }, [perfil?.id])
 
-  // Polling de 5s para notificações
   useEffect(() => {
     if (!coach?.id) return
-
     carregarNotificacoes(coach.id)
     const interval = setInterval(() => {
       carregarNotificacoes(coach.id)
     }, 5000)
-
     return () => clearInterval(interval)
   }, [coach?.id])
 
@@ -56,18 +53,14 @@ export default function CoachPainelPage() {
       .eq('lida', false)
       .order('criado_em', { ascending: false })
       .limit(10)
-
     setNotificacoes(data || [])
   }
 
   async function clicarNotificacao(notif: any) {
-    // Marca como lida
     await supabase
       .from('notificacoes_coach')
       .update({ lida: true, lida_em: new Date().toISOString() })
       .eq('id', notif.id)
-
-    // Vai para a tela de treino com o cliente já selecionado
     router.push(`/coach/treino?cliente_id=${notif.cliente_id}`)
   }
 
@@ -82,9 +75,9 @@ export default function CoachPainelPage() {
       const json = await res.json()
       const { aulasHoje, aulasMes, aulasMesPassado, horarios, ultimas, todasAulas, alunosMap, aulaPendente } = json.data
 
+      // Seta aula aberta se houver, mas NÃO retorna — continua carregando os dados
       if (aulaPendente) {
         setAulaAberta(aulaPendente)
-        return
       }
 
       const diaSemanaHoje = hoje.getDay()
@@ -96,7 +89,7 @@ export default function CoachPainelPage() {
 
       const contagemAlunos: Record<string, { nome: string; count: number; ultima: string }> = {}
       for (const aula of (todasAulas || [])) {
-        const id = aula.aluno_id
+        const id = aula.cliente_id || aula.aluno_id
         const nome = alunosMap[id] || 'Aluno'
         if (!contagemAlunos[id]) contagemAlunos[id] = { nome, count: 0, ultima: aula.horario_agendado }
         contagemAlunos[id].count++
@@ -161,46 +154,40 @@ export default function CoachPainelPage() {
     </div>
   )
 
-  if (aulaAberta) return (
-    <div className="fixed inset-0 bg-gray-50 z-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-6">
-          <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center mx-auto mb-3">
-            <AlertTriangle size={32} className="text-orange-500" />
-          </div>
-          <h1 className="text-lg font-bold text-gray-900">Aula em andamento!</h1>
-          <p className="text-sm text-gray-500 mt-1">Você tem uma aula não finalizada.</p>
-        </div>
-        <div className="card mb-4 text-center">
-          <div className="text-xs text-gray-400 mb-1">Aluno</div>
-          <div className="font-semibold text-gray-900">{aulaAberta.alunos?.nome}</div>
-          <div className="text-xs text-gray-400 mt-1">{aulaAberta.treinos?.nome}</div>
-          <div className="text-xs text-gray-400 mt-1">
-            Iniciada às {new Date(aulaAberta.iniciada_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-          </div>
-        </div>
-        <div className="space-y-2">
-          <button onClick={() => router.push('/coach/treino')} className="btn btn-primary w-full gap-2 py-3">
-            <PlayCircle size={16} /> Continuar aula
-          </button>
-          <button onClick={cancelarAula} disabled={cancelando} className="btn w-full text-red-500 hover:bg-red-50">
-            {cancelando ? 'Cancelando...' : 'Cancelar esta aula'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-
   const bonus = stats.aulasMes * (coach?.adicional_por_aula || 0)
 
   return (
     <div>
+      {/* Banner de aula em andamento — não bloqueia mais a tela toda */}
+      {aulaAberta && (
+        <div className="mb-5 bg-orange-50 border border-orange-200 rounded-2xl p-4">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-xl bg-orange-100 flex items-center justify-center flex-shrink-0">
+              <AlertTriangle size={20} className="text-orange-500" />
+            </div>
+            <div>
+              <div className="font-semibold text-sm text-gray-900">Aula em andamento!</div>
+              <div className="text-xs text-gray-500">
+                {aulaAberta.alunos?.nome} · {aulaAberta.treinos?.nome} · iniciada às {new Date(aulaAberta.iniciada_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => router.push('/coach/treino')} className="btn btn-primary flex-1 gap-2 py-2 text-sm">
+              <PlayCircle size={14} /> Continuar aula
+            </button>
+            <button onClick={cancelarAula} disabled={cancelando} className="btn flex-1 text-red-500 hover:bg-red-50 py-2 text-sm">
+              {cancelando ? 'Cancelando...' : 'Cancelar aula'}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="mb-5">
         <h1 className="text-xl font-semibold text-gray-900">Olá, {coach?.nome.split(' ')[0]}! 👋</h1>
         <p className="text-sm text-gray-400 capitalize">{diaSemana}</p>
       </div>
 
-      {/* Cards de notificação — clientes que chegaram */}
       {notificacoes.length > 0 && (
         <div className="mb-5 space-y-2">
           {notificacoes.map(notif => (
