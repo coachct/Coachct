@@ -72,7 +72,6 @@ export default function GradePublicaPage() {
     const horaAtual = `${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}`
     const isDiaDe = dataStr === hoje
 
-    // PASSO 1: verifica se essa data é feriado ATIVO nesta unidade
     const { data: feriadoData } = await supabase
       .from('feriados')
       .select('*')
@@ -96,11 +95,9 @@ export default function GradePublicaPage() {
       setFeriadoDescricao('')
     }
 
-    // PASSO 2: busca a base de horários certa
     let porHora: Record<string, number> = {}
 
     if (usaEscalaFds) {
-      // FDS ou feriado ativo → escala_fds + horários fixos
       const { data: escala } = await supabase
         .from('escala_fds')
         .select('coach_id')
@@ -108,12 +105,15 @@ export default function GradePublicaPage() {
         .eq('data', dataStr)
 
       const qtdCoaches = (escala || []).length
-      for (const hora of HORARIOS_FDS) {
-        if (isDiaDe && hora <= horaAtual) continue
-        porHora[hora] = qtdCoaches
+
+      // CORREÇÃO BUG 1: só monta os horários se tiver pelo menos 1 coach escalado
+      if (qtdCoaches > 0) {
+        for (const hora of HORARIOS_FDS) {
+          if (isDiaDe && hora <= horaAtual) continue
+          porHora[hora] = qtdCoaches
+        }
       }
     } else {
-      // Dia útil → coach_horarios (grade fixa)
       const { data: hors } = await supabase
         .from('coach_horarios')
         .select('hora')
@@ -128,7 +128,6 @@ export default function GradePublicaPage() {
       }
     }
 
-    // PASSO 3: busca agendamentos e bloqueios da data
     const [{ data: ags }, { data: bloqueadas }] = await Promise.all([
       supabase.from('agendamentos').select('horario, status').eq('data', dataStr).eq('unidade_id', unidadeAtiva.id).neq('status', 'cancelado'),
       supabase.from('vagas_bloqueadas').select('horario, quantidade').eq('data', dataStr).eq('ativo', true).eq('unidade_id', unidadeAtiva.id),
@@ -203,7 +202,6 @@ export default function GradePublicaPage() {
         .nav-auth-h:hover { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
       `}</style>
 
-      {/* Header */}
       <div style={{ background: '#08080895', backdropFilter: 'blur(16px)', borderBottom: '1px solid #1a1a1a', padding: '0 1.5rem', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
         <div onClick={() => router.push('/')} style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', letterSpacing: 2, cursor: 'pointer' }}>
           JUST<span style={{ color: ACCENT }}>CT</span>
@@ -286,7 +284,6 @@ export default function GradePublicaPage() {
           </div>
         )}
 
-        {/* Navegação de semana */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
           <button className="nav-semana-btn"
             onClick={() => { setSemanaOffset(o => Math.max(0, o - 1)); setDiaSel(0) }}
@@ -316,14 +313,12 @@ export default function GradePublicaPage() {
             style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #333', background: 'transparent', color: semanaOffset === 3 ? '#333' : '#fff', fontSize: 18, cursor: semanaOffset === 3 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .2s' }}>›</button>
         </div>
 
-        {/* Aviso de feriado */}
         {tipoDia === 'feriado' && unidadeAtiva && (
           <div style={{ background: '#1a1000', border: `1px solid ${AMARELO}44`, borderRadius: 12, padding: '0.85rem 1.25rem', marginBottom: '1rem', fontSize: 13, color: '#ddd', lineHeight: 1.6 }}>
             ⭐ <strong style={{ color: AMARELO }}>{feriadoDescricao}</strong> — funcionando com escala especial e horários de fim de semana.
           </div>
         )}
 
-        {/* Filtro de período */}
         <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap' }}>
           {[
             { key: 'todos', label: 'Todos' },
@@ -338,7 +333,6 @@ export default function GradePublicaPage() {
           ))}
         </div>
 
-        {/* Grade de horários */}
         {!unidadeAtiva ? (
           <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#444' }}>
             Carregando unidades...
@@ -346,11 +340,18 @@ export default function GradePublicaPage() {
         ) : loadingHorarios ? (
           <div style={{ textAlign: 'center', padding: '3rem', color: '#555' }}>Carregando horários...</div>
         ) : horariosFiltrados.length === 0 ? (
-          <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#444' }}>
+          <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#666', lineHeight: 1.7 }}>
             {tipoDia === 'fds'
-              ? 'Não há coaches escalados neste dia ainda.'
+              ? <>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>📅</div>
+                <div style={{ fontSize: 14, color: '#888' }}>Não há coaches escalados neste dia ainda.</div>
+                <div style={{ fontSize: 12, color: '#555', marginTop: 4 }}>A escala de fim de semana é definida pela equipe.</div>
+              </>
               : tipoDia === 'feriado'
-                ? 'Feriado sem coaches escalados.'
+                ? <>
+                  <div style={{ fontSize: 32, marginBottom: 8 }}>⭐</div>
+                  <div style={{ fontSize: 14, color: '#888' }}>Feriado sem coaches escalados.</div>
+                </>
                 : semanaOffset === 0 && diaSel === 0
                   ? 'Não há mais horários disponíveis para hoje.'
                   : 'Nenhum horário disponível neste dia.'}
