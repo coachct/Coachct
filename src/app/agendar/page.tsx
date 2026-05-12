@@ -126,6 +126,9 @@ export default function AgendarPage() {
   const [contratoAssinado, setContratoAssinado] = useState(false)
   const [aceiteCheck, setAceiteCheck] = useState(false)
 
+  // Novo: modal sem plano ativo
+  const [modalSemPlano, setModalSemPlano] = useState(false)
+
   const janelaProximoMesAberta = dentroDaJanelaProximoMes()
 
   const diasSemana = Array.from({ length: 7 }, (_, i) => {
@@ -135,8 +138,8 @@ export default function AgendarPage() {
   })
 
   useEffect(() => {
-    if (!loading && !user) router.push('/')
-    if (!loading && perfil && !['cliente'].includes(perfil.role as string)) router.push('/equipe')
+    if (!loading && !user) router.push('/login')
+    if (!loading && perfil && perfil.role && !['cliente'].includes(perfil.role as string)) router.push('/equipe')
   }, [user, perfil, loading])
 
   useEffect(() => {
@@ -335,6 +338,18 @@ export default function AgendarPage() {
     { key: 'nenhuma', label: 'Sem aviso', icon: '🔕' },
   ]
 
+  const semPlanoAtivo = !loadingHorarios && cliente && Object.keys(saldoMesAtual).length === 0 && Object.keys(saldoMesProximo).length === 0
+
+  function tentarAgendar(hora: string, vagas: number) {
+    if (semPlanoAtivo) { setModalSemPlano(true); return }
+    abrirModalReserva(hora, vagas)
+  }
+
+  function tentarFila(hora: string) {
+    if (semPlanoAtivo) { setModalSemPlano(true); return }
+    abrirModalFila(hora)
+  }
+
   function abrirModalReserva(hora: string, vagas: number) {
     const dataStr = diasSemana[diaSel].toISOString().split('T')[0]
     setModalSlot({ data: dataStr, hora, vagas })
@@ -471,6 +486,19 @@ export default function AgendarPage() {
           <div style={{ fontSize: 14, color: '#555', marginTop: 4 }}>Cada halter = uma vaga disponível</div>
         </div>
 
+        {/* Banner sem plano ativo */}
+        {semPlanoAtivo && (
+          <div style={{ background: '#110008', border: `1.5px solid ${ACCENT}55`, borderRadius: 16, padding: '1.25rem 1.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontSize: 14, color: ACCENT, fontWeight: 700, marginBottom: 4 }}>⚡ Você não tem um plano ativo</div>
+              <div style={{ fontSize: 13, color: '#888', lineHeight: 1.5 }}>Ative seu Wellhub, TotalPass ou compre sessões avulsas para começar a agendar.</div>
+            </div>
+            <button onClick={() => router.push('/meus-planos')} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.65rem 1.25rem', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' }}>
+              Ative seu plano →
+            </button>
+          </div>
+        )}
+
         {janelaProximoMesAberta && (
           <div style={{ background: '#0a0014', border: `1px solid ${ACCENT}33`, borderRadius: 12, padding: '0.85rem 1.25rem', marginBottom: '1.5rem', fontSize: 13, color: '#ccc', lineHeight: 1.6 }}>
             ✨ Agendamentos para o próximo mês já estão liberados.
@@ -599,7 +627,7 @@ export default function AgendarPage() {
                       else if (clienteNaFila && vi === 0) estado = 'fila'
                       else if (vi < h.ocupados) estado = 'ocupado'
                       else if (vi < h.ocupados + h.bloqueadas) estado = 'bloqueado'
-                      return <HalterSVG key={vi} estado={estado} onClick={() => !lotado && !semCredito && !jaAgendado && abrirModalReserva(h.hora, h.livres)} />
+                      return <HalterSVG key={vi} estado={estado} onClick={() => !lotado && !jaAgendado && tentarAgendar(h.hora, h.livres)} />
                     })}
                   </div>
                   <div style={{ flexShrink: 0, minWidth: 90, textAlign: 'right' }}>
@@ -611,9 +639,8 @@ export default function AgendarPage() {
                         </div>
                         {h.bloqueadas > 0 && !lotado && <div style={{ fontSize: 9, color: '#ff4444', marginBottom: 4 }}>{h.bloqueadas} bloq.</div>}
                         {temFilaEsperaAqui && !lotado && <div style={{ fontSize: 9, color: AMARELO, marginBottom: 4 }}>⏳ há fila</div>}
-                        {!lotado && !semCredito && <button onClick={() => abrirModalReserva(h.hora, h.livres)} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Reservar</button>}
-                        {lotado && !semCredito && <button onClick={() => abrirModalFila(h.hora)} style={{ background: 'transparent', color: AMARELO, border: `1px solid ${AMARELO}`, borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Entrar na fila</button>}
-                        {semCredito && <div style={{ fontSize: 10, color: '#555', lineHeight: 1.4 }}>Sem créditos</div>}
+                        {!lotado && <button onClick={() => tentarAgendar(h.hora, h.livres)} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Reservar</button>}
+                        {lotado && <button onClick={() => tentarFila(h.hora)} style={{ background: 'transparent', color: AMARELO, border: `1px solid ${AMARELO}`, borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Entrar na fila</button>}
                       </>)}
                   </div>
                 </div>
@@ -622,6 +649,23 @@ export default function AgendarPage() {
           </div>
         )}
       </div>
+
+      {/* Modal sem plano ativo */}
+      {modalSemPlano && (
+        <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#111', border: `1.5px solid ${ACCENT}55`, borderRadius: 20, width: '100%', maxWidth: 400, padding: '1.5rem' }}>
+            <div style={{ fontSize: 36, marginBottom: '1rem', textAlign: 'center' }}>⚡</div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: 8, textAlign: 'center' }}>PLANO NECESSÁRIO</div>
+            <div style={{ fontSize: 14, color: '#aaa', lineHeight: 1.7, marginBottom: '1.5rem', textAlign: 'center' }}>
+              Para agendar um treino você precisa de um plano ativo. Ative seu <strong style={{ color: '#fff' }}>Wellhub</strong>, <strong style={{ color: '#fff' }}>TotalPass</strong> ou compre sessões avulsas na recepção.
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setModalSemPlano(false)} style={{ flex: 1, background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.85rem', color: '#888', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Fechar</button>
+              <button onClick={() => router.push('/meus-planos')} style={{ flex: 2, background: ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Ative seu plano →</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {mostrarContrato && (
         <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
