@@ -25,8 +25,9 @@ export default function AdminEscalaPage() {
   const [feriados, setFeriados] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Modal adicionar coach (multi-seleção)
   const [modalAdicionar, setModalAdicionar] = useState<{ data: string } | null>(null)
-  const [coachSelecionado, setCoachSelecionado] = useState<string>('')
+  const [coachesSelecionados, setCoachesSelecionados] = useState<Set<string>>(new Set())
   const [salvandoCoach, setSalvandoCoach] = useState(false)
 
   const [modalNovoFeriado, setModalNovoFeriado] = useState(false)
@@ -63,7 +64,6 @@ export default function AdminEscalaPage() {
     const dataLimite = new Date()
     dataLimite.setMonth(dataLimite.getMonth() + 3)
 
-    // Busca coaches da tabela `coaches` (nome real), filtrando ativos
     const [{ data: coaches }, { data: esc }, { data: fer }] = await Promise.all([
       supabase.from('coaches').select('id, nome, user_id').eq('ativo', true).order('nome'),
       supabase.from('escala_fds')
@@ -85,7 +85,6 @@ export default function AdminEscalaPage() {
     setLoading(false)
   }
 
-  // Resolve nome do coach pelo user_id armazenado em escala_fds.coach_id
   function nomeCoach(coachUserId: string): string {
     const c = coachesDisponiveis.find(c => c.user_id === coachUserId)
     return c?.nome || 'Coach'
@@ -99,17 +98,35 @@ export default function AdminEscalaPage() {
     return coachesDisponiveis.filter(c => !idsEscalados.has(c.user_id))
   }
 
-  async function adicionarCoachNaEscala() {
-    if (!coachSelecionado || !modalAdicionar || !unidadeAtiva) return
+  function toggleCoachSelecionado(userId: string) {
+    setCoachesSelecionados(prev => {
+      const novo = new Set(prev)
+      if (novo.has(userId)) novo.delete(userId)
+      else novo.add(userId)
+      return novo
+    })
+  }
+
+  function abrirModalAdicionar(data: string) {
+    setModalAdicionar({ data })
+    setCoachesSelecionados(new Set())
+  }
+
+  async function adicionarCoachesNaEscala() {
+    if (coachesSelecionados.size === 0 || !modalAdicionar || !unidadeAtiva) return
     setSalvandoCoach(true)
-    const { error } = await supabase.from('escala_fds').insert({
+
+    const registros = Array.from(coachesSelecionados).map(userId => ({
       unidade_id: unidadeAtiva.id,
       data: modalAdicionar.data,
-      coach_id: coachSelecionado,
-    })
+      coach_id: userId,
+    }))
+
+    const { error } = await supabase.from('escala_fds').insert(registros)
+
     if (!error) {
       setModalAdicionar(null)
-      setCoachSelecionado('')
+      setCoachesSelecionados(new Set())
       await loadDados()
     }
     setSalvandoCoach(false)
@@ -254,7 +271,7 @@ export default function AdminEscalaPage() {
                   )}
 
                   {disp.length > 0 ? (
-                    <button onClick={() => { setModalAdicionar({ data }); setCoachSelecionado('') }}
+                    <button onClick={() => abrirModalAdicionar(data)}
                       className="w-full border border-dashed border-primary-300 text-primary-600 hover:bg-primary-50 rounded-lg py-2 text-sm font-medium transition">
                       + Adicionar coach
                     </button>
@@ -347,7 +364,7 @@ export default function AdminEscalaPage() {
                     )}
 
                     {disp.length > 0 && (
-                      <button onClick={() => { setModalAdicionar({ data: f.data }); setCoachSelecionado('') }}
+                      <button onClick={() => abrirModalAdicionar(f.data)}
                         className="w-full border border-dashed border-primary-300 text-primary-600 hover:bg-primary-50 rounded-lg py-2 text-sm font-medium transition">
                         + Adicionar coach
                       </button>
@@ -360,43 +377,65 @@ export default function AdminEscalaPage() {
         </>
       )}
 
-      {/* Modal adicionar coach */}
+      {/* Modal adicionar coach (MULTI-SELEÇÃO) */}
       {modalAdicionar && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl w-full max-w-md p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-1">Adicionar coach</h3>
-            <p className="text-sm text-gray-500 mb-4 capitalize">
+            <h3 className="text-lg font-semibold text-gray-900 mb-1">Adicionar coaches</h3>
+            <p className="text-sm text-gray-500 mb-1 capitalize">
               {formatarDataPT(modalAdicionar.data)}
+            </p>
+            <p className="text-xs text-gray-400 mb-4">
+              Marque um ou mais coaches para escalar neste dia.
             </p>
 
             <div className="space-y-2 mb-4 max-h-80 overflow-y-auto">
-              {coachesNaoEscalados(modalAdicionar.data).map(c => (
-                <button key={c.id} onClick={() => setCoachSelecionado(c.user_id)}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg border text-left transition ${
-                    coachSelecionado === c.user_id
-                      ? 'border-primary-500 bg-primary-50'
-                      : 'border-gray-200 hover:border-primary-300'
-                  }`}>
-                  <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${
-                    coachSelecionado === c.user_id ? 'border-primary-500 bg-primary-500' : 'border-gray-300'
-                  }`} />
-                  <span className="text-sm text-gray-800">{c.nome}</span>
-                </button>
-              ))}
+              {coachesNaoEscalados(modalAdicionar.data).map(c => {
+                const selecionado = coachesSelecionados.has(c.user_id)
+                return (
+                  <label key={c.id}
+                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg border cursor-pointer transition ${
+                      selecionado
+                        ? 'border-green-500 bg-green-50'
+                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                    }`}>
+                    <input
+                      type="checkbox"
+                      checked={selecionado}
+                      onChange={() => toggleCoachSelecionado(c.user_id)}
+                      className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500 flex-shrink-0"
+                    />
+                    <span className="text-sm text-gray-800 flex-1">{c.nome}</span>
+                    {selecionado && (
+                      <span className="text-xs text-green-600 font-medium">✓ Selecionado</span>
+                    )}
+                  </label>
+                )
+              })}
             </div>
 
+            {coachesSelecionados.size > 0 && (
+              <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-sm text-green-700 mb-3">
+                {coachesSelecionados.size} coach{coachesSelecionados.size > 1 ? 'es' : ''} selecionado{coachesSelecionados.size > 1 ? 's' : ''}
+              </div>
+            )}
+
             <div className="flex gap-2">
-              <button onClick={() => { setModalAdicionar(null); setCoachSelecionado('') }}
+              <button onClick={() => { setModalAdicionar(null); setCoachesSelecionados(new Set()) }}
                 className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 text-sm font-medium hover:bg-gray-50">
                 Cancelar
               </button>
-              <button onClick={adicionarCoachNaEscala} disabled={!coachSelecionado || salvandoCoach}
+              <button onClick={adicionarCoachesNaEscala} disabled={coachesSelecionados.size === 0 || salvandoCoach}
                 className={`flex-[2] rounded-lg py-2 text-sm font-medium text-white transition ${
-                  coachSelecionado && !salvandoCoach
-                    ? 'bg-primary-500 hover:bg-primary-600'
+                  coachesSelecionados.size > 0 && !salvandoCoach
+                    ? 'bg-green-600 hover:bg-green-700'
                     : 'bg-gray-300 cursor-not-allowed'
                 }`}>
-                {salvandoCoach ? 'Salvando...' : 'Adicionar'}
+                {salvandoCoach
+                  ? 'Salvando...'
+                  : coachesSelecionados.size === 0
+                    ? 'Adicionar'
+                    : `Adicionar ${coachesSelecionados.size} coach${coachesSelecionados.size > 1 ? 'es' : ''}`}
               </button>
             </div>
           </div>
@@ -425,7 +464,7 @@ export default function AdminEscalaPage() {
             </div>
 
             {erroFeriado && (
-              <div className="bg-danger-50 border border-danger-200 text-danger-700 rounded-lg px-3 py-2 text-sm mb-3">
+              <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm mb-3">
                 {erroFeriado}
               </div>
             )}
