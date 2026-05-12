@@ -1,488 +1,419 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
-import { useUnidade } from '@/hooks/useUnidade'
-import { PageHeader, Spinner } from '@/components/ui'
 
-const DIAS_SEMANA_LABEL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
+const ACCENT = '#ff2d9b'
+const CYAN = '#00e5ff'
+const AMARELO = '#ffaa00'
 
-function formatarData(d: Date): string {
-  return d.toISOString().split('T')[0]
+const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+const HORARIOS_FDS = ['08:00', '09:00', '10:00', '11:00', '12:00']
+
+function HalterSVG({ estado }: { estado: 'livre' | 'ocupado' | 'bloqueado' }) {
+  const cor = estado === 'ocupado' ? '#333' : estado === 'bloqueado' ? '#ff4444' : ACCENT
+  const opacity = estado === 'ocupado' ? 0.3 : estado === 'bloqueado' ? 0.4 : 1
+  return (
+    <svg width="32" height="32" viewBox="0 0 48 28" style={{ opacity, flexShrink: 0 }}>
+      <rect x="15" y="11.5" width="18" height="5" rx="2" fill={cor} />
+      <rect x="2" y="5" width="5" height="18" rx="3" fill={cor} />
+      <rect x="8" y="7.5" width="4" height="13" rx="2" fill={cor} />
+      <rect x="36" y="7.5" width="4" height="13" rx="2" fill={cor} />
+      <rect x="41" y="5" width="5" height="18" rx="3" fill={cor} />
+    </svg>
+  )
 }
 
-function formatarDataPT(dataStr: string): string {
-  const d = new Date(dataStr + 'T12:00:00')
-  return d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
-}
-
-export default function AdminEscalaPage() {
+export default function GradePublicaPage() {
+  const { perfil, loading } = useAuth()
+  const router = useRouter()
   const supabase = createClient()
-  const { unidadeAtiva, setUnidadeAtiva, unidadesPermitidas, loading: loadingUnidade } = useUnidade()
 
-  const [aba, setAba] = useState<'fds' | 'feriados'>('fds')
-  const [coachesDisponiveis, setCoachesDisponiveis] = useState<any[]>([])
-  const [escalas, setEscalas] = useState<any[]>([])
-  const [feriados, setFeriados] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const [unidades, setUnidades] = useState<any[]>([])
+  const [unidadeAtiva, setUnidadeAtiva] = useState<any>(null)
+  const [diaSel, setDiaSel] = useState(0)
+  const [semanaOffset, setSemanaOffset] = useState(0)
+  const [periodo, setPeriodo] = useState<'todos' | 'manha' | 'tarde' | 'noite'>('todos')
+  const [horarios, setHorarios] = useState<any[]>([])
+  const [tipoDia, setTipoDia] = useState<'util' | 'fds' | 'feriado'>('util')
+  const [feriadoDescricao, setFeriadoDescricao] = useState<string>('')
+  const [loadingHorarios, setLoadingHorarios] = useState(false)
 
-  const [modalAdicionar, setModalAdicionar] = useState<{ data: string } | null>(null)
-  const [coachesSelecionados, setCoachesSelecionados] = useState<Set<string>>(new Set())
-  const [salvandoCoach, setSalvandoCoach] = useState(false)
+  const isCliente = perfil?.role === 'cliente'
+  const isLogado = !!perfil
 
-  const [modalNovoFeriado, setModalNovoFeriado] = useState(false)
-  const [novoFeriadoData, setNovoFeriadoData] = useState('')
-  const [novoFeriadoDescricao, setNovoFeriadoDescricao] = useState('')
-  const [salvandoFeriado, setSalvandoFeriado] = useState(false)
-  const [erroFeriado, setErroFeriado] = useState('')
+  // CALCULAR diasSemana ANTES de usar nas funções (fix do bug do spinner travado)
+  const diasSemana = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date()
+    d.setDate(d.getDate() + semanaOffset * 7 + i)
+    return d
+  })
 
   useEffect(() => {
-    if (unidadeAtiva) loadDados()
-  }, [unidadeAtiva?.id])
+    async function carregarUnidades() {
+      const { data } = await supabase
+        .from('unidades')
+        .select('*')
+        .eq('ativo', true)
+        .order('nome')
+      setUnidades(data || [])
+      if (data && data.length > 0) setUnidadeAtiva(data[0])
+    }
+    carregarUnidades()
+  }, [])
 
-  const proximosFDS = (() => {
-    const datas: { data: string; nome: string }[] = []
-    const hoje = new Date()
-    hoje.setHours(12, 0, 0, 0)
-    let count = 0
-    let cursor = new Date(hoje)
-    while (count < 12) {
-      const diaSem = cursor.getDay()
-      if (diaSem === 0 || diaSem === 6) {
-        datas.push({ data: formatarData(cursor), nome: DIAS_SEMANA_LABEL[diaSem] })
-        count++
+  useEffect(() => {
+    if (unidadeAtiva) loadHorarios()
+  }, [unidadeAtiva?.id, diaSel, semanaOffset])
+
+  async function loadHorarios() {
+    if (!unidadeAtiva) return
+    setLoadingHorarios(true)
+
+    try {
+      const dataSel = diasSemana[diaSel]
+      if (!dataSel) {
+        setHorarios([])
+        setLoadingHorarios(false)
+        return
       }
-      cursor.setDate(cursor.getDate() + 1)
-    }
-    return datas
-  })()
 
-  async function loadDados() {
-    if (!unidadeAtiva) return
-    setLoading(true)
-    const dataInicio = formatarData(new Date())
-    const dataLimite = new Date()
-    dataLimite.setMonth(dataLimite.getMonth() + 3)
+      const diaSem = dataSel.getDay()
+      const dataStr = dataSel.toISOString().split('T')[0]
+      const hoje = new Date().toISOString().split('T')[0]
+      const agora = new Date()
+      const horaAtual = `${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}`
+      const isDiaDe = dataStr === hoje
 
-    const [{ data: coaches }, { data: esc }, { data: fer }] = await Promise.all([
-      supabase.from('coaches').select('id, nome, user_id').eq('ativo', true).order('nome'),
-      supabase.from('escala_fds')
+      const { data: feriadoData } = await supabase
+        .from('feriados')
         .select('*')
         .eq('unidade_id', unidadeAtiva.id)
-        .gte('data', dataInicio)
-        .lte('data', formatarData(dataLimite))
-        .order('data'),
-      supabase.from('feriados')
-        .select('*')
-        .eq('unidade_id', unidadeAtiva.id)
-        .gte('data', dataInicio)
-        .order('data'),
-    ])
+        .eq('data', dataStr)
+        .eq('ativo', true)
+        .maybeSingle()
 
-    setCoachesDisponiveis(coaches || [])
-    setEscalas(esc || [])
-    setFeriados(fer || [])
-    setLoading(false)
-  }
+      const ehFeriado = !!feriadoData
+      const ehFds = diaSem === 0 || diaSem === 6
+      const usaEscalaFds = ehFeriado || ehFds
 
-  function nomeCoach(coachUserId: string): string {
-    const c = coachesDisponiveis.find(c => c.user_id === coachUserId)
-    return c?.nome || 'Coach'
-  }
+      if (ehFeriado) {
+        setTipoDia('feriado')
+        setFeriadoDescricao(feriadoData.descricao || '')
+      } else if (ehFds) {
+        setTipoDia('fds')
+        setFeriadoDescricao('')
+      } else {
+        setTipoDia('util')
+        setFeriadoDescricao('')
+      }
 
-  function coachesDaData(data: string): any[] {
-    return escalas.filter(e => e.data === data)
-  }
-  function coachesNaoEscalados(data: string): any[] {
-    const idsEscalados = new Set(coachesDaData(data).map(e => e.coach_id))
-    return coachesDisponiveis.filter(c => !idsEscalados.has(c.user_id))
-  }
+      let porHora: Record<string, number> = {}
 
-  function toggleCoachSelecionado(userId: string) {
-    setCoachesSelecionados(prev => {
-      const novo = new Set(prev)
-      if (novo.has(userId)) novo.delete(userId)
-      else novo.add(userId)
-      return novo
-    })
-  }
+      if (usaEscalaFds) {
+        const { data: escala } = await supabase
+          .from('escala_fds')
+          .select('coach_id')
+          .eq('unidade_id', unidadeAtiva.id)
+          .eq('data', dataStr)
 
-  function abrirModalAdicionar(data: string) {
-    setModalAdicionar({ data })
-    setCoachesSelecionados(new Set())
-  }
+        const qtdCoaches = (escala || []).length
 
-  async function adicionarCoachesNaEscala() {
-    if (coachesSelecionados.size === 0 || !modalAdicionar || !unidadeAtiva) return
-    setSalvandoCoach(true)
+        if (qtdCoaches > 0) {
+          for (const hora of HORARIOS_FDS) {
+            if (isDiaDe && hora <= horaAtual) continue
+            porHora[hora] = qtdCoaches
+          }
+        }
+      } else {
+        const { data: hors } = await supabase
+          .from('coach_horarios')
+          .select('hora')
+          .eq('dia_semana', diaSem)
+          .eq('ativo', true)
+          .eq('unidade_id', unidadeAtiva.id)
 
-    const registros = Array.from(coachesSelecionados).map(userId => ({
-      unidade_id: unidadeAtiva.id,
-      data: modalAdicionar.data,
-      coach_id: userId,
-    }))
+        for (const h of (hors || [])) {
+          const hora = (h.hora || '').slice(0, 5)
+          if (isDiaDe && hora <= horaAtual) continue
+          porHora[hora] = (porHora[hora] || 0) + 1
+        }
+      }
 
-    const { error } = await supabase.from('escala_fds').insert(registros)
+      const [{ data: ags }, { data: bloqueadas }] = await Promise.all([
+        supabase.from('agendamentos').select('horario, status').eq('data', dataStr).eq('unidade_id', unidadeAtiva.id).neq('status', 'cancelado'),
+        supabase.from('vagas_bloqueadas').select('horario, quantidade').eq('data', dataStr).eq('ativo', true).eq('unidade_id', unidadeAtiva.id),
+      ])
 
-    if (!error) {
-      setModalAdicionar(null)
-      setCoachesSelecionados(new Set())
-      await loadDados()
+      const ocupados: Record<string, number> = {}
+      for (const a of (ags || [])) {
+        const hora = (a.horario || '').slice(0, 5)
+        ocupados[hora] = (ocupados[hora] || 0) + 1
+      }
+
+      const bloqueadasMap: Record<string, number> = {}
+      for (const b of (bloqueadas || [])) {
+        const hora = (b.horario || '').slice(0, 5)
+        bloqueadasMap[hora] = (bloqueadasMap[hora] || 0) + (b.quantidade || 1)
+      }
+
+      const resultado = Object.entries(porHora).map(([hora, total]) => {
+        const bloq = bloqueadasMap[hora] || 0
+        const ocup = ocupados[hora] || 0
+        return {
+          hora,
+          total,
+          ocupados: ocup,
+          bloqueadas: bloq,
+          livres: Math.max(0, total - ocup - bloq),
+        }
+      }).sort((a, b) => a.hora.localeCompare(b.hora))
+
+      setHorarios(resultado)
+    } catch (err) {
+      console.error('Erro carregando horários:', err)
+      setHorarios([])
+    } finally {
+      setLoadingHorarios(false)
     }
-    setSalvandoCoach(false)
   }
 
-  async function removerCoachDaEscala(escalaId: string) {
-    if (!confirm('Remover este coach da escala?')) return
-    await supabase.from('escala_fds').delete().eq('id', escalaId)
-    await loadDados()
+  const horariosFiltrados = horarios.filter(h => {
+    const hr = parseInt(h.hora)
+    if (periodo === 'manha') return hr < 12
+    if (periodo === 'tarde') return hr >= 12 && hr < 18
+    if (periodo === 'noite') return hr >= 18
+    return true
+  })
+
+  function clickReservar() {
+    if (isCliente) router.push('/agendar')
+    else if (isLogado) router.push('/')
+    else router.push('/cadastro')
   }
 
-  async function criarFeriado() {
-    if (!novoFeriadoData) { setErroFeriado('Selecione a data.'); return }
-    if (!novoFeriadoDescricao.trim()) { setErroFeriado('Descreva o feriado.'); return }
-    if (!unidadeAtiva) return
-    setSalvandoFeriado(true)
-    setErroFeriado('')
-    const { error } = await supabase.from('feriados').insert({
-      unidade_id: unidadeAtiva.id,
-      data: novoFeriadoData,
-      descricao: novoFeriadoDescricao.trim(),
-      ativo: true,
-    })
-    if (error) {
-      if (error.code === '23505') setErroFeriado('Já existe feriado nesta data.')
-      else setErroFeriado('Erro ao criar feriado.')
-      setSalvandoFeriado(false)
-      return
-    }
-    setModalNovoFeriado(false)
-    setNovoFeriadoData('')
-    setNovoFeriadoDescricao('')
-    setSalvandoFeriado(false)
-    await loadDados()
-  }
-
-  async function toggleFeriadoAtivo(id: string, ativo: boolean) {
-    await supabase.from('feriados').update({ ativo: !ativo }).eq('id', id)
-    await loadDados()
-  }
-
-  async function removerFeriado(id: string) {
-    if (!confirm('Remover este feriado? A grade fixa voltará a valer nesta data.')) return
-    await supabase.from('feriados').delete().eq('id', id)
-    await loadDados()
-  }
-
-  if (loadingUnidade || loading) return <Spinner />
+  if (loading) return (
+    <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: 32, height: 32, border: `4px solid ${ACCENT}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+    </div>
+  )
 
   return (
-    <div>
-      <PageHeader title="Escala" subtitle="Final de semana e feriados — coaches escalados pontualmente" />
+    <div style={{ minHeight: '100vh', background: '#080808', fontFamily: "'DM Sans', sans-serif", color: '#f0f0f0' }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        .dia-btn-h { transition: all .2s; cursor: pointer; flex: 1; min-width: 0; }
+        .dia-btn-h:hover { border-color: ${ACCENT} !important; }
+        .slot-row-h { transition: all .2s; }
+        .slot-row-h:hover { border-color: ${ACCENT} !important; background: #ff2d9b08 !important; }
+        .nav-semana-btn:hover:not(:disabled) { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
+        .unidade-tab:hover { border-color: ${ACCENT} !important; color: #fff !important; }
+        .nav-auth-h:hover { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
+      `}</style>
 
-      {/* Seletor de unidade */}
-      {unidadesPermitidas.length > 1 && (
-        <div className="mb-6">
-          <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Unidade</div>
-          <div className="flex gap-2 flex-wrap">
-            {unidadesPermitidas.map(u => {
-              const ativa = unidadeAtiva?.id === u.id
-              return (
-                <button key={u.id} onClick={() => setUnidadeAtiva(u)}
-                  className={`px-4 py-2 rounded-lg border text-sm font-medium transition ${
-                    ativa
-                      ? 'border-green-500 bg-green-50 text-green-700'
-                      : 'border-gray-200 bg-white text-gray-600 hover:border-green-300'
-                  }`}>
-                  {u.nome}
-                </button>
-              )
-            })}
-          </div>
+      <div style={{ background: '#08080895', backdropFilter: 'blur(16px)', borderBottom: '1px solid #1a1a1a', padding: '0 1.5rem', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
+        <div onClick={() => router.push('/')} style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', letterSpacing: 2, cursor: 'pointer' }}>
+          JUST<span style={{ color: ACCENT }}>CT</span>
         </div>
-      )}
-
-      {/* Abas */}
-      <div className="flex gap-2 border-b border-gray-200 mb-6">
-        {[
-          { key: 'fds', label: 'Final de Semana' },
-          { key: 'feriados', label: 'Feriados' },
-        ].map(t => (
-          <button key={t.key} onClick={() => setAba(t.key as any)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition ${
-              aba === t.key
-                ? 'border-green-600 text-green-700'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}>
-            {t.label}
-          </button>
-        ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {isCliente ? (
+            <button onClick={() => router.push('/minha-conta')} className="nav-auth-h"
+              style={{ background: 'transparent', color: '#aaa', border: '1px solid #333', borderRadius: 6, padding: '0.45rem 1rem', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+              Minha conta
+            </button>
+          ) : (
+            <>
+              <button onClick={() => router.push('/login')} className="nav-auth-h"
+                style={{ background: 'transparent', color: '#aaa', border: '1px solid #333', borderRadius: 6, padding: '0.45rem 1rem', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                Login
+              </button>
+              <button onClick={() => router.push('/cadastro')} className="nav-auth-h"
+                style={{ background: 'transparent', color: '#aaa', border: '1px solid #333', borderRadius: 6, padding: '0.45rem 1rem', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                Cadastro
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
-      {!unidadeAtiva ? (
-        <div className="card text-center text-gray-400 py-8">
-          Selecione uma unidade.
+      <div style={{ maxWidth: 700, margin: '0 auto', padding: '2rem 1.5rem' }}>
+        <div style={{ marginBottom: '1.5rem' }}>
+          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: '#fff' }}>HORÁRIOS DISPONÍVEIS</div>
+          <div style={{ fontSize: 14, color: '#666', marginTop: 4 }}>Cada halter = uma vaga · Para reservar, faça login ou cadastre-se</div>
         </div>
-      ) : aba === 'fds' ? (
-        <>
-          <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 mb-4">
-            <p className="text-sm text-blue-700">
-              💡 Horários no FDS: <strong>08:00, 09:00, 10:00, 11:00, 12:00</strong>. Cada coach escalado cobre todos os 5 horários.
-            </p>
+
+        {!isCliente && (
+          <div style={{ background: '#110008', border: `1px solid ${ACCENT}44`, borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1.5rem', fontSize: 13, color: '#ccc', lineHeight: 1.7 }}>
+            👀 Você está visualizando os horários como visitante. Para fazer uma reserva,{' '}
+            <span onClick={() => router.push('/cadastro')} style={{ color: ACCENT, fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}>crie sua conta</span>
+            {' '}ou{' '}
+            <span onClick={() => router.push('/login')} style={{ color: ACCENT, fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}>faça login</span>.
           </div>
+        )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {proximosFDS.map(({ data, nome }) => {
-              const coachesEsc = coachesDaData(data)
-              const disp = coachesNaoEscalados(data)
-              const dataObj = new Date(data + 'T12:00:00')
-              const diaNum = dataObj.getDate()
-              const mesNome = dataObj.toLocaleDateString('pt-BR', { month: 'short' })
+        {unidades.length > 1 && (
+          <div style={{ marginBottom: '1.5rem' }}>
+            <div style={{ fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Unidade</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {unidades.map(u => {
+                const ativa = unidadeAtiva?.id === u.id
+                return (
+                  <button key={u.id} className="unidade-tab"
+                    onClick={() => {
+                      setUnidadeAtiva(u)
+                      setHorarios([])
+                      setDiaSel(0)
+                      setSemanaOffset(0)
+                    }}
+                    style={{
+                      padding: '0.5rem 1.25rem',
+                      borderRadius: 10,
+                      border: `1.5px solid ${ativa ? ACCENT : '#333'}`,
+                      background: ativa ? `${ACCENT}18` : 'transparent',
+                      color: ativa ? ACCENT : '#666',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      fontFamily: "'DM Sans', sans-serif",
+                      transition: 'all .2s',
+                    }}>
+                    {u.nome}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
+        {unidades.length === 1 && unidadeAtiva && (
+          <div style={{ marginBottom: '1.5rem' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: `${ACCENT}15`, border: `1px solid ${ACCENT}44`, borderRadius: 8, padding: '0.35rem 0.85rem' }}>
+              <span style={{ fontSize: 12, color: ACCENT, fontWeight: 600 }}>{unidadeAtiva.nome}</span>
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
+          <button className="nav-semana-btn"
+            onClick={() => { setSemanaOffset(o => Math.max(0, o - 1)); setDiaSel(0) }}
+            disabled={semanaOffset === 0}
+            style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #333', background: 'transparent', color: semanaOffset === 0 ? '#333' : '#fff', fontSize: 18, cursor: semanaOffset === 0 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .2s' }}>‹</button>
+          <div style={{ display: 'flex', gap: 6, flex: 1 }}>
+            {diasSemana.map((d, i) => {
+              const isHoje = semanaOffset === 0 && i === 0
+              const isSel = i === diaSel
               return (
-                <div key={data} className="card">
-                  <div className="flex items-start gap-3 mb-3">
-                    <div className="text-center flex-shrink-0 w-14">
-                      <div className="text-2xl font-bold text-gray-800 leading-none">{diaNum}</div>
-                      <div className="text-xs text-gray-400 uppercase mt-0.5">{mesNome}</div>
-                    </div>
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-gray-900">{nome}</div>
-                      <div className="text-xs text-gray-400 mt-0.5">
-                        {coachesEsc.length === 0
-                          ? 'Nenhum coach escalado'
-                          : `${coachesEsc.length} coach${coachesEsc.length > 1 ? 'es' : ''} · ${coachesEsc.length} vaga${coachesEsc.length > 1 ? 's' : ''}/horário`}
-                      </div>
-                    </div>
+                <div key={i} className="dia-btn-h" onClick={() => setDiaSel(i)}
+                  style={{ padding: '0.6rem 0.25rem', borderRadius: 10, border: `1.5px solid ${isSel ? ACCENT : '#222'}`, background: isSel ? `${ACCENT}15` : 'transparent', textAlign: 'center' }}>
+                  <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, color: isSel ? ACCENT : '#555', fontWeight: 600, marginBottom: 2 }}>
+                    {isHoje ? 'HOJE' : DIAS_SEMANA[d.getDay()]}
                   </div>
-
-                  {coachesEsc.length > 0 && (
-                    <div className="space-y-1.5 mb-3">
-                      {coachesEsc.map(e => (
-                        <div key={e.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 text-sm">
-                          <span className="text-gray-800">{nomeCoach(e.coach_id)}</span>
-                          <button onClick={() => removerCoachDaEscala(e.id)}
-                            className="text-gray-400 hover:text-red-500 text-lg leading-none px-1">
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {disp.length > 0 ? (
-                    <button onClick={() => abrirModalAdicionar(data)}
-                      className="w-full border border-dashed border-green-400 text-green-700 hover:bg-green-50 rounded-lg py-2 text-sm font-medium transition">
-                      + Adicionar coach
-                    </button>
-                  ) : (
-                    <div className="text-center text-xs text-gray-400 py-2">
-                      Todos os coaches escalados
-                    </div>
-                  )}
+                  <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 20, color: isSel ? '#fff' : '#888', lineHeight: 1 }}>{d.getDate()}</div>
+                  <div style={{ fontSize: 9, color: isSel ? ACCENT : '#444', textTransform: 'uppercase' }}>
+                    {d.toLocaleDateString('pt-BR', { month: 'short' })}
+                  </div>
                 </div>
               )
             })}
           </div>
-        </>
-      ) : (
-        <>
-          <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 mb-4">
-            <p className="text-sm text-blue-700">
-              💡 Datas marcadas como <strong>feriado ativo</strong> ignoram a grade fixa e usam só os coaches escalados aqui, com horários de FDS.
-            </p>
-          </div>
+          <button className="nav-semana-btn"
+            onClick={() => { setSemanaOffset(o => Math.min(3, o + 1)); setDiaSel(0) }}
+            disabled={semanaOffset === 3}
+            style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #333', background: 'transparent', color: semanaOffset === 3 ? '#333' : '#fff', fontSize: 18, cursor: semanaOffset === 3 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .2s' }}>›</button>
+        </div>
 
-          <div className="mb-4">
-            <button onClick={() => setModalNovoFeriado(true)}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition shadow-sm">
-              + Novo feriado
+        {tipoDia === 'feriado' && unidadeAtiva && (
+          <div style={{ background: '#1a1000', border: `1px solid ${AMARELO}44`, borderRadius: 12, padding: '0.85rem 1.25rem', marginBottom: '1rem', fontSize: 13, color: '#ddd', lineHeight: 1.6 }}>
+            ⭐ <strong style={{ color: AMARELO }}>{feriadoDescricao}</strong> — funcionando com escala especial e horários de fim de semana.
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+          {[
+            { key: 'todos', label: 'Todos' },
+            { key: 'manha', label: '🌅 Manhã' },
+            { key: 'tarde', label: '☀️ Tarde' },
+            { key: 'noite', label: '🌙 Noite' },
+          ].map(p => (
+            <button key={p.key} onClick={() => setPeriodo(p.key as any)}
+              style={{ padding: '0.35rem 1rem', borderRadius: 20, border: `1px solid ${periodo === p.key ? ACCENT : '#333'}`, background: periodo === p.key ? `${ACCENT}20` : 'transparent', color: periodo === p.key ? ACCENT : '#555', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+
+        {!unidadeAtiva ? (
+          <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#444' }}>
+            Carregando unidades...
+          </div>
+        ) : loadingHorarios ? (
+          <div style={{ textAlign: 'center', padding: '3rem', color: '#555' }}>Carregando horários...</div>
+        ) : horariosFiltrados.length === 0 ? (
+          <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#666', lineHeight: 1.7 }}>
+            {tipoDia === 'fds'
+              ? <>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>📅</div>
+                <div style={{ fontSize: 14, color: '#888' }}>Não há coaches escalados neste dia ainda.</div>
+                <div style={{ fontSize: 12, color: '#555', marginTop: 4 }}>A escala de fim de semana é definida pela equipe.</div>
+              </>
+              : tipoDia === 'feriado'
+                ? <>
+                  <div style={{ fontSize: 32, marginBottom: 8 }}>⭐</div>
+                  <div style={{ fontSize: 14, color: '#888' }}>Feriado sem coaches escalados.</div>
+                </>
+                : semanaOffset === 0 && diaSel === 0
+                  ? 'Não há mais horários disponíveis para hoje.'
+                  : 'Nenhum horário disponível neste dia.'}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {horariosFiltrados.map((h, i) => {
+              const lotado = h.livres <= 0
+              return (
+                <div key={i} className="slot-row-h"
+                  style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem 1.25rem', borderRadius: 12, border: '1px solid #222', background: '#111' }}>
+                  <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, fontWeight: 500, color: '#fff', width: 58, flexShrink: 0 }}>{h.hora}</div>
+                  <div style={{ display: 'flex', gap: 6, flex: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+                    {Array.from({ length: h.total }).map((_, vi) => {
+                      let estado: 'livre' | 'ocupado' | 'bloqueado' = 'livre'
+                      if (vi < h.ocupados) estado = 'ocupado'
+                      else if (vi < h.ocupados + h.bloqueadas) estado = 'bloqueado'
+                      return <HalterSVG key={vi} estado={estado} />
+                    })}
+                  </div>
+                  <div style={{ flexShrink: 0, minWidth: 90, textAlign: 'right' }}>
+                    <div style={{ fontSize: 11, fontFamily: "'DM Mono', monospace", color: lotado ? '#ff4444' : h.livres <= 2 ? AMARELO : ACCENT, fontWeight: 600, marginBottom: 4 }}>
+                      {lotado ? 'LOTADO' : h.livres === 1 ? '1 VAGA' : `${h.livres} VAGAS`}
+                    </div>
+                    <button onClick={clickReservar}
+                      style={{ background: lotado ? 'transparent' : ACCENT, color: lotado ? AMARELO : '#fff', border: lotado ? `1px solid ${AMARELO}` : 'none', borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                      {lotado ? 'Fila' : 'Reservar'}
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {!isCliente && horariosFiltrados.length > 0 && (
+          <div style={{ marginTop: '3rem', background: '#0d0010', border: `1px solid ${ACCENT}44`, borderRadius: 16, padding: '2rem', textAlign: 'center' }}>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', marginBottom: 8, letterSpacing: 1 }}>
+              GOSTOU DO QUE VIU?
+            </div>
+            <div style={{ fontSize: 14, color: '#aaa', marginBottom: '1.5rem', lineHeight: 1.6 }}>
+              Crie sua conta gratuitamente, ative seu plano Wellhub ou TotalPass e reserve seu primeiro treino.
+            </div>
+            <button onClick={() => router.push('/cadastro')}
+              style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.85rem 2rem', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+              Criar conta gratuita →
             </button>
           </div>
-
-          {feriados.length === 0 ? (
-            <div className="card text-center text-gray-400 py-8 border-dashed">
-              Nenhum feriado cadastrado para esta unidade.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {feriados.map(f => {
-                const coachesEsc = coachesDaData(f.data)
-                const disp = coachesNaoEscalados(f.data)
-                const dataObj = new Date(f.data + 'T12:00:00')
-                const diaNum = dataObj.getDate()
-                const mesNome = dataObj.toLocaleDateString('pt-BR', { month: 'short' })
-                const diaSemNome = DIAS_SEMANA_LABEL[dataObj.getDay()]
-
-                return (
-                  <div key={f.id} className={`card ${f.ativo ? 'border-orange-200' : ''}`}>
-                    <div className="flex items-start gap-3 mb-3">
-                      <div className="text-center flex-shrink-0 w-14">
-                        <div className={`text-2xl font-bold leading-none ${f.ativo ? 'text-orange-500' : 'text-gray-400'}`}>{diaNum}</div>
-                        <div className="text-xs text-gray-400 uppercase mt-0.5">{mesNome}</div>
-                      </div>
-                      <div className="flex-1">
-                        <div className="text-sm font-medium text-gray-900">{f.descricao}</div>
-                        <div className="text-xs text-gray-400 mt-0.5">{diaSemNome}</div>
-                        <div className={`text-xs font-medium mt-1 ${f.ativo ? 'text-orange-600' : 'text-gray-400'}`}>
-                          {f.ativo ? '● Ativo' : '○ Inativo'}
-                        </div>
-                      </div>
-                      <button onClick={() => removerFeriado(f.id)}
-                        className="text-gray-400 hover:text-red-500 text-xl leading-none px-1">
-                        ×
-                      </button>
-                    </div>
-
-                    <button onClick={() => toggleFeriadoAtivo(f.id, f.ativo)}
-                      className={`w-full border rounded-lg py-1.5 text-xs font-medium transition mb-3 ${
-                        f.ativo
-                          ? 'border-orange-300 text-orange-600 hover:bg-orange-50'
-                          : 'border-gray-200 text-gray-500 hover:bg-gray-50'
-                      }`}>
-                      {f.ativo ? 'Desativar feriado' : 'Ativar feriado'}
-                    </button>
-
-                    {coachesEsc.length > 0 && (
-                      <div className="space-y-1.5 mb-3">
-                        {coachesEsc.map(e => (
-                          <div key={e.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 text-sm">
-                            <span className="text-gray-800">{nomeCoach(e.coach_id)}</span>
-                            <button onClick={() => removerCoachDaEscala(e.id)}
-                              className="text-gray-400 hover:text-red-500 text-lg leading-none px-1">
-                              ×
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {coachesEsc.length === 0 && (
-                      <div className="text-center text-xs text-gray-400 mb-2">
-                        Nenhum coach escalado
-                      </div>
-                    )}
-
-                    {disp.length > 0 && (
-                      <button onClick={() => abrirModalAdicionar(f.data)}
-                        className="w-full border border-dashed border-green-400 text-green-700 hover:bg-green-50 rounded-lg py-2 text-sm font-medium transition">
-                        + Adicionar coach
-                      </button>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Modal adicionar coach (MULTI-SELEÇÃO) */}
-      {modalAdicionar && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl w-full max-w-md p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-1">Adicionar coaches</h3>
-            <p className="text-sm text-gray-500 mb-1 capitalize">
-              {formatarDataPT(modalAdicionar.data)}
-            </p>
-            <p className="text-xs text-gray-400 mb-4">
-              Marque um ou mais coaches para escalar neste dia.
-            </p>
-
-            <div className="space-y-2 mb-4 max-h-80 overflow-y-auto">
-              {coachesNaoEscalados(modalAdicionar.data).map(c => {
-                const selecionado = coachesSelecionados.has(c.user_id)
-                return (
-                  <label key={c.id}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg border cursor-pointer transition ${
-                      selecionado
-                        ? 'border-green-500 bg-green-50'
-                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                    }`}>
-                    <input
-                      type="checkbox"
-                      checked={selecionado}
-                      onChange={() => toggleCoachSelecionado(c.user_id)}
-                      className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500 flex-shrink-0"
-                    />
-                    <span className="text-sm text-gray-800 flex-1">{c.nome}</span>
-                    {selecionado && (
-                      <span className="text-xs text-green-600 font-medium">✓ Selecionado</span>
-                    )}
-                  </label>
-                )
-              })}
-            </div>
-
-            {coachesSelecionados.size > 0 && (
-              <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-sm text-green-700 mb-3">
-                {coachesSelecionados.size} coach{coachesSelecionados.size > 1 ? 'es' : ''} selecionado{coachesSelecionados.size > 1 ? 's' : ''}
-              </div>
-            )}
-
-            <div className="flex gap-2">
-              <button onClick={() => { setModalAdicionar(null); setCoachesSelecionados(new Set()) }}
-                className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 text-sm font-medium hover:bg-gray-50">
-                Cancelar
-              </button>
-              <button onClick={adicionarCoachesNaEscala} disabled={coachesSelecionados.size === 0 || salvandoCoach}
-                className={`flex-[2] rounded-lg py-2 text-sm font-medium text-white transition ${
-                  coachesSelecionados.size > 0 && !salvandoCoach
-                    ? 'bg-green-600 hover:bg-green-700'
-                    : 'bg-gray-300 cursor-not-allowed'
-                }`}>
-                {salvandoCoach
-                  ? 'Salvando...'
-                  : coachesSelecionados.size === 0
-                    ? 'Adicionar'
-                    : `Adicionar ${coachesSelecionados.size} coach${coachesSelecionados.size > 1 ? 'es' : ''}`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal novo feriado */}
-      {modalNovoFeriado && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl w-full max-w-md p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Novo feriado</h3>
-
-            <div className="mb-3">
-              <label className="text-xs font-medium text-gray-600 mb-1 block">Data</label>
-              <input type="date" value={novoFeriadoData}
-                onChange={e => setNovoFeriadoData(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-green-500" />
-            </div>
-
-            <div className="mb-4">
-              <label className="text-xs font-medium text-gray-600 mb-1 block">Descrição</label>
-              <input type="text" value={novoFeriadoDescricao}
-                onChange={e => setNovoFeriadoDescricao(e.target.value)}
-                placeholder="Ex: Corpus Christi"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-green-500" />
-            </div>
-
-            {erroFeriado && (
-              <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm mb-3">
-                {erroFeriado}
-              </div>
-            )}
-
-            <div className="flex gap-2">
-              <button onClick={() => { setModalNovoFeriado(false); setNovoFeriadoData(''); setNovoFeriadoDescricao(''); setErroFeriado('') }}
-                className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 text-sm font-medium hover:bg-gray-50">
-                Cancelar
-              </button>
-              <button onClick={criarFeriado} disabled={salvandoFeriado}
-                className={`flex-[2] rounded-lg py-2 text-sm font-medium text-white transition ${
-                  salvandoFeriado ? 'bg-gray-300' : 'bg-green-600 hover:bg-green-700'
-                }`}>
-                {salvandoFeriado ? 'Salvando...' : 'Criar feriado'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }
