@@ -63,10 +63,11 @@ export default function AdminEscalaPage() {
     const dataLimite = new Date()
     dataLimite.setMonth(dataLimite.getMonth() + 3)
 
+    // Busca coaches da tabela `coaches` (nome real), filtrando ativos
     const [{ data: coaches }, { data: esc }, { data: fer }] = await Promise.all([
-      supabase.from('perfis').select('id, nome').eq('role', 'coach').order('nome'),
+      supabase.from('coaches').select('id, nome, user_id').eq('ativo', true).order('nome'),
       supabase.from('escala_fds')
-        .select('*, perfis:coach_id(nome)')
+        .select('*')
         .eq('unidade_id', unidadeAtiva.id)
         .gte('data', dataInicio)
         .lte('data', formatarData(dataLimite))
@@ -84,12 +85,18 @@ export default function AdminEscalaPage() {
     setLoading(false)
   }
 
+  // Resolve nome do coach pelo user_id armazenado em escala_fds.coach_id
+  function nomeCoach(coachUserId: string): string {
+    const c = coachesDisponiveis.find(c => c.user_id === coachUserId)
+    return c?.nome || 'Coach'
+  }
+
   function coachesDaData(data: string): any[] {
     return escalas.filter(e => e.data === data)
   }
   function coachesNaoEscalados(data: string): any[] {
-    const ids = new Set(coachesDaData(data).map(e => e.coach_id))
-    return coachesDisponiveis.filter(c => !ids.has(c.id))
+    const idsEscalados = new Set(coachesDaData(data).map(e => e.coach_id))
+    return coachesDisponiveis.filter(c => !idsEscalados.has(c.user_id))
   }
 
   async function adicionarCoachNaEscala() {
@@ -236,7 +243,7 @@ export default function AdminEscalaPage() {
                     <div className="space-y-1.5 mb-3">
                       {coachesEsc.map(e => (
                         <div key={e.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 text-sm">
-                          <span className="text-gray-800">{e.perfis?.nome || 'Coach'}</span>
+                          <span className="text-gray-800">{nomeCoach(e.coach_id)}</span>
                           <button onClick={() => removerCoachDaEscala(e.id)}
                             className="text-gray-400 hover:text-danger-500 text-lg leading-none px-1">
                             ×
@@ -323,7 +330,7 @@ export default function AdminEscalaPage() {
                       <div className="space-y-1.5 mb-3">
                         {coachesEsc.map(e => (
                           <div key={e.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 text-sm">
-                            <span className="text-gray-800">{e.perfis?.nome || 'Coach'}</span>
+                            <span className="text-gray-800">{nomeCoach(e.coach_id)}</span>
                             <button onClick={() => removerCoachDaEscala(e.id)}
                               className="text-gray-400 hover:text-danger-500 text-lg leading-none px-1">
                               ×
@@ -364,14 +371,14 @@ export default function AdminEscalaPage() {
 
             <div className="space-y-2 mb-4 max-h-80 overflow-y-auto">
               {coachesNaoEscalados(modalAdicionar.data).map(c => (
-                <button key={c.id} onClick={() => setCoachSelecionado(c.id)}
+                <button key={c.id} onClick={() => setCoachSelecionado(c.user_id)}
                   className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg border text-left transition ${
-                    coachSelecionado === c.id
+                    coachSelecionado === c.user_id
                       ? 'border-primary-500 bg-primary-50'
                       : 'border-gray-200 hover:border-primary-300'
                   }`}>
                   <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${
-                    coachSelecionado === c.id ? 'border-primary-500 bg-primary-500' : 'border-gray-300'
+                    coachSelecionado === c.user_id ? 'border-primary-500 bg-primary-500' : 'border-gray-300'
                   }`} />
                   <span className="text-sm text-gray-800">{c.nome}</span>
                 </button>
