@@ -66,8 +66,7 @@ export default function MinhaContaPage() {
 
   useEffect(() => {
     if (!loading && !user) router.push('/')
-    if (!loading && perfil && perfil.role && !['cliente'].includes(perfil.role as string)) router.push('/equipe')
-  }, [user, perfil, loading])
+  }, [user, loading])
 
   useEffect(() => {
     if (perfil) loadDados()
