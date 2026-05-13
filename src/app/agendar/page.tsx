@@ -126,7 +126,6 @@ export default function AgendarPage() {
   const [contratoAssinado, setContratoAssinado] = useState(false)
   const [aceiteCheck, setAceiteCheck] = useState(false)
 
-  // Novo: modal sem plano ativo
   const [modalSemPlano, setModalSemPlano] = useState(false)
 
   const janelaProximoMesAberta = dentroDaJanelaProximoMes()
@@ -376,8 +375,27 @@ export default function AgendarPage() {
       setErroModal(`Você já tem um agendamento com ${label} neste dia nesta unidade.`)
       return
     }
-    const saldo = saldoParaData()
-    if (saldo[tipoCredito] && saldo[tipoCredito].disponivel <= 0) { setErroModal('Saldo insuficiente para este plano.'); return }
+
+    // Revalida saldo no banco antes de confirmar
+    const agora = new Date()
+    const dataSel = diasSemana[diaSel]
+    const mesmoMes = dataSel.getMonth() === agora.getMonth() && dataSel.getFullYear() === agora.getFullYear()
+    const mesRef = mesmoMes ? agora.getMonth() + 1 : (agora.getMonth() === 11 ? 1 : agora.getMonth() + 2)
+    const anoRef = mesmoMes ? agora.getFullYear() : (agora.getMonth() === 11 ? agora.getFullYear() + 1 : agora.getFullYear())
+
+    const { data: saldoAtualizado } = await supabase.rpc('saldo_creditos_cliente', {
+      p_cliente_id: cliente.id,
+      p_mes: mesRef,
+      p_ano: anoRef,
+      p_unidade_id: unidadeAtiva.id,
+    })
+
+    if (!saldoAtualizado || !saldoAtualizado[tipoCredito] || saldoAtualizado[tipoCredito].disponivel <= 0) {
+      setErroModal('Saldo insuficiente. Seus créditos foram esgotados.')
+      await carregarSaldos(cliente.id, unidadeAtiva.id)
+      return
+    }
+
     setConfirmando(true)
     setErroModal('')
 
@@ -391,6 +409,13 @@ export default function AgendarPage() {
     })
 
     if (error) { setErroModal('Erro ao agendar. Tente novamente.'); setConfirmando(false); return }
+
+    // Recarrega saldo e horários após agendamento confirmado
+    await Promise.all([
+      carregarSaldos(cliente.id, unidadeAtiva.id),
+      loadHorarios(),
+    ])
+
     setContratoAssinado(true)
     setModalSlot(null)
     setConfirmando(false)
@@ -420,6 +445,13 @@ export default function AgendarPage() {
     })
 
     if (error) { setErroFila('Erro ao entrar na fila. Tente novamente.'); setEntrandoFila(false); return }
+
+    // Recarrega saldo e horários após entrar na fila
+    await Promise.all([
+      carregarSaldos(cliente.id, unidadeAtiva.id),
+      loadHorarios(),
+    ])
+
     setContratoAssinado(true)
     setModalFila(null)
     setEntrandoFila(false)
@@ -486,7 +518,6 @@ export default function AgendarPage() {
           <div style={{ fontSize: 14, color: '#555', marginTop: 4 }}>Cada halter = uma vaga disponível</div>
         </div>
 
-        {/* Banner sem plano ativo */}
         {semPlanoAtivo && (
           <div style={{ background: '#110008', border: `1.5px solid ${ACCENT}55`, borderRadius: 16, padding: '1.25rem 1.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
             <div>
@@ -614,7 +645,6 @@ export default function AgendarPage() {
               const lotado = h.livres <= 0
               const clienteNaFila = naFila(h.hora)
               const jaAgendado = agendamentosNoDia.some(a => (a.horario || '').slice(0, 5) === h.hora && ['agendado', 'confirmado'].includes(a.status))
-              const semCredito = planosDisp.length === 0
               const temFilaEsperaAqui = temFilaNoHorario(h.hora)
               return (
                 <div key={i} className="slot-row-h"
@@ -650,7 +680,6 @@ export default function AgendarPage() {
         )}
       </div>
 
-      {/* Modal sem plano ativo */}
       {modalSemPlano && (
         <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: '#111', border: `1.5px solid ${ACCENT}55`, borderRadius: 20, width: '100%', maxWidth: 400, padding: '1.5rem' }}>
