@@ -20,7 +20,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
 
-  async function loadPerfil(userId: string, tentativas = 0) {
+  async function loadPerfil(userId: string, tentativas = 0): Promise<void> {
     const { data } = await supabase
       .from('perfis')
       .select('*')
@@ -28,7 +28,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .maybeSingle()
 
     if (!data && tentativas < 5) {
-      // Perfil ainda não foi gravado (race condition pós-cadastro) — tenta de novo
       await new Promise(res => setTimeout(res, 500))
       return loadPerfil(userId, tentativas + 1)
     }
@@ -37,15 +36,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setUser(session?.user ?? null)
-      if (session?.user) loadPerfil(session.user.id)
+      if (session?.user) await loadPerfil(session.user.id)
       setLoading(false)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setUser(session?.user ?? null)
-      if (session?.user) loadPerfil(session.user.id)
+      if (session?.user) await loadPerfil(session.user.id)
       else setPerfil(null)
       setLoading(false)
     })
