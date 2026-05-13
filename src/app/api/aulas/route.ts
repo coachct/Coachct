@@ -6,6 +6,8 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+const UNIDADE_JUST_CT = 'c28bf4bb-56f8-44ff-818a-c7836e58bcef'
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const cliente_id = searchParams.get('cliente_id') || searchParams.get('aluno_id')
@@ -32,7 +34,6 @@ export async function GET(req: NextRequest) {
       .eq('id', aula_id)
       .maybeSingle()
     if (error) return NextResponse.json({ error }, { status: 400 })
-    // Compatibilidade: retorna como "alunos" para o frontend antigo
     if (aula) {
       const aulaCompat: any = aula
       aulaCompat.alunos = aulaCompat.clientes
@@ -100,7 +101,6 @@ export async function GET(req: NextRequest) {
 
     let aulaPendenteComAluno = null
     if (aulaPendente) {
-      // Busca o nome do cliente para a aula pendente
       const { data: clienteData } = await supabase
         .from('clientes').select('id, nome')
         .eq('id', (aulaPendente as any).cliente_id)
@@ -108,7 +108,7 @@ export async function GET(req: NextRequest) {
       const nomeAluno = clienteData?.nome || 'Cliente'
       aulaPendenteComAluno = { 
         ...aulaPendente, 
-        aluno_id: (aulaPendente as any).cliente_id, // compat
+        aluno_id: (aulaPendente as any).cliente_id,
         alunos: { nome: nomeAluno } 
       }
     }
@@ -121,12 +121,12 @@ export async function GET(req: NextRequest) {
         horarios: horarios || [],
         ultimas: (ultimas || []).map((a: any) => ({
           ...a,
-          aluno_id: a.cliente_id, // compat
+          aluno_id: a.cliente_id,
           alunos: { nome: a.clientes?.nome || alunosMap[a.cliente_id] || 'Cliente' }
         })),
         todasAulas: (todasAulas || []).map((a: any) => ({
           ...a,
-          aluno_id: a.cliente_id, // compat
+          aluno_id: a.cliente_id,
         })),
         alunosMap,
         aulaPendente: aulaPendenteComAluno,
@@ -238,12 +238,12 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  // Aceita tanto cliente_id quanto aluno_id (compatibilidade)
   const cliente_id = body.cliente_id || body.aluno_id
   const { id, coach_id, treino_id, horario_agendado, iniciada_em, status } = body
 
   const { data, error } = await supabase.from('aulas').insert({
-    id, coach_id, cliente_id, treino_id, horario_agendado, iniciada_em, status
+    id, coach_id, cliente_id, treino_id, horario_agendado, iniciada_em, status,
+    unidade_id: UNIDADE_JUST_CT,
   }).select().maybeSingle()
 
   if (error) return NextResponse.json({ error }, { status: 400 })
@@ -254,19 +254,16 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json()
   const { id, registros_carga, ...updates } = body
 
-  // Se vier aluno_id, renomeia para cliente_id
   if (updates.aluno_id !== undefined) {
     updates.cliente_id = updates.aluno_id
     delete updates.aluno_id
   }
 
-  // Atualiza dados da aula
   if (Object.keys(updates).length > 0) {
     const { error } = await supabase.from('aulas').update(updates).eq('id', id)
     if (error) return NextResponse.json({ error }, { status: 400 })
   }
 
-  // Atualiza registros de carga se fornecidos
   if (registros_carga && Array.isArray(registros_carga)) {
     for (const r of registros_carga) {
       await supabase.from('registros_carga').upsert({
