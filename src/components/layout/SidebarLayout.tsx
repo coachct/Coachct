@@ -26,7 +26,7 @@ export default function SidebarLayout({ children, navItems, role }: SidebarLayou
 
   async function handleSignOut() {
     await signOut()
-    router.push('/login')
+    window.location.href = '/'
   }
 
   const home = homeHref[role]
