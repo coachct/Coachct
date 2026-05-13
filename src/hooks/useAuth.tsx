@@ -20,50 +20,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
 
-  async function loadPerfil(userId: string, tentativas = 0): Promise<Perfil | null> {
+  async function loadPerfil(userId: string, tentativas = 0): Promise<void> {
     const { data } = await supabase
       .from('perfis')
       .select('*')
       .eq('id', userId)
       .maybeSingle()
 
-    if ((!data || !data.role) && tentativas < 8) {
-      await new Promise(res => setTimeout(res, 400))
+    if ((!data || !data.role) && tentativas < 5) {
+      await new Promise(res => setTimeout(res, 300))
       return loadPerfil(userId, tentativas + 1)
     }
 
-    return data
+    setPerfil(data)
   }
 
   useEffect(() => {
-    let mounted = true
-
+    // Primeiro carrega a sessão atual
     supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!mounted) return
       setUser(session?.user ?? null)
       if (session?.user) {
-        const p = await loadPerfil(session.user.id)
-        if (mounted) setPerfil(p)
+        await loadPerfil(session.user.id)
       }
-      if (mounted) setLoading(false)
+      setLoading(false)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (!mounted) return
+    // Escuta mudanças de auth (login/logout) — sem await aqui
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
       if (session?.user) {
-        const p = await loadPerfil(session.user.id)
-        if (mounted) setPerfil(p)
+        // Carrega perfil em background sem bloquear
+        loadPerfil(session.user.id)
       } else {
-        if (mounted) setPerfil(null)
+        setPerfil(null)
+        setLoading(false)
       }
-      if (mounted) setLoading(false)
     })
 
-    return () => {
-      mounted = false
-      subscription.unsubscribe()
-    }
+    return () => subscription.unsubscribe()
   }, [])
 
   async function signIn(email: string, password: string) {
