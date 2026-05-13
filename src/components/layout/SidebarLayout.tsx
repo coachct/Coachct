@@ -32,7 +32,7 @@ export default function SidebarLayout({ children, navItems, role }: SidebarLayou
   const home = homeHref[role]
 
   const NavLinks = () => (
-    <nav className="flex-1 min-h-0 overflow-y-auto px-2 py-4 space-y-0.5">
+    <nav className="px-2 py-4 space-y-0.5">
       <Link
         href={home}
         onClick={() => setOpen(false)}
@@ -77,7 +77,9 @@ export default function SidebarLayout({ children, navItems, role }: SidebarLayou
             <span className="text-xs text-gray-500">{roleLabel[role]}</span>
           </div>
         </div>
-        <NavLinks />
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <NavLinks />
+        </div>
         <div className="p-3 border-t border-gray-100 shrink-0">
           <div className="flex items-center gap-2 px-2 py-2">
             <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-xs font-medium text-primary-800">
@@ -112,9 +114,14 @@ export default function SidebarLayout({ children, navItems, role }: SidebarLayou
             <div className="px-4 py-4 border-b border-gray-100 mt-14 shrink-0">
               <div className="text-xs text-gray-500">{roleLabel[role]} · {perfil?.nome}</div>
             </div>
-            <NavLinks />
-            <div className="p-4 border-t border-gray-100 shrink-0">
-              <button onClick={handleSignOut} className="btn w-full text-xs gap-2">
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <NavLinks />
+            </div>
+            <div className="p-4 border-t border-gray-100 shrink-0 bg-white">
+              <button
+                onClick={handleSignOut}
+                className="w-full flex items-center justify-center gap-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg py-3 text-sm font-medium transition-colors"
+              >
                 <LogOut size={14} /> Sair
               </button>
             </div>
