@@ -138,8 +138,7 @@ export default function AgendarPage() {
 
   useEffect(() => {
     if (!loading && !user) router.push('/login')
-    if (!loading && perfil && perfil.role && !['cliente'].includes(perfil.role as string)) router.push('/equipe')
-  }, [user, perfil, loading])
+  }, [user, loading])
 
   useEffect(() => {
     if (perfil) loadCliente()
@@ -376,30 +375,40 @@ export default function AgendarPage() {
       return
     }
 
-    // Revalida saldo no banco antes de confirmar
     const agora = new Date()
     const dataSel = diasSemana[diaSel]
     const mesmoMes = dataSel.getMonth() === agora.getMonth() && dataSel.getFullYear() === agora.getFullYear()
     const mesRef = mesmoMes ? agora.getMonth() + 1 : (agora.getMonth() === 11 ? 1 : agora.getMonth() + 2)
     const anoRef = mesmoMes ? agora.getFullYear() : (agora.getMonth() === 11 ? agora.getFullYear() + 1 : agora.getFullYear())
 
-    const { data: saldoAtualizado } = await supabase.rpc('saldo_creditos_cliente', {
-      p_cliente_id: cliente.id,
-      p_mes: mesRef,
-      p_ano: anoRef,
-      p_unidade_id: unidadeAtiva.id,
-    })
-
-    if (!saldoAtualizado || !saldoAtualizado[tipoCredito] || saldoAtualizado[tipoCredito].disponivel <= 0) {
-      setErroModal('Saldo insuficiente. Seus créditos foram esgotados.')
-      await carregarSaldos(cliente.id, unidadeAtiva.id)
-      return
-    }
-
     setConfirmando(true)
     setErroModal('')
 
-    const { error } = await supabase.from('agendamentos').insert({
+    // Busca o crédito do cliente para o tipo/mes/ano
+    const { data: credito } = await supabase
+      .from('cliente_creditos')
+      .select('*')
+      .eq('cliente_id', cliente.id)
+      .eq('tipo', tipoCredito)
+      .eq('mes', mesRef)
+      .eq('ano', anoRef)
+      .maybeSingle()
+
+    if (!credito) {
+      setErroModal('Crédito não encontrado para este plano.')
+      setConfirmando(false)
+      return
+    }
+
+    if (credito.usado >= credito.total) {
+      setErroModal('Saldo insuficiente. Seus créditos foram esgotados.')
+      await carregarSaldos(cliente.id, unidadeAtiva.id)
+      setConfirmando(false)
+      return
+    }
+
+    // Cria o agendamento
+    const { error: errAg } = await supabase.from('agendamentos').insert({
       cliente_id: cliente.id,
       data: modalSlot.data,
       horario: modalSlot.hora + ':00',
@@ -408,9 +417,18 @@ export default function AgendarPage() {
       unidade_id: unidadeAtiva.id,
     })
 
-    if (error) { setErroModal('Erro ao agendar. Tente novamente.'); setConfirmando(false); return }
+    if (errAg) {
+      setErroModal('Erro ao agendar. Tente novamente.')
+      setConfirmando(false)
+      return
+    }
 
-    // Recarrega saldo e horários após agendamento confirmado
+    // Incrementa o usado no crédito
+    await supabase
+      .from('cliente_creditos')
+      .update({ usado: credito.usado + 1 })
+      .eq('id', credito.id)
+
     await Promise.all([
       carregarSaldos(cliente.id, unidadeAtiva.id),
       loadHorarios(),
@@ -446,7 +464,6 @@ export default function AgendarPage() {
 
     if (error) { setErroFila('Erro ao entrar na fila. Tente novamente.'); setEntrandoFila(false); return }
 
-    // Recarrega saldo e horários após entrar na fila
     await Promise.all([
       carregarSaldos(cliente.id, unidadeAtiva.id),
       loadHorarios(),
