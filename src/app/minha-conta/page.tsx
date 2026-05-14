@@ -213,6 +213,7 @@ export default function MinhaContaPage() {
     setCancelando(true)
     setErroCancelar('')
 
+    // Cancela o agendamento
     const { error } = await supabase.from('agendamentos').update({
       status: 'cancelado',
       cancelado_em: new Date().toISOString(),
@@ -223,6 +224,27 @@ export default function MinhaContaPage() {
       setErroCancelar('Erro ao cancelar. Tente novamente.')
       setCancelando(false)
       return
+    }
+
+    // Devolve o crédito: busca e decrementa o usado
+    const dataAg = new Date(modalCancelar.data + 'T12:00:00')
+    const mesAg = dataAg.getMonth() + 1
+    const anoAg = dataAg.getFullYear()
+
+    const { data: credito } = await supabase
+      .from('cliente_creditos')
+      .select('*')
+      .eq('cliente_id', modalCancelar.cliente_id)
+      .eq('tipo', modalCancelar.tipo_credito)
+      .eq('mes', mesAg)
+      .eq('ano', anoAg)
+      .maybeSingle()
+
+    if (credito && credito.usado > 0) {
+      await supabase
+        .from('cliente_creditos')
+        .update({ usado: credito.usado - 1 })
+        .eq('id', credito.id)
     }
 
     setModalCancelar(null)
