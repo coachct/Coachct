@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
+import { dashboardDoRole } from '@/lib/auth-redirect'
 
 export default function EquipePage() {
   const [email, setEmail] = useState('')
@@ -17,12 +18,8 @@ export default function EquipePage() {
   const supabase = createClient()
 
   useEffect(() => {
-    if (perfil) {
-      if (perfil.role === 'admin') router.push('/admin/dashboard')
-      else if (perfil.role === 'coach') router.push('/coach/painel')
-      else if (perfil.role === 'coordenadora') router.push('/ju/biblioteca')
-      else if (perfil.role === 'recepcao') router.push('/recepcao/agenda')
-      else router.push('/')
+    if (perfil && perfil.role) {
+      router.push(dashboardDoRole(perfil.role))
     }
   }, [perfil])
 
