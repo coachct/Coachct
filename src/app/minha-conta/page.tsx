@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
+import { dashboardDoRole } from '@/lib/auth-redirect'
 
 const ACCENT = '#ff2d9b'
 const CYAN = '#00e5ff'
@@ -65,8 +66,16 @@ export default function MinhaContaPage() {
   const nomeMesProximo = MESES[mesProximo - 1]
 
   useEffect(() => {
-    if (!loading && !user) router.push('/')
-  }, [user, loading])
+    if (loading) return
+    if (!user) {
+      router.push('/')
+      return
+    }
+    // Se logou mas não é cliente, manda pro dashboard correto do role
+    if (perfil && perfil.role && perfil.role !== 'cliente') {
+      router.push(dashboardDoRole(perfil.role))
+    }
+  }, [user, perfil, loading])
 
   useEffect(() => {
     if (perfil) loadDados()
@@ -213,7 +222,6 @@ export default function MinhaContaPage() {
     setCancelando(true)
     setErroCancelar('')
 
-    // Cancela o agendamento
     const { error } = await supabase.from('agendamentos').update({
       status: 'cancelado',
       cancelado_em: new Date().toISOString(),
@@ -224,27 +232,6 @@ export default function MinhaContaPage() {
       setErroCancelar('Erro ao cancelar. Tente novamente.')
       setCancelando(false)
       return
-    }
-
-    // Devolve o crédito: busca e decrementa o usado
-    const dataAg = new Date(modalCancelar.data + 'T12:00:00')
-    const mesAg = dataAg.getMonth() + 1
-    const anoAg = dataAg.getFullYear()
-
-    const { data: credito } = await supabase
-      .from('cliente_creditos')
-      .select('*')
-      .eq('cliente_id', modalCancelar.cliente_id)
-      .eq('tipo', modalCancelar.tipo_credito)
-      .eq('mes', mesAg)
-      .eq('ano', anoAg)
-      .maybeSingle()
-
-    if (credito && credito.usado > 0) {
-      await supabase
-        .from('cliente_creditos')
-        .update({ usado: credito.usado - 1 })
-        .eq('id', credito.id)
     }
 
     setModalCancelar(null)
@@ -265,7 +252,7 @@ export default function MinhaContaPage() {
 
   async function sair() {
     await supabase.auth.signOut()
-    router.push('/')
+    window.location.href = '/'
   }
 
   if (loading || loadingData) return (
