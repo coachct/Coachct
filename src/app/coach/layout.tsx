@@ -9,5 +9,9 @@ const nav = [
 ]
 
 export default function CoachLayout({ children }: { children: React.ReactNode }) {
-  return <SidebarLayout navItems={nav} role="coach">{children}</SidebarLayout>
+  return (
+    <SidebarLayout navItems={nav} role="coach" rolesPermitidos={['coach']}>
+      {children}
+    </SidebarLayout>
+  )
 }
