@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
+import { dashboardDoRole } from '@/lib/auth-redirect'
 
 const ACCENT = '#ff2d9b'
 
@@ -19,12 +20,8 @@ export default function LoginPage() {
   const supabase = createClient()
 
   useEffect(() => {
-    if (perfil) {
-      if (['admin', 'coach', 'coordenadora', 'recepcao'].includes(perfil.role)) {
-        router.push('/equipe')
-        return
-      }
-      router.push('/minha-conta')
+    if (perfil && perfil.role) {
+      router.push(dashboardDoRole(perfil.role))
     }
   }, [perfil])
 
