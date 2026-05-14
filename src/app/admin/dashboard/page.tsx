@@ -51,7 +51,7 @@ export default function AdminDashboard() {
         if (hojeRes.status === 'fulfilled') {
           const dados = (hojeRes.value.data || []).map((a: any) => ({
             ...a,
-            alunos: a.clientes, // compat para o resto do código
+            alunos: a.clientes,
           }))
           setAulasHoje(dados)
         } else {
@@ -80,11 +80,112 @@ export default function AdminDashboard() {
   const aulasFinalizadasHoje = aulasHoje.filter(a => a.status === 'finalizada')
   const aulasEmAndamento = aulasHoje.filter(a => a.status === 'em_andamento')
 
+  const renderAula = (aula: any) => {
+    const emAndamento = aula.status === 'em_andamento'
+    return (
+      <div key={aula.id}
+        className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${
+          emAndamento
+            ? 'bg-orange-50 border-orange-200'
+            : 'bg-gray-50 border-gray-100'
+        }`}
+      >
+        <div className="text-center flex-shrink-0 w-20">
+          <div className="text-sm font-bold text-gray-700">
+            {new Date(aula.horario_agendado).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+          </div>
+          {aula.finalizada_em ? (
+            <div className="text-xs text-gray-400 mt-0.5">
+              até {new Date(aula.finalizada_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+            </div>
+          ) : (
+            <div className="text-xs text-orange-500 mt-0.5 font-medium">em curso</div>
+          )}
+        </div>
+
+        <div className="w-px h-8 bg-gray-200 flex-shrink-0" />
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-medium text-gray-900 truncate">
+              {aula.alunos?.nome || 'Aluno'}
+            </span>
+            <span className="text-xs text-gray-400">·</span>
+            <span className="text-xs text-gray-500 truncate">
+              {aula.treinos?.nome || '—'}
+            </span>
+          </div>
+          <div className="text-xs text-gray-400 mt-0.5">
+            Coach: {aula.coaches?.nome || '—'}
+          </div>
+        </div>
+
+        <div className="flex-shrink-0">
+          {emAndamento ? (
+            <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">
+              Em andamento
+            </span>
+          ) : (
+            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+              Finalizada
+            </span>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div>
       <PageHeader title="Dashboard" subtitle={mesNome.charAt(0).toUpperCase() + mesNome.slice(1)} />
 
-      {/* Hero financeiro */}
+      {/* 1. Aulas em andamento */}
+      {aulasEmAndamento.length > 0 && (
+        <div className="card mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                <span className="w-2 h-2 bg-orange-500 rounded-full animate-pulse" />
+                Aulas em andamento
+              </h2>
+              <p className="text-xs text-gray-400 mt-0.5">{aulasEmAndamento.length} aula{aulasEmAndamento.length !== 1 ? 's' : ''} acontecendo agora</p>
+            </div>
+            <span className="flex items-center gap-1.5 text-xs bg-orange-100 text-orange-700 px-2.5 py-1 rounded-full font-medium">
+              {aulasEmAndamento.length} ao vivo
+            </span>
+          </div>
+          <div className="space-y-2">
+            {aulasEmAndamento.map(renderAula)}
+          </div>
+        </div>
+      )}
+
+      {/* 2. Aulas finalizadas hoje */}
+      <div className="card mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Aulas finalizadas hoje</h2>
+            <p className="text-xs text-gray-400 mt-0.5 capitalize">
+              {now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+            </p>
+          </div>
+          <span className="text-xs bg-green-100 text-green-700 px-2.5 py-1 rounded-full font-medium">
+            {aulasFinalizadasHoje.length} finalizadas
+          </span>
+        </div>
+
+        {aulasFinalizadasHoje.length === 0 ? (
+          <div className="text-center py-8 text-sm text-gray-400 italic">
+            Nenhuma aula finalizada hoje ainda.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {aulasFinalizadasHoje.map(renderAula)}
+          </div>
+        )}
+      </div>
+
+      {/* 3. Hero financeiro */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="bg-primary-50 border border-primary-100 rounded-xl p-5">
           <div className="text-xs font-medium text-primary-600 uppercase tracking-wide mb-1">Faturamento</div>
@@ -168,92 +269,6 @@ export default function AdminDashboard() {
             })}
           </div>
         </div>
-      </div>
-
-      {/* Aulas de hoje */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-900">Aulas de hoje</h2>
-            <p className="text-xs text-gray-400 mt-0.5 capitalize">
-              {now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            {aulasEmAndamento.length > 0 && (
-              <span className="flex items-center gap-1.5 text-xs bg-orange-100 text-orange-700 px-2.5 py-1 rounded-full font-medium animate-pulse">
-                <span className="w-1.5 h-1.5 bg-orange-500 rounded-full" />
-                {aulasEmAndamento.length} em andamento
-              </span>
-            )}
-            <span className="text-xs bg-green-100 text-green-700 px-2.5 py-1 rounded-full font-medium">
-              {aulasFinalizadasHoje.length} finalizadas
-            </span>
-          </div>
-        </div>
-
-        {aulasHoje.length === 0 ? (
-          <div className="text-center py-8 text-sm text-gray-400 italic">
-            Nenhuma aula registrada hoje ainda.
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {aulasHoje.map(aula => {
-              const emAndamento = aula.status === 'em_andamento'
-              return (
-                <div key={aula.id}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${
-                    emAndamento
-                      ? 'bg-orange-50 border-orange-200'
-                      : 'bg-gray-50 border-gray-100'
-                  }`}
-                >
-                  <div className="text-center flex-shrink-0 w-20">
-                    <div className="text-sm font-bold text-gray-700">
-                      {new Date(aula.horario_agendado).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                    </div>
-                    {aula.finalizada_em ? (
-                      <div className="text-xs text-gray-400 mt-0.5">
-                        até {new Date(aula.finalizada_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                      </div>
-                    ) : (
-                      <div className="text-xs text-orange-500 mt-0.5 font-medium">em curso</div>
-                    )}
-                  </div>
-
-                  <div className="w-px h-8 bg-gray-200 flex-shrink-0" />
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium text-gray-900 truncate">
-                        {aula.alunos?.nome || 'Aluno'}
-                      </span>
-                      <span className="text-xs text-gray-400">·</span>
-                      <span className="text-xs text-gray-500 truncate">
-                        {aula.treinos?.nome || '—'}
-                      </span>
-                    </div>
-                    <div className="text-xs text-gray-400 mt-0.5">
-                      Coach: {aula.coaches?.nome || '—'}
-                    </div>
-                  </div>
-
-                  <div className="flex-shrink-0">
-                    {emAndamento ? (
-                      <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">
-                        Em andamento
-                      </span>
-                    ) : (
-                      <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
-                        Finalizada
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
       </div>
     </div>
   )
