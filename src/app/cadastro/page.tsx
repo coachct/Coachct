@@ -1,13 +1,16 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
+import { dashboardDoRole } from '@/lib/auth-redirect'
 
 const ACCENT = '#ff2d9b'
 
 export default function CadastroPage() {
   const router = useRouter()
   const supabase = createClient()
+  const { perfil } = useAuth()
 
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
@@ -20,6 +23,13 @@ export default function CadastroPage() {
   const [senha, setSenha] = useState('')
   const [senha2, setSenha2] = useState('')
   const [notificacao, setNotificacao] = useState<'whatsapp' | 'email' | 'nenhuma'>('whatsapp')
+
+  // Se já está logado, redireciona pro dashboard do role
+  useEffect(() => {
+    if (perfil && perfil.role) {
+      router.push(dashboardDoRole(perfil.role))
+    }
+  }, [perfil])
 
   function formatarCPF(v: string) {
     return v.replace(/\D/g, '').slice(0, 11)
@@ -46,7 +56,6 @@ export default function CadastroPage() {
 
     setSalvando(true)
 
-    // Verifica se CPF já existe
     const cpfLimpo = cpf.replace(/\D/g, '')
     const { data: cpfExiste } = await supabase
       .from('clientes')
@@ -60,7 +69,6 @@ export default function CadastroPage() {
       return
     }
 
-    // Verifica se email já existe
     const { data: emailExiste } = await supabase
       .from('clientes')
       .select('id')
