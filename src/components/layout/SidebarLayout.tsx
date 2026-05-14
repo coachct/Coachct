@@ -1,35 +1,73 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
 import { Menu, X, LogOut, Home } from 'lucide-react'
+import { dashboardDoRole, Role } from '@/lib/auth-redirect'
 
 interface NavItem { label: string; href: string }
 
 interface SidebarLayoutProps {
   children: React.ReactNode
   navItems: NavItem[]
-  role: 'admin' | 'coach' | 'coordenadora'
+  role: 'admin' | 'coach' | 'coordenadora' | 'recepcao'
+  rolesPermitidos: Role[]
 }
 
-const roleLabel = { admin: 'Admin', coach: 'Coach', coordenadora: 'Coordenadora' }
-const roleColor = { admin: 'bg-primary-400', coach: 'bg-blue-500', coordenadora: 'bg-purple-500' }
-const homeHref = { admin: '/admin/dashboard', coach: '/coach/painel', coordenadora: '/ju/biblioteca' }
+const roleLabel: Record<string, string> = {
+  admin: 'Admin',
+  coach: 'Coach',
+  coordenadora: 'Coordenadora',
+  recepcao: 'Recepção',
+}
+const roleColor: Record<string, string> = {
+  admin: 'bg-primary-400',
+  coach: 'bg-blue-500',
+  coordenadora: 'bg-purple-500',
+  recepcao: 'bg-green-500',
+}
+const homeHref: Record<string, string> = {
+  admin: '/admin/dashboard',
+  coach: '/coach/painel',
+  coordenadora: '/ju/biblioteca',
+  recepcao: '/recepcao/agenda',
+}
 
-export default function SidebarLayout({ children, navItems, role }: SidebarLayoutProps) {
+export default function SidebarLayout({ children, navItems, role, rolesPermitidos }: SidebarLayoutProps) {
   const pathname = usePathname()
   const router = useRouter()
-  const { perfil, signOut } = useAuth()
+  const { user, perfil, signOut, loading } = useAuth()
   const [open, setOpen] = useState(false)
+
+  // PROTEÇÃO DE ROTA
+  useEffect(() => {
+    if (loading) return
+    if (!user) {
+      router.push('/equipe')
+      return
+    }
+    if (perfil && perfil.role && !rolesPermitidos.includes(perfil.role as Role)) {
+      router.push(dashboardDoRole(perfil.role))
+    }
+  }, [user, perfil, loading, rolesPermitidos])
 
   async function handleSignOut() {
     await signOut()
-    window.location.href = '/'
+    window.location.href = '/equipe'
   }
 
-  const home = homeHref[role]
+  const home = homeHref[role] || '/'
+
+  // Loader enquanto valida — evita flash de tela errada
+  if (loading || !user || !perfil || !rolesPermitidos.includes(perfil.role as Role)) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50">
+        <div className="w-8 h-8 border-4 border-primary-400 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
 
   const NavLinks = () => (
     <nav className="px-2 py-4 space-y-0.5">
@@ -66,7 +104,6 @@ export default function SidebarLayout({ children, navItems, role }: SidebarLayou
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
-      {/* Sidebar desktop */}
       <aside className="hidden md:flex w-56 flex-col bg-white border-r border-gray-100 shrink-0 h-screen">
         <div className="px-4 py-4 border-b border-gray-100 shrink-0">
           <Link href={home} className="text-primary-800 font-semibold text-sm tracking-wider hover:text-primary-600 transition-colors">
@@ -95,7 +132,6 @@ export default function SidebarLayout({ children, navItems, role }: SidebarLayou
         </div>
       </aside>
 
-      {/* Mobile topbar */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-primary-900 h-14 flex items-center justify-between px-4">
         <Link href={home} className="text-primary-200 font-semibold text-sm tracking-wider flex items-center gap-2">
           <Home size={16} />
@@ -106,7 +142,6 @@ export default function SidebarLayout({ children, navItems, role }: SidebarLayou
         </button>
       </div>
 
-      {/* Mobile drawer */}
       {open && (
         <div className="md:hidden fixed inset-0 z-40 flex">
           <div className="fixed inset-0 bg-black/30" onClick={() => setOpen(false)} />
@@ -129,7 +164,6 @@ export default function SidebarLayout({ children, navItems, role }: SidebarLayou
         </div>
       )}
 
-      {/* Main content */}
       <main className="flex-1 overflow-y-auto pt-14 md:pt-0">
         <div className="max-w-5xl mx-auto p-4 md:p-6 pb-24 md:pb-6">
           {children}
