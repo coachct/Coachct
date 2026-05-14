@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
 import { createClient } from '@/lib/supabase'
+import { dashboardDoRole } from '@/lib/auth-redirect'
 
 const ACCENT = '#ff2d9b'
 const CYAN = '#00e5ff'
@@ -137,8 +138,16 @@ export default function AgendarPage() {
   })
 
   useEffect(() => {
-    if (!loading && !user) router.push('/login')
-  }, [user, loading])
+    if (loading) return
+    if (!user) {
+      router.push('/login')
+      return
+    }
+    // Se logou mas não é cliente, manda pro dashboard correto do role
+    if (perfil && perfil.role && perfil.role !== 'cliente') {
+      router.push(dashboardDoRole(perfil.role))
+    }
+  }, [user, perfil, loading])
 
   useEffect(() => {
     if (perfil) loadCliente()
@@ -457,7 +466,7 @@ export default function AgendarPage() {
 
   async function sair() {
     await supabase.auth.signOut()
-    router.push('/')
+    window.location.href = '/'
   }
 
   const dataFormatada = (dataStr: string) => {
