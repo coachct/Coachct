@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
+import { dashboardDoRole } from '@/lib/auth-redirect'
 
 const ACCENT = '#ff2d9b'
 
@@ -124,8 +125,15 @@ export default function MeusPlanosPage() {
   const anoProximo = mesAtual === 12 ? anoAtual + 1 : anoAtual
 
   useEffect(() => {
-    if (!loading && !user) router.push('/')
-    if (!loading && perfil && !['cliente'].includes(perfil.role as string)) router.push('/equipe')
+    if (loading) return
+    if (!user) {
+      router.push('/')
+      return
+    }
+    // Se logou mas não é cliente, manda pro dashboard correto do role
+    if (perfil && perfil.role && perfil.role !== 'cliente') {
+      router.push(dashboardDoRole(perfil.role))
+    }
   }, [user, perfil, loading])
 
   useEffect(() => {
@@ -237,7 +245,7 @@ export default function MeusPlanosPage() {
 
   async function sair() {
     await supabase.auth.signOut()
-    router.push('/')
+    window.location.href = '/'
   }
 
   if (loading || loadingData) return (
