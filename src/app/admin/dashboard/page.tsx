@@ -29,7 +29,7 @@ export default function AdminDashboard() {
             .gte('horario_agendado', `${ano}-${String(mes).padStart(2,'0')}-01`)
             .eq('status', 'finalizada'),
           supabase.from('aulas')
-            .select('*, coaches(nome), alunos(nome), treinos(nome)')
+            .select('*, coaches(nome), clientes:cliente_id(nome), treinos(nome)')
             .gte('horario_agendado', inicioHoje)
             .lte('horario_agendado', fimHoje)
             .in('status', ['finalizada', 'em_andamento'])
@@ -49,7 +49,11 @@ export default function AdminDashboard() {
         }
 
         if (hojeRes.status === 'fulfilled') {
-          setAulasHoje(hojeRes.value.data || [])
+          const dados = (hojeRes.value.data || []).map((a: any) => ({
+            ...a,
+            alunos: a.clientes, // compat para o resto do código
+          }))
+          setAulasHoje(dados)
         } else {
           console.error('Erro aulas hoje:', hojeRes.reason)
         }
