@@ -139,7 +139,34 @@ export default function AdminDashboard() {
     <div>
       <PageHeader title="Dashboard" subtitle={mesNome.charAt(0).toUpperCase() + mesNome.slice(1)} />
 
-      {/* 1. Aulas em andamento */}
+      {/* 1. Hero financeiro */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="bg-primary-50 border border-primary-100 rounded-xl p-5">
+          <div className="text-xs font-medium text-primary-600 uppercase tracking-wide mb-1">Faturamento</div>
+          <div className="text-2xl font-semibold text-primary-900">{fmt(fatTotal)}</div>
+          <div className="text-xs text-primary-600 mt-1">{aulasTotal} aulas no mês</div>
+        </div>
+        <div className="bg-danger-50 border border-danger-200 rounded-xl p-5">
+          <div className="text-xs font-medium text-danger-600 uppercase tracking-wide mb-1">Custo coaches</div>
+          <div className="text-2xl font-semibold text-danger-800">{fmt(cstTotal)}</div>
+          <div className="text-xs text-danger-600 mt-1">fixo + variável</div>
+        </div>
+        <div className="bg-blue-50 border border-blue-100 rounded-xl p-5">
+          <div className="text-xs font-medium text-blue-600 uppercase tracking-wide mb-1">Margem bruta</div>
+          <div className="text-2xl font-semibold text-blue-900">{fmt(mrgTotal)}</div>
+          <div className="text-xs text-blue-600 mt-1">{mrgPct.toFixed(1)}% de margem</div>
+        </div>
+      </div>
+
+      {/* 2. KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <KpiCard label="Aulas no mês" value={String(aulasTotal)} />
+        <KpiCard label="Coaches ativos" value={String(coaches.length)} />
+        <KpiCard label="Custo fixo total" value={fmt(metrics.reduce((s,m)=>s+m.custo_fixo,0))} sub="salários" />
+        <KpiCard label="Custo variável" value={fmt(metrics.reduce((s,m)=>s+m.custo_variavel,0))} sub="por aulas dadas" />
+      </div>
+
+      {/* 3. Aulas em andamento */}
       {aulasEmAndamento.length > 0 && (
         <div className="card mb-6">
           <div className="flex items-center justify-between mb-4">
@@ -160,7 +187,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* 2. Aulas finalizadas hoje */}
+      {/* 4. Aulas finalizadas hoje */}
       <div className="card mb-6">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -185,34 +212,8 @@ export default function AdminDashboard() {
         )}
       </div>
 
-      {/* 3. Hero financeiro */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-primary-50 border border-primary-100 rounded-xl p-5">
-          <div className="text-xs font-medium text-primary-600 uppercase tracking-wide mb-1">Faturamento</div>
-          <div className="text-2xl font-semibold text-primary-900">{fmt(fatTotal)}</div>
-          <div className="text-xs text-primary-600 mt-1">{aulasTotal} aulas no mês</div>
-        </div>
-        <div className="bg-danger-50 border border-danger-200 rounded-xl p-5">
-          <div className="text-xs font-medium text-danger-600 uppercase tracking-wide mb-1">Custo coaches</div>
-          <div className="text-2xl font-semibold text-danger-800">{fmt(cstTotal)}</div>
-          <div className="text-xs text-danger-600 mt-1">fixo + variável</div>
-        </div>
-        <div className="bg-blue-50 border border-blue-100 rounded-xl p-5">
-          <div className="text-xs font-medium text-blue-600 uppercase tracking-wide mb-1">Margem bruta</div>
-          <div className="text-2xl font-semibold text-blue-900">{fmt(mrgTotal)}</div>
-          <div className="text-xs text-blue-600 mt-1">{mrgPct.toFixed(1)}% de margem</div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <KpiCard label="Aulas no mês" value={String(aulasTotal)} />
-        <KpiCard label="Coaches ativos" value={String(coaches.length)} />
-        <KpiCard label="Custo fixo total" value={fmt(metrics.reduce((s,m)=>s+m.custo_fixo,0))} sub="salários" />
-        <KpiCard label="Custo variável" value={fmt(metrics.reduce((s,m)=>s+m.custo_variavel,0))} sub="por aulas dadas" />
-      </div>
-
+      {/* 5. Coaches + Alertas */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        {/* Coaches ocupação */}
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-gray-900">Ocupação dos coaches</h2>
@@ -243,7 +244,6 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Alertas */}
         <div className="card">
           <h2 className="text-sm font-semibold text-gray-900 mb-4">Alertas do mês</h2>
           <div className="space-y-1">
