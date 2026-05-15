@@ -201,6 +201,7 @@ export async function POST(req: NextRequest) {
         p_vendido_por: null,
         p_unidade_id: pagamento.unidade_id,
         p_observacao: 'Venda online via Pagar.me',
+        p_desconto_percentual: 0,
       })
 
       if (errVenda) {
