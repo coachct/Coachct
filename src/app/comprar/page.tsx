@@ -103,10 +103,10 @@ export default function ComprarPage() {
           JUST<span style={{ color: ACCENT }}>CT</span>
         </div>
         <div className="nav-links-d" style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
-          <span onClick={() => router.push('/#coach-ct')} className="nav-link-h" style={{ color: '#555', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>Coach CT</span>
-          <span onClick={() => router.push('/#espaco')} className="nav-link-h" style={{ color: '#555', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>Espaço</span>
-          <span onClick={() => router.push('/#planos')} className="nav-link-h" style={{ color: '#555', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>Planos</span>
-          <span onClick={() => router.push('/#localizacao')} className="nav-link-h" style={{ color: '#555', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>Localização</span>
+          <span onClick={() => router.push('/#coach-ct')} className="nav-link-h" style={{ color: '#999', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>Coach CT</span>
+          <span onClick={() => router.push('/#espaco')} className="nav-link-h" style={{ color: '#999', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>Espaço</span>
+          <span onClick={() => router.push('/#planos')} className="nav-link-h" style={{ color: '#999', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>Planos</span>
+          <span onClick={() => router.push('/#localizacao')} className="nav-link-h" style={{ color: '#999', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>Localização</span>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {isCliente ? (
@@ -130,10 +130,10 @@ export default function ComprarPage() {
         <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 3, color: ACCENT, fontFamily: "'DM Mono', monospace", marginBottom: '1rem' }}>
           // comprar online
         </div>
-        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(36px, 5vw, 56px)', color: '#fff', lineHeight: 1.05, marginBottom: '1rem' }}>
-          ESCOLHA SEU PLANO<br />OU CRÉDITO
+        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(48px, 6vw, 72px)', color: '#fff', lineHeight: 1.05, marginBottom: '1rem', letterSpacing: 2 }}>
+          PLANOS
         </div>
-        <div style={{ color: '#666', fontSize: 16, maxWidth: 560, lineHeight: 1.7, margin: '0 auto' }}>
+        <div style={{ color: '#999', fontSize: 16, maxWidth: 560, lineHeight: 1.7, margin: '0 auto' }}>
           Acesso ilimitado ao CT ou créditos avulsos para Coach CT e musculação.
           Pagamento via PIX ou Cartão de crédito.
         </div>
@@ -150,14 +150,14 @@ export default function ComprarPage() {
           <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center' as const }}>
             <div style={{ fontSize: 32, marginBottom: '1rem' }}>📦</div>
             <div style={{ color: '#888', fontSize: 16 }}>Nenhum produto disponível no momento.</div>
-            <div style={{ color: '#555', fontSize: 13, marginTop: 8 }}>Entre em contato com a recepção: <strong style={{ color: '#fff' }}>(11) 9XXXX-XXXX</strong></div>
+            <div style={{ color: '#999', fontSize: 13, marginTop: 8 }}>Entre em contato com a recepção: <strong style={{ color: '#fff' }}>(11) 9XXXX-XXXX</strong></div>
           </div>
         ) : (
           <>
             {/* Planos de Acesso */}
             {produtos.filter(p => p.subtipo === 'acesso').length > 0 && (
               <>
-                <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>
+                <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#999', marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>
                   Planos de acesso
                 </div>
                 <div className="grid-produtos-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem', marginBottom: '3rem' }}>
@@ -177,16 +177,16 @@ export default function ComprarPage() {
                             {badge.label}
                           </div>
                         )}
-                        <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '0.5rem' }}>
+                        <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#999', marginBottom: '0.5rem' }}>
                           {p.nome}
                         </div>
                         <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 48, color: '#fff', lineHeight: 1 }}>
                           {valor.reais}<span style={{ fontSize: 24 }}>{valor.cents}</span>
                         </div>
-                        <div style={{ fontSize: 12, color: '#555', marginBottom: '1rem' }}>
+                        <div style={{ fontSize: 12, color: '#999', marginBottom: '1rem' }}>
                           {periodoTexto(p)}
                         </div>
-                        <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6, flex: 1, marginBottom: '1.5rem' }}>
+                        <div style={{ fontSize: 14, color: '#999', lineHeight: 1.6, flex: 1, marginBottom: '1.5rem' }}>
                           {descricaoProduto(p)}
                         </div>
                         <button
@@ -208,7 +208,7 @@ export default function ComprarPage() {
             {/* Créditos avulsos */}
             {produtos.filter(p => p.subtipo !== 'acesso').length > 0 && (
               <>
-                <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>
+                <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#999', marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>
                   Créditos avulsos
                 </div>
                 <div className="grid-produtos-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
@@ -222,16 +222,16 @@ export default function ComprarPage() {
                         borderRadius: 16, padding: '2rem',
                         display: 'flex', flexDirection: 'column'
                       }}>
-                        <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '0.5rem' }}>
+                        <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#999', marginBottom: '0.5rem' }}>
                           {p.nome}
                         </div>
                         <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 48, color: '#fff', lineHeight: 1 }}>
                           {valor.reais}<span style={{ fontSize: 24 }}>{valor.cents}</span>
                         </div>
-                        <div style={{ fontSize: 12, color: '#555', marginBottom: '1rem' }}>
+                        <div style={{ fontSize: 12, color: '#999', marginBottom: '1rem' }}>
                           {periodoTexto(p)}
                         </div>
-                        <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6, flex: 1, marginBottom: '1.5rem' }}>
+                        <div style={{ fontSize: 14, color: '#999', lineHeight: 1.6, flex: 1, marginBottom: '1.5rem' }}>
                           {descricaoProduto(p)}
                         </div>
                         <button
@@ -263,7 +263,7 @@ export default function ComprarPage() {
               <span style={{ fontSize: 24 }}>{it.icon}</span>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{it.title}</div>
-                <div style={{ fontSize: 12, color: '#555' }}>{it.desc}</div>
+                <div style={{ fontSize: 12, color: '#999' }}>{it.desc}</div>
               </div>
             </div>
           ))}
@@ -275,9 +275,9 @@ export default function ComprarPage() {
         <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 20, color: '#fff', letterSpacing: 2 }}>
           JUST<span style={{ color: ACCENT }}>CT</span>
         </div>
-        <div style={{ fontSize: 12, color: '#444' }}>© 2025 Just CT — Serious Training</div>
+        <div style={{ fontSize: 12, color: '#666' }}>© 2025 Just CT — Serious Training</div>
         <div style={{ display: 'flex', gap: '1.5rem' }}>
-          <span onClick={() => router.push('/')} style={{ fontSize: 12, color: '#555', cursor: 'pointer' }}>← Voltar pra home</span>
+          <span onClick={() => router.push('/')} style={{ fontSize: 12, color: '#999', cursor: 'pointer' }}>← Voltar pra home</span>
         </div>
       </footer>
     </div>
