@@ -9,7 +9,6 @@ const supabase = createClient(
 const PAGARME_API_URL = 'https://api.pagar.me/core/v5'
 const PAGARME_API_KEY = process.env.PAGARME_API_KEY!
 
-// Pagar.me usa Basic Auth com a chave secreta + ':' (sem senha)
 function getAuthHeader() {
   const credentials = Buffer.from(`${PAGARME_API_KEY}:`).toString('base64')
   return `Basic ${credentials}`
@@ -18,37 +17,20 @@ function getAuthHeader() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const {
-      produto_id,
-      cliente_id,
-      metodo,        // 'pix' ou 'cartao_credito'
-      parcelas,      // 1-12 (só usado se metodo=cartao_credito)
-      cartao,        // { numero, nome, cvv, mes, ano } - só se metodo=cartao_credito
-    } = body
+    const { produto_id, cliente_id, metodo, parcelas, cartao } = body
 
-    // Validações básicas
     if (!produto_id || !cliente_id || !metodo) {
-      return NextResponse.json(
-        { error: 'Dados incompletos' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Dados incompletos' }, { status: 400 })
     }
 
     if (!['pix', 'cartao_credito'].includes(metodo)) {
-      return NextResponse.json(
-        { error: 'Método de pagamento inválido' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Método de pagamento inválido' }, { status: 400 })
     }
 
     if (metodo === 'cartao_credito' && (!cartao || !cartao.numero)) {
-      return NextResponse.json(
-        { error: 'Dados do cartão obrigatórios' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Dados do cartão obrigatórios' }, { status: 400 })
     }
 
-    // Busca produto
     const { data: produto } = await supabase
       .from('produtos')
       .select('*')
@@ -60,7 +42,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Produto não encontrado' }, { status: 404 })
     }
 
-    // Busca cliente
     const { data: cliente } = await supabase
       .from('clientes')
       .select('*')
@@ -75,11 +56,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Cliente bloqueado' }, { status: 403 })
     }
 
-    // Calcula valor em centavos (Pagar.me exige inteiro em centavos)
     const valorReais = Number(produto.valor)
     const valorCentavos = Math.round(valorReais * 100)
 
-    // Cria pagamento_pendente ANTES de chamar Pagar.me (rastreabilidade)
     const { data: pagamento, error: errPag } = await supabase
       .from('pagamentos_pendentes')
       .insert({
@@ -101,7 +80,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Erro ao registrar pagamento' }, { status: 500 })
     }
 
-    // Monta dados do cliente pro Pagar.me
     const cpfLimpo = (cliente.cpf || '').replace(/\D/g, '')
     const telLimpo = (cliente.telefone || '').replace(/\D/g, '')
 
@@ -135,9 +113,7 @@ export async function POST(req: NextRequest) {
     if (metodo === 'pix') {
       payments = [{
         payment_method: 'pix',
-        pix: {
-          expires_in: 3600, // 1 hora pra pagar
-        }
+        pix: { expires_in: 3600 }
       }]
     } else {
       payments = [{
@@ -167,13 +143,10 @@ export async function POST(req: NextRequest) {
       customer,
       items,
       payments,
-      code: pagamento.id, // referência interna pra ligar webhook ao nosso pagamento
-      metadata: {
-        pagamento_pendente_id: pagamento.id,
-      }
+      code: pagamento.id,
+      metadata: { pagamento_pendente_id: pagamento.id }
     }
 
-    // Chama Pagar.me
     const pagarmeResponse = await fetch(`${PAGARME_API_URL}/orders`, {
       method: 'POST',
       headers: {
@@ -187,8 +160,6 @@ export async function POST(req: NextRequest) {
 
     if (!pagarmeResponse.ok) {
       console.error('Erro Pagar.me:', JSON.stringify(pagarmeData, null, 2))
-
-      // Marca pagamento como falhou
       await supabase
         .from('pagamentos_pendentes')
         .update({
@@ -204,7 +175,6 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
-    // Extrai dados do retorno
     const charge = pagarmeData.charges?.[0]
     const lastTransaction = charge?.last_transaction
 
@@ -214,31 +184,46 @@ export async function POST(req: NextRequest) {
       atualizado_em: new Date().toISOString(),
     }
 
-    // Se PIX, captura QR Code
     if (metodo === 'pix' && lastTransaction) {
       updateData.pix_qr_code = lastTransaction.qr_code
       updateData.pix_qr_code_url = lastTransaction.qr_code_url
       updateData.pix_expira_em = lastTransaction.expires_at
     }
 
-    // Se cartão pagou na hora
-    if (metodo === 'cartao_credito') {
-      if (charge?.status === 'paid') {
-        updateData.status = 'pago'
-        updateData.pago_em = new Date().toISOString()
-      } else if (charge?.status === 'failed') {
-        updateData.status = 'falhou'
-        updateData.motivo_falha = lastTransaction?.acquirer_message || 'Cartão recusado'
+    // CARTÃO APROVADO NA HORA — chama registrar_venda imediatamente
+    if (metodo === 'cartao_credito' && charge?.status === 'paid') {
+      const { data: venda, error: errVenda } = await supabase.rpc('registrar_venda', {
+        p_produto_id: pagamento.produto_id,
+        p_cliente_id: pagamento.cliente_id,
+        p_quantidade: pagamento.quantidade,
+        p_valor_unitario: pagamento.valor_unitario,
+        p_forma_pagamento: pagamento.metodo_pagamento,
+        p_vendido_por: null,
+        p_unidade_id: pagamento.unidade_id,
+        p_observacao: 'Venda online via Pagar.me',
+      })
+
+      if (errVenda) {
+        console.error('Erro ao registrar venda (cartão):', errVenda)
+      } else {
+        console.log('✅ Venda registrada (cartão). Venda ID:', venda?.venda_id)
+        updateData.venda_id = venda?.venda_id || null
       }
+
+      updateData.status = 'pago'
+      updateData.pago_em = new Date().toISOString()
     }
 
-    // Atualiza pagamento_pendente com dados do Pagar.me
+    if (metodo === 'cartao_credito' && charge?.status === 'failed') {
+      updateData.status = 'falhou'
+      updateData.motivo_falha = lastTransaction?.acquirer_message || 'Cartão recusado'
+    }
+
     await supabase
       .from('pagamentos_pendentes')
       .update(updateData)
       .eq('id', pagamento.id)
 
-    // Retorna pro frontend
     return NextResponse.json({
       ok: true,
       pagamento_id: pagamento.id,
@@ -256,9 +241,6 @@ export async function POST(req: NextRequest) {
 
   } catch (err: any) {
     console.error('Erro inesperado em /api/pagamento/criar:', err)
-    return NextResponse.json(
-      { error: 'Erro inesperado' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Erro inesperado' }, { status: 500 })
   }
 }
