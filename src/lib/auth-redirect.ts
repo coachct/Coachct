@@ -8,13 +8,13 @@ export function dashboardDoRole(role: string | null | undefined): string {
     case 'cliente':
       return '/minha-conta'
     case 'admin':
-      return '/admin'
+      return '/admin/dashboard'
     case 'coordenadora':
-      return '/admin' // coordenadora compartilha o dashboard do admin
+      return '/admin/dashboard' // coordenadora compartilha o dashboard do admin
     case 'coach':
-      return '/coach'
+      return '/coach/painel'
     case 'recepcao':
-      return '/recepcao'
+      return '/recepcao/agenda'
     default:
       return '/'
   }
