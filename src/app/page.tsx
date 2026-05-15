@@ -98,7 +98,6 @@ export default function LandingPage() {
           <a href="#espaco" className="nav-link-h" style={s.navLink}>Espaço</a>
           <a href="#planos" className="nav-link-h" style={s.navLink}>Planos</a>
           <a href="#localizacao" className="nav-link-h" style={s.navLink}>Localização</a>
-          <span onClick={() => irParaComprar()} className="nav-link-comprar-h" style={s.navLinkComprar}>Comprar</span>
         </div>
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -107,6 +106,7 @@ export default function LandingPage() {
               <button onClick={() => router.push('/minha-conta')} className="nav-auth-h" style={s.navAuth}>
                 Minha conta
               </button>
+              <button onClick={() => irParaComprar()} style={s.navCta}>Comprar</button>
               <button onClick={irParaAgendar} style={s.navCta}>Agendar Treino</button>
             </>
           ) : isEquipe ? (
@@ -124,6 +124,7 @@ export default function LandingPage() {
               <button onClick={() => router.push('/cadastro')} className="nav-auth-h" style={s.navAuth}>
                 Cadastro
               </button>
+              <button onClick={() => irParaComprar()} style={s.navCta}>Comprar</button>
               <button onClick={irParaAgendar} style={s.navCta}>Agendar Treino</button>
             </>
           )}
