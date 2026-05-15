@@ -85,7 +85,6 @@ export default function AdminClientesPage() {
 
   const [cancelandoId, setCancelandoId] = useState<string | null>(null)
 
-  // Modal de ajuste de vencimento de plano de acesso
   const [modalVencimento, setModalVencimento] = useState<any>(null)
   const [novoVencimento, setNovoVencimento] = useState('')
   const [ajustandoVencimento, setAjustandoVencimento] = useState(false)
@@ -152,7 +151,6 @@ export default function AdminClientesPage() {
     const agora = new Date()
     const mes = agora.getMonth() + 1
     const ano = agora.getFullYear()
-
     const { data } = await supabase.rpc('saldo_creditos_cliente', {
       p_cliente_id: clienteId,
       p_mes: mes,
@@ -203,7 +201,6 @@ export default function AdminClientesPage() {
       telefone: form.telefone,
       cpf: form.cpf,
     }).eq('id', clienteSel.id)
-
     if (!error) {
       const updated = { ...clienteSel, ...form }
       setClienteSel(updated)
@@ -588,11 +585,9 @@ export default function AdminClientesPage() {
     info.unidade_id === unidadeAtiva?.id
   )
 
-  // PLANOS: separa em Apps Parceiros (Wellhub/TotalPass) e Planos Just CT (Acesso)
   const planosAppsParceiros = planosCliente.filter(p => p.ativo && p.planos_disponiveis)
   const planosJustCT = planosCliente.filter(p => p.ativo && p.produtos && p.produtos.subtipo === 'acesso')
 
-  // Agrupa apps parceiros por unidade
   const appsPorUnidade: Record<string, any[]> = {}
   for (const cp of planosAppsParceiros) {
     const u = cp.planos_disponiveis?.unidades
@@ -609,7 +604,6 @@ export default function AdminClientesPage() {
     saldosPorUnidade[uid].push({ key, ...info as any })
   }
 
-  // Helpers para Plano de Acesso
   function isPlanoVigente(cp: any): boolean {
     if (!cp.fim) return true
     return cp.fim >= hoje
@@ -621,7 +615,6 @@ export default function AdminClientesPage() {
     return Math.ceil((fim.getTime() - agora.getTime()) / (1000 * 60 * 60 * 24))
   }
 
-  // Valores derivados do modal de venda
   const produtoSelecionado = produtosDisp.find(p => p.id === formVenda.produto_id)
   const valorOriginal = formVenda.quantidade * formVenda.valor_unitario
   const valorTotalComDesconto = valorOriginal * (1 - formVenda.desconto_percentual / 100)
@@ -776,7 +769,6 @@ export default function AdminClientesPage() {
                   </div>
                 </div>
 
-                {/* Planos Just CT (Acesso) ativos */}
                 {planosJustCT.filter(isPlanoVigente).length > 0 && (
                   <div className="card border-l-4 border-l-amber-400">
                     <div className="flex items-center gap-2 mb-3">
@@ -889,7 +881,6 @@ export default function AdminClientesPage() {
             {aba === 'planos' && (
               <div className="space-y-4">
 
-                {/* CARD 1: PLANOS JUST CT (ACESSO) */}
                 <div>
                   <div className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2 flex items-center gap-2">
                     <CalendarClock size={12} /> Planos Just CT
@@ -916,12 +907,13 @@ export default function AdminClientesPage() {
                                 </div>
                                 <div className="text-xs text-gray-500 mt-1 space-y-0.5">
                                   <div>Início: <strong>{cp.inicio ? formatarBR(cp.inicio) : '—'}</strong></div>
-                                  <div>Vencimento: <strong className={vigente ? 'text-amber-700' : 'text-red-600'}>
-                                    {cp.fim ? formatarBR(cp.fim) : '—'}
-                                  </strong>
-                                  {vigente && dias !== null && (
-                                    <span className="text-gray-400 ml-1">({dias} dias restantes)</span>
-                                  )}
+                                  <div>
+                                    Vencimento: <strong className={vigente ? 'text-amber-700' : 'text-red-600'}>
+                                      {cp.fim ? formatarBR(cp.fim) : '—'}
+                                    </strong>
+                                    {vigente && dias !== null && (
+                                      <span className="text-gray-400 ml-1">({dias} dias restantes)</span>
+                                    )}
                                   </div>
                                   {cp.produtos?.unidades?.nome && (
                                     <div>Unidade: {cp.produtos.unidades.nome}</div>
@@ -946,7 +938,6 @@ export default function AdminClientesPage() {
                   )}
                 </div>
 
-                {/* CARD 2: APPS PARCEIROS */}
                 <div>
                   <div className="text-xs font-semibold text-primary-700 uppercase tracking-wide mb-2 flex items-center gap-2">
                     <Zap size={12} /> Apps Parceiros (Wellhub / TotalPass)
@@ -1381,7 +1372,7 @@ export default function AdminClientesPage() {
                           </div>
                           <div className="text-xs text-gray-500 mt-0.5">
                             R$ {Number(p.valor).toFixed(2).replace('.', ',')}
-                            {p.subtipo === 'acesso' 
+                            {p.subtipo === 'acesso'
                               ? ` · ${p.dias_validade} dias de acesso`
                               : (p.creditos_por_venda > 1 ? ` · ${p.creditos_por_venda} créditos por venda` : '')
                             }
@@ -1411,7 +1402,6 @@ export default function AdminClientesPage() {
                   </div>
                 </div>
 
-                {/* DESCONTO / CORTESIA */}
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold uppercase tracking-wide text-amber-800">Desconto</span>
@@ -1437,7 +1427,6 @@ export default function AdminClientesPage() {
                   )}
                 </div>
 
-                {/* TOTAL */}
                 <div className={`rounded-xl p-3 ${ehCortesia ? 'bg-amber-50 border border-amber-300' : 'bg-green-50 border border-green-200'}`}>
                   {formVenda.desconto_percentual > 0 && !ehCortesia && (
                     <div className="flex items-center justify-between mb-1">
@@ -1455,14 +1444,13 @@ export default function AdminClientesPage() {
                       R$ {valorTotalComDesconto.toFixed(2).replace('.', ',')}
                     </span>
                   </div>
-                  {ehAcesso && (
+                  {ehAcesso && produtoSelecionado && (
                     <div className="mt-2 pt-2 border-t border-green-200 text-xs text-amber-700">
-                      📅 Vigência: {produtoSelecionado?.dias_validade * formVenda.quantidade} dias a partir de hoje
+                      📅 Vigência: {produtoSelecionado.dias_validade * formVenda.quantidade} dias a partir de hoje
                     </div>
                   )}
                 </div>
 
-                {/* FORMA DE PAGAMENTO (esconde quando cortesia) */}
                 {!ehCortesia && (
                   <div>
                     <label className="text-xs text-gray-500 mb-2 block font-medium uppercase tracking-wide">Forma de pagamento</label>
@@ -1515,7 +1503,6 @@ export default function AdminClientesPage() {
       )}
 
       {modalAtivarPlano && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items{modalAtivarPlano && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
