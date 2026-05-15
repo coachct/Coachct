@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
 import { useRouter } from 'next/navigation'
-import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap } from 'lucide-react'
+import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap, Gift, CalendarClock, Edit2 } from 'lucide-react'
 import UnidadeSelector from '@/components/UnidadeSelector'
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
@@ -22,7 +22,13 @@ const FORMAS_PAGAMENTO = [
   { key: 'cartao_credito', label: 'Cartão de crédito' },
   { key: 'cartao_debito', label: 'Cartão de débito' },
   { key: 'dinheiro', label: 'Dinheiro' },
+  { key: 'cortesia', label: 'Cortesia' },
 ]
+
+function formatarBR(data: string | Date) {
+  const d = typeof data === 'string' ? new Date(data + 'T12:00:00') : data
+  return d.toLocaleDateString('pt-BR')
+}
 
 export default function RecepcaoClientesPage() {
   const { perfil, loading } = useAuth()
@@ -67,6 +73,7 @@ export default function RecepcaoClientesPage() {
     produto_id: '',
     quantidade: 1,
     valor_unitario: 0,
+    desconto_percentual: 0,
     forma_pagamento: 'pix',
     observacao: '',
   })
@@ -77,6 +84,11 @@ export default function RecepcaoClientesPage() {
   const [salvandoPlano, setSalvandoPlano] = useState(false)
 
   const [cancelandoId, setCancelandoId] = useState<string | null>(null)
+
+  const [modalVencimento, setModalVencimento] = useState<any>(null)
+  const [novoVencimento, setNovoVencimento] = useState('')
+  const [ajustandoVencimento, setAjustandoVencimento] = useState(false)
+  const [erroVencimento, setErroVencimento] = useState('')
 
   useEffect(() => {
     if (loading) return
@@ -139,7 +151,6 @@ export default function RecepcaoClientesPage() {
     const agora = new Date()
     const mes = agora.getMonth() + 1
     const ano = agora.getFullYear()
-
     const { data } = await supabase.rpc('saldo_creditos_cliente', {
       p_cliente_id: clienteId,
       p_mes: mes,
@@ -162,7 +173,7 @@ export default function RecepcaoClientesPage() {
   async function carregarVendas(clienteId: string) {
     const { data } = await supabase
       .from('vendas')
-      .select('*, produtos(nome, tipo), perfis:vendido_por(nome), unidades(nome)')
+      .select('*, produtos(nome, tipo, subtipo), perfis:vendido_por(nome), unidades(nome)')
       .eq('cliente_id', clienteId)
       .order('vendido_em', { ascending: false })
       .limit(50)
@@ -173,8 +184,9 @@ export default function RecepcaoClientesPage() {
     const { data } = await supabase
       .from('cliente_planos')
       .select(`
-        id, ativo, contrato_aceito_em, inicio, fim,
-        planos_disponiveis(id, nome, tipo, creditos_mes, unidade_id, unidades(id, nome, tipo))
+        id, ativo, contrato_aceito_em, inicio, fim, produto_id, venda_id,
+        planos_disponiveis(id, nome, tipo, creditos_mes, unidade_id, unidades(id, nome, tipo)),
+        produtos(id, nome, subtipo, unidade_id, unidades(id, nome, tipo), dias_validade)
       `)
       .eq('cliente_id', clienteId)
       .order('contrato_aceito_em', { ascending: false })
@@ -189,7 +201,6 @@ export default function RecepcaoClientesPage() {
       telefone: form.telefone,
       cpf: form.cpf,
     }).eq('id', clienteSel.id)
-
     if (!error) {
       const updated = { ...clienteSel, ...form }
       setClienteSel(updated)
@@ -240,6 +251,7 @@ export default function RecepcaoClientesPage() {
       produto_id: data && data[0] ? data[0].id : '',
       quantidade: 1,
       valor_unitario: data && data[0] ? Number(data[0].valor) : 0,
+      desconto_percentual: 0,
       forma_pagamento: 'pix',
       observacao: '',
     })
@@ -263,6 +275,11 @@ export default function RecepcaoClientesPage() {
     if (!formVenda.produto_id) { setErroVenda('Selecione um produto.'); return }
     if (formVenda.quantidade < 1 || formVenda.quantidade > 20) { setErroVenda('Quantidade deve ser entre 1 e 20.'); return }
     if (formVenda.valor_unitario <= 0) { setErroVenda('Informe um valor válido.'); return }
+    // Recepção não pode dar 100% de desconto (cortesia é exclusiva do admin)
+    if (formVenda.desconto_percentual < 0 || formVenda.desconto_percentual >= 100) {
+      setErroVenda('Desconto inválido. Para cortesia 100%, solicite ao administrador.')
+      return
+    }
 
     setVendendo(true)
     setErroVenda('')
@@ -276,6 +293,7 @@ export default function RecepcaoClientesPage() {
       p_vendido_por: perfil?.id,
       p_unidade_id: unidadeAtiva.id,
       p_observacao: formVenda.observacao.trim() || null,
+      p_desconto_percentual: formVenda.desconto_percentual,
     })
 
     setVendendo(false)
@@ -294,6 +312,7 @@ export default function RecepcaoClientesPage() {
     await Promise.all([
       carregarSaldo(clienteSel.id),
       carregarVendas(clienteSel.id),
+      carregarPlanosCliente(clienteSel.id),
     ])
     setAba('vendas')
   }
@@ -364,13 +383,41 @@ export default function RecepcaoClientesPage() {
   }
 
   async function desativarPlano(cpId: string) {
-    if (!confirm('Desativar este plano? O cliente perderá acesso aos créditos dessa unidade.')) return
+    if (!confirm('Desativar este plano? O cliente perderá acesso a partir de hoje.')) return
     await supabase.from('cliente_planos').update({
       ativo: false,
       fim: new Date().toISOString().split('T')[0],
     }).eq('id', cpId)
     await carregarPlanosCliente(clienteSel.id)
     await carregarSaldo(clienteSel.id)
+  }
+
+  function abrirAjusteVencimento(cp: any) {
+    setModalVencimento(cp)
+    setNovoVencimento(cp.fim || '')
+    setErroVencimento('')
+  }
+
+  async function salvarNovoVencimento() {
+    if (!modalVencimento) return
+    if (!novoVencimento) { setErroVencimento('Informe uma data válida.'); return }
+
+    setAjustandoVencimento(true)
+    setErroVencimento('')
+
+    const { error } = await supabase.from('cliente_planos').update({
+      fim: novoVencimento,
+    }).eq('id', modalVencimento.id)
+
+    setAjustandoVencimento(false)
+
+    if (error) {
+      setErroVencimento('Erro ao salvar: ' + error.message)
+      return
+    }
+
+    setModalVencimento(null)
+    await carregarPlanosCliente(clienteSel.id)
   }
 
   async function cancelarAgendamento(agId: string) {
@@ -398,7 +445,7 @@ export default function RecepcaoClientesPage() {
 
   function planosDisponiveisParaAtivar() {
     if (!unidadeAtiva) return []
-    const planosAtivos = planosCliente.filter(p => p.ativo).map(p => p.planos_disponiveis?.id)
+    const planosAtivos = planosCliente.filter(p => p.ativo).map(p => p.planos_disponiveis?.id).filter(Boolean)
     return planosDisponiveis.filter(p =>
       p.unidade_id === unidadeAtiva.id && !planosAtivos.includes(p.id)
     )
@@ -530,15 +577,17 @@ export default function RecepcaoClientesPage() {
     info.unidade_id === unidadeAtiva?.id
   )
 
-  const planosPorUnidade: Record<string, any[]> = {}
-  for (const cp of planosCliente.filter(p => p.ativo)) {
+  const planosAppsParceiros = planosCliente.filter(p => p.ativo && p.planos_disponiveis)
+  const planosJustCT = planosCliente.filter(p => p.ativo && p.produtos && p.produtos.subtipo === 'acesso')
+
+  const appsPorUnidade: Record<string, any[]> = {}
+  for (const cp of planosAppsParceiros) {
     const u = cp.planos_disponiveis?.unidades
     if (!u) continue
-    if (!planosPorUnidade[u.id]) planosPorUnidade[u.id] = []
-    planosPorUnidade[u.id].push(cp)
+    if (!appsPorUnidade[u.id]) appsPorUnidade[u.id] = []
+    appsPorUnidade[u.id].push(cp)
   }
 
-  // Saldos agrupados por unidade (para o card "Dados")
   const saldosPorUnidade: Record<string, any[]> = {}
   for (const [key, info] of Object.entries(saldoMes)) {
     const uid = (info as any).unidade_id
@@ -546,6 +595,22 @@ export default function RecepcaoClientesPage() {
     if (!saldosPorUnidade[uid]) saldosPorUnidade[uid] = []
     saldosPorUnidade[uid].push({ key, ...info as any })
   }
+
+  function isPlanoVigente(cp: any): boolean {
+    if (!cp.fim) return true
+    return cp.fim >= hoje
+  }
+  function diasRestantesPlano(cp: any): number | null {
+    if (!cp.fim) return null
+    const fim = new Date(cp.fim + 'T12:00:00')
+    const agora = new Date()
+    return Math.ceil((fim.getTime() - agora.getTime()) / (1000 * 60 * 60 * 24))
+  }
+
+  const produtoSelecionado = produtosDisp.find(p => p.id === formVenda.produto_id)
+  const valorOriginal = formVenda.quantidade * formVenda.valor_unitario
+  const valorTotalComDesconto = valorOriginal * (1 - formVenda.desconto_percentual / 100)
+  const ehAcesso = produtoSelecionado?.subtipo === 'acesso'
 
   if (loading || loadingUnidade || !perfil) return (
     <div className="flex items-center justify-center h-screen">
@@ -692,6 +757,31 @@ export default function RecepcaoClientesPage() {
                   </div>
                 </div>
 
+                {planosJustCT.filter(isPlanoVigente).length > 0 && (
+                  <div className="card border-l-4 border-l-amber-400">
+                    <div className="flex items-center gap-2 mb-3">
+                      <CalendarClock size={16} className="text-amber-600" />
+                      <div className="text-sm font-semibold text-gray-900">Plano Just CT ativo</div>
+                    </div>
+                    <div className="space-y-2">
+                      {planosJustCT.filter(isPlanoVigente).map(cp => {
+                        const dias = diasRestantesPlano(cp)
+                        return (
+                          <div key={cp.id} className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                            <div className="text-sm font-semibold text-amber-900">{cp.produtos?.nome}</div>
+                            <div className="text-xs text-amber-700 mt-1">
+                              Válido até <strong>{cp.fim ? formatarBR(cp.fim) : '—'}</strong>
+                              {dias !== null && dias >= 0 && (
+                                <span className="ml-1">({dias} dias restantes)</span>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {Object.keys(saldosPorUnidade).length > 0 && (
                   <div className="card">
                     <div className="flex items-center gap-2 mb-3">
@@ -778,89 +868,152 @@ export default function RecepcaoClientesPage() {
 
             {aba === 'planos' && (
               <div className="space-y-4">
-                {Object.keys(planosPorUnidade).length === 0 ? (
-                  <div className="card text-center py-8 text-gray-400 text-sm">
-                    Cliente sem planos ativos.
+
+                <div>
+                  <div className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2 flex items-center gap-2">
+                    <CalendarClock size={12} /> Planos Just CT
                   </div>
-                ) : (
-                  todasUnidades.map(u => {
-                    const planosU = planosPorUnidade[u.id] || []
-                    if (planosU.length === 0) return null
-                    const podeMexer = u.id === unidadeAtiva.id || perfil?.role === 'admin'
-
-                    return (
-                      <div key={u.id} className="card">
-                        <div className="flex items-center gap-2 mb-3">
-                          <Building2 size={14} className="text-gray-400" />
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                            u.tipo === 'ct' ? 'bg-primary-100 text-primary-700' : 'bg-blue-100 text-blue-700'
-                          }`}>
-                            {u.tipo === 'ct' ? 'CT' : 'Club'}
-                          </span>
-                          <span className="text-sm font-semibold text-gray-900">{u.nome}</span>
-                          {!podeMexer && (
-                            <span className="text-xs text-gray-400 italic">(somente leitura)</span>
-                          )}
-                        </div>
-
-                        <div className="space-y-2">
-                          {planosU.map(cp => {
-                            const pd = cp.planos_disponiveis
-                            const saldoKey = Object.keys(saldoMes).find(k =>
-                              saldoMes[k]?.unidade_id === u.id && saldoMes[k]?.tipo_plano === pd?.tipo
-                            )
-                            const saldo = saldoKey ? saldoMes[saldoKey] : null
-
-                            return (
-                              <div key={cp.id} className="border border-gray-200 rounded-xl p-3 flex items-center gap-3">
-                                <div className="flex-1">
-                                  <div className="text-sm font-medium text-gray-900">{pd?.nome}</div>
-                                  <div className="text-xs text-gray-500 mt-0.5">
-                                    {pd?.creditos_mes} sessões/mês
-                                    {saldo && (
-                                      <> · <span className="font-bold text-primary-600">{saldo.disponivel}</span> disponível este mês</>
+                  {planosJustCT.length === 0 ? (
+                    <div className="card text-center py-6 text-gray-400 text-sm">
+                      Nenhum plano de acesso ativo. Venda um Plano Semestral ou Anual.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {planosJustCT.map(cp => {
+                        const vigente = isPlanoVigente(cp)
+                        const dias = diasRestantesPlano(cp)
+                        return (
+                          <div key={cp.id} className={`card border-l-4 ${vigente ? 'border-l-amber-400' : 'border-l-gray-300 opacity-60'}`}>
+                            <div className="flex items-start gap-3">
+                              <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center flex-shrink-0">
+                                <CalendarClock size={18} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-semibold text-gray-900">{cp.produtos?.nome}</span>
+                                  {!vigente && <span className="text-xs px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">Vencido</span>}
+                                </div>
+                                <div className="text-xs text-gray-500 mt-1 space-y-0.5">
+                                  <div>Início: <strong>{cp.inicio ? formatarBR(cp.inicio) : '—'}</strong></div>
+                                  <div>
+                                    Vencimento: <strong className={vigente ? 'text-amber-700' : 'text-red-600'}>
+                                      {cp.fim ? formatarBR(cp.fim) : '—'}
+                                    </strong>
+                                    {vigente && dias !== null && (
+                                      <span className="text-gray-400 ml-1">({dias} dias restantes)</span>
                                     )}
                                   </div>
-                                  {cp.contrato_aceito_em && (
-                                    <div className="text-xs text-gray-400 mt-0.5">
-                                      Contrato aceito em {new Date(cp.contrato_aceito_em).toLocaleDateString('pt-BR')}
-                                    </div>
+                                  {cp.produtos?.unidades?.nome && (
+                                    <div>Unidade: {cp.produtos.unidades.nome}</div>
                                   )}
                                 </div>
-                                {podeMexer && (
-                                  <button onClick={() => desativarPlano(cp.id)}
-                                    className="btn btn-sm gap-1 text-red-500 hover:bg-red-50">
-                                    <Trash2 size={12} /> Desativar
-                                  </button>
-                                )}
                               </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )
-                  })
-                )}
-
-                {planosDisponiveisParaAtivar().length > 0 && (
-                  <div className="card border-2 border-dashed border-primary-200 bg-primary-50">
-                    <div className="text-sm font-semibold text-primary-800 mb-3 flex items-center gap-2">
-                      <Plus size={14} /> Ativar plano em {unidadeAtiva.nome}
-                    </div>
-                    <div className="space-y-2">
-                      {planosDisponiveisParaAtivar().map(p => (
-                        <button key={p.id} onClick={() => setModalAtivarPlano(p)}
-                          className="w-full bg-white border border-gray-200 rounded-xl p-3 flex items-center justify-between hover:border-primary-400 transition-all text-left">
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">{p.nome}</div>
-                            <div className="text-xs text-gray-500">{p.creditos_mes} sessões/mês</div>
+                              <div className="flex flex-col gap-1">
+                                <button onClick={() => abrirAjusteVencimento(cp)}
+                                  className="btn btn-sm gap-1 text-amber-700 hover:bg-amber-50">
+                                  <Edit2 size={11} /> Ajustar
+                                </button>
+                                <button onClick={() => desativarPlano(cp.id)}
+                                  className="btn btn-sm gap-1 text-red-500 hover:bg-red-50 text-xs">
+                                  <Trash2 size={11} /> Cancelar
+                                </button>
+                              </div>
+                            </div>
                           </div>
-                          <Plus size={16} className="text-primary-600" />
-                        </button>
-                      ))}
+                        )
+                      })}
                     </div>
+                  )}
+                </div>
+
+                <div>
+                  <div className="text-xs font-semibold text-primary-700 uppercase tracking-wide mb-2 flex items-center gap-2">
+                    <Zap size={12} /> Apps Parceiros (Wellhub / TotalPass)
                   </div>
-                )}
+                  {Object.keys(appsPorUnidade).length === 0 ? (
+                    <div className="card text-center py-6 text-gray-400 text-sm">
+                      Cliente sem planos de app parceiro ativos.
+                    </div>
+                  ) : (
+                    todasUnidades.map(u => {
+                      const planosU = appsPorUnidade[u.id] || []
+                      if (planosU.length === 0) return null
+                      const podeMexer = u.id === unidadeAtiva.id || perfil?.role === 'admin'
+
+                      return (
+                        <div key={u.id} className="card mb-2">
+                          <div className="flex items-center gap-2 mb-3">
+                            <Building2 size={14} className="text-gray-400" />
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                              u.tipo === 'ct' ? 'bg-primary-100 text-primary-700' : 'bg-blue-100 text-blue-700'
+                            }`}>
+                              {u.tipo === 'ct' ? 'CT' : 'Club'}
+                            </span>
+                            <span className="text-sm font-semibold text-gray-900">{u.nome}</span>
+                            {!podeMexer && (
+                              <span className="text-xs text-gray-400 italic">(somente leitura)</span>
+                            )}
+                          </div>
+
+                          <div className="space-y-2">
+                            {planosU.map(cp => {
+                              const pd = cp.planos_disponiveis
+                              const saldoKey = Object.keys(saldoMes).find(k =>
+                                saldoMes[k]?.unidade_id === u.id && saldoMes[k]?.tipo_plano === pd?.tipo
+                              )
+                              const saldo = saldoKey ? saldoMes[saldoKey] : null
+
+                              return (
+                                <div key={cp.id} className="border border-gray-200 rounded-xl p-3 flex items-center gap-3">
+                                  <div className="flex-1">
+                                    <div className="text-sm font-medium text-gray-900">{pd?.nome}</div>
+                                    <div className="text-xs text-gray-500 mt-0.5">
+                                      {pd?.creditos_mes} sessões/mês
+                                      {saldo && (
+                                        <> · <span className="font-bold text-primary-600">{saldo.disponivel}</span> disponível este mês</>
+                                      )}
+                                    </div>
+                                    {cp.contrato_aceito_em && (
+                                      <div className="text-xs text-gray-400 mt-0.5">
+                                        Contrato aceito em {new Date(cp.contrato_aceito_em).toLocaleDateString('pt-BR')}
+                                      </div>
+                                    )}
+                                  </div>
+                                  {podeMexer && (
+                                    <button onClick={() => desativarPlano(cp.id)}
+                                      className="btn btn-sm gap-1 text-red-500 hover:bg-red-50">
+                                      <Trash2 size={12} /> Desativar
+                                    </button>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+
+                  {planosDisponiveisParaAtivar().length > 0 && (
+                    <div className="card border-2 border-dashed border-primary-200 bg-primary-50">
+                      <div className="text-sm font-semibold text-primary-800 mb-3 flex items-center gap-2">
+                        <Plus size={14} /> Ativar app parceiro em {unidadeAtiva.nome}
+                      </div>
+                      <div className="space-y-2">
+                        {planosDisponiveisParaAtivar().map(p => (
+                          <button key={p.id} onClick={() => setModalAtivarPlano(p)}
+                            className="w-full bg-white border border-gray-200 rounded-xl p-3 flex items-center justify-between hover:border-primary-400 transition-all text-left">
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">{p.nome}</div>
+                              <div className="text-xs text-gray-500">{p.creditos_mes} sessões/mês</div>
+                            </div>
+                            <Plus size={16} className="text-primary-600" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -878,43 +1031,61 @@ export default function RecepcaoClientesPage() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {vendas.map(v => (
-                      <div key={v.id} className="card">
-                        <div className="flex items-start gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-green-50 text-green-700 flex items-center justify-center flex-shrink-0">
-                            <Package size={18} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-sm font-semibold text-gray-900">
-                                {v.produtos?.nome || 'Produto removido'}
-                              </span>
-                              <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">
-                                {v.quantidade}x
-                              </span>
-                              {v.unidades?.nome && (
-                                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
-                                  {v.unidades.nome}
+                    {vendas.map(v => {
+                      const teveDesconto = v.desconto_percentual && v.desconto_percentual > 0
+                      const ehCortesia = v.desconto_percentual === 100
+                      return (
+                        <div key={v.id} className="card">
+                          <div className="flex items-start gap-3">
+                            <div className={`w-10 h-10 rounded-xl ${ehCortesia ? 'bg-amber-100 text-amber-700' : 'bg-green-50 text-green-700'} flex items-center justify-center flex-shrink-0`}>
+                              {ehCortesia ? <Gift size={18} /> : <Package size={18} />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-semibold text-gray-900">
+                                  {v.produtos?.nome || 'Produto removido'}
                                 </span>
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">
+                                  {v.quantidade}x
+                                </span>
+                                {v.produtos?.subtipo === 'acesso' && (
+                                  <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">Acesso</span>
+                                )}
+                                {ehCortesia && (
+                                  <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">🎁 Cortesia</span>
+                                )}
+                                {v.unidades?.nome && (
+                                  <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
+                                    {v.unidades.nome}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 flex-wrap">
+                                {teveDesconto && !ehCortesia && v.valor_original && (
+                                  <span className="line-through text-gray-400">
+                                    R$ {Number(v.valor_original).toFixed(2).replace('.', ',')}
+                                  </span>
+                                )}
+                                <span className={`font-mono font-bold ${ehCortesia ? 'text-amber-700' : 'text-green-700'}`}>
+                                  R$ {Number(v.valor_total).toFixed(2).replace('.', ',')}
+                                </span>
+                                {teveDesconto && !ehCortesia && (
+                                  <span className="text-orange-600 font-medium">-{v.desconto_percentual}%</span>
+                                )}
+                                <span>{FORMAS_PAGAMENTO.find(f => f.key === v.forma_pagamento)?.label || v.forma_pagamento}</span>
+                                <span>{new Date(v.vendido_em).toLocaleDateString('pt-BR')} {new Date(v.vendido_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                              </div>
+                              {v.perfis?.nome && (
+                                <div className="text-xs text-gray-400 mt-0.5">Vendido por {v.perfis.nome}</div>
+                              )}
+                              {v.observacao && (
+                                <div className="text-xs text-gray-500 mt-1 italic">{v.observacao}</div>
                               )}
                             </div>
-                            <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 flex-wrap">
-                              <span className="font-mono font-bold text-green-700">
-                                R$ {Number(v.valor_total).toFixed(2).replace('.', ',')}
-                              </span>
-                              <span>{FORMAS_PAGAMENTO.find(f => f.key === v.forma_pagamento)?.label || v.forma_pagamento}</span>
-                              <span>{new Date(v.vendido_em).toLocaleDateString('pt-BR')} {new Date(v.vendido_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
-                            </div>
-                            {v.perfis?.nome && (
-                              <div className="text-xs text-gray-400 mt-0.5">Vendido por {v.perfis.nome}</div>
-                            )}
-                            {v.observacao && (
-                              <div className="text-xs text-gray-500 mt-1 italic">{v.observacao}</div>
-                            )}
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </div>
@@ -1187,11 +1358,19 @@ export default function RecepcaoClientesPage() {
                           onChange={() => selecionarProduto(p.id)}
                           className="mt-1 accent-green-600" />
                         <div className="flex-1">
-                          <div className="text-sm font-medium text-gray-900">{p.nome}</div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-medium text-gray-900">{p.nome}</span>
+                            {p.subtipo === 'acesso' && (
+                              <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">Acesso</span>
+                            )}
+                          </div>
                           <div className="text-xs text-gray-500 mt-0.5">
                             R$ {Number(p.valor).toFixed(2).replace('.', ',')}
-                            {p.creditos_por_venda > 1 && ` · ${p.creditos_por_venda} créditos por venda`}
-                            {p.dias_validade && ` · validade ${p.dias_validade} dias`}
+                            {p.subtipo === 'acesso'
+                              ? ` · ${p.dias_validade} dias de acesso`
+                              : (p.creditos_por_venda > 1 ? ` · ${p.creditos_por_venda} créditos por venda` : '')
+                            }
+                            {p.subtipo !== 'acesso' && p.dias_validade && ` · validade ${p.dias_validade} dias`}
                           </div>
                         </div>
                       </label>
@@ -1205,6 +1384,9 @@ export default function RecepcaoClientesPage() {
                     <input type="number" min={1} max={20} className="input w-full"
                       value={formVenda.quantidade}
                       onChange={e => setFormVenda({ ...formVenda, quantidade: parseInt(e.target.value) || 1 })} />
+                    {ehAcesso && formVenda.quantidade > 1 && (
+                      <div className="text-xs text-amber-600 mt-1">⚠️ Vai somar a vigência (ex: 2x semestral = 360 dias)</div>
+                    )}
                   </div>
                   <div>
                     <label className="text-xs text-gray-500 mb-1 block font-medium">Valor unitário (R$)</label>
@@ -1214,17 +1396,48 @@ export default function RecepcaoClientesPage() {
                   </div>
                 </div>
 
-                <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center justify-between">
-                  <span className="text-sm text-green-800 font-medium">Total da venda</span>
-                  <span className="font-mono text-xl font-bold text-green-700">
-                    R$ {(formVenda.quantidade * formVenda.valor_unitario).toFixed(2).replace('.', ',')}
-                  </span>
+                {/* Desconto: recepção PODE dar desconto até 99%, mas NÃO pode dar cortesia 100% */}
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-amber-800">Desconto (até 99%)</span>
+                    <span className="text-xs text-gray-500">Cortesia: pedir ao admin</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input type="number" min={0} max={99} step={1}
+                      className="input flex-1"
+                      placeholder="0"
+                      value={formVenda.desconto_percentual || ''}
+                      onChange={e => setFormVenda({ ...formVenda, desconto_percentual: Math.min(99, parseFloat(e.target.value) || 0) })} />
+                    <span className="text-sm text-amber-800 font-medium">%</span>
+                  </div>
+                </div>
+
+                <div className="rounded-xl p-3 bg-green-50 border border-green-200">
+                  {formVenda.desconto_percentual > 0 && (
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-gray-500">Valor original</span>
+                      <span className="text-sm text-gray-500 line-through font-mono">
+                        R$ {valorOriginal.toFixed(2).replace('.', ',')}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-green-800">Total da venda</span>
+                    <span className="font-mono text-xl font-bold text-green-700">
+                      R$ {valorTotalComDesconto.toFixed(2).replace('.', ',')}
+                    </span>
+                  </div>
+                  {ehAcesso && produtoSelecionado && (
+                    <div className="mt-2 pt-2 border-t border-green-200 text-xs text-amber-700">
+                      📅 Vigência: {produtoSelecionado.dias_validade * formVenda.quantidade} dias a partir de hoje
+                    </div>
+                  )}
                 </div>
 
                 <div>
                   <label className="text-xs text-gray-500 mb-2 block font-medium uppercase tracking-wide">Forma de pagamento</label>
                   <div className="grid grid-cols-2 gap-2">
-                    {FORMAS_PAGAMENTO.map(f => (
+                    {FORMAS_PAGAMENTO.filter(f => f.key !== 'cortesia').map(f => (
                       <button key={f.key}
                         onClick={() => setFormVenda({ ...formVenda, forma_pagamento: f.key })}
                         className={`p-3 rounded-xl border text-sm font-medium transition-all ${
@@ -1297,6 +1510,65 @@ export default function RecepcaoClientesPage() {
               <button onClick={() => ativarPlano(modalAtivarPlano.id)} disabled={salvandoPlano}
                 className="btn flex-1 bg-primary-600 text-white hover:bg-primary-700">
                 {salvandoPlano ? 'Ativando...' : 'Ativar plano'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalVencimento && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <div className="font-bold text-gray-900 flex items-center gap-2">
+                  <CalendarClock size={18} className="text-amber-600" /> Ajustar vencimento
+                </div>
+                <div className="text-xs text-gray-400 mt-0.5">{modalVencimento.produtos?.nome}</div>
+              </div>
+              <button onClick={() => setModalVencimento(null)} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-xs text-amber-800">
+              💡 Use este ajuste quando o cliente comprou o plano fora do sistema (ex: presencialmente há 15 dias) e você precisa retroagir ou estender o vencimento.
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <div className="text-xs text-gray-500 mb-1">Início do plano</div>
+                <div className="text-sm font-medium text-gray-900">
+                  {modalVencimento.inicio ? formatarBR(modalVencimento.inicio) : '—'}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block font-medium">Nova data de vencimento</label>
+                <input type="date" className="input w-full"
+                  value={novoVencimento}
+                  onChange={e => setNovoVencimento(e.target.value)} />
+                <div className="text-xs text-gray-400 mt-1">
+                  Vencimento atual: {modalVencimento.fim ? formatarBR(modalVencimento.fim) : '—'}
+                </div>
+              </div>
+            </div>
+
+            {erroVencimento && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-3 text-sm text-red-600 flex items-start gap-2">
+                <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+                {erroVencimento}
+              </div>
+            )}
+
+            <div className="flex gap-2 mt-6">
+              <button onClick={() => setModalVencimento(null)}
+                className="btn flex-1 text-gray-500 border border-gray-200">
+                Cancelar
+              </button>
+              <button onClick={salvarNovoVencimento} disabled={ajustandoVencimento}
+                className="btn flex-1 bg-amber-500 text-white hover:bg-amber-600 gap-1">
+                <Check size={12} /> {ajustandoVencimento ? 'Salvando...' : 'Salvar'}
               </button>
             </div>
           </div>
