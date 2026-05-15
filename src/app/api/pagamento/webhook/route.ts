@@ -8,7 +8,6 @@ const supabase = createClient(
 
 export async function POST(req: NextRequest) {
   try {
-    // ETAPA 2: AUTENTICAÇÃO BASIC AUTH
     const authHeader = req.headers.get('authorization') || ''
     const base64 = authHeader.replace('Basic ', '')
     const decoded = Buffer.from(base64, 'base64').toString('utf-8')
@@ -27,7 +26,6 @@ export async function POST(req: NextRequest) {
     console.log('Tipo:', tipo)
     console.log('Order ID:', orderId)
 
-    // ETAPA 3: IDENTIFICAR EVENTO
     const isPago = tipo === 'order.paid' || tipo === 'charge.paid'
     const isFalhou = tipo === 'order.payment_failed' || tipo === 'charge.payment_failed'
 
@@ -36,7 +34,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
-    // ETAPA 4: ACHAR O PAGAMENTO PENDENTE
     const { data: pagamento, error: errBusca } = await supabase
       .from('pagamentos_pendentes')
       .select('*')
@@ -48,13 +45,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
-    // IDEMPOTÊNCIA: já foi processado antes?
     if (pagamento.status === 'pago' || pagamento.status === 'falhou') {
       console.log('Evento já processado anteriormente. Ignorando.')
       return NextResponse.json({ ok: true })
     }
 
-    // ETAPA 5A: PAGAMENTO CONFIRMADO
     if (isPago) {
       const { data: venda, error: errVenda } = await supabase.rpc('registrar_venda', {
         p_produto_id: pagamento.produto_id,
@@ -65,6 +60,7 @@ export async function POST(req: NextRequest) {
         p_vendido_por: null,
         p_unidade_id: pagamento.unidade_id,
         p_observacao: 'Venda online via Pagar.me',
+        p_desconto_percentual: 0,
       })
 
       if (errVenda) {
@@ -85,7 +81,6 @@ export async function POST(req: NextRequest) {
       console.log('✅ Venda registrada com sucesso. Venda ID:', venda?.venda_id)
     }
 
-    // ETAPA 5B: PAGAMENTO FALHOU
     if (isFalhou) {
       const motivo = body?.data?.charges?.[0]?.last_transaction?.gateway_response?.errors?.[0]?.message || 'Falha no pagamento'
 
