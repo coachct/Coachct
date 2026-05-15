@@ -275,9 +275,9 @@ export default function RecepcaoClientesPage() {
     if (!formVenda.produto_id) { setErroVenda('Selecione um produto.'); return }
     if (formVenda.quantidade < 1 || formVenda.quantidade > 20) { setErroVenda('Quantidade deve ser entre 1 e 20.'); return }
     if (formVenda.valor_unitario <= 0) { setErroVenda('Informe um valor válido.'); return }
-    // Recepção não pode dar 100% de desconto (cortesia é exclusiva do admin)
-    if (formVenda.desconto_percentual < 0 || formVenda.desconto_percentual >= 100) {
-      setErroVenda('Desconto inválido. Para cortesia 100%, solicite ao administrador.')
+    // Recepção limitada a 20% de desconto. Cortesia e descontos maiores são exclusivos do admin.
+    if (formVenda.desconto_percentual < 0 || formVenda.desconto_percentual > 20) {
+      setErroVenda('Desconto máximo permitido para recepção é 20%. Para descontos maiores, solicite ao administrador.')
       return
     }
 
@@ -1396,18 +1396,18 @@ export default function RecepcaoClientesPage() {
                   </div>
                 </div>
 
-                {/* Desconto: recepção PODE dar desconto até 99%, mas NÃO pode dar cortesia 100% */}
+                {/* Desconto: recepção limitada a 20% — descontos maiores requerem admin */}
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-amber-800">Desconto (até 99%)</span>
-                    <span className="text-xs text-gray-500">Cortesia: pedir ao admin</span>
+                    <span className="text-xs font-semibold uppercase tracking-wide text-amber-800">Desconto (até 20%)</span>
+                    <span className="text-xs text-gray-500">Acima disso: pedir ao admin</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <input type="number" min={0} max={99} step={1}
+                    <input type="number" min={0} max={20} step={1}
                       className="input flex-1"
                       placeholder="0"
                       value={formVenda.desconto_percentual || ''}
-                      onChange={e => setFormVenda({ ...formVenda, desconto_percentual: Math.min(99, parseFloat(e.target.value) || 0) })} />
+                      onChange={e => setFormVenda({ ...formVenda, desconto_percentual: Math.min(20, parseFloat(e.target.value) || 0) })} />
                     <span className="text-sm text-amber-800 font-medium">%</span>
                   </div>
                 </div>
