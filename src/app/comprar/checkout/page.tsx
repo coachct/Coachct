@@ -50,8 +50,8 @@ export default function CheckoutPage() {
     // Quando logar, busca dados de cliente e pula pra pagamento
     if (perfil?.role === 'cliente') {
       carregarCliente()
-    } else if (perfil && perfil.role !== 'cliente') {
-      // Equipe não pode comprar — redirect pra home
+    } else if (perfil && ['admin', 'coach', 'coordenadora', 'recepcao'].includes(perfil.role as string)) {
+      // Equipe não pode comprar — bloqueia com mensagem
       setErro('Apenas clientes podem realizar compras pelo site. Use a aba "Vender produto" no painel.')
     }
   }, [perfil])
