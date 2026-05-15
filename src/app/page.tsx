@@ -21,12 +21,20 @@ export default function LandingPage() {
     else router.push('/grade')
   }
 
+  // "Comprar" — qualquer um (visitante, cliente, equipe) pode ir pra página de compra.
+  // Se o id_produto for passado, leva direto pro checkout daquele produto.
+  function irParaComprar(produtoSlug?: string) {
+    if (produtoSlug) router.push(`/comprar?produto=${produtoSlug}`)
+    else router.push('/comprar')
+  }
+
   const s: Record<string, any> = {
     page: { background: '#080808', minHeight: '100vh', color: '#f0f0f0', fontFamily: "'DM Sans', sans-serif" },
     nav: { position: 'fixed' as const, top: 0, left: 0, right: 0, zIndex: 50, padding: '0 2rem', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#08080895', backdropFilter: 'blur(16px)', borderBottom: '1px solid #1a1a1a' },
     logo: { fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: '#fff', letterSpacing: 2, cursor: 'pointer' },
     navLinks: { display: 'flex', gap: '2rem', alignItems: 'center' },
     navLink: { color: '#555', fontSize: 13, fontWeight: 500, cursor: 'pointer', textDecoration: 'none', transition: 'color .2s' },
+    navLinkComprar: { color: ACCENT, fontSize: 13, fontWeight: 700, cursor: 'pointer', textDecoration: 'none', transition: 'color .2s' },
     navCta: { background: ACCENT, color: '#fff', border: 'none', borderRadius: 6, padding: '0.45rem 1.25rem', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
     navAuth: { background: 'transparent', color: '#aaa', border: '1px solid #333', borderRadius: 6, padding: '0.45rem 1rem', fontWeight: 500, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", transition: 'all .2s' },
     section: { padding: '6rem 2.5rem', maxWidth: 1100, margin: '0 auto' },
@@ -36,6 +44,8 @@ export default function LandingPage() {
     divider: { borderTop: '1px solid #1a1a1a' },
     btnPrimary: { background: ACCENT, color: '#fff', border: 'none', borderRadius: 8, padding: '0.9rem 2rem', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
     btnGhost: { background: 'transparent', color: '#f0f0f0', border: '1.5px solid #333', borderRadius: 8, padding: '0.9rem 2rem', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    btnComprarCard: { background: ACCENT, color: '#fff', border: 'none', borderRadius: 8, padding: '0.75rem 1.25rem', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", width: '100%', marginTop: '1.25rem', transition: 'opacity .2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 },
+    btnComprarCardGhost: { background: 'transparent', color: ACCENT, border: `1.5px solid ${ACCENT}`, borderRadius: 8, padding: '0.75rem 1.25rem', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", width: '100%', marginTop: '1.25rem', transition: 'all .2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 },
   }
 
   // Rota da área de cada papel da equipe (pra botão "Minha área")
@@ -61,6 +71,7 @@ export default function LandingPage() {
         * { box-sizing: border-box; margin: 0; padding: 0; }
         @keyframes spin { to { transform: rotate(360deg) } }
         .nav-link-h:hover { color: ${ACCENT} !important; }
+        .nav-link-comprar-h:hover { color: #fff !important; }
         .nav-auth-h:hover { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
         .btn-ghost-h:hover { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
         .plano-card-h { transition: all .25s; }
@@ -68,6 +79,8 @@ export default function LandingPage() {
         .feature-h { transition: all .2s; }
         .feature-h:hover { border-color: ${ACCENT} !important; }
         .maps-btn:hover { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
+        .btn-comprar-card-h:hover { opacity: 0.85; }
+        .btn-comprar-card-ghost-h:hover { background: ${ACCENT} !important; color: #fff !important; }
         @media (max-width: 768px) {
           .nav-links-d { display: none !important; }
           .hero-title-r { font-size: 36px !important; }
@@ -85,6 +98,7 @@ export default function LandingPage() {
           <a href="#espaco" className="nav-link-h" style={s.navLink}>Espaço</a>
           <a href="#planos" className="nav-link-h" style={s.navLink}>Planos</a>
           <a href="#localizacao" className="nav-link-h" style={s.navLink}>Localização</a>
+          <span onClick={() => irParaComprar()} className="nav-link-comprar-h" style={s.navLinkComprar}>Comprar</span>
         </div>
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -249,34 +263,46 @@ export default function LandingPage() {
         <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>Acesso ao espaço</div>
         <div className="grid3-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', marginBottom: '3rem' }}>
           {[
-            { nome: 'Mensal', preco: 'R$ 499', cents: ',00', periodo: '/mês · 2 meses fidelidade', desc: 'Acesso ilimitado ao CT. Cobrança automática todo mês. Cancelamento com 30 dias de antecedência.', destaque: false },
-            { nome: 'Semestral', preco: 'R$ 399', cents: ',00', periodo: '/mês · 6x R$399', desc: 'Plano ilimitado por 6 meses. Válido somente para o titular. Não permite cancelamento após uso ou 7 dias da compra.', destaque: true },
-            { nome: 'Anual', preco: 'R$ 349', cents: ',00', periodo: '/mês · média (total R$4.188)', desc: 'Plano ilimitado por 12 meses. Melhor custo-benefício. Não permite cancelamento após uso ou 7 dias da compra.', destaque: false },
+            { nome: 'Mensal', preco: 'R$ 499', cents: ',00', periodo: '/mês · 2 meses fidelidade', desc: 'Acesso ilimitado ao CT. Cobrança automática todo mês. Cancelamento com 30 dias de antecedência.', destaque: false, comprar: false },
+            { nome: 'Semestral', preco: 'R$ 399', cents: ',00', periodo: '/mês · 6x R$399', desc: 'Plano ilimitado por 6 meses. Válido somente para o titular. Não permite cancelamento após uso ou 7 dias da compra.', destaque: true, comprar: true, slug: 'semestral' },
+            { nome: 'Anual', preco: 'R$ 349', cents: ',00', periodo: '/mês · média (total R$4.188)', desc: 'Plano ilimitado por 12 meses. Melhor custo-benefício. Não permite cancelamento após uso ou 7 dias da compra.', destaque: false, comprar: true, slug: 'anual' },
           ].map((p, i) => (
-            <div key={i} className="plano-card-h" style={{ background: '#111', border: `1px solid ${p.destaque ? ACCENT : '#222'}`, borderRadius: 16, padding: '2rem', position: 'relative', overflow: 'hidden' }}>
+            <div key={i} className="plano-card-h" style={{ background: '#111', border: `1px solid ${p.destaque ? ACCENT : '#222'}`, borderRadius: 16, padding: '2rem', position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
               {p.destaque && <div style={{ position: 'absolute', top: 12, right: -16, background: ACCENT, color: '#fff', fontSize: 10, fontWeight: 700, padding: '0.25rem 2.5rem', transform: 'rotate(15deg)', letterSpacing: 1 }}>MAIS POPULAR</div>}
               <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '0.5rem' }}>{p.nome}</div>
               <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 48, color: '#fff', lineHeight: 1 }}>
                 {p.preco}<span style={{ fontSize: 24 }}>{p.cents}</span>
               </div>
               <div style={{ fontSize: 12, color: '#555', marginBottom: '1rem' }}>{p.periodo}</div>
-              <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6 }}>{p.desc}</div>
+              <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6, flex: 1 }}>{p.desc}</div>
+              {p.comprar ? (
+                <button onClick={() => irParaComprar(p.slug)} className={p.destaque ? 'btn-comprar-card-h' : 'btn-comprar-card-ghost-h'} style={p.destaque ? s.btnComprarCard : s.btnComprarCardGhost}>
+                  Comprar agora →
+                </button>
+              ) : (
+                <div style={{ marginTop: '1.25rem', padding: '0.75rem', textAlign: 'center', color: '#444', fontSize: 12, border: '1px dashed #222', borderRadius: 8 }}>
+                  Em breve · contrate na recepção
+                </div>
+              )}
             </div>
           ))}
         </div>
         <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>Créditos avulsos</div>
         <div className="grid2-r" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
           {[
-            { nome: 'Coach CT', preco: 'R$ 79', cents: ',90', periodo: '/treino · válido 30 dias', desc: 'Crédito exclusivo para agendamento do Coach CT. Necessário ter acesso ao CT via plano ou app parceiro.', destaque: true },
-            { nome: 'Treino Avulso', preco: 'R$ 64', cents: ',90', periodo: '/treino · válido 30 dias', desc: 'Acesso único ao espaço de musculação. Não inclui acompanhamento de coach.', destaque: false },
+            { nome: 'Coach CT', preco: 'R$ 79', cents: ',90', periodo: '/treino · válido 30 dias', desc: 'Crédito exclusivo para agendamento do Coach CT. Necessário ter acesso ao CT via plano ou app parceiro.', destaque: true, slug: 'coach-ct-avulso' },
+            { nome: 'Treino Avulso', preco: 'R$ 64', cents: ',90', periodo: '/treino · válido 30 dias', desc: 'Acesso único ao espaço de musculação. Não inclui acompanhamento de coach.', destaque: false, slug: 'diaria-avulsa' },
           ].map((p, i) => (
-            <div key={i} className="plano-card-h" style={{ background: '#111', border: `1px solid ${p.destaque ? ACCENT : '#222'}`, borderRadius: 16, padding: '2rem' }}>
+            <div key={i} className="plano-card-h" style={{ background: '#111', border: `1px solid ${p.destaque ? ACCENT : '#222'}`, borderRadius: 16, padding: '2rem', display: 'flex', flexDirection: 'column' }}>
               <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '0.5rem' }}>{p.nome}</div>
               <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 48, color: '#fff', lineHeight: 1 }}>
                 {p.preco}<span style={{ fontSize: 24 }}>{p.cents}</span>
               </div>
               <div style={{ fontSize: 12, color: '#555', marginBottom: '1rem' }}>{p.periodo}</div>
-              <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6 }}>{p.desc}</div>
+              <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6, flex: 1 }}>{p.desc}</div>
+              <button onClick={() => irParaComprar(p.slug)} className={p.destaque ? 'btn-comprar-card-h' : 'btn-comprar-card-ghost-h'} style={p.destaque ? s.btnComprarCard : s.btnComprarCardGhost}>
+                Comprar agora →
+              </button>
             </div>
           ))}
         </div>
@@ -327,7 +353,10 @@ export default function LandingPage() {
         <div style={{ ...s.sSub, margin: '0 auto 2rem' }}>
           {isCliente ? 'Você já está dentro. Bora marcar seu próximo treino.' : 'Crie sua conta em menos de 1 minuto e agende seu primeiro treino.'}
         </div>
-        <button onClick={irParaAgendar} style={s.btnPrimary}>Agendar Treino →</button>
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <button onClick={irParaAgendar} style={s.btnPrimary}>Agendar Treino →</button>
+          <button onClick={() => irParaComprar()} className="btn-ghost-h" style={s.btnGhost}>Ver Planos e Comprar</button>
+        </div>
       </div>
 
       {/* FOOTER */}
