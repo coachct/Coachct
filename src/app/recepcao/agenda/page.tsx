@@ -345,6 +345,48 @@ export default function RecepcaoAgendaPage() {
 
       <div className="max-w-3xl mx-auto px-6 py-5">
 
+        {/* Seletor de data — controla tanto Clientes do dia quanto Grade do dia */}
+        <div className="card mb-4 flex items-center gap-3">
+          <button
+            onClick={() => { setData(addDias(data, -1)); setLoadingData(true) }}
+            className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-all flex-shrink-0">
+            <ChevronLeft size={16} />
+          </button>
+
+          <div className="flex-1 text-center">
+            <div className="text-sm font-semibold text-gray-900 capitalize">
+              {diaSemana}
+            </div>
+            {data !== hoje && (
+              <button onClick={() => { setData(hoje); setLoadingData(true) }}
+                className="text-xs text-primary-600 hover:underline mt-0.5">
+                Voltar para hoje
+              </button>
+            )}
+          </div>
+
+          <div className="relative flex-shrink-0">
+            <button
+              onClick={() => dateInputRef.current?.showPicker()}
+              className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-all">
+              <Calendar size={15} />
+            </button>
+            <input
+              ref={dateInputRef}
+              type="date"
+              value={data}
+              onChange={e => { setData(e.target.value); setLoadingData(true) }}
+              className="absolute opacity-0 w-0 h-0 top-0 left-0 pointer-events-none"
+            />
+          </div>
+
+          <button
+            onClick={() => { setData(addDias(data, 1)); setLoadingData(true) }}
+            className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-all flex-shrink-0">
+            <ChevronRight size={16} />
+          </button>
+        </div>
+
         <div className="flex gap-2 mb-5">
           <button onClick={() => setAbaAtiva('agendamentos')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
@@ -480,47 +522,6 @@ export default function RecepcaoAgendaPage() {
 
             {abaAtiva === 'grade' && (
               <div>
-                <div className="card mb-4 flex items-center gap-3">
-                  <button
-                    onClick={() => { setData(addDias(data, -1)); setLoadingData(true) }}
-                    className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-all flex-shrink-0">
-                    <ChevronLeft size={16} />
-                  </button>
-
-                  <div className="flex-1 text-center">
-                    <div className="text-sm font-semibold text-gray-900 capitalize">
-                      {new Date(data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
-                    </div>
-                    {data !== hoje && (
-                      <button onClick={() => { setData(hoje); setLoadingData(true) }}
-                        className="text-xs text-primary-600 hover:underline mt-0.5">
-                        Voltar para hoje
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="relative flex-shrink-0">
-                    <button
-                      onClick={() => dateInputRef.current?.showPicker()}
-                      className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-all">
-                      <Calendar size={15} />
-                    </button>
-                    <input
-                      ref={dateInputRef}
-                      type="date"
-                      value={data}
-                      onChange={e => { setData(e.target.value); setLoadingData(true) }}
-                      className="absolute opacity-0 w-0 h-0 top-0 left-0 pointer-events-none"
-                    />
-                  </div>
-
-                  <button
-                    onClick={() => { setData(addDias(data, 1)); setLoadingData(true) }}
-                    className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-all flex-shrink-0">
-                    <ChevronRight size={16} />
-                  </button>
-                </div>
-
                 {horariosAtivos.length === 0 ? (
                   <div className="card text-center py-12 text-gray-400 text-sm">
                     Nenhum coach disponível neste dia.
