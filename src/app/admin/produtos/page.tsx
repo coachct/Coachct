@@ -3,22 +3,37 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { Plus, X, Edit2, Check, Package, AlertCircle } from 'lucide-react'
+import { Plus, X, Edit2, Check, Package, AlertCircle, Coins, Calendar } from 'lucide-react'
 
-const TIPOS_PRODUTO = [
-{ key: 'credito_coach', label: 'Pacote de Créditos', precisaValidade: true, descricao: 'Gera N créditos individuais com validade própria, válidos para qualquer unidade configurada' },
+const SUBTIPOS = [
+  {
+    key: 'credito',
+    label: 'Pacote de Créditos',
+    descricao: 'Gera N créditos individuais com validade. Cada agendamento consome 1 crédito.',
+    icon: Coins,
+  },
+  {
+    key: 'acesso',
+    label: 'Plano de Acesso',
+    descricao: 'Acesso ilimitado ao CT durante um período (ex: semestral, anual). Não tem créditos.',
+    icon: Calendar,
+  },
 ]
 
 function ProdutoCard({ produto, unidades, onEditar, onAlternar }: any) {
-  const tipoLabel = TIPOS_PRODUTO.find(t => t.key === produto.tipo)?.label || produto.tipo
   const unidadeNome = produto.unidade_id 
     ? unidades.find((u: any) => u.id === produto.unidade_id)?.nome || '—'
     : 'Rede (todas as unidades)'
+
+  const isAcesso = produto.subtipo === 'acesso'
+  const subtipoLabel = isAcesso ? 'Plano de Acesso' : 'Pacote de Créditos'
+  const SubtipoIcon = isAcesso ? Calendar : Coins
+  const iconColor = isAcesso ? 'bg-amber-100 text-amber-700' : 'bg-primary-100 text-primary-700'
   
   return (
     <div className={`card flex items-start gap-3 ${!produto.ativo ? 'opacity-60' : ''}`}>
-      <div className="w-10 h-10 rounded-xl bg-primary-100 text-primary-700 flex items-center justify-center flex-shrink-0">
-        <Package size={18} />
+      <div className={`w-10 h-10 rounded-xl ${iconColor} flex items-center justify-center flex-shrink-0`}>
+        <SubtipoIcon size={18} />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
@@ -33,15 +48,25 @@ function ProdutoCard({ produto, unidades, onEditar, onAlternar }: any) {
           )}
         </div>
         <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 flex-wrap">
-          <span>{tipoLabel}</span>
+          <span className={isAcesso ? 'text-amber-700 font-medium' : 'text-primary-700 font-medium'}>
+            {subtipoLabel}
+          </span>
           <span className="font-mono font-semibold text-gray-700">
             R$ {Number(produto.valor).toFixed(2).replace('.', ',')}
           </span>
-          <span className="bg-green-50 text-green-700 px-2 py-0.5 rounded-full font-medium">
-            {produto.creditos_por_venda || 1} crédito{(produto.creditos_por_venda || 1) > 1 ? 's' : ''} por unidade
-          </span>
-          {produto.dias_validade && (
-            <span>Validade: {produto.dias_validade} dias</span>
+          {isAcesso ? (
+            <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-medium">
+              {produto.dias_validade} dias de acesso
+            </span>
+          ) : (
+            <>
+              <span className="bg-green-50 text-green-700 px-2 py-0.5 rounded-full font-medium">
+                {produto.creditos_por_venda || 1} crédito{(produto.creditos_por_venda || 1) > 1 ? 's' : ''} por unidade
+              </span>
+              {produto.dias_validade && (
+                <span>Validade: {produto.dias_validade} dias</span>
+              )}
+            </>
           )}
         </div>
         {produto.descricao && (
@@ -72,6 +97,7 @@ export default function AdminProdutosPage() {
   const [modalProduto, setModalProduto] = useState<any>(null)
   const [form, setForm] = useState({
     nome: '',
+    subtipo: 'credito' as 'credito' | 'acesso',
     tipo: 'credito_coach',
     valor: 0,
     creditos_por_venda: 1,
@@ -106,6 +132,7 @@ export default function AdminProdutosPage() {
   function abrirNovo() {
     setForm({
       nome: '',
+      subtipo: 'credito',
       tipo: 'credito_coach',
       valor: 0,
       creditos_por_venda: 1,
@@ -121,7 +148,8 @@ export default function AdminProdutosPage() {
   function abrirEditar(produto: any) {
     setForm({
       nome: produto.nome,
-      tipo: produto.tipo,
+      subtipo: produto.subtipo || 'credito',
+      tipo: produto.tipo || 'credito_coach',
       valor: produto.valor,
       creditos_por_venda: produto.creditos_por_venda || 1,
       dias_validade: produto.dias_validade || 30,
@@ -136,16 +164,28 @@ export default function AdminProdutosPage() {
   async function salvar() {
     if (!form.nome.trim()) { setErro('Informe o nome do produto.'); return }
     if (form.valor <= 0) { setErro('Informe um valor válido.'); return }
-    if (form.creditos_por_venda < 1) { setErro('A quantidade de créditos por venda deve ser pelo menos 1.'); return }
+
+    if (form.subtipo === 'credito') {
+      if (form.creditos_por_venda < 1) { setErro('A quantidade de créditos por venda deve ser pelo menos 1.'); return }
+      if (form.dias_validade < 1) { setErro('A validade em dias deve ser pelo menos 1.'); return }
+    }
+
+    if (form.subtipo === 'acesso') {
+      if (form.dias_validade < 1) { setErro('A duração do acesso em dias deve ser pelo menos 1.'); return }
+    }
 
     setSalvando(true)
     setErro('')
 
-    const dados = {
+    // Pra produto de acesso, créditos_por_venda fica fixo em 0
+    const creditosFinal = form.subtipo === 'acesso' ? 0 : form.creditos_por_venda
+
+    const dados: any = {
       nome: form.nome.trim(),
+      subtipo: form.subtipo,
       tipo: form.tipo,
       valor: form.valor,
-      creditos_por_venda: form.creditos_por_venda,
+      creditos_por_venda: creditosFinal,
       dias_validade: form.dias_validade,
       descricao: form.descricao.trim() || null,
       ativo: form.ativo,
@@ -184,7 +224,6 @@ export default function AdminProdutosPage() {
 
   const ativos = produtos.filter(p => p.ativo)
   const inativos = produtos.filter(p => !p.ativo)
-  const tipoForm = TIPOS_PRODUTO.find(t => t.key === form.tipo)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -287,52 +326,88 @@ export default function AdminProdutosPage() {
               </div>
 
               <div>
-                <label className="text-xs text-gray-500 mb-1 block font-medium">Tipo</label>
+                <label className="text-xs text-gray-500 mb-1 block font-medium">Subtipo</label>
                 <div className="space-y-2">
-                  {TIPOS_PRODUTO.map(t => (
-                    <label key={t.key} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                      form.tipo === t.key ? 'border-primary-400 bg-primary-50' : 'border-gray-200'
-                    }`}>
-                      <input type="radio" checked={form.tipo === t.key}
-                        onChange={() => setForm({ ...form, tipo: t.key })}
-                        className="mt-1 accent-primary-600" />
-                      <div className="flex-1">
-                        <div className="text-sm font-medium text-gray-900">{t.label}</div>
-                        <div className="text-xs text-gray-500 mt-0.5">{t.descricao}</div>
-                      </div>
-                    </label>
-                  ))}
+                  {SUBTIPOS.map(s => {
+                    const Icon = s.icon
+                    const ativo = form.subtipo === s.key
+                    return (
+                      <label key={s.key} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                        ativo ? 'border-primary-400 bg-primary-50' : 'border-gray-200'
+                      }`}>
+                        <input type="radio" checked={ativo}
+                          onChange={() => setForm({ ...form, subtipo: s.key as 'credito' | 'acesso' })}
+                          className="mt-1 accent-primary-600" />
+                        <Icon size={16} className={`mt-0.5 ${ativo ? 'text-primary-600' : 'text-gray-400'}`} />
+                        <div className="flex-1">
+                          <div className="text-sm font-medium text-gray-900">{s.label}</div>
+                          <div className="text-xs text-gray-500 mt-0.5">{s.descricao}</div>
+                        </div>
+                      </label>
+                    )
+                  })}
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block font-medium">Valor (R$)</label>
-                  <input type="number" min={0} step="0.01" className="input w-full"
-                    value={form.valor}
-                    onChange={e => setForm({ ...form, valor: parseFloat(e.target.value) || 0 })} />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block font-medium">Créditos por venda</label>
-                  <input type="number" min={1} max={100} className="input w-full"
-                    value={form.creditos_por_venda}
-                    onChange={e => setForm({ ...form, creditos_por_venda: parseInt(e.target.value) || 1 })} />
-                </div>
-              </div>
+              {form.subtipo === 'credito' && (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block font-medium">Valor (R$)</label>
+                      <input type="number" min={0} step="0.01" className="input w-full"
+                        value={form.valor}
+                        onChange={e => setForm({ ...form, valor: parseFloat(e.target.value) || 0 })} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block font-medium">Créditos por venda</label>
+                      <input type="number" min={1} max={100} className="input w-full"
+                        value={form.creditos_por_venda}
+                        onChange={e => setForm({ ...form, creditos_por_venda: parseInt(e.target.value) || 1 })} />
+                    </div>
+                  </div>
 
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800">
-                <div className="font-semibold mb-1">💡 Como funciona "Créditos por venda":</div>
-                <div>• <strong>1 crédito:</strong> a recepção define quantas unidades vender (ex: 5 créditos avulsos)</div>
-                <div>• <strong>5/10/40 créditos:</strong> pacotes fechados, vendido como 1 unidade que dá N treinos</div>
-              </div>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800">
+                    <div className="font-semibold mb-1">💡 Como funciona "Créditos por venda":</div>
+                    <div>• <strong>1 crédito:</strong> a recepção define quantas unidades vender (ex: 5 créditos avulsos)</div>
+                    <div>• <strong>5/10/40 créditos:</strong> pacotes fechados, vendido como 1 unidade que dá N treinos</div>
+                  </div>
 
-              {tipoForm?.precisaValidade && (
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block font-medium">Validade (dias)</label>
-                  <input type="number" min={1} className="input w-full"
-                    value={form.dias_validade}
-                    onChange={e => setForm({ ...form, dias_validade: parseInt(e.target.value) || 30 })} />
-                </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block font-medium">Validade dos créditos (dias)</label>
+                    <input type="number" min={1} className="input w-full"
+                      value={form.dias_validade}
+                      onChange={e => setForm({ ...form, dias_validade: parseInt(e.target.value) || 30 })} />
+                    <div className="text-xs text-gray-400 mt-1">A partir da data da venda, cada crédito expira após X dias.</div>
+                  </div>
+                </>
+              )}
+
+              {form.subtipo === 'acesso' && (
+                <>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block font-medium">Valor (R$)</label>
+                    <input type="number" min={0} step="0.01" className="input w-full"
+                      value={form.valor}
+                      onChange={e => setForm({ ...form, valor: parseFloat(e.target.value) || 0 })} />
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block font-medium">Duração do acesso (dias)</label>
+                    <input type="number" min={1} className="input w-full"
+                      value={form.dias_validade}
+                      onChange={e => setForm({ ...form, dias_validade: parseInt(e.target.value) || 180 })} />
+                    <div className="text-xs text-gray-400 mt-1">
+                      Ex: 30 = mensal · 90 = trimestral · 180 = semestral · 365 = anual
+                    </div>
+                  </div>
+
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+                    <div className="font-semibold mb-1">📅 Como funciona "Plano de Acesso":</div>
+                    <div>• Cliente paga uma vez e tem acesso ilimitado ao CT durante o período definido.</div>
+                    <div>• Não consome créditos por sessão.</div>
+                    <div>• Vencimento pode ser ajustado depois (ex: cliente comprou há 15 dias, ajusta retroativo).</div>
+                  </div>
+                </>
               )}
 
               <div>
