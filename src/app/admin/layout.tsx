@@ -1,5 +1,4 @@
 import SidebarLayout from '@/components/layout/SidebarLayout'
-
 const nav = [
   { label: 'Dashboard', href: '/admin/dashboard' },
   { label: 'Agenda', href: '/admin/agenda' },
@@ -7,6 +6,7 @@ const nav = [
   { label: 'Unidades', href: '/admin/unidades' },
   { label: 'Planos', href: '/admin/planos' },
   { label: 'Produtos', href: '/admin/produtos' },
+  { label: 'Vendas Online', href: '/admin/vendas' },
   { label: 'Permissões', href: '/admin/permissoes' },
   { label: 'Faturamento & Margem', href: '/admin/financeiro' },
   { label: 'Coaches', href: '/admin/coaches' },
@@ -20,7 +20,6 @@ const nav = [
   { label: 'Treinos do mês', href: '/ju/treinos' },
   { label: 'Trocar senha', href: '/trocar-senha' },
 ]
-
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <SidebarLayout navItems={nav} role="admin" rolesPermitidos={['admin', 'coordenadora']}>
