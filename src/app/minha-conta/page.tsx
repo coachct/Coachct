@@ -49,6 +49,7 @@ export default function MinhaContaPage() {
   const [agendamentosProximoMes, setAgendamentosProximoMes] = useState(0)
   const [loadingData, setLoadingData] = useState(true)
   const [clientePlanos, setClientePlanos] = useState<any[]>([])
+  const [compras, setCompras] = useState<any[]>([])
 
   const [modalCancelar, setModalCancelar] = useState<any>(null)
   const [cancelando, setCancelando] = useState(false)
@@ -67,11 +68,7 @@ export default function MinhaContaPage() {
 
   useEffect(() => {
     if (loading) return
-    if (!user) {
-      router.push('/')
-      return
-    }
-    // Se logou mas não é cliente, manda pro dashboard correto do role
+    if (!user) { router.push('/'); return }
     if (perfil && perfil.role && perfil.role !== 'cliente') {
       router.push(dashboardDoRole(perfil.role))
     }
@@ -99,6 +96,7 @@ export default function MinhaContaPage() {
         { data: filasData },
         { data: agsProx },
         { data: cliPlanos },
+        { data: vendasData },
       ] = await Promise.all([
         supabase.from('agendamentos')
           .select('*, unidades(nome)')
@@ -122,12 +120,18 @@ export default function MinhaContaPage() {
           .select('*, planos_disponiveis(id, nome, tipo, unidade_id)')
           .eq('cliente_id', cli.id)
           .eq('ativo', true),
+        supabase.from('vendas')
+          .select('*, produtos(nome, subtipo, dias_validade)')
+          .eq('cliente_id', cli.id)
+          .order('vendido_em', { ascending: false })
+          .limit(10),
       ])
 
       setAgendamentos(ags || [])
       setFilas(filasData || [])
       setAgendamentosProximoMes((agsProx || []).length)
       setClientePlanos(cliPlanos || [])
+      setCompras(vendasData || [])
 
       await carregarTodosSaldos(cli.id, cliPlanos || [])
     }
@@ -255,6 +259,22 @@ export default function MinhaContaPage() {
     window.location.href = '/'
   }
 
+  function formatarValor(v: number) {
+    return `R$ ${Number(v).toFixed(2).replace('.', ',')}`
+  }
+
+  function formatarData(d: string) {
+    return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  }
+
+  function labelFormaPagamento(f: string) {
+    if (f === 'cartao_credito') return '💳 Cartão'
+    if (f === 'pix') return '⚡ PIX'
+    if (f === 'dinheiro') return '💵 Dinheiro'
+    if (f === 'debito') return '💳 Débito'
+    return f
+  }
+
   if (loading || loadingData) return (
     <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ width: 32, height: 32, border: `4px solid ${ACCENT}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
@@ -369,6 +389,7 @@ export default function MinhaContaPage() {
           </>
         )}
 
+        {/* AGENDAMENTOS */}
         {temPlanoAtivo && (
           <div style={{ marginTop: '2rem', marginBottom: '2rem' }}>
             <div style={{ fontSize: 11, color: '#aaa', fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: '1rem' }}>Meus agendamentos</div>
@@ -407,6 +428,7 @@ export default function MinhaContaPage() {
           </div>
         )}
 
+        {/* FILA DE ESPERA */}
         {filas.length > 0 && (
           <div style={{ marginBottom: '2rem' }}>
             <div style={{ fontSize: 11, color: AMARELO, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: '1rem' }}>⏳ Aguardando na fila de espera</div>
@@ -432,6 +454,36 @@ export default function MinhaContaPage() {
           </div>
         )}
 
+        {/* MINHAS COMPRAS */}
+        {compras.length > 0 && (
+          <div style={{ marginBottom: '2rem' }}>
+            <div style={{ fontSize: 11, color: '#aaa', fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: '1rem' }}>🛒 Minhas compras</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {compras.map(c => (
+                <div key={c.id} style={{ background: '#111', border: '1px solid #222', borderRadius: 12, padding: '1rem 1.25rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#fff', marginBottom: 4 }}>
+                        {c.produtos?.nome || 'Produto'}
+                      </div>
+                      <div style={{ fontSize: 12, color: '#555' }}>
+                        {formatarData(c.vendido_em)} · {labelFormaPagamento(c.forma_pagamento)}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' as const, flexShrink: 0 }}>
+                      <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 20, color: '#fff', lineHeight: 1 }}>
+                        {formatarValor(c.valor_total)}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#22c55e', marginTop: 4, fontWeight: 600 }}>✓ Pago</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* MINHA CONTA */}
         {cliente && (
           <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.25rem' }}>
             <div style={{ fontSize: 11, color: '#aaa', fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: '1rem' }}>Minha conta</div>
@@ -452,6 +504,7 @@ export default function MinhaContaPage() {
         )}
       </div>
 
+      {/* MODAL CANCELAR */}
       {modalCancelar && (
         <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: '#111', border: '1px solid #333', borderRadius: 20, width: '100%', maxWidth: 420, padding: '1.5rem' }}>
@@ -475,6 +528,7 @@ export default function MinhaContaPage() {
         </div>
       )}
 
+      {/* MODAL SAIR DA FILA */}
       {modalSairFila && (
         <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: '#111', border: `1px solid ${AMARELO}44`, borderRadius: 20, width: '100%', maxWidth: 420, padding: '1.5rem' }}>
