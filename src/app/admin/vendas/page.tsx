@@ -13,6 +13,9 @@ export default function AdminVendasOnlinePage() {
   const [vendas, setVendas] = useState<any[]>([])
   const [loadingData, setLoadingData] = useState(true)
   const [filtroStatus, setFiltroStatus] = useState<string>('todos')
+  const [filtroPeriodo, setFiltroPeriodo] = useState<string>('30d')
+  const [dataInicio, setDataInicio] = useState('')
+  const [dataFim, setDataFim] = useState('')
 
   useEffect(() => {
     if (!loading && perfil?.role !== 'admin') router.push('/')
@@ -20,14 +23,42 @@ export default function AdminVendasOnlinePage() {
 
   useEffect(() => {
     if (perfil) carregar()
-  }, [perfil])
+  }, [perfil, filtroPeriodo, dataInicio, dataFim])
 
   async function carregar() {
-    const { data } = await supabase
+    let query = supabase
       .from('pagamentos_pendentes')
       .select('*, clientes(nome, email), produtos(nome, subtipo)')
       .order('created_at', { ascending: false })
-      .limit(100)
+      .limit(200)
+
+    const agora = new Date()
+
+    if (filtroPeriodo === 'hoje') {
+      const inicio = new Date(agora)
+      inicio.setHours(0, 0, 0, 0)
+      query = query.gte('created_at', inicio.toISOString())
+    } else if (filtroPeriodo === '7d') {
+      const inicio = new Date(agora)
+      inicio.setDate(inicio.getDate() - 7)
+      query = query.gte('created_at', inicio.toISOString())
+    } else if (filtroPeriodo === '30d') {
+      const inicio = new Date(agora)
+      inicio.setDate(inicio.getDate() - 30)
+      query = query.gte('created_at', inicio.toISOString())
+    } else if (filtroPeriodo === 'mes_atual') {
+      const inicio = new Date(agora.getFullYear(), agora.getMonth(), 1)
+      query = query.gte('created_at', inicio.toISOString())
+    } else if (filtroPeriodo === 'custom' && dataInicio) {
+      query = query.gte('created_at', new Date(dataInicio).toISOString())
+      if (dataFim) {
+        const fim = new Date(dataFim)
+        fim.setHours(23, 59, 59, 999)
+        query = query.lte('created_at', fim.toISOString())
+      }
+    }
+
+    const { data } = await query
     setVendas(data || [])
     setLoadingData(false)
   }
@@ -65,6 +96,14 @@ export default function AdminVendasOnlinePage() {
     qtd_falhou: vendas.filter(v => v.status === 'falhou').length,
     qtd_pendente: vendas.filter(v => v.status === 'pendente').length,
   }
+
+  const periodos = [
+    { key: 'hoje', label: 'Hoje' },
+    { key: '7d', label: '7 dias' },
+    { key: '30d', label: '30 dias' },
+    { key: 'mes_atual', label: 'Mês atual' },
+    { key: 'custom', label: 'Personalizado' },
+  ]
 
   if (loading || loadingData) {
     return (
@@ -108,11 +147,37 @@ export default function AdminVendasOnlinePage() {
           </div>
         </div>
 
-        {/* Filtros */}
+        {/* Filtro de período */}
+        <div className="flex gap-2 mb-3 flex-wrap">
+          {periodos.map(p => (
+            <button key={p.key} onClick={() => setFiltroPeriodo(p.key)}
+              className={`btn btn-sm ${filtroPeriodo === p.key ? 'bg-primary-600 text-white' : 'border border-gray-200 text-gray-500'}`}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Campos de data personalizada */}
+        {filtroPeriodo === 'custom' && (
+          <div className="flex gap-3 mb-4 flex-wrap items-center">
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">De</label>
+              <input type="date" className="input text-sm"
+                value={dataInicio} onChange={e => setDataInicio(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Até</label>
+              <input type="date" className="input text-sm"
+                value={dataFim} onChange={e => setDataFim(e.target.value)} />
+            </div>
+          </div>
+        )}
+
+        {/* Filtro de status */}
         <div className="flex gap-2 mb-4 flex-wrap">
           {['todos', 'pago', 'pendente', 'falhou', 'expirado'].map(s => (
             <button key={s} onClick={() => setFiltroStatus(s)}
-              className={`btn btn-sm capitalize ${filtroStatus === s ? 'bg-primary-600 text-white' : 'border border-gray-200 text-gray-500'}`}>
+              className={`btn btn-sm capitalize ${filtroStatus === s ? 'bg-gray-800 text-white' : 'border border-gray-200 text-gray-500'}`}>
               {s === 'todos' ? 'Todos' : s.charAt(0).toUpperCase() + s.slice(1)}
             </button>
           ))}
