@@ -218,17 +218,20 @@ function CheckoutContent() {
         return
       }
 
+      // CARTÃO APROVADO
       if (metodo === 'cartao' && data.cartao?.aprovado) {
         router.push(`/comprar/sucesso?produto=${produtoId}&metodo=cartao&pagamento=${data.pagamento_id}`)
         return
       }
 
+      // CARTÃO RECUSADO
       if (metodo === 'cartao' && !data.cartao?.aprovado) {
         setErro(data.cartao?.motivo || 'Cartão recusado. Verifique os dados ou tente outro cartão.')
         setEtapa('pagamento')
         return
       }
 
+      // PIX GERADO COM SUCESSO
       if (metodo === 'pix' && data.pix?.qr_code) {
         setPixQrCode(data.pix.qr_code)
         setPixQrCodeUrl(data.pix.qr_code_url)
@@ -236,7 +239,9 @@ function CheckoutContent() {
         return
       }
 
-      router.push(`/comprar/sucesso?produto=${produtoId}&metodo=${metodo}&pagamento=${data.pagamento_id}`)
+      // PIX FALHOU (sem qr_code)
+      setErro('Não foi possível gerar o PIX. Tente novamente ou use cartão de crédito.')
+      setEtapa('pagamento')
 
     } catch (err) {
       setErro('Erro de conexão. Tente novamente.')
@@ -323,9 +328,7 @@ function CheckoutContent() {
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 16, fontWeight: 600, color: '#fff', marginBottom: 4 }}>{produto.nome}</div>
               <div style={{ fontSize: 13, color: '#888', lineHeight: 1.5 }}>
-                {produto.subtipo === 'acesso'
-                  ? `Acesso ilimitado ao Just CT por ${produto.dias_validade} dias`
-                  : `1 crédito · válido por ${produto.dias_validade || 30} dias`}
+                {produto.subtipo === 'acesso' ? `Acesso ilimitado ao Just CT por ${produto.dias_validade} dias` : `1 crédito · válido por ${produto.dias_validade || 30} dias`}
               </div>
             </div>
             <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: '#fff', lineHeight: 1, whiteSpace: 'nowrap' as const }}>
@@ -407,6 +410,7 @@ function CheckoutContent() {
         {/* ETAPA: PAGAMENTO */}
         {etapa === 'pagamento' && cliente && (
           <>
+            {/* Dados do cliente */}
             <div style={{ ...card, marginBottom: '1.5rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
                 <div>
