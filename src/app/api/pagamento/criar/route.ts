@@ -56,7 +56,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Cliente bloqueado' }, { status: 403 })
     }
 
-    // Se usar cartão salvo, verificar se existe
     if (usar_cartao_salvo && !cliente.pagarme_card_id) {
       return NextResponse.json({ error: 'Nenhum cartão salvo encontrado' }, { status: 400 })
     }
@@ -121,7 +120,6 @@ export async function POST(req: NextRequest) {
         pix: { expires_in: 3600 }
       }]
     } else if (usar_cartao_salvo && cliente.pagarme_card_id) {
-      // Usar cartão salvo via card_id
       payments = [{
         payment_method: 'credit_card',
         credit_card: {
@@ -201,6 +199,14 @@ export async function POST(req: NextRequest) {
     const lastTransaction = charge?.last_transaction
     const cardRetorno = lastTransaction?.card
 
+    // LOG TEMPORÁRIO
+    console.log('PAGARME RETORNO:', JSON.stringify({
+      order_status: pagarmeData.status,
+      charge_status: charge?.status,
+      last_transaction_status: lastTransaction?.status,
+      card: cardRetorno,
+    }, null, 2))
+
     const updateData: any = {
       pagarme_order_id: pagarmeData.id,
       pagarme_charge_id: charge?.id,
@@ -214,7 +220,6 @@ export async function POST(req: NextRequest) {
     }
 
     if (metodo === 'cartao_credito' && charge?.status === 'paid') {
-      // Salvar cartão do cliente se veio no retorno
       if (cardRetorno?.id && !usar_cartao_salvo) {
         await supabase
           .from('clientes')
