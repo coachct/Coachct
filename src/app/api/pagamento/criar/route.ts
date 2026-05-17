@@ -179,14 +179,13 @@ export async function POST(req: NextRequest) {
     const lastTransaction = charge?.last_transaction
     const chargeStatus = charge?.status
 
-    // Log completo pra debug
     console.log('==== PAGAR.ME RESPONSE ====')
     console.log('Order status:', pagarmeData.status)
     console.log('Charge status:', chargeStatus)
     console.log('Last transaction status:', lastTransaction?.status)
     console.log('Acquirer message:', lastTransaction?.acquirer_message)
     console.log('Gateway response:', JSON.stringify(lastTransaction?.gateway_response, null, 2))
-    console.log('Antifraud:', JSON.stringify(charge?.last_transaction?.antifraud_response, null, 2))
+    console.log('Antifraud:', JSON.stringify(lastTransaction?.antifraud_response, null, 2))
 
     const updateData: any = {
       pagarme_order_id: pagarmeData.id,
@@ -200,8 +199,6 @@ export async function POST(req: NextRequest) {
       updateData.pix_expira_em = lastTransaction.expires_at
     }
 
-    // CARTÃO: APROVADO = APENAS quando charge.status === 'paid'
-    // Qualquer outro status (failed, not_authorized, refused, pending, etc) = reprovado
     const cartaoAprovado = metodo === 'cartao_credito' && chargeStatus === 'paid'
     const cartaoReprovado = metodo === 'cartao_credito' && !cartaoAprovado
 
@@ -228,21 +225,29 @@ export async function POST(req: NextRequest) {
       updateData.pago_em = new Date().toISOString()
     }
 
-    // Determinar motivo da reprovação (em ordem de prioridade)
+    // Determinar motivo da reprovação — prioriza antifraude e ignora acquirer_message confuso
     let motivoReprovacao: string | null = null
     if (cartaoReprovado) {
-      // 1. Antifraude (a mensagem mais útil pro usuário entender)
       const antifraudStatus = lastTransaction?.antifraud_response?.status
-      if (antifraudStatus === 'refused' || antifraudStatus === 'failed') {
+      const acquirerMessage = lastTransaction?.acquirer_message || ''
+
+      // Heurística: se o status final é 'failed' mas a mensagem do adquirente diz "aprovada",
+      // significa que o antifraude bloqueou DEPOIS da aprovação do banco. Mensagem da Pagar.me
+      // é enganosa nesse caso, então tratamos como bloqueio de antifraude.
+      const adquirenteAprovouMasFalhou = chargeStatus === 'failed' &&
+        /aprovad/i.test(acquirerMessage)
+
+      if (antifraudStatus === 'refused' || antifraudStatus === 'failed' || adquirenteAprovouMasFalhou) {
         motivoReprovacao = 'Pagamento não autorizado pela análise de segurança. Tente outro cartão ou use PIX.'
       }
-      // 2. Gateway response (resposta do adquirente)
       else if (lastTransaction?.gateway_response?.errors?.length > 0) {
         motivoReprovacao = lastTransaction.gateway_response.errors[0].message
       }
-      // 3. Status específicos
       else if (chargeStatus === 'failed') {
-        motivoReprovacao = lastTransaction?.acquirer_message || 'Cartão recusado pelo banco emissor.'
+        // Só usa acquirer_message se NÃO for a mensagem confusa de "aprovado"
+        motivoReprovacao = (acquirerMessage && !/aprovad/i.test(acquirerMessage))
+          ? acquirerMessage
+          : 'Cartão recusado pelo banco emissor. Tente outro cartão ou use PIX.'
       }
       else if (chargeStatus === 'not_authorized') {
         motivoReprovacao = 'Cartão não autorizado. Verifique os dados ou tente outro cartão.'
@@ -251,7 +256,7 @@ export async function POST(req: NextRequest) {
         motivoReprovacao = 'Pagamento em análise. Aguarde alguns minutos e tente novamente, ou use PIX.'
       }
       else {
-        motivoReprovacao = `Pagamento não aprovado (status: ${chargeStatus || 'desconhecido'}). Tente outro cartão ou use PIX.`
+        motivoReprovacao = `Pagamento não aprovado. Tente outro cartão ou use PIX.`
       }
 
       updateData.status = 'falhou'
@@ -275,7 +280,7 @@ export async function POST(req: NextRequest) {
       cartao: metodo === 'cartao_credito' ? {
         aprovado: cartaoAprovado,
         motivo: motivoReprovacao,
-        charge_status: chargeStatus, // útil pra debug
+        charge_status: chargeStatus,
       } : null,
     })
 
