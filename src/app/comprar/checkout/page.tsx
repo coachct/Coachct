@@ -218,17 +218,20 @@ function CheckoutContent() {
         return
       }
 
+      // CARTÃO APROVADO
       if (metodo === 'cartao' && data.cartao?.aprovado) {
         router.push(`/comprar/sucesso?produto=${produtoId}&metodo=cartao&pagamento=${data.pagamento_id}`)
         return
       }
 
+      // CARTÃO RECUSADO
       if (metodo === 'cartao' && !data.cartao?.aprovado) {
         setErro(data.cartao?.motivo || 'Cartão recusado. Verifique os dados ou tente outro cartão.')
         setEtapa('pagamento')
         return
       }
 
+      // PIX GERADO COM SUCESSO
       if (metodo === 'pix' && data.pix?.qr_code) {
         setPixQrCode(data.pix.qr_code)
         setPixQrCodeUrl(data.pix.qr_code_url)
@@ -236,6 +239,7 @@ function CheckoutContent() {
         return
       }
 
+      // PIX FALHOU (sem qr_code)
       setErro('Não foi possível gerar o PIX. Tente novamente ou use cartão de crédito.')
       setEtapa('pagamento')
 
@@ -317,6 +321,7 @@ function CheckoutContent() {
           <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 36, color: '#fff', lineHeight: 1.05 }}>CONFIRME SEU PEDIDO</div>
         </div>
 
+        {/* RESUMO DO PEDIDO */}
         <div style={{ ...card, marginBottom: '1.5rem' }}>
           <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '0.75rem', fontFamily: "'DM Mono', monospace" }}>Seu pedido</div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
@@ -332,6 +337,7 @@ function CheckoutContent() {
           </div>
         </div>
 
+        {/* ETAPA: AUTH */}
         {etapa === 'auth' && !perfil && (
           <div style={card}>
             <div style={{ fontSize: 15, fontWeight: 600, color: '#fff', marginBottom: '0.5rem' }}>Para continuar, precisamos te identificar</div>
@@ -349,6 +355,7 @@ function CheckoutContent() {
           </div>
         )}
 
+        {/* ETAPA: LOGIN */}
         {etapa === 'login' && !perfil && (
           <div style={card}>
             <div style={{ fontSize: 15, fontWeight: 600, color: '#fff', marginBottom: '1.5rem' }}>Entrar na sua conta</div>
@@ -374,6 +381,7 @@ function CheckoutContent() {
           </div>
         )}
 
+        {/* ETAPA: CADASTRO */}
         {etapa === 'cadastro' && !perfil && (
           <div style={card}>
             <div style={{ fontSize: 15, fontWeight: 600, color: '#fff', marginBottom: '1.5rem' }}>Criar conta</div>
@@ -399,8 +407,10 @@ function CheckoutContent() {
           </div>
         )}
 
+        {/* ETAPA: PAGAMENTO */}
         {etapa === 'pagamento' && cliente && (
           <>
+            {/* Dados do cliente */}
             <div style={{ ...card, marginBottom: '1.5rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
                 <div>
@@ -412,6 +422,7 @@ function CheckoutContent() {
               </div>
             </div>
 
+            {/* PIX QR Code */}
             {metodo === 'pix' && pixQrCode && (
               <div style={{ ...card, marginBottom: '1.5rem', textAlign: 'center' as const }}>
                 <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>PIX gerado</div>
@@ -428,6 +439,7 @@ function CheckoutContent() {
               </div>
             )}
 
+            {/* Método de pagamento */}
             {!pixQrCode && (
               <div style={{ ...card, marginBottom: '1.5rem' }}>
                 <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>Forma de pagamento</div>
@@ -448,6 +460,7 @@ function CheckoutContent() {
                   ))}
                 </div>
 
+                {/* Campos do cartão */}
                 {metodo === 'cartao' && (
                   <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <div>
@@ -475,6 +488,7 @@ function CheckoutContent() {
                   </div>
                 )}
 
+                {/* Parcelas */}
                 {metodo === 'cartao' && maxParcelas > 1 && (
                   <div style={{ marginTop: '1.25rem' }}>
                     <label style={labelStyle}>Parcelamento</label>
@@ -490,6 +504,7 @@ function CheckoutContent() {
                   </div>
                 )}
 
+                {/* Total */}
                 <div style={{ marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid #222', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: 14, color: '#aaa' }}>Total</span>
                   <div style={{ textAlign: 'right' as const }}>
@@ -517,6 +532,7 @@ function CheckoutContent() {
           </>
         )}
 
+        {/* ETAPA: PROCESSANDO */}
         {etapa === 'processando' && (
           <div style={{ ...card, textAlign: 'center' as const, padding: '3rem 2rem' }}>
             <div style={{ width: 48, height: 48, border: `4px solid ${ACCENT}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 1.5rem' }} />
