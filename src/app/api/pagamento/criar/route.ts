@@ -17,7 +17,7 @@ function getAuthHeader() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { produto_id, cliente_id, metodo, parcelas, cartao, usar_cartao_salvo } = body
+    const { produto_id, cliente_id, metodo, parcelas, cartao } = body
 
     if (!produto_id || !cliente_id || !metodo) {
       return NextResponse.json({ error: 'Dados incompletos' }, { status: 400 })
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Método de pagamento inválido' }, { status: 400 })
     }
 
-    if (metodo === 'cartao_credito' && !usar_cartao_salvo && (!cartao || !cartao.numero)) {
+    if (metodo === 'cartao_credito' && (!cartao || !cartao.numero)) {
       return NextResponse.json({ error: 'Dados do cartão obrigatórios' }, { status: 400 })
     }
 
@@ -54,10 +54,6 @@ export async function POST(req: NextRequest) {
 
     if (cliente.bloqueado) {
       return NextResponse.json({ error: 'Cliente bloqueado' }, { status: 403 })
-    }
-
-    if (usar_cartao_salvo && !cliente.pagarme_card_id) {
-      return NextResponse.json({ error: 'Nenhum cartão salvo encontrado' }, { status: 400 })
     }
 
     const valorReais = Number(produto.valor)
@@ -118,22 +114,6 @@ export async function POST(req: NextRequest) {
       payments = [{
         payment_method: 'pix',
         pix: { expires_in: 3600 }
-      }]
-    } else if (usar_cartao_salvo && cliente.pagarme_card_id) {
-      payments = [{
-        payment_method: 'credit_card',
-        credit_card: {
-          installments: parcelas || 1,
-          statement_descriptor: 'JUSTCT',
-          card_id: cliente.pagarme_card_id,
-          billing_address: {
-            line_1: 'Rua Fiandeiras, 392',
-            zip_code: '04545006',
-            city: 'São Paulo',
-            state: 'SP',
-            country: 'BR',
-          }
-        }
       }]
     } else {
       payments = [{
@@ -197,15 +177,6 @@ export async function POST(req: NextRequest) {
 
     const charge = pagarmeData.charges?.[0]
     const lastTransaction = charge?.last_transaction
-    const cardRetorno = lastTransaction?.card
-
-    // LOG TEMPORÁRIO
-    console.log('PAGARME RETORNO:', JSON.stringify({
-      order_status: pagarmeData.status,
-      charge_status: charge?.status,
-      last_transaction_status: lastTransaction?.status,
-      card: cardRetorno,
-    }, null, 2))
 
     const updateData: any = {
       pagarme_order_id: pagarmeData.id,
@@ -220,18 +191,6 @@ export async function POST(req: NextRequest) {
     }
 
     if (metodo === 'cartao_credito' && charge?.status === 'paid') {
-      if (cardRetorno?.id && !usar_cartao_salvo) {
-        await supabase
-          .from('clientes')
-          .update({
-            pagarme_card_id: cardRetorno.id,
-            pagarme_card_last4: cardRetorno.last_four_digits,
-            pagarme_card_brand: cardRetorno.brand,
-          })
-          .eq('id', cliente.id)
-        console.log('💳 Cartão salvo:', cardRetorno.id, cardRetorno.last_four_digits)
-      }
-
       const { data: venda, error: errVenda } = await supabase.rpc('registrar_venda', {
         p_produto_id: pagamento.produto_id,
         p_cliente_id: pagamento.cliente_id,
