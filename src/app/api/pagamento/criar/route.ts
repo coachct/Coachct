@@ -190,7 +190,11 @@ export async function POST(req: NextRequest) {
       updateData.pix_expira_em = lastTransaction.expires_at
     }
 
-    if (metodo === 'cartao_credito' && charge?.status === 'paid') {
+    // CORREÇÃO: aceita 'paid' e 'authorized'
+    const cartaoAprovado = metodo === 'cartao_credito' &&
+      (charge?.status === 'paid' || charge?.status === 'authorized')
+
+    if (cartaoAprovado) {
       const { data: venda, error: errVenda } = await supabase.rpc('registrar_venda', {
         p_produto_id: pagamento.produto_id,
         p_cliente_id: pagamento.cliente_id,
@@ -206,7 +210,7 @@ export async function POST(req: NextRequest) {
       if (errVenda) {
         console.error('Erro ao registrar venda (cartão):', errVenda)
       } else {
-        console.log('✅ Venda registrada (cartão). Venda ID:', venda?.venda_id)
+        console.log('✅ Venda registrada. Venda ID:', venda?.venda_id)
         updateData.venda_id = venda?.venda_id || null
       }
 
@@ -234,8 +238,8 @@ export async function POST(req: NextRequest) {
         expira_em: updateData.pix_expira_em,
       } : null,
       cartao: metodo === 'cartao_credito' ? {
-        aprovado: charge?.status === 'paid',
-        motivo: charge?.status === 'failed' ? lastTransaction?.acquirer_message : null,
+        aprovado: cartaoAprovado,
+        motivo: !cartaoAprovado ? lastTransaction?.acquirer_message : null,
       } : null,
     })
 
