@@ -159,7 +159,7 @@ export async function POST(req: NextRequest) {
     const pagarmeData = await pagarmeResponse.json()
 
     if (!pagarmeResponse.ok) {
-      console.error('Erro Pagar.me:', JSON.stringify(pagarmeData, null, 2))
+      console.error('Erro Pagar.me (HTTP):', JSON.stringify(pagarmeData, null, 2))
       await supabase
         .from('pagamentos_pendentes')
         .update({
@@ -177,6 +177,16 @@ export async function POST(req: NextRequest) {
 
     const charge = pagarmeData.charges?.[0]
     const lastTransaction = charge?.last_transaction
+    const chargeStatus = charge?.status
+
+    // Log completo pra debug
+    console.log('==== PAGAR.ME RESPONSE ====')
+    console.log('Order status:', pagarmeData.status)
+    console.log('Charge status:', chargeStatus)
+    console.log('Last transaction status:', lastTransaction?.status)
+    console.log('Acquirer message:', lastTransaction?.acquirer_message)
+    console.log('Gateway response:', JSON.stringify(lastTransaction?.gateway_response, null, 2))
+    console.log('Antifraud:', JSON.stringify(charge?.last_transaction?.antifraud_response, null, 2))
 
     const updateData: any = {
       pagarme_order_id: pagarmeData.id,
@@ -190,8 +200,12 @@ export async function POST(req: NextRequest) {
       updateData.pix_expira_em = lastTransaction.expires_at
     }
 
-    // CARTÃO APROVADO NA HORA — chama registrar_venda imediatamente
-    if (metodo === 'cartao_credito' && charge?.status === 'paid') {
+    // CARTÃO: APROVADO = APENAS quando charge.status === 'paid'
+    // Qualquer outro status (failed, not_authorized, refused, pending, etc) = reprovado
+    const cartaoAprovado = metodo === 'cartao_credito' && chargeStatus === 'paid'
+    const cartaoReprovado = metodo === 'cartao_credito' && !cartaoAprovado
+
+    if (cartaoAprovado) {
       const { data: venda, error: errVenda } = await supabase.rpc('registrar_venda', {
         p_produto_id: pagamento.produto_id,
         p_cliente_id: pagamento.cliente_id,
@@ -214,9 +228,34 @@ export async function POST(req: NextRequest) {
       updateData.pago_em = new Date().toISOString()
     }
 
-    if (metodo === 'cartao_credito' && charge?.status === 'failed') {
+    // Determinar motivo da reprovação (em ordem de prioridade)
+    let motivoReprovacao: string | null = null
+    if (cartaoReprovado) {
+      // 1. Antifraude (a mensagem mais útil pro usuário entender)
+      const antifraudStatus = lastTransaction?.antifraud_response?.status
+      if (antifraudStatus === 'refused' || antifraudStatus === 'failed') {
+        motivoReprovacao = 'Pagamento não autorizado pela análise de segurança. Tente outro cartão ou use PIX.'
+      }
+      // 2. Gateway response (resposta do adquirente)
+      else if (lastTransaction?.gateway_response?.errors?.length > 0) {
+        motivoReprovacao = lastTransaction.gateway_response.errors[0].message
+      }
+      // 3. Status específicos
+      else if (chargeStatus === 'failed') {
+        motivoReprovacao = lastTransaction?.acquirer_message || 'Cartão recusado pelo banco emissor.'
+      }
+      else if (chargeStatus === 'not_authorized') {
+        motivoReprovacao = 'Cartão não autorizado. Verifique os dados ou tente outro cartão.'
+      }
+      else if (chargeStatus === 'pending') {
+        motivoReprovacao = 'Pagamento em análise. Aguarde alguns minutos e tente novamente, ou use PIX.'
+      }
+      else {
+        motivoReprovacao = `Pagamento não aprovado (status: ${chargeStatus || 'desconhecido'}). Tente outro cartão ou use PIX.`
+      }
+
       updateData.status = 'falhou'
-      updateData.motivo_falha = lastTransaction?.acquirer_message || 'Cartão recusado'
+      updateData.motivo_falha = motivoReprovacao
     }
 
     await supabase
@@ -234,8 +273,9 @@ export async function POST(req: NextRequest) {
         expira_em: updateData.pix_expira_em,
       } : null,
       cartao: metodo === 'cartao_credito' ? {
-        aprovado: charge?.status === 'paid',
-        motivo: charge?.status === 'failed' ? lastTransaction?.acquirer_message : null,
+        aprovado: cartaoAprovado,
+        motivo: motivoReprovacao,
+        charge_status: chargeStatus, // útil pra debug
       } : null,
     })
 
