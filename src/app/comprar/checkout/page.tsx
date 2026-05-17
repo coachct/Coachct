@@ -219,7 +219,7 @@ function CheckoutContent() {
       }
 
       if (metodo === 'cartao' && data.cartao?.aprovado) {
-        window.location.href = `/comprar/sucesso?produto=${produtoId}&metodo=cartao&pagamento=${data.pagamento_id}`
+        router.push(`/comprar/sucesso?produto=${produtoId}&metodo=cartao&pagamento=${data.pagamento_id}`)
         return
       }
 
