@@ -233,17 +233,20 @@ function CheckoutContent() {
         return
       }
 
+      // CARTÃO APROVADO — força navegação completa
       if (metodo === 'cartao' && data.cartao?.aprovado) {
-        router.push(`/comprar/sucesso?produto=${produtoId}&metodo=cartao&pagamento=${data.pagamento_id}`)
+        window.location.href = `/comprar/sucesso?produto=${produtoId}&metodo=cartao&pagamento=${data.pagamento_id}`
         return
       }
 
+      // CARTÃO RECUSADO
       if (metodo === 'cartao' && !data.cartao?.aprovado) {
         setErro(data.cartao?.motivo || 'Cartão recusado. Verifique os dados ou tente outro cartão.')
         setEtapa('pagamento')
         return
       }
 
+      // PIX GERADO
       if (metodo === 'pix' && data.pix?.qr_code) {
         setPixQrCode(data.pix.qr_code)
         setPixQrCodeUrl(data.pix.qr_code_url)
@@ -251,6 +254,7 @@ function CheckoutContent() {
         return
       }
 
+      // PIX FALHOU
       setErro('Não foi possível gerar o PIX. Tente novamente ou use cartão de crédito.')
       setEtapa('pagamento')
 
