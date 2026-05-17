@@ -36,6 +36,7 @@ function CheckoutContent() {
   const [metodo, setMetodo] = useState<MetodoPagamento>('pix')
   const [parcelas, setParcelas] = useState(1)
   const [erro, setErro] = useState('')
+  const [usarCartaoSalvo, setUsarCartaoSalvo] = useState(true)
 
   // PIX
   const [pixQrCode, setPixQrCode] = useState('')
@@ -96,6 +97,11 @@ function CheckoutContent() {
       .maybeSingle()
     if (data) {
       setCliente(data)
+      // Se tem cartão salvo, começa com cartão selecionado
+      if (data.pagarme_card_id) {
+        setMetodo('cartao')
+        setUsarCartaoSalvo(true)
+      }
       setEtapa('pagamento')
     }
   }
@@ -118,6 +124,15 @@ function CheckoutContent() {
       .replace(/(\d{4})(\d)/, '$1 $2')
       .replace(/(\d{4})(\d)/, '$1 $2')
       .replace(/(\d{4})(\d)/, '$1 $2')
+  }
+
+  function labelBandeira(brand: string) {
+    const b = (brand || '').toLowerCase()
+    if (b === 'visa') return '💳 Visa'
+    if (b === 'mastercard') return '💳 Mastercard'
+    if (b === 'amex') return '💳 Amex'
+    if (b === 'elo') return '💳 Elo'
+    return '💳 Cartão'
   }
 
   async function fazerLogin(e: React.FormEvent) {
@@ -177,7 +192,7 @@ function CheckoutContent() {
   async function confirmarPagamento() {
     setErro('')
 
-    if (metodo === 'cartao') {
+    if (metodo === 'cartao' && !usarCartaoSalvo) {
       if (cartaoNumero.replace(/\s/g, '').length < 16) { setErro('Número do cartão inválido.'); return }
       if (!cartaoNome.trim()) { setErro('Digite o nome impresso no cartão.'); return }
       if (!cartaoMes || !cartaoAno) { setErro('Digite a validade do cartão.'); return }
@@ -192,9 +207,10 @@ function CheckoutContent() {
         cliente_id: cliente.id,
         metodo: metodo === 'cartao' ? 'cartao_credito' : 'pix',
         parcelas,
+        usar_cartao_salvo: metodo === 'cartao' && usarCartaoSalvo && !!cliente.pagarme_card_id,
       }
 
-      if (metodo === 'cartao') {
+      if (metodo === 'cartao' && !usarCartaoSalvo) {
         payload.cartao = {
           numero: cartaoNumero.replace(/\s/g, ''),
           nome: cartaoNome,
@@ -218,20 +234,17 @@ function CheckoutContent() {
         return
       }
 
-      // CARTÃO APROVADO
       if (metodo === 'cartao' && data.cartao?.aprovado) {
         router.push(`/comprar/sucesso?produto=${produtoId}&metodo=cartao&pagamento=${data.pagamento_id}`)
         return
       }
 
-      // CARTÃO RECUSADO
       if (metodo === 'cartao' && !data.cartao?.aprovado) {
         setErro(data.cartao?.motivo || 'Cartão recusado. Verifique os dados ou tente outro cartão.')
         setEtapa('pagamento')
         return
       }
 
-      // PIX GERADO COM SUCESSO
       if (metodo === 'pix' && data.pix?.qr_code) {
         setPixQrCode(data.pix.qr_code)
         setPixQrCodeUrl(data.pix.qr_code_url)
@@ -239,7 +252,6 @@ function CheckoutContent() {
         return
       }
 
-      // PIX FALHOU (sem qr_code)
       setErro('Não foi possível gerar o PIX. Tente novamente ou use cartão de crédito.')
       setEtapa('pagamento')
 
@@ -290,6 +302,7 @@ function CheckoutContent() {
 
   const valor = Number(produto.valor)
   const maxParcelas = produto.max_parcelas || 1
+  const temCartaoSalvo = !!(cliente?.pagarme_card_id)
 
   return (
     <div style={{ background: '#080808', minHeight: '100vh', color: '#f0f0f0', fontFamily: "'DM Sans', sans-serif" }}>
@@ -448,7 +461,7 @@ function CheckoutContent() {
                     { key: 'pix' as MetodoPagamento, label: 'PIX', icon: '⚡', desc: 'Aprovação imediata · sem taxas' },
                     { key: 'cartao' as MetodoPagamento, label: 'Cartão de crédito', icon: '💳', desc: maxParcelas > 1 ? `À vista ou em até ${maxParcelas}x` : 'À vista' },
                   ].map(m => (
-                    <div key={m.key} onClick={() => { setMetodo(m.key); setParcelas(1); setErro('') }} className="metodo-card-h"
+                    <div key={m.key} onClick={() => { setMetodo(m.key); setParcelas(1); setErro(''); if (m.key === 'cartao' && temCartaoSalvo) setUsarCartaoSalvo(true) }} className="metodo-card-h"
                       style={{ border: `1.5px solid ${metodo === m.key ? ACCENT : '#333'}`, background: metodo === m.key ? `${ACCENT}10` : 'transparent', borderRadius: 10, padding: '0.85rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                       <span style={{ fontSize: 22 }}>{m.icon}</span>
                       <div style={{ flex: 1 }}>
@@ -460,8 +473,35 @@ function CheckoutContent() {
                   ))}
                 </div>
 
-                {/* Campos do cartão */}
-                {metodo === 'cartao' && (
+                {/* Cartão salvo */}
+                {metodo === 'cartao' && temCartaoSalvo && (
+                  <div style={{ marginTop: '1.5rem' }}>
+                    <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 1, color: '#555', marginBottom: '0.75rem' }}>Cartão salvo</div>
+                    <div onClick={() => setUsarCartaoSalvo(true)}
+                      style={{ border: `1.5px solid ${usarCartaoSalvo ? ACCENT : '#333'}`, background: usarCartaoSalvo ? `${ACCENT}10` : 'transparent', borderRadius: 10, padding: '0.85rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: 8 }}>
+                      <span style={{ fontSize: 20 }}>💳</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: usarCartaoSalvo ? '#fff' : '#888' }}>
+                          {labelBandeira(cliente.pagarme_card_brand)} · **** {cliente.pagarme_card_last4}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#555', marginTop: 1 }}>Cartão salvo</div>
+                      </div>
+                      <div style={{ width: 18, height: 18, borderRadius: '50%', border: `2px solid ${usarCartaoSalvo ? ACCENT : '#444'}`, background: usarCartaoSalvo ? ACCENT : 'transparent', flexShrink: 0 }} />
+                    </div>
+                    <div onClick={() => setUsarCartaoSalvo(false)}
+                      style={{ border: `1.5px solid ${!usarCartaoSalvo ? ACCENT : '#333'}`, background: !usarCartaoSalvo ? `${ACCENT}10` : 'transparent', borderRadius: 10, padding: '0.85rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <span style={{ fontSize: 20 }}>➕</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: !usarCartaoSalvo ? '#fff' : '#888' }}>Usar outro cartão</div>
+                        <div style={{ fontSize: 12, color: '#555', marginTop: 1 }}>Digitar dados de um novo cartão</div>
+                      </div>
+                      <div style={{ width: 18, height: 18, borderRadius: '50%', border: `2px solid ${!usarCartaoSalvo ? ACCENT : '#444'}`, background: !usarCartaoSalvo ? ACCENT : 'transparent', flexShrink: 0 }} />
+                    </div>
+                  </div>
+                )}
+
+                {/* Campos do cartão novo */}
+                {metodo === 'cartao' && !usarCartaoSalvo && (
                   <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <div>
                       <label style={labelStyle}>Número do cartão</label>
