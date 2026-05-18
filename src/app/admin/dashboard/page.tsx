@@ -6,10 +6,19 @@ import { Coach, Aula } from '@/types'
 import { KpiCard, OccBar, Badge, Insight, PageHeader, Spinner } from '@/components/ui'
 import Link from 'next/link'
 
+type Unidade = {
+  id: string
+  nome: string
+  slug: string
+  ativo: boolean
+}
+
 export default function AdminDashboard() {
   const [coaches, setCoaches] = useState<Coach[]>([])
   const [aulas, setAulas] = useState<Aula[]>([])
   const [aulasHoje, setAulasHoje] = useState<any[]>([])
+  const [unidades, setUnidades] = useState<Unidade[]>([])
+  const [unidadeSelecionada, setUnidadeSelecionada] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
 
@@ -17,8 +26,38 @@ export default function AdminDashboard() {
   const mes = now.getMonth() + 1
   const ano = now.getFullYear()
 
+  // Carregar unidades ativas + selecionar default (do localStorage ou primeira ativa)
   useEffect(() => {
+    async function loadUnidades() {
+      const { data } = await supabase
+        .from('unidades')
+        .select('id, nome, slug, ativo')
+        .eq('ativo', true)
+        .order('nome')
+
+      if (data && data.length > 0) {
+        setUnidades(data)
+        const saved = typeof window !== 'undefined' ? localStorage.getItem('admin_unidade_selecionada') : null
+        const valida = saved && data.find(u => u.id === saved)
+        setUnidadeSelecionada(valida ? saved! : data[0].id)
+      }
+    }
+    loadUnidades()
+  }, [])
+
+  // Salvar preferência da unidade
+  useEffect(() => {
+    if (unidadeSelecionada && typeof window !== 'undefined') {
+      localStorage.setItem('admin_unidade_selecionada', unidadeSelecionada)
+    }
+  }, [unidadeSelecionada])
+
+  // Carregar dados quando unidade muda
+  useEffect(() => {
+    if (!unidadeSelecionada) return
+
     async function load() {
+      setLoading(true)
       try {
         const inicioHoje = new Date(ano, mes - 1, now.getDate()).toISOString()
         const fimHoje = new Date(ano, mes - 1, now.getDate(), 23, 59, 59).toISOString()
@@ -27,12 +66,13 @@ export default function AdminDashboard() {
           supabase.from('coaches').select('*').eq('ativo', true),
           supabase.from('aulas').select('*')
             .gte('horario_agendado', `${ano}-${String(mes).padStart(2,'0')}-01`)
-            .eq('status', 'finalizada'),
+            .eq('status', 'finalizada')
+            .eq('unidade_id', unidadeSelecionada),
           supabase.from('aulas')
             .select('*, coaches(nome), clientes:cliente_id(nome), treinos(nome)')
             .gte('horario_agendado', inicioHoje)
             .lte('horario_agendado', fimHoje)
-            .in('status', ['finalizada', 'em_andamento'])
+            .eq('unidade_id', unidadeSelecionada)
             .order('horario_agendado', { ascending: true }),
         ])
 
@@ -64,7 +104,7 @@ export default function AdminDashboard() {
       }
     }
     load()
-  }, [])
+  }, [unidadeSelecionada])
 
   if (loading) return <Spinner />
 
@@ -77,8 +117,35 @@ export default function AdminDashboard() {
   const aulasTotal = aulas.length
   const mesNome = now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
 
+  // ====== HOJE EM NÚMEROS ======
   const aulasFinalizadasHoje = aulasHoje.filter(a => a.status === 'finalizada')
   const aulasEmAndamento = aulasHoje.filter(a => a.status === 'em_andamento')
+  const totalRealizadasOuEmCurso = aulasFinalizadasHoje.length + aulasEmAndamento.length
+  const totalAulasHoje = aulasHoje.length
+
+  // Capacidade do dia (Opção 3): coaches ativos × aulas/dia
+  // Seg-Sex: 15h30 de funcionamento → ~15 aulas/coach
+  // Sáb/Dom: 5h de funcionamento → ~5 aulas/coach
+  const diaSemana = now.getDay()
+  const isFimDeSemana = diaSemana === 0 || diaSemana === 6
+  const aulasPorCoachDia = isFimDeSemana ? 5 : 15
+  const capacidadeDia = coaches.length * aulasPorCoachDia
+  const ocupacaoPct = capacidadeDia > 0 ? Math.round((totalRealizadasOuEmCurso / capacidadeDia) * 100) : 0
+
+  // ====== RANKING DE COACHES DO DIA ======
+  const rankingCoachesHoje = (() => {
+    const contagem: Record<string, { nome: string; aulas: number }> = {}
+    aulasHoje.forEach(a => {
+      const coachId = a.coach_id
+      const coachNome = a.coaches?.nome || '—'
+      if (!coachId) return
+      if (!contagem[coachId]) contagem[coachId] = { nome: coachNome, aulas: 0 }
+      contagem[coachId].aulas++
+    })
+    const lista = Object.values(contagem).sort((a, b) => b.aulas - a.aulas)
+    const max = lista[0]?.aulas || 1
+    return lista.map(c => ({ ...c, pct: Math.round((c.aulas / max) * 100) }))
+  })()
 
   const renderAula = (aula: any) => {
     const emAndamento = aula.status === 'em_andamento'
@@ -135,9 +202,28 @@ export default function AdminDashboard() {
     )
   }
 
+  const unidadeAtual = unidades.find(u => u.id === unidadeSelecionada)
+
   return (
     <div>
-      <PageHeader title="Dashboard" subtitle={mesNome.charAt(0).toUpperCase() + mesNome.slice(1)} />
+      {/* Header com filtro de unidade */}
+      <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
+        <PageHeader title="Dashboard" subtitle={mesNome.charAt(0).toUpperCase() + mesNome.slice(1)} />
+        {unidades.length > 0 && (
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Unidade</label>
+            <select
+              value={unidadeSelecionada}
+              onChange={(e) => setUnidadeSelecionada(e.target.value)}
+              className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400"
+            >
+              {unidades.map(u => (
+                <option key={u.id} value={u.id}>{u.nome}</option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
 
       {/* 1. Hero financeiro */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -166,7 +252,42 @@ export default function AdminDashboard() {
         <KpiCard label="Custo variável" value={fmt(metrics.reduce((s,m)=>s+m.custo_variavel,0))} sub="por aulas dadas" />
       </div>
 
-      {/* 3. Aulas em andamento */}
+      {/* 3. HOJE EM NÚMEROS */}
+      <div className="card mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Hoje em números</h2>
+            <p className="text-xs text-gray-400 mt-0.5 capitalize">
+              {now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+              {unidadeAtual && <span className="text-gray-300"> · {unidadeAtual.nome}</span>}
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-gray-50 border border-gray-100 rounded-xl p-4">
+            <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Agendadas hoje</div>
+            <div className="text-2xl font-semibold text-gray-900">{totalAulasHoje}</div>
+            <div className="text-xs text-gray-400 mt-1">aulas no dia</div>
+          </div>
+          <div className="bg-green-50 border border-green-100 rounded-xl p-4">
+            <div className="text-xs font-medium text-green-600 uppercase tracking-wide mb-1">Já finalizadas</div>
+            <div className="text-2xl font-semibold text-green-900">{aulasFinalizadasHoje.length}</div>
+            <div className="text-xs text-green-600 mt-1">concluídas</div>
+          </div>
+          <div className="bg-orange-50 border border-orange-100 rounded-xl p-4">
+            <div className="text-xs font-medium text-orange-600 uppercase tracking-wide mb-1">A fazer</div>
+            <div className="text-2xl font-semibold text-orange-900">{aulasEmAndamento.length}</div>
+            <div className="text-xs text-orange-600 mt-1">em andamento</div>
+          </div>
+          <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+            <div className="text-xs font-medium text-blue-600 uppercase tracking-wide mb-1">Ocupação do dia</div>
+            <div className="text-2xl font-semibold text-blue-900">{ocupacaoPct}%</div>
+            <div className="text-xs text-blue-600 mt-1">{totalRealizadasOuEmCurso} de {capacidadeDia} vagas</div>
+          </div>
+        </div>
+      </div>
+
+      {/* 4. Aulas em andamento */}
       {aulasEmAndamento.length > 0 && (
         <div className="card mb-6">
           <div className="flex items-center justify-between mb-4">
@@ -187,7 +308,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* 4. Aulas finalizadas hoje */}
+      {/* 5. Aulas finalizadas hoje */}
       <div className="card mb-6">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -212,7 +333,49 @@ export default function AdminDashboard() {
         )}
       </div>
 
-      {/* 5. Coaches + Alertas */}
+      {/* 6. RANKING DE COACHES DO DIA */}
+      <div className="card mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Ranking de coaches do dia</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Distribuição de aulas entre coaches hoje</p>
+          </div>
+          {rankingCoachesHoje.length > 0 && (
+            <span className="text-xs bg-purple-100 text-purple-700 px-2.5 py-1 rounded-full font-medium">
+              {rankingCoachesHoje.length} ativo{rankingCoachesHoje.length !== 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+        {rankingCoachesHoje.length === 0 ? (
+          <div className="text-center py-8 text-sm text-gray-400 italic">
+            Nenhum coach com aulas hoje ainda.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {rankingCoachesHoje.map((c, idx) => (
+              <div key={c.nome}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400 font-mono w-5">{idx + 1}.</span>
+                    <span className="text-sm font-medium text-gray-800">{c.nome}</span>
+                  </div>
+                  <span className="text-sm font-semibold text-gray-700">
+                    {c.aulas} {c.aulas === 1 ? 'aula' : 'aulas'}
+                  </span>
+                </div>
+                <div className="ml-7 h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-primary-400 to-primary-600 rounded-full transition-all"
+                    style={{ width: `${c.pct}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 7. Coaches + Alertas */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <div className="card">
           <div className="flex items-center justify-between mb-4">
