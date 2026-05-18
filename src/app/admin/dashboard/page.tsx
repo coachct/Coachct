@@ -118,10 +118,13 @@ export default function AdminDashboard() {
   const mesNome = now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
 
   // ====== HOJE EM NÚMEROS ======
+  // Separar por status (canceladas NÃO contam como "agendadas" nem no ranking)
   const aulasFinalizadasHoje = aulasHoje.filter(a => a.status === 'finalizada')
   const aulasEmAndamento = aulasHoje.filter(a => a.status === 'em_andamento')
-  const totalRealizadasOuEmCurso = aulasFinalizadasHoje.length + aulasEmAndamento.length
-  const totalAulasHoje = aulasHoje.length
+  const aulasCanceladasHoje = aulasHoje.filter(a => a.status === 'cancelada')
+  const aulasRealizadasOuEmCurso = aulasFinalizadasHoje.length + aulasEmAndamento.length
+  // "Agendadas hoje" = aulas válidas (finalizada + em_andamento), exclui canceladas
+  const totalAulasValidasHoje = aulasRealizadasOuEmCurso
 
   // Capacidade do dia (Opção 3): coaches ativos × aulas/dia
   // Seg-Sex: 15h30 de funcionamento → ~15 aulas/coach
@@ -130,18 +133,22 @@ export default function AdminDashboard() {
   const isFimDeSemana = diaSemana === 0 || diaSemana === 6
   const aulasPorCoachDia = isFimDeSemana ? 5 : 15
   const capacidadeDia = coaches.length * aulasPorCoachDia
-  const ocupacaoPct = capacidadeDia > 0 ? Math.round((totalRealizadasOuEmCurso / capacidadeDia) * 100) : 0
+  const ocupacaoPct = capacidadeDia > 0 ? Math.round((aulasRealizadasOuEmCurso / capacidadeDia) * 100) : 0
 
   // ====== RANKING DE COACHES DO DIA ======
+  // Só conta aulas que realmente aconteceram (finalizada + em_andamento)
+  // Canceladas NÃO contam
   const rankingCoachesHoje = (() => {
     const contagem: Record<string, { nome: string; aulas: number }> = {}
-    aulasHoje.forEach(a => {
-      const coachId = a.coach_id
-      const coachNome = a.coaches?.nome || '—'
-      if (!coachId) return
-      if (!contagem[coachId]) contagem[coachId] = { nome: coachNome, aulas: 0 }
-      contagem[coachId].aulas++
-    })
+    aulasHoje
+      .filter(a => a.status === 'finalizada' || a.status === 'em_andamento')
+      .forEach(a => {
+        const coachId = a.coach_id
+        const coachNome = a.coaches?.nome || '—'
+        if (!coachId) return
+        if (!contagem[coachId]) contagem[coachId] = { nome: coachNome, aulas: 0 }
+        contagem[coachId].aulas++
+      })
     const lista = Object.values(contagem).sort((a, b) => b.aulas - a.aulas)
     const max = lista[0]?.aulas || 1
     return lista.map(c => ({ ...c, pct: Math.round((c.aulas / max) * 100) }))
@@ -263,10 +270,10 @@ export default function AdminDashboard() {
             </p>
           </div>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div className="bg-gray-50 border border-gray-100 rounded-xl p-4">
             <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Agendadas hoje</div>
-            <div className="text-2xl font-semibold text-gray-900">{totalAulasHoje}</div>
+            <div className="text-2xl font-semibold text-gray-900">{totalAulasValidasHoje}</div>
             <div className="text-xs text-gray-400 mt-1">aulas no dia</div>
           </div>
           <div className="bg-green-50 border border-green-100 rounded-xl p-4">
@@ -279,10 +286,19 @@ export default function AdminDashboard() {
             <div className="text-2xl font-semibold text-orange-900">{aulasEmAndamento.length}</div>
             <div className="text-xs text-orange-600 mt-1">em andamento</div>
           </div>
+          <div className="bg-red-50 border border-red-100 rounded-xl p-4">
+            <div className="text-xs font-medium text-red-600 uppercase tracking-wide mb-1">Canceladas hoje</div>
+            <div className="text-2xl font-semibold text-red-900">{aulasCanceladasHoje.length}</div>
+            <div className="text-xs text-red-600 mt-1">
+              {totalAulasValidasHoje + aulasCanceladasHoje.length > 0
+                ? `${Math.round((aulasCanceladasHoje.length / (totalAulasValidasHoje + aulasCanceladasHoje.length)) * 100)}% do dia`
+                : 'sem aulas ainda'}
+            </div>
+          </div>
           <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
             <div className="text-xs font-medium text-blue-600 uppercase tracking-wide mb-1">Ocupação do dia</div>
             <div className="text-2xl font-semibold text-blue-900">{ocupacaoPct}%</div>
-            <div className="text-xs text-blue-600 mt-1">{totalRealizadasOuEmCurso} de {capacidadeDia} vagas</div>
+            <div className="text-xs text-blue-600 mt-1">{aulasRealizadasOuEmCurso} de {capacidadeDia} vagas</div>
           </div>
         </div>
       </div>
@@ -338,7 +354,7 @@ export default function AdminDashboard() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-sm font-semibold text-gray-900">Ranking de coaches do dia</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Distribuição de aulas entre coaches hoje</p>
+            <p className="text-xs text-gray-400 mt-0.5">Aulas efetivamente realizadas hoje (não inclui canceladas)</p>
           </div>
           {rankingCoachesHoje.length > 0 && (
             <span className="text-xs bg-purple-100 text-purple-700 px-2.5 py-1 rounded-full font-medium">
