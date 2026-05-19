@@ -279,29 +279,23 @@ export default function AgendarPage() {
         }
       }
 
-      const promessas: Promise<any>[] = [
+      const [agsRes, filaGeralRes, bloqueadasRes, agClienteRes, filasRes] = await Promise.allSettled([
         supabase.from('agendamentos').select('horario, status').eq('data', dataStr).eq('unidade_id', unidadeAtiva.id).neq('status', 'cancelado'),
         supabase.from('fila_espera').select('horario').eq('data', dataStr).eq('status', 'aguardando').eq('unidade_id', unidadeAtiva.id),
         supabase.from('vagas_bloqueadas').select('horario, quantidade').eq('data', dataStr).eq('ativo', true).eq('unidade_id', unidadeAtiva.id),
-      ]
+        cliente
+          ? supabase.from('agendamentos').select('horario, tipo_credito, status').eq('data', dataStr).eq('cliente_id', cliente.id).eq('unidade_id', unidadeAtiva.id)
+          : Promise.resolve({ data: [] as any[] }),
+        cliente
+          ? supabase.from('fila_espera').select('horario').eq('data', dataStr).eq('cliente_id', cliente.id).eq('unidade_id', unidadeAtiva.id)
+          : Promise.resolve({ data: [] as any[] }),
+      ])
 
-      // Buscar dados do cliente só se logado
-      if (cliente) {
-        promessas.push(
-          supabase.from('agendamentos').select('horario, tipo_credito, status').eq('data', dataStr).eq('cliente_id', cliente.id).eq('unidade_id', unidadeAtiva.id)
-        )
-        promessas.push(
-          supabase.from('fila_espera').select('horario').eq('data', dataStr).eq('cliente_id', cliente.id).eq('unidade_id', unidadeAtiva.id)
-        )
-      }
-
-      const resultados = await Promise.allSettled(promessas)
-
-      const ags = resultados[0].status === 'fulfilled' ? resultados[0].value.data : []
-      const filaGeralData = resultados[1].status === 'fulfilled' ? resultados[1].value.data : []
-      const bloqueadas = resultados[2].status === 'fulfilled' ? resultados[2].value.data : []
-      const agCliente = cliente && resultados[3]?.status === 'fulfilled' ? resultados[3].value.data : []
-      const filas = cliente && resultados[4]?.status === 'fulfilled' ? resultados[4].value.data : []
+      const ags = agsRes.status === 'fulfilled' ? (agsRes.value as any).data : []
+      const filaGeralData = filaGeralRes.status === 'fulfilled' ? (filaGeralRes.value as any).data : []
+      const bloqueadas = bloqueadasRes.status === 'fulfilled' ? (bloqueadasRes.value as any).data : []
+      const agCliente = agClienteRes.status === 'fulfilled' ? (agClienteRes.value as any).data : []
+      const filas = filasRes.status === 'fulfilled' ? (filasRes.value as any).data : []
 
       const ocupados: Record<string, number> = {}
       for (const a of (ags || [])) {
