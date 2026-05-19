@@ -14,10 +14,9 @@ const DOURADO = '#ffaa00'
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const HORARIOS_FDS = ['08:00', '09:00', '10:00', '11:00', '12:00']
 
-// Janelas de agendamento
-const JANELA_PADRAO_DIAS = 7   // Wellhub/TotalPass/Avulso/visitante sem login (mas vê 14 com aviso)
+const JANELA_PADRAO_DIAS = 7
 const JANELA_COACH_CT_PRO_DIAS = 14
-const JANELA_VISITANTE_DIAS = 14 // Visitante vê tudo, mas só pode agendar depois de logar
+const JANELA_VISITANTE_DIAS = 14
 
 function dentroDaJanelaProximoMes(): boolean {
   const hoje = new Date()
@@ -368,8 +367,7 @@ export default function AgendarPage() {
   hojeRef.setHours(0, 0, 0, 0)
   const dataMaxima = new Date(hojeRef)
   dataMaxima.setDate(dataMaxima.getDate() + janelaDias)
-  const diasAteDataMaxima = janelaDias
-  const semanasMaximas = Math.floor(diasAteDataMaxima / 7)
+  const semanasMaximas = Math.floor(janelaDias / 7)
 
   const horariosFiltrados = horarios.filter(h => {
     const hr = parseInt(h.hora)
@@ -433,9 +431,6 @@ export default function AgendarPage() {
     abrirModalFila(hora)
   }
 
-  // ─── Clique no slot exclusivo Pro ───
-  // Visitante → /login
-  // Cliente logado sem Pro → /comprar
   function tentarSlotPro() {
     if (!user) { router.push('/login'); return }
     router.push('/comprar')
@@ -603,7 +598,6 @@ export default function AgendarPage() {
         .dia-btn-h { transition: all .2s; cursor: pointer; flex: 1; min-width: 0; }
         .dia-btn-h:hover { border-color: ${ACCENT} !important; }
         .dia-btn-disabled { opacity: 0.25; cursor: not-allowed !important; }
-        .dia-btn-pro { position: relative; }
         .slot-row-h { transition: all .2s; }
         .slot-row-h:hover { border-color: ${ACCENT} !important; background: #ff2d9b08 !important; }
         .slot-row-pro:hover { border-color: ${DOURADO} !important; background: #ffaa0008 !important; cursor: pointer; }
@@ -723,18 +717,7 @@ export default function AgendarPage() {
         )}
 
         {tipoVisualizacao === 'visitante' && semanaOffset === 1 && (
-          <div style={{
-            background: `linear-gradient(90deg, ${ACCENT}22 0%, #08080800 100%)`,
-            border: `1px solid ${ACCENT}55`,
-            borderRadius: 10,
-            padding: '0.75rem 1rem',
-            marginBottom: '0.75rem',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '0.75rem',
-            flexWrap: 'wrap',
-          }}>
+          <div style={{ background: `linear-gradient(90deg, ${ACCENT}22 0%, #08080800 100%)`, border: `1px solid ${ACCENT}55`, borderRadius: 10, padding: '0.75rem 1rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
             <div style={{ fontSize: 12, color: ACCENT, fontWeight: 700, fontFamily: "'DM Mono', monospace", letterSpacing: 0.5 }}>
               🏆 AGENDAMENTOS EXCLUSIVOS COACH CT PRO
             </div>
@@ -782,12 +765,29 @@ export default function AgendarPage() {
         </div>
 
         {dataSelAposLimite ? (
-          <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#666' }}>
-            <div style={{ fontSize: 14, marginBottom: 8 }}>📅 Data ainda não liberada</div>
-            <div style={{ fontSize: 12, color: '#555', lineHeight: 1.6 }}>
-              {tipoVisualizacao === 'coach_ct_pro' ? 'Agendamentos liberados em janela de 14 dias.' : 'Agendamentos liberados em janela de 7 dias.'}
+          // ─── Bloqueio por janela — diferencia visitante/padrao/pro ───
+          tipoVisualizacao === 'padrao' ? (
+            <div style={{ background: '#0d0010', border: `1.5px solid ${ACCENT}44`, borderRadius: 16, padding: '2.5rem 2rem', textAlign: 'center' }}>
+              <div style={{ fontSize: 32, marginBottom: '1rem' }}>🏆</div>
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', letterSpacing: 1, marginBottom: '0.75rem' }}>
+                AGENDAMENTO EXCLUSIVO
+              </div>
+              <div style={{ fontSize: 13, color: '#888', lineHeight: 1.8, marginBottom: '1.5rem' }}>
+                Agendamentos com mais de 7 dias de antecedência são exclusivos para clientes do plano <strong style={{ color: '#fff' }}>Coach CT Pro</strong>.
+              </div>
+              <button onClick={() => router.push('/comprar')}
+                style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.75rem 1.75rem', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                Conhecer Coach CT Pro →
+              </button>
             </div>
-          </div>
+          ) : (
+            <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#666' }}>
+              <div style={{ fontSize: 14, marginBottom: 8 }}>📅 Data ainda não liberada</div>
+              <div style={{ fontSize: 12, color: '#555', lineHeight: 1.6 }}>
+                Agendamentos liberados em janela de 14 dias.
+              </div>
+            </div>
+          )
         ) : !unidadeAtiva ? (
           <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#444' }}>Selecione uma unidade para ver os horários.</div>
         ) : loadingHorarios ? (
@@ -807,13 +807,7 @@ export default function AgendarPage() {
                 return (
                   <div key={i} className="slot-row-pro"
                     onClick={tentarSlotPro}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '1.5rem',
-                      padding: '1rem 1.25rem', borderRadius: 12,
-                      border: `1px solid ${DOURADO}33`,
-                      background: '#110900',
-                      cursor: 'pointer',
-                    }}>
+                    style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', padding: '1rem 1.25rem', borderRadius: 12, border: `1px solid ${DOURADO}33`, background: '#110900', cursor: 'pointer' }}>
                     <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, fontWeight: 500, color: DOURADO, width: 58, flexShrink: 0, opacity: 0.7 }}>{h.hora}</div>
                     <div style={{ display: 'flex', gap: 6, flex: 1, alignItems: 'center', flexWrap: 'wrap' }}>
                       {Array.from({ length: h.total }).map((_, vi) => (
@@ -821,11 +815,8 @@ export default function AgendarPage() {
                       ))}
                     </div>
                     <div style={{ flexShrink: 0, minWidth: 90, textAlign: 'right' }}>
-                      <div style={{ fontSize: 11, color: DOURADO, fontWeight: 700, marginBottom: 6, fontFamily: "'DM Mono', monospace", letterSpacing: 0.5 }}>
-                        🏆 Só Pro
-                      </div>
-                      <button
-                        onClick={e => { e.stopPropagation(); tentarSlotPro() }}
+                      <div style={{ fontSize: 11, color: DOURADO, fontWeight: 700, marginBottom: 6, fontFamily: "'DM Mono', monospace", letterSpacing: 0.5 }}>🏆 Só Pro</div>
+                      <button onClick={e => { e.stopPropagation(); tentarSlotPro() }}
                         style={{ background: 'transparent', color: DOURADO, border: `1px solid ${DOURADO}88`, borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
                         Entrar →
                       </button>
@@ -944,9 +935,7 @@ export default function AgendarPage() {
 
             {tipoCredito.startsWith('coach_ct_pro_') && (
               <div style={{ marginBottom: '1.5rem' }}>
-                <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>
-                  Deseja escolher seu coach?
-                </div>
+                <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Deseja escolher seu coach?</div>
                 <select value={coachEscolhido} onChange={e => setCoachEscolhido(e.target.value)}
                   style={{ width: '100%', background: '#0a0a0a', border: `1.5px solid ${coachEscolhido ? ACCENT : '#333'}`, borderRadius: 10, padding: '0.75rem 1rem', color: '#fff', fontSize: 14, fontFamily: "'DM Sans', sans-serif", cursor: 'pointer' }}>
                   <option value="">Qualquer coach disponível</option>
@@ -955,9 +944,7 @@ export default function AgendarPage() {
                   ))}
                 </select>
                 {coachesDisponiveis.length === 0 && (
-                  <div style={{ fontSize: 11, color: '#666', marginTop: 6, lineHeight: 1.5 }}>
-                    Sem coaches disponíveis pra escolha neste horário. Vamos alocar um quando você chegar.
-                  </div>
+                  <div style={{ fontSize: 11, color: '#666', marginTop: 6, lineHeight: 1.5 }}>Sem coaches disponíveis pra escolha neste horário. Vamos alocar um quando você chegar.</div>
                 )}
               </div>
             )}
