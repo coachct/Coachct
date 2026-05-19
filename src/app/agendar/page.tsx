@@ -9,6 +9,7 @@ import { dashboardDoRole } from '@/lib/auth-redirect'
 const ACCENT = '#ff2d9b'
 const CYAN = '#00e5ff'
 const AMARELO = '#ffaa00'
+const DOURADO = '#ffaa00'
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const HORARIOS_FDS = ['08:00', '09:00', '10:00', '11:00', '12:00']
@@ -68,7 +69,6 @@ function parsePlanoKey(key: string): { label: string; icon: string } {
   else if (lower.startsWith('avulso') || lower.startsWith('credito')) { tipo = 'Crédito Avulso'; icon = '🎟️' }
   else { tipo = key }
 
-  // Identificar slug da unidade no fim da chave
   let slugUnidade = ''
   if (lower.startsWith('coach_ct_pro')) {
     slugUnidade = key.substring('coach_ct_pro_'.length)
@@ -87,13 +87,20 @@ function parsePlanoKey(key: string): { label: string; icon: string } {
   return { label: `${tipo} — ${unidadeLabel}`, icon }
 }
 
-function HalterSVG({ estado, onClick }: { estado: 'livre' | 'ocupado' | 'meu' | 'fila' | 'bloqueado', onClick?: () => void }) {
-  const cor = estado === 'ocupado' ? '#333' : estado === 'meu' ? CYAN : estado === 'fila' ? AMARELO : estado === 'bloqueado' ? '#ff4444' : ACCENT
+function HalterSVG({ estado, onClick }: { estado: 'livre' | 'ocupado' | 'meu' | 'fila' | 'bloqueado' | 'pro', onClick?: () => void }) {
+  const cor =
+    estado === 'ocupado' ? '#333' :
+    estado === 'meu' ? CYAN :
+    estado === 'fila' ? AMARELO :
+    estado === 'bloqueado' ? '#ff4444' :
+    estado === 'pro' ? DOURADO :
+    ACCENT
   const opacity = estado === 'ocupado' ? 0.3 : estado === 'bloqueado' ? 0.4 : 1
+  const clickable = estado === 'livre' || estado === 'pro'
   return (
     <svg width="36" height="36" viewBox="0 0 48 28"
-      style={{ opacity, flexShrink: 0, cursor: estado === 'livre' ? 'pointer' : 'default' }}
-      onClick={estado === 'livre' ? onClick : undefined}>
+      style={{ opacity, flexShrink: 0, cursor: clickable ? 'pointer' : 'default' }}
+      onClick={clickable ? onClick : undefined}>
       <rect x="15" y="11.5" width="18" height="5" rx="2" fill={cor} />
       <rect x="2" y="5" width="5" height="18" rx="3" fill={cor} />
       <rect x="8" y="7.5" width="4" height="13" rx="2" fill={cor} />
@@ -146,18 +153,13 @@ export default function AgendarPage() {
 
   const janelaProximoMesAberta = dentroDaJanelaProximoMes()
 
-  // ─── Detectar Coach CT Pro ativo ───
-  // Cliente tem Coach CT Pro ativo se tem chave 'coach_ct_pro_*' no saldoMesAtual com disponivel > 0
   const temCoachCtProAtivo = Object.entries(saldoMesAtual).some(
     ([chave, info]) => chave.startsWith('coach_ct_pro_') && (info?.disponivel || 0) > 0
   )
 
-  // ─── Tipo de visualização ───
-  // 'visitante' (sem login), 'coach_ct_pro' (logado com Pro), 'padrao' (logado sem Pro)
   const tipoVisualizacao: 'visitante' | 'coach_ct_pro' | 'padrao' =
     !user ? 'visitante' : (temCoachCtProAtivo ? 'coach_ct_pro' : 'padrao')
 
-  // ─── Janela de dias ───
   const janelaDias = tipoVisualizacao === 'visitante'
     ? JANELA_VISITANTE_DIAS
     : tipoVisualizacao === 'coach_ct_pro'
@@ -170,9 +172,6 @@ export default function AgendarPage() {
     return d
   })
 
-  // ─── Redirect: só equipe (admin/coach/etc) vai pro dashboard ───
-  // Visitante sem login PODE acessar /agendar (vai ver a grade)
-  // Cliente pode acessar normalmente
   useEffect(() => {
     if (loading) return
     if (perfil && perfil.role && perfil.role !== 'cliente') {
@@ -327,20 +326,17 @@ export default function AgendarPage() {
     }
   }
 
-  // ─── Lista de coaches disponíveis pra escolha (só Coach CT Pro) ───
   async function carregarCoachesDisponiveis(dataStr: string, horaStr: string) {
     if (!unidadeAtiva) return
     const dataObj = new Date(dataStr + 'T12:00:00')
     const diaSem = dataObj.getDay()
     const ehFds = diaSem === 0 || diaSem === 6
 
-    // 1. Verifica se é feriado
     const { data: feriadoData } = await supabase
       .from('feriados').select('*').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr).eq('ativo', true).maybeSingle()
     const ehFeriado = !!feriadoData
     const usaEscalaFds = ehFeriado || ehFds
 
-    // 2. Buscar coaches da grade no horário
     let coachIds: string[] = []
     if (usaEscalaFds) {
       const { data: escala } = await supabase.from('escala_fds').select('coach_id').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr)
@@ -351,12 +347,8 @@ export default function AgendarPage() {
       coachIds = (hors || []).map((h: any) => h.coach_id).filter(Boolean)
     }
 
-    if (coachIds.length === 0) {
-      setCoachesDisponiveis([])
-      return
-    }
+    if (coachIds.length === 0) { setCoachesDisponiveis([]); return }
 
-    // 3. Filtrar coaches já alocados em outro agendamento no mesmo horário
     const { data: ocupados } = await supabase.from('agendamentos')
       .select('coach_id').eq('data', dataStr).eq('horario', horaStr + ':00')
       .eq('unidade_id', unidadeAtiva.id).neq('status', 'cancelado').not('coach_id', 'is', null)
@@ -364,19 +356,14 @@ export default function AgendarPage() {
     const idsOcupados = new Set((ocupados || []).map((a: any) => a.coach_id))
     const idsDisponiveis = coachIds.filter(id => !idsOcupados.has(id))
 
-    if (idsDisponiveis.length === 0) {
-      setCoachesDisponiveis([])
-      return
-    }
+    if (idsDisponiveis.length === 0) { setCoachesDisponiveis([]); return }
 
-    // 4. Buscar nomes dos coaches
     const { data: coachesData } = await supabase.from('coaches')
       .select('id, nome').in('id', idsDisponiveis).eq('ativo', true).order('nome')
 
     setCoachesDisponiveis(coachesData || [])
   }
 
-  // ─── Calcular dataMaxima conforme tipo de visualização ───
   const hojeRef = new Date()
   hojeRef.setHours(0, 0, 0, 0)
   const dataMaxima = new Date(hojeRef)
@@ -395,7 +382,6 @@ export default function AgendarPage() {
   const dataSelecionada = diasSemana[diaSel]
   const dataSelAposLimite = dataSelecionada > dataMaxima
 
-  // Visitante vendo dia da "semana 2" (dias 8-14)
   const diasDesdHoje = Math.floor((dataSelecionada.getTime() - hojeRef.getTime()) / (1000 * 60 * 60 * 24))
   const isDiaExclusivoCoachPro = tipoVisualizacao === 'visitante' && diasDesdHoje >= 7
 
@@ -436,23 +422,23 @@ export default function AgendarPage() {
   const semPlanoAtivo = !loadingHorarios && cliente && Object.keys(saldoMesAtual).length === 0 && Object.keys(saldoMesProximo).length === 0
 
   function tentarAgendar(hora: string, vagas: number) {
-    // Visitante sem login → vai pra login
-    if (!user) {
-      router.push('/login')
-      return
-    }
-    // Cliente sem plano → modal "Plano necessário"
+    if (!user) { router.push('/login'); return }
     if (semPlanoAtivo) { setModalSemPlano(true); return }
     abrirModalReserva(hora, vagas)
   }
 
   function tentarFila(hora: string) {
-    if (!user) {
-      router.push('/login')
-      return
-    }
+    if (!user) { router.push('/login'); return }
     if (semPlanoAtivo) { setModalSemPlano(true); return }
     abrirModalFila(hora)
+  }
+
+  // ─── Clique no slot exclusivo Pro ───
+  // Visitante → /login
+  // Cliente logado sem Pro → /comprar
+  function tentarSlotPro() {
+    if (!user) { router.push('/login'); return }
+    router.push('/comprar')
   }
 
   function abrirModalReserva(hora: string, vagas: number) {
@@ -475,7 +461,6 @@ export default function AgendarPage() {
     if (!contratoAssinado) setMostrarContrato(true)
   }
 
-  // Quando muda tipoCredito no modal, se for Coach CT Pro, busca coaches disponíveis
   useEffect(() => {
     if (!modalSlot || !tipoCredito) {
       setCoachesDisponiveis([])
@@ -499,7 +484,6 @@ export default function AgendarPage() {
       return
     }
 
-    // Revalida saldo no banco antes de confirmar
     const agora = new Date()
     const dataSel = diasSemana[diaSel]
     const mesmoMes = dataSel.getMonth() === agora.getMonth() && dataSel.getFullYear() === agora.getFullYear()
@@ -522,7 +506,6 @@ export default function AgendarPage() {
     setConfirmando(true)
     setErroModal('')
 
-    // Montar payload do agendamento
     const ehCoachPro = tipoCredito.startsWith('coach_ct_pro_')
     const payload: any = {
       cliente_id: cliente.id,
@@ -533,7 +516,6 @@ export default function AgendarPage() {
       unidade_id: unidadeAtiva.id,
     }
 
-    // Se Coach CT Pro escolheu coach, salva
     if (ehCoachPro && coachEscolhido) {
       payload.coach_id = coachEscolhido
       payload.alocado_por = perfil?.id || null
@@ -624,6 +606,7 @@ export default function AgendarPage() {
         .dia-btn-pro { position: relative; }
         .slot-row-h { transition: all .2s; }
         .slot-row-h:hover { border-color: ${ACCENT} !important; background: #ff2d9b08 !important; }
+        .slot-row-pro:hover { border-color: ${DOURADO} !important; background: #ffaa0008 !important; cursor: pointer; }
         .nav-semana-btn:hover:not(:disabled) { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
         .unidade-tab:hover { border-color: ${ACCENT} !important; color: #fff !important; }
         .nav-link-cliente:hover { color: ${ACCENT} !important; }
@@ -658,7 +641,6 @@ export default function AgendarPage() {
           <div style={{ fontSize: 14, color: '#555', marginTop: 4 }}>Cada halter = uma vaga disponível</div>
         </div>
 
-        {/* Aviso para visitante sem login */}
         {tipoVisualizacao === 'visitante' && (
           <div style={{ background: '#0a0014', border: `1px solid ${ACCENT}33`, borderRadius: 12, padding: '0.85rem 1.25rem', marginBottom: '1.5rem', fontSize: 13, color: '#ccc', lineHeight: 1.6 }}>
             👋 Você está navegando como visitante. Faça login para reservar treinos.
@@ -734,14 +716,12 @@ export default function AgendarPage() {
           </div>
         )}
 
-        {/* Faixa "Agendamento Livre" — só visitantes sem login */}
         {tipoVisualizacao === 'visitante' && semanaOffset === 0 && (
           <div style={{ background: 'linear-gradient(90deg, #0a1a14 0%, #08080800 100%)', border: `1px solid #2ddd8b33`, borderRadius: 10, padding: '0.6rem 1rem', marginBottom: '0.75rem', fontSize: 12, color: '#2ddd8b', fontWeight: 600, fontFamily: "'DM Mono', monospace", letterSpacing: 0.5 }}>
             📅 AGENDAMENTO LIVRE · próximos 7 dias
           </div>
         )}
 
-        {/* Faixa "Exclusivo Coach CT PRO" — só visitantes sem login, na semana 2 */}
         {tipoVisualizacao === 'visitante' && semanaOffset === 1 && (
           <div style={{
             background: `linear-gradient(90deg, ${ACCENT}22 0%, #08080800 100%)`,
@@ -821,6 +801,40 @@ export default function AgendarPage() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {horariosFiltrados.map((h, i) => {
+
+              // ─── SLOT EXCLUSIVO COACH CT PRO (visitante na semana 2) ───
+              if (isDiaExclusivoCoachPro) {
+                return (
+                  <div key={i} className="slot-row-pro"
+                    onClick={tentarSlotPro}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '1.5rem',
+                      padding: '1rem 1.25rem', borderRadius: 12,
+                      border: `1px solid ${DOURADO}33`,
+                      background: '#110900',
+                      cursor: 'pointer',
+                    }}>
+                    <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, fontWeight: 500, color: DOURADO, width: 58, flexShrink: 0, opacity: 0.7 }}>{h.hora}</div>
+                    <div style={{ display: 'flex', gap: 6, flex: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+                      {Array.from({ length: h.total }).map((_, vi) => (
+                        <HalterSVG key={vi} estado="pro" />
+                      ))}
+                    </div>
+                    <div style={{ flexShrink: 0, minWidth: 90, textAlign: 'right' }}>
+                      <div style={{ fontSize: 11, color: DOURADO, fontWeight: 700, marginBottom: 6, fontFamily: "'DM Mono', monospace", letterSpacing: 0.5 }}>
+                        🏆 Só Pro
+                      </div>
+                      <button
+                        onClick={e => { e.stopPropagation(); tentarSlotPro() }}
+                        style={{ background: 'transparent', color: DOURADO, border: `1px solid ${DOURADO}88`, borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                        Entrar →
+                      </button>
+                    </div>
+                  </div>
+                )
+              }
+
+              // ─── SLOT NORMAL ───
               const lotado = h.livres <= 0
               const clienteNaFila = naFila(h.hora)
               const jaAgendado = agendamentosNoDia.some(a => (a.horario || '').slice(0, 5) === h.hora && ['agendado', 'confirmado'].includes(a.status))
@@ -928,26 +942,13 @@ export default function AgendarPage() {
               })}
             </div>
 
-            {/* Dropdown de coach — só Coach CT Pro */}
             {tipoCredito.startsWith('coach_ct_pro_') && (
               <div style={{ marginBottom: '1.5rem' }}>
                 <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>
                   Deseja escolher seu coach?
                 </div>
-                <select
-                  value={coachEscolhido}
-                  onChange={e => setCoachEscolhido(e.target.value)}
-                  style={{
-                    width: '100%',
-                    background: '#0a0a0a',
-                    border: `1.5px solid ${coachEscolhido ? ACCENT : '#333'}`,
-                    borderRadius: 10,
-                    padding: '0.75rem 1rem',
-                    color: '#fff',
-                    fontSize: 14,
-                    fontFamily: "'DM Sans', sans-serif",
-                    cursor: 'pointer',
-                  }}>
+                <select value={coachEscolhido} onChange={e => setCoachEscolhido(e.target.value)}
+                  style={{ width: '100%', background: '#0a0a0a', border: `1.5px solid ${coachEscolhido ? ACCENT : '#333'}`, borderRadius: 10, padding: '0.75rem 1rem', color: '#fff', fontSize: 14, fontFamily: "'DM Sans', sans-serif", cursor: 'pointer' }}>
                   <option value="">Qualquer coach disponível</option>
                   {coachesDisponiveis.map(c => (
                     <option key={c.id} value={c.id}>{c.nome}</option>
