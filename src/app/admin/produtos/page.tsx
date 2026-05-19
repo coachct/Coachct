@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { Plus, X, Edit2, Check, Package, AlertCircle, Coins, Calendar } from 'lucide-react'
+import { Plus, X, Edit2, Check, Package, AlertCircle, Coins, Calendar, Trophy } from 'lucide-react'
 
 const SUBTIPOS = [
   {
@@ -18,20 +18,42 @@ const SUBTIPOS = [
     descricao: 'Acesso ilimitado ao CT durante um período (ex: semestral, anual). Não tem créditos.',
     icon: Calendar,
   },
+  {
+    key: 'coach_ct_pro',
+    label: 'Coach CT Pro',
+    descricao: 'Plano direto com pacote total de créditos. Vinculado a um plano configurado em Planos.',
+    icon: Trophy,
+  },
 ]
 
-function ProdutoCard({ produto, unidades, onEditar, onAlternar }: any) {
+function ProdutoCard({ produto, unidades, planos, onEditar, onAlternar }: any) {
   const unidadeNome = produto.unidade_id 
     ? unidades.find((u: any) => u.id === produto.unidade_id)?.nome || '—'
     : 'Rede (todas as unidades)'
 
   const isAcesso = produto.subtipo === 'acesso'
-  const subtipoLabel = isAcesso ? 'Plano de Acesso' : 'Pacote de Créditos'
-  const SubtipoIcon = isAcesso ? Calendar : Coins
-  const iconColor = isAcesso ? 'bg-amber-100 text-amber-700' : 'bg-primary-100 text-primary-700'
+  const isPro = produto.subtipo === 'coach_ct_pro'
+  
+  let subtipoLabel = 'Pacote de Créditos'
+  let SubtipoIcon = Coins
+  let iconColor = 'bg-primary-100 text-primary-700'
+  
+  if (isAcesso) {
+    subtipoLabel = 'Plano de Acesso'
+    SubtipoIcon = Calendar
+    iconColor = 'bg-amber-100 text-amber-700'
+  } else if (isPro) {
+    subtipoLabel = 'Coach CT Pro'
+    SubtipoIcon = Trophy
+    iconColor = 'bg-purple-100 text-purple-700'
+  }
+
+  const planoVinculado = isPro && produto.plano_id 
+    ? planos.find((p: any) => p.id === produto.plano_id)
+    : null
   
   return (
-    <div className={`card flex items-start gap-3 ${!produto.ativo ? 'opacity-60' : ''}`}>
+    <div className={`card flex items-start gap-3 ${!produto.ativo ? 'opacity-60' : ''} ${isPro ? 'border-l-4 border-l-purple-500' : ''}`}>
       <div className={`w-10 h-10 rounded-xl ${iconColor} flex items-center justify-center flex-shrink-0`}>
         <SubtipoIcon size={18} />
       </div>
@@ -48,16 +70,31 @@ function ProdutoCard({ produto, unidades, onEditar, onAlternar }: any) {
           )}
         </div>
         <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 flex-wrap">
-          <span className={isAcesso ? 'text-amber-700 font-medium' : 'text-primary-700 font-medium'}>
+          <span className={isAcesso ? 'text-amber-700 font-medium' : isPro ? 'text-purple-700 font-medium' : 'text-primary-700 font-medium'}>
             {subtipoLabel}
           </span>
           <span className="font-mono font-semibold text-gray-700">
             R$ {Number(produto.valor).toFixed(2).replace('.', ',')}
           </span>
+          {(produto.max_parcelas || 1) > 1 && (
+            <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+              até {produto.max_parcelas}x
+            </span>
+          )}
           {isAcesso ? (
             <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-medium">
               {produto.dias_validade} dias de acesso
             </span>
+          ) : isPro ? (
+            planoVinculado ? (
+              <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full font-medium">
+                → {planoVinculado.nome}
+              </span>
+            ) : (
+              <span className="bg-red-50 text-red-700 px-2 py-0.5 rounded-full font-medium">
+                ⚠ sem plano vinculado
+              </span>
+            )
           ) : (
             <>
               <span className="bg-green-50 text-green-700 px-2 py-0.5 rounded-full font-medium">
@@ -92,12 +129,13 @@ export default function AdminProdutosPage() {
 
   const [produtos, setProdutos] = useState<any[]>([])
   const [unidades, setUnidades] = useState<any[]>([])
+  const [planosCoachCTPro, setPlanosCoachCTPro] = useState<any[]>([])
   const [loadingData, setLoadingData] = useState(true)
 
   const [modalProduto, setModalProduto] = useState<any>(null)
   const [form, setForm] = useState({
     nome: '',
-    subtipo: 'credito' as 'credito' | 'acesso',
+    subtipo: 'credito' as 'credito' | 'acesso' | 'coach_ct_pro',
     tipo: 'credito_coach',
     valor: 0,
     creditos_por_venda: 1,
@@ -105,6 +143,8 @@ export default function AdminProdutosPage() {
     descricao: '',
     ativo: true,
     unidade_id: '' as string | '',
+    plano_id: '' as string | '',
+    max_parcelas: 1,
   })
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
@@ -120,12 +160,14 @@ export default function AdminProdutosPage() {
   }, [perfil])
 
   async function carregar() {
-    const [{ data: produtosData }, { data: unidadesData }] = await Promise.all([
+    const [{ data: produtosData }, { data: unidadesData }, { data: planosData }] = await Promise.all([
       supabase.from('produtos').select('*').order('ativo', { ascending: false }).order('nome'),
       supabase.from('unidades').select('id, nome, tipo').eq('ativo', true).order('nome'),
+      supabase.from('planos_disponiveis').select('id, nome, tipo, unidade_id, total_creditos, duracao_meses, ativo').eq('tipo', 'coach_ct_pro').order('nome'),
     ])
     setProdutos(produtosData || [])
     setUnidades(unidadesData || [])
+    setPlanosCoachCTPro(planosData || [])
     setLoadingData(false)
   }
 
@@ -140,6 +182,8 @@ export default function AdminProdutosPage() {
       descricao: '',
       ativo: true,
       unidade_id: '',
+      plano_id: '',
+      max_parcelas: 1,
     })
     setErro('')
     setModalProduto({ id: null })
@@ -156,14 +200,35 @@ export default function AdminProdutosPage() {
       descricao: produto.descricao || '',
       ativo: produto.ativo,
       unidade_id: produto.unidade_id || '',
+      plano_id: produto.plano_id || '',
+      max_parcelas: produto.max_parcelas || 1,
     })
     setErro('')
     setModalProduto(produto)
   }
 
+  function handleSubtipoChange(novoSubtipo: 'credito' | 'acesso' | 'coach_ct_pro') {
+    let tipoNovo = form.tipo
+    if (novoSubtipo === 'coach_ct_pro') {
+      tipoNovo = 'coach_ct_pro'
+    } else if (novoSubtipo === 'credito') {
+      tipoNovo = 'credito_coach'
+    } else if (novoSubtipo === 'acesso') {
+      tipoNovo = 'acesso_ct'
+    }
+
+    setForm({ 
+      ...form, 
+      subtipo: novoSubtipo,
+      tipo: tipoNovo,
+      plano_id: novoSubtipo === 'coach_ct_pro' ? form.plano_id : '',
+    })
+  }
+
   async function salvar() {
     if (!form.nome.trim()) { setErro('Informe o nome do produto.'); return }
     if (form.valor <= 0) { setErro('Informe um valor válido.'); return }
+    if (form.max_parcelas < 1 || form.max_parcelas > 24) { setErro('Max parcelas deve ser entre 1 e 24.'); return }
 
     if (form.subtipo === 'credito') {
       if (form.creditos_por_venda < 1) { setErro('A quantidade de créditos por venda deve ser pelo menos 1.'); return }
@@ -174,11 +239,15 @@ export default function AdminProdutosPage() {
       if (form.dias_validade < 1) { setErro('A duração do acesso em dias deve ser pelo menos 1.'); return }
     }
 
+    if (form.subtipo === 'coach_ct_pro') {
+      if (!form.plano_id) { setErro('Selecione o plano Coach CT Pro vinculado a este produto.'); return }
+    }
+
     setSalvando(true)
     setErro('')
 
-    // Pra produto de acesso, créditos_por_venda fica fixo em 0
-    const creditosFinal = form.subtipo === 'acesso' ? 0 : form.creditos_por_venda
+    const creditosFinal = (form.subtipo === 'acesso' || form.subtipo === 'coach_ct_pro') ? 0 : form.creditos_por_venda
+    const diasValidadeFinal = form.subtipo === 'coach_ct_pro' ? null : form.dias_validade
 
     const dados: any = {
       nome: form.nome.trim(),
@@ -186,10 +255,12 @@ export default function AdminProdutosPage() {
       tipo: form.tipo,
       valor: form.valor,
       creditos_por_venda: creditosFinal,
-      dias_validade: form.dias_validade,
+      dias_validade: diasValidadeFinal,
       descricao: form.descricao.trim() || null,
       ativo: form.ativo,
       unidade_id: form.unidade_id || null,
+      plano_id: form.subtipo === 'coach_ct_pro' ? form.plano_id : null,
+      max_parcelas: form.max_parcelas,
     }
 
     const op = modalProduto?.id
@@ -199,7 +270,7 @@ export default function AdminProdutosPage() {
     const { error } = await op
 
     if (error) {
-      setErro('Erro ao salvar. Tente novamente.')
+      setErro('Erro ao salvar: ' + error.message)
       setSalvando(false)
       return
     }
@@ -224,6 +295,10 @@ export default function AdminProdutosPage() {
 
   const ativos = produtos.filter(p => p.ativo)
   const inativos = produtos.filter(p => !p.ativo)
+  const ehCoachCTPro = form.subtipo === 'coach_ct_pro'
+  const planosFiltrados = form.unidade_id 
+    ? planosCoachCTPro.filter(p => p.unidade_id === form.unidade_id)
+    : planosCoachCTPro
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -253,7 +328,7 @@ export default function AdminProdutosPage() {
                 <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Ativos</div>
                 <div className="space-y-2">
                   {ativos.map(p => (
-                    <ProdutoCard key={p.id} produto={p} unidades={unidades} onEditar={() => abrirEditar(p)} onAlternar={() => alternarAtivo(p)} />
+                    <ProdutoCard key={p.id} produto={p} unidades={unidades} planos={planosCoachCTPro} onEditar={() => abrirEditar(p)} onAlternar={() => alternarAtivo(p)} />
                   ))}
                 </div>
               </div>
@@ -263,7 +338,7 @@ export default function AdminProdutosPage() {
                 <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Inativos</div>
                 <div className="space-y-2">
                   {inativos.map(p => (
-                    <ProdutoCard key={p.id} produto={p} unidades={unidades} onEditar={() => abrirEditar(p)} onAlternar={() => alternarAtivo(p)} />
+                    <ProdutoCard key={p.id} produto={p} unidades={unidades} planos={planosCoachCTPro} onEditar={() => abrirEditar(p)} onAlternar={() => alternarAtivo(p)} />
                   ))}
                 </div>
               </div>
@@ -300,7 +375,7 @@ export default function AdminProdutosPage() {
                     form.unidade_id === '' ? 'border-purple-400 bg-purple-50' : 'border-gray-200'
                   }`}>
                     <input type="radio" checked={form.unidade_id === ''}
-                      onChange={() => setForm({ ...form, unidade_id: '' })}
+                      onChange={() => setForm({ ...form, unidade_id: '', plano_id: '' })}
                       className="mt-1 accent-purple-600" />
                     <div className="flex-1">
                       <div className="text-sm font-medium text-gray-900">Rede (todas as unidades)</div>
@@ -312,7 +387,7 @@ export default function AdminProdutosPage() {
                       form.unidade_id === u.id ? 'border-primary-400 bg-primary-50' : 'border-gray-200'
                     }`}>
                       <input type="radio" checked={form.unidade_id === u.id}
-                        onChange={() => setForm({ ...form, unidade_id: u.id })}
+                        onChange={() => setForm({ ...form, unidade_id: u.id, plano_id: '' })}
                         className="mt-1 accent-primary-600" />
                       <div className="flex-1">
                         <div className="text-sm font-medium text-gray-900">{u.nome}</div>
@@ -331,14 +406,19 @@ export default function AdminProdutosPage() {
                   {SUBTIPOS.map(s => {
                     const Icon = s.icon
                     const ativo = form.subtipo === s.key
+                    const isPro = s.key === 'coach_ct_pro'
                     return (
                       <label key={s.key} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                        ativo ? 'border-primary-400 bg-primary-50' : 'border-gray-200'
+                        ativo 
+                          ? isPro 
+                            ? 'border-purple-400 bg-purple-50' 
+                            : 'border-primary-400 bg-primary-50' 
+                          : 'border-gray-200'
                       }`}>
                         <input type="radio" checked={ativo}
-                          onChange={() => setForm({ ...form, subtipo: s.key as 'credito' | 'acesso' })}
-                          className="mt-1 accent-primary-600" />
-                        <Icon size={16} className={`mt-0.5 ${ativo ? 'text-primary-600' : 'text-gray-400'}`} />
+                          onChange={() => handleSubtipoChange(s.key as 'credito' | 'acesso' | 'coach_ct_pro')}
+                          className={`mt-1 ${isPro ? 'accent-purple-600' : 'accent-primary-600'}`} />
+                        <Icon size={16} className={`mt-0.5 ${ativo ? (isPro ? 'text-purple-600' : 'text-primary-600') : 'text-gray-400'}`} />
                         <div className="flex-1">
                           <div className="text-sm font-medium text-gray-900">{s.label}</div>
                           <div className="text-xs text-gray-500 mt-0.5">{s.descricao}</div>
@@ -409,6 +489,60 @@ export default function AdminProdutosPage() {
                   </div>
                 </>
               )}
+
+              {form.subtipo === 'coach_ct_pro' && (
+                <>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block font-medium">Plano Coach CT Pro vinculado *</label>
+                    {planosFiltrados.length === 0 ? (
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+                        ⚠️ Nenhum plano Coach CT Pro cadastrado{form.unidade_id ? ' para esta unidade' : ''}.<br/>
+                        Cadastre primeiro o plano em <strong>/admin/planos</strong>.
+                      </div>
+                    ) : (
+                      <select className="input w-full"
+                        value={form.plano_id}
+                        onChange={e => setForm({ ...form, plano_id: e.target.value })}>
+                        <option value="">Selecione o plano...</option>
+                        {planosFiltrados.map(p => (
+                          <option key={p.id} value={p.id}>
+                            {p.nome} ({p.total_creditos} créditos / {p.duracao_meses} meses) {!p.ativo && '— inativo'}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    <div className="text-xs text-gray-400 mt-1">
+                      O plano define duração, créditos, regras de uso. Este produto define apenas o preço de venda.
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block font-medium">Valor (R$)</label>
+                    <input type="number" min={0} step="0.01" className="input w-full"
+                      value={form.valor}
+                      onChange={e => setForm({ ...form, valor: parseFloat(e.target.value) || 0 })} />
+                    <div className="text-xs text-gray-400 mt-1">Valor TOTAL do pacote (ex: 5994 pro Semestral)</div>
+                  </div>
+
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-xs text-purple-800">
+                    <div className="font-semibold mb-1">🏆 Como funciona "Coach CT Pro":</div>
+                    <div>• Cliente paga upfront (parcelado no cartão) e ganha o pacote completo de créditos.</div>
+                    <div>• Duração e créditos vêm do plano vinculado, não deste produto.</div>
+                    <div>• Ao comprar, planos agregadores (Wellhub/TotalPass) do cliente são desativados automaticamente.</div>
+                    <div>• Pode haver múltiplos produtos pro mesmo plano (ex: promo + cheio).</div>
+                  </div>
+                </>
+              )}
+
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block font-medium">Parcelamento máximo</label>
+                <input type="number" min={1} max={24} className="input w-full"
+                  value={form.max_parcelas}
+                  onChange={e => setForm({ ...form, max_parcelas: parseInt(e.target.value) || 1 })} />
+                <div className="text-xs text-gray-400 mt-1">
+                  Quantas vezes o cliente pode parcelar no cartão (1 = à vista)
+                </div>
+              </div>
 
               <div>
                 <label className="text-xs text-gray-500 mb-1 block font-medium">Descrição (opcional)</label>
