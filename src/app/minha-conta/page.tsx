@@ -18,14 +18,23 @@ function parsePlanoKey(key: string): { label: string; icon: string } {
   const lower = key.toLowerCase()
   let tipo = ''
   let icon = '🏋️'
+  let slugUnidade = ''
 
-  if (lower.startsWith('wellhub')) { tipo = 'Wellhub Diamond'; icon = '💜' }
-  else if (lower.startsWith('totalpass')) { tipo = 'TotalPass TP6'; icon = '🔵' }
-  else if (lower.startsWith('avulso') || lower.startsWith('credito')) { tipo = 'Crédito Avulso'; icon = '🎟️' }
-  else { tipo = key }
-
-  const partes = key.split('_')
-  const slugUnidade = partes.slice(1).join('_')
+  if (lower.startsWith('coach_ct_pro')) {
+    tipo = 'Coach CT Pro'; icon = '🏆'
+    slugUnidade = key.substring('coach_ct_pro_'.length)
+  } else if (lower.startsWith('wellhub')) {
+    tipo = 'Wellhub Diamond'; icon = '💜'
+    slugUnidade = key.split('_').slice(1).join('_')
+  } else if (lower.startsWith('totalpass')) {
+    tipo = 'TotalPass TP6'; icon = '🔵'
+    slugUnidade = key.split('_').slice(1).join('_')
+  } else if (lower.startsWith('avulso') || lower.startsWith('credito')) {
+    tipo = 'Crédito Avulso'; icon = '🎟️'
+    slugUnidade = key.split('_').slice(1).join('_')
+  } else {
+    tipo = key
+  }
 
   const nomeUnidade: Record<string, string> = {
     just_ct: 'Just CT',
@@ -347,9 +356,10 @@ export default function MinhaContaPage() {
                 const restante = info.disponivel
                 const { label, icon } = parsePlanoKey(plano)
                 const isCyan = plano.startsWith('avulso') || plano.startsWith('credito')
+                const isPro = plano.startsWith('coach_ct_pro')
                 return (
-                  <div key={plano} style={{ background: '#111', border: `1px solid ${restante === 0 ? '#333' : isCyan ? CYAN + '33' : ACCENT + '33'}`, borderRadius: 16, padding: '1.25rem' }}>
-                    <div style={{ fontSize: 11, color: restante === 0 ? '#555' : isCyan ? CYAN : ACCENT, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 8 }}>{icon} {label}</div>
+                  <div key={plano} style={{ background: '#111', border: `1px solid ${restante === 0 ? '#333' : isPro ? AMARELO + '44' : isCyan ? CYAN + '33' : ACCENT + '33'}`, borderRadius: 16, padding: '1.25rem' }}>
+                    <div style={{ fontSize: 11, color: restante === 0 ? '#555' : isPro ? AMARELO : isCyan ? CYAN : ACCENT, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 8 }}>{icon} {label}</div>
                     <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 48, color: restante === 0 ? '#333' : '#fff', lineHeight: 1 }}>{restante}</div>
                     <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>de {info.total} sessões em {nomeMesAtual}</div>
                     {restante === 0 && <div style={{ fontSize: 11, color: '#ff6b6b', marginTop: 6 }}>Esgotado neste mês</div>}
@@ -389,7 +399,6 @@ export default function MinhaContaPage() {
           </>
         )}
 
-        {/* AGENDAMENTOS */}
         {temPlanoAtivo && (
           <div style={{ marginTop: '2rem', marginBottom: '2rem' }}>
             <div style={{ fontSize: 11, color: '#aaa', fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: '1rem' }}>Meus agendamentos</div>
@@ -428,7 +437,6 @@ export default function MinhaContaPage() {
           </div>
         )}
 
-        {/* FILA DE ESPERA */}
         {filas.length > 0 && (
           <div style={{ marginBottom: '2rem' }}>
             <div style={{ fontSize: 11, color: AMARELO, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: '1rem' }}>⏳ Aguardando na fila de espera</div>
@@ -454,7 +462,6 @@ export default function MinhaContaPage() {
           </div>
         )}
 
-        {/* MINHAS COMPRAS */}
         {compras.length > 0 && (
           <div style={{ marginBottom: '2rem' }}>
             <div style={{ fontSize: 11, color: '#aaa', fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: '1rem' }}>🛒 Minhas compras</div>
@@ -463,17 +470,11 @@ export default function MinhaContaPage() {
                 <div key={c.id} style={{ background: '#111', border: '1px solid #222', borderRadius: 12, padding: '1rem 1.25rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: '#fff', marginBottom: 4 }}>
-                        {c.produtos?.nome || 'Produto'}
-                      </div>
-                      <div style={{ fontSize: 12, color: '#555' }}>
-                        {formatarData(c.vendido_em)} · {labelFormaPagamento(c.forma_pagamento)}
-                      </div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#fff', marginBottom: 4 }}>{c.produtos?.nome || 'Produto'}</div>
+                      <div style={{ fontSize: 12, color: '#555' }}>{formatarData(c.vendido_em)} · {labelFormaPagamento(c.forma_pagamento)}</div>
                     </div>
                     <div style={{ textAlign: 'right' as const, flexShrink: 0 }}>
-                      <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 20, color: '#fff', lineHeight: 1 }}>
-                        {formatarValor(c.valor_total)}
-                      </div>
+                      <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 20, color: '#fff', lineHeight: 1 }}>{formatarValor(c.valor_total)}</div>
                       <div style={{ fontSize: 11, color: '#22c55e', marginTop: 4, fontWeight: 600 }}>✓ Pago</div>
                     </div>
                   </div>
@@ -483,7 +484,6 @@ export default function MinhaContaPage() {
           </div>
         )}
 
-        {/* MINHA CONTA */}
         {cliente && (
           <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.25rem' }}>
             <div style={{ fontSize: 11, color: '#aaa', fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: '1rem' }}>Minha conta</div>
@@ -504,7 +504,6 @@ export default function MinhaContaPage() {
         )}
       </div>
 
-      {/* MODAL CANCELAR */}
       {modalCancelar && (
         <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: '#111', border: '1px solid #333', borderRadius: 20, width: '100%', maxWidth: 420, padding: '1.5rem' }}>
@@ -528,7 +527,6 @@ export default function MinhaContaPage() {
         </div>
       )}
 
-      {/* MODAL SAIR DA FILA */}
       {modalSairFila && (
         <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: '#111', border: `1px solid ${AMARELO}44`, borderRadius: 20, width: '100%', maxWidth: 420, padding: '1.5rem' }}>
