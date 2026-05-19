@@ -141,7 +141,7 @@ export default function ComprarPage() {
     const sessoes = isTrimestral ? 36 : 72
     const meses = isTrimestral ? 3 : 6
     return [
-      '~3 treinos por semana',
+      '3 treinos / semana',
       `${sessoes} sessões em ${meses} meses`,
       'Escolha do coach no agendamento',
       'Calendário preferencial · 14 dias',
