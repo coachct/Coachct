@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
 import { dashboardDoRole } from '@/lib/auth-redirect'
+import SiteHeader from '@/components/SiteHeader'
 
 const ACCENT = '#ff2d9b'
 
@@ -126,11 +127,7 @@ export default function MeusPlanosPage() {
 
   useEffect(() => {
     if (loading) return
-    if (!user) {
-      router.push('/')
-      return
-    }
-    // Se logou mas não é cliente, manda pro dashboard correto do role
+    if (!user) { router.push('/'); return }
     if (perfil && perfil.role && perfil.role !== 'cliente') {
       router.push(dashboardDoRole(perfil.role))
     }
@@ -141,24 +138,12 @@ export default function MeusPlanosPage() {
   }, [perfil])
 
   async function loadDados() {
-    const { data: cli } = await supabase
-      .from('clientes')
-      .select('*')
-      .eq('user_id', perfil!.id)
-      .maybeSingle()
+    const { data: cli } = await supabase.from('clientes').select('*').eq('user_id', perfil!.id).maybeSingle()
     setCliente(cli)
-
     if (cli) {
       const [{ data: planos }, { data: cliPlanos }] = await Promise.all([
-        supabase.from('planos_disponiveis')
-          .select('*, unidades(nome, slug)')
-          .eq('ativo', true)
-          .neq('tipo', 'avulso')
-          .order('nome'),
-        supabase.from('cliente_planos')
-          .select('*, planos_disponiveis(id, nome, tipo, unidade_id, creditos_mes, unidades(nome))')
-          .eq('cliente_id', cli.id)
-          .eq('ativo', true),
+        supabase.from('planos_disponiveis').select('*, unidades(nome, slug)').eq('ativo', true).neq('tipo', 'avulso').order('nome'),
+        supabase.from('cliente_planos').select('*, planos_disponiveis(id, nome, tipo, unidade_id, creditos_mes, unidades(nome))').eq('cliente_id', cli.id).eq('ativo', true),
       ])
       setPlanosDisponiveis(planos || [])
       setClientePlanos(cliPlanos || [])
@@ -186,66 +171,29 @@ export default function MeusPlanosPage() {
     setAtivando(true)
     setErroAtivacao('')
 
-    const { data: existente } = await supabase
-      .from('cliente_planos')
-      .select('id')
-      .eq('cliente_id', cliente.id)
-      .eq('plano_id', modalPlano.id)
-      .maybeSingle()
+    const { data: existente } = await supabase.from('cliente_planos').select('id').eq('cliente_id', cliente.id).eq('plano_id', modalPlano.id).maybeSingle()
 
     let erroPlano = null
 
     if (existente) {
-      const { error } = await supabase
-        .from('cliente_planos')
-        .update({
-          ativo: true,
-          contrato_aceito_em: new Date().toISOString(),
-          inicio: new Date().toISOString().split('T')[0],
-        })
-        .eq('id', existente.id)
+      const { error } = await supabase.from('cliente_planos').update({ ativo: true, contrato_aceito_em: new Date().toISOString(), inicio: new Date().toISOString().split('T')[0] }).eq('id', existente.id)
       erroPlano = error
     } else {
-      const { error } = await supabase
-        .from('cliente_planos')
-        .insert({
-          cliente_id: cliente.id,
-          plano_id: modalPlano.id,
-          ativo: true,
-          contrato_aceito_em: new Date().toISOString(),
-          inicio: new Date().toISOString().split('T')[0],
-        })
+      const { error } = await supabase.from('cliente_planos').insert({ cliente_id: cliente.id, plano_id: modalPlano.id, ativo: true, contrato_aceito_em: new Date().toISOString(), inicio: new Date().toISOString().split('T')[0] })
       erroPlano = error
     }
 
-    if (erroPlano) {
-      setErroAtivacao('Erro ao ativar plano. Tente novamente.')
-      setAtivando(false)
-      return
-    }
+    if (erroPlano) { setErroAtivacao('Erro ao ativar plano. Tente novamente.'); setAtivando(false); return }
 
-    await supabase.rpc('gerar_creditos_cliente_ativacao', {
-      p_cliente_id: cliente.id,
-      p_mes: mesAtual,
-      p_ano: anoAtual,
-    })
+    await supabase.rpc('gerar_creditos_cliente_ativacao', { p_cliente_id: cliente.id, p_mes: mesAtual, p_ano: anoAtual })
 
     if (dentroDaJanelaProximoMes()) {
-      await supabase.rpc('gerar_creditos_cliente_ativacao', {
-        p_cliente_id: cliente.id,
-        p_mes: mesProximo,
-        p_ano: anoProximo,
-      })
+      await supabase.rpc('gerar_creditos_cliente_ativacao', { p_cliente_id: cliente.id, p_mes: mesProximo, p_ano: anoProximo })
     }
 
     setModalPlano(null)
     setAtivando(false)
     await loadDados()
-  }
-
-  async function sair() {
-    await supabase.auth.signOut()
-    window.location.href = '/'
   }
 
   if (loading || loadingData) return (
@@ -264,29 +212,11 @@ export default function MeusPlanosPage() {
         @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
         .plano-card:hover { border-color: ${ACCENT} !important; }
-        .nav-link-cliente:hover { color: ${ACCENT} !important; }
-        @media (max-width: 640px) {
-          .header-nav-r { gap: 0.5rem !important; }
-          .header-nav-r .link-init { display: none !important; }
-        }
       `}</style>
 
-      <div style={{ background: '#08080895', backdropFilter: 'blur(16px)', borderBottom: '1px solid #1a1a1a', padding: '0 1.5rem', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
-        <div onClick={() => router.push('/')} style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', letterSpacing: 2, cursor: 'pointer' }}>
-          JUST<span style={{ color: ACCENT }}>CT</span>
-        </div>
-        <div className="header-nav-r" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-          <span onClick={() => router.push('/')} className="nav-link-cliente link-init" style={{ fontSize: 13, color: '#888', cursor: 'pointer', transition: 'color .2s' }}>Início</span>
-          <span onClick={() => router.push('/minha-conta')} className="nav-link-cliente" style={{ fontSize: 13, color: '#888', cursor: 'pointer', transition: 'color .2s' }}>Minha conta</span>
-          <span style={{ fontSize: 13, color: '#aaa', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: ACCENT }} />
-            {perfil?.nome?.split(' ')[0]}
-          </span>
-          <button onClick={sair} style={{ background: 'transparent', border: '1px solid #444', borderRadius: 8, padding: '0.4rem 1rem', color: '#bbb', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Sair</button>
-        </div>
-      </div>
+      <SiteHeader />
 
-      <div style={{ maxWidth: 700, margin: '0 auto', padding: '2rem 1.5rem' }}>
+      <div style={{ maxWidth: 700, margin: '0 auto', padding: '6rem 1.5rem 2rem' }}>
         <div style={{ marginBottom: '2rem' }}>
           <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: '#fff', letterSpacing: 1 }}>MEUS PLANOS</div>
           <div style={{ fontSize: 14, color: '#aaa', marginTop: 4 }}>Gerencie seus planos ativos e ative novos</div>
@@ -307,9 +237,7 @@ export default function MeusPlanosPage() {
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 15, fontWeight: 600, color: '#fff' }}>{plano.nome}</div>
                       <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{plano.unidades?.nome} · {plano.creditos_mes} sessões por mês</div>
-                      {cp.contrato_aceito_em && (
-                        <div style={{ fontSize: 11, color: '#555', marginTop: 4 }}>Ativo desde {new Date(cp.contrato_aceito_em).toLocaleDateString('pt-BR')}</div>
-                      )}
+                      {cp.contrato_aceito_em && <div style={{ fontSize: 11, color: '#555', marginTop: 4 }}>Ativo desde {new Date(cp.contrato_aceito_em).toLocaleDateString('pt-BR')}</div>}
                     </div>
                     <div style={{ background: corAgregador + '22', border: `1px solid ${corAgregador}`, borderRadius: 8, padding: '0.3rem 0.85rem', fontSize: 12, color: corAgregador === '#9b59b6' ? '#c77dff' : '#5dade2', fontWeight: 600, flexShrink: 0 }}>✓ Ativo</div>
                   </div>
@@ -407,9 +335,7 @@ export default function MeusPlanosPage() {
                 <input type="checkbox" checked={aceiteCheck} onChange={e => setAceiteCheck(e.target.checked)} style={{ marginTop: 3, accentColor: ACCENT, width: 16, height: 16, flexShrink: 0 }} />
                 <span style={{ fontSize: 13, color: '#aaa', lineHeight: 1.5 }}>Li e aceito o Termo de Adesão Just CT — Wellhub / TotalPass, incluindo as regras de agendamento, cancelamento, multa por no-show e conduta nas dependências da academia.</span>
               </label>
-              {erroAtivacao && (
-                <div style={{ background: '#ff2d9b15', border: '1px solid #ff2d9b44', borderRadius: 8, padding: '0.6rem 1rem', fontSize: 13, color: ACCENT, marginBottom: '1rem' }}>{erroAtivacao}</div>
-              )}
+              {erroAtivacao && <div style={{ background: '#ff2d9b15', border: '1px solid #ff2d9b44', borderRadius: 8, padding: '0.6rem 1rem', fontSize: 13, color: ACCENT, marginBottom: '1rem' }}>{erroAtivacao}</div>}
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={() => setModalPlano(null)} style={{ flex: 1, background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.75rem', color: '#888', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Cancelar</button>
                 <button onClick={ativarPlano} disabled={ativando}
