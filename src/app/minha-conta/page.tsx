@@ -118,7 +118,6 @@ export default function MinhaContaPage() {
 
   async function carregarTodosSaldos(clienteId: string, cliPlanos: any[]) {
     const unidadeIds = [...new Set(cliPlanos.map((cp: any) => cp.planos_disponiveis?.unidade_id).filter(Boolean))] as string[]
-
     if (unidadeIds.length === 0) { setSaldoAtual({}); setSaldoProximo({}); return }
 
     const [saldosAtual, saldosProximo] = await Promise.all([
@@ -179,6 +178,11 @@ export default function MinhaContaPage() {
     const { error } = await supabase.from('fila_espera').delete().eq('id', modalSairFila.id)
     if (!error) { setModalSairFila(null); await loadDados() }
     setSaindoFila(false)
+  }
+
+  async function sair() {
+    await supabase.auth.signOut()
+    window.location.href = '/'
   }
 
   function formatarValor(v: number) { return `R$ ${Number(v).toFixed(2).replace('.', ',')}` }
@@ -371,7 +375,7 @@ export default function MinhaContaPage() {
         )}
 
         {cliente && (
-          <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.25rem' }}>
+          <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.25rem', marginBottom: '2rem' }}>
             <div style={{ fontSize: 11, color: '#aaa', fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: '1rem' }}>Minha conta</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {[
@@ -388,6 +392,15 @@ export default function MinhaContaPage() {
             </div>
           </div>
         )}
+
+        {/* Sair da conta — discreto, só nesta página */}
+        <div style={{ textAlign: 'center', paddingBottom: '3rem' }}>
+          <span onClick={sair} style={{ fontSize: 13, color: '#444', cursor: 'pointer', textDecoration: 'underline', transition: 'color .2s' }}
+            onMouseEnter={e => (e.currentTarget.style.color = '#888')}
+            onMouseLeave={e => (e.currentTarget.style.color = '#444')}>
+            Sair da conta
+          </span>
+        </div>
       </div>
 
       {modalCancelar && (
