@@ -15,6 +15,37 @@ const HORARIOS = [
   '19:30','20:00'
 ]
 
+function parsePlanoKey(key: string): { label: string; icon: string } {
+  const lower = (key || '').toLowerCase()
+  let tipo = ''
+  let icon = '🏋️'
+  let slugUnidade = ''
+
+  if (lower.startsWith('coach_ct_pro')) {
+    tipo = 'Coach CT Pro'; icon = '🏆'
+    slugUnidade = key.substring('coach_ct_pro_'.length)
+  } else if (lower.startsWith('wellhub')) {
+    tipo = 'Wellhub Diamond'; icon = '💜'
+    slugUnidade = key.split('_').slice(1).join('_')
+  } else if (lower.startsWith('totalpass')) {
+    tipo = 'TotalPass TP6'; icon = '🔵'
+    slugUnidade = key.split('_').slice(1).join('_')
+  } else if (lower.startsWith('avulso') || lower.startsWith('credito')) {
+    tipo = 'Crédito Avulso'; icon = '🎟️'
+    slugUnidade = key.split('_').slice(1).join('_')
+  } else {
+    tipo = key
+  }
+
+  const nomeUnidade: Record<string, string> = {
+    just_ct: 'Just CT',
+    just_club_vila_olimpia: 'Vila Olímpia',
+    just_club_pinheiros: 'Pinheiros',
+  }
+  const unidadeLabel = nomeUnidade[slugUnidade] || slugUnidade.replace(/_/g, ' ')
+  return { label: `${tipo} — ${unidadeLabel}`, icon }
+}
+
 function addDias(dataStr: string, dias: number) {
   const d = new Date(dataStr + 'T12:00:00')
   d.setDate(d.getDate() + dias)
@@ -341,7 +372,6 @@ export default function AdminAgendaPage() {
 
       <div className="max-w-3xl mx-auto px-6 py-5">
 
-        {/* Seletor de data — controla tanto Clientes do dia quanto Grade do dia */}
         <div className="card mb-4 flex items-center gap-3">
           <button
             onClick={() => { setData(addDias(data, -1)); setLoadingData(true) }}
@@ -350,9 +380,7 @@ export default function AdminAgendaPage() {
           </button>
 
           <div className="flex-1 text-center">
-            <div className="text-sm font-semibold text-gray-900 capitalize">
-              {diaSemana}
-            </div>
+            <div className="text-sm font-semibold text-gray-900 capitalize">{diaSemana}</div>
             {data !== hoje && (
               <button onClick={() => { setData(hoje); setLoadingData(true) }}
                 className="text-xs text-primary-600 hover:underline mt-0.5">
@@ -444,6 +472,7 @@ export default function AdminAgendaPage() {
                         c => !ags.some(a => a.id !== ag.id && a.coach_id === c.coaches?.id)
                       )
                       const coachNome = coachesHorario.find(c => c.coaches?.id === ag.coach_id)?.coaches?.nome
+                      const { label: planoLabel, icon: planoIcon } = parsePlanoKey(ag.tipo_credito || '')
 
                       return (
                         <div key={ag.id} className={`card border-l-4 ${
@@ -464,7 +493,7 @@ export default function AdminAgendaPage() {
                               </div>
                               <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
                                 <span className="font-mono font-medium text-gray-700">{horario}</span>
-                                <span>{ag.tipo_credito}</span>
+                                <span>{planoIcon} {planoLabel}</span>
                                 {ag.clientes?.telefone && <span>{ag.clientes.telefone}</span>}
                               </div>
                               {coachNome && (
