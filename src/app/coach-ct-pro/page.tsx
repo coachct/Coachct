@@ -161,10 +161,10 @@ export default function CoachCtProPage() {
             // lado a lado
           </div>
           <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(32px, 4vw, 52px)', color: '#fff', lineHeight: 1.05, marginBottom: '0.75rem' }}>
-            VOCÊ VS O RESTO
+            ENTENDA A DIFERENÇA
           </div>
           <div style={{ fontSize: 16, color: '#555', marginBottom: '4rem', lineHeight: 1.6 }}>
-            Há uma diferença entre ter acesso… e ter prioridade.
+           Não é sobre o que os outros entregam. É sobre o que você passa a ter.
           </div>
 
           <div className="comparativo-grid-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}>
