@@ -45,12 +45,18 @@ export default function LandingPage() {
         .maps-btn:hover { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
         .btn-comprar-card-h:hover { opacity: 0.85; }
         .btn-comprar-card-ghost-h:hover { background: ${ACCENT} !important; color: #fff !important; }
+        .pro-card-h { transition: all .25s; }
+        .pro-card-h:hover { border-color: ${ACCENT} !important; transform: translateY(-4px); }
+        .pro-cta-h:hover { opacity: 0.85; }
+        .pro-cta-ghost-h:hover { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
         @media (max-width: 768px) {
           .nav-links-d { display: none !important; }
           .hero-title-r { font-size: 36px !important; }
           .stats-r { gap: 1.5rem !important; }
           .grid3-r { grid-template-columns: 1fr !important; }
           .grid2-r { grid-template-columns: 1fr !important; }
+          .pro-grid-r { grid-template-columns: 1fr !important; }
+          .pro-hero-r { grid-template-columns: 1fr !important; }
         }
       `}</style>
 
@@ -118,6 +124,91 @@ export default function LandingPage() {
               <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6 }}>{f.desc}</div>
             </div>
           ))}
+        </div>
+      </div>
+
+      <div style={s.divider} />
+
+      {/* COACH CT PRO */}
+      <div id="coach-ct-pro" style={{ ...s.section, paddingBottom: '4rem' }}>
+
+        {/* Frase de abertura */}
+        <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 3, color: ACCENT, fontFamily: "'DM Mono', monospace", marginBottom: '1rem' }}>
+          // próximo nível
+        </div>
+        <div style={{ fontSize: 'clamp(14px, 1.5vw, 18px)', color: '#666', fontStyle: 'italic', marginBottom: '1rem', maxWidth: 600, lineHeight: 1.6 }}>
+          "Existe o padrão. E existe o que poucos acessam."
+        </div>
+
+        {/* Headline */}
+        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(48px, 6vw, 80px)', color: '#fff', lineHeight: 1, marginBottom: '3rem', letterSpacing: 2 }}>
+          COACH CT <span style={{ color: ACCENT }}>PRO</span>
+        </div>
+
+        {/* Hero — foto + texto */}
+        <div className="pro-hero-r" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3rem', marginBottom: '4rem', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 16, color: '#aaa', lineHeight: 1.9, marginBottom: '2rem' }}>
+              O Coach CT já é diferente. O Pro é o que acontece quando você decide parar de encaixar o treino na sua agenda — e começa a construir a agenda em torno do treino.
+              <br /><br />
+              <strong style={{ color: '#fff' }}>Janela de 14 dias. Escolha do coach. Prioridade na fila.</strong> Tudo o que o plano padrão não entrega porque não foi feito pra quem leva isso a sério.
+              <br /><br />
+              Mas claro — continuar no básico também é uma opção.
+            </div>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' as const }}>
+              <button onClick={() => router.push('/coach-ct-pro')} className="pro-cta-h"
+                style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 8, padding: '0.9rem 2rem', fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", transition: 'opacity .2s' }}>
+                Conhecer o Pro →
+              </button>
+              <button onClick={() => router.push('/comprar')} className="pro-cta-ghost-h"
+                style={{ background: 'transparent', color: '#aaa', border: '1.5px solid #333', borderRadius: 8, padding: '0.9rem 2rem', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", transition: 'all .2s' }}>
+                Ver planos
+              </button>
+            </div>
+          </div>
+          <div style={{ borderRadius: 20, overflow: 'hidden', aspectRatio: '4/5', position: 'relative' as const }}>
+            <img src="/pro-hero.jpg" alt="Coach CT Pro" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, #080808cc 0%, transparent 50%)' }} />
+          </div>
+        </div>
+
+        {/* Cards de benefícios */}
+        <div className="pro-grid-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
+
+          {/* Card Ju Hitomi */}
+          <div className="pro-card-h" style={{ background: `linear-gradient(135deg, #1a0010 0%, #0d0008 100%)`, border: `1.5px solid ${ACCENT}44`, borderRadius: 16, padding: '1.5rem', position: 'relative' as const, overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', top: 0, right: 0, left: 0, height: 120, overflow: 'hidden' }}>
+              <img src="/ju-pro.jpg" alt="Ju Hitomi" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center top', opacity: 0.4 }} />
+              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, transparent 30%, #1a0010 100%)' }} />
+            </div>
+            <div style={{ position: 'relative', paddingTop: 80 }}>
+              <div style={{ fontSize: 10, color: ACCENT, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: 6, fontFamily: "'DM Mono', monospace" }}>by</div>
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', letterSpacing: 1, lineHeight: 1.1, marginBottom: 8 }}>JU HITOMI</div>
+              <div style={{ fontSize: 13, color: '#888', lineHeight: 1.6 }}>Todos os treinos do Coach CT Pro são elaborados por ela. Intensidade e método — garantidos.</div>
+            </div>
+          </div>
+
+          {/* Card 14 dias */}
+          <div className="pro-card-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem' }}>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 52, color: ACCENT, lineHeight: 1, marginBottom: 4 }}>14</div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 18, color: '#fff', letterSpacing: 1, marginBottom: 8 }}>DIAS DE JANELA</div>
+            <div style={{ fontSize: 13, color: '#555', lineHeight: 1.6 }}>Agende com até 2 semanas de antecedência. Wellhub e TotalPass ficam com 7. Você escolhe primeiro.</div>
+          </div>
+
+          {/* Card escolha do coach */}
+          <div className="pro-card-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem' }}>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 52, color: ACCENT, lineHeight: 1, marginBottom: 4 }}>1×1</div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 18, color: '#fff', letterSpacing: 1, marginBottom: 8 }}>ESCOLHA DO COACH</div>
+            <div style={{ fontSize: 13, color: '#555', lineHeight: 1.6 }}>Escolha o coach que vai te acompanhar no momento do agendamento. Sem surpresa na chegada.</div>
+          </div>
+
+          {/* Card 3x semana */}
+          <div className="pro-card-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem' }}>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 52, color: ACCENT, lineHeight: 1, marginBottom: 4 }}>3×</div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 18, color: '#fff', letterSpacing: 1, marginBottom: 8 }}>POR SEMANA</div>
+            <div style={{ fontSize: 13, color: '#555', lineHeight: 1.6 }}>Diamond treina 2x. TP6 treina 2,5x. Pro treina 3x. A frequência que realmente transforma.</div>
+          </div>
+
         </div>
       </div>
 
