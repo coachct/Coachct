@@ -10,7 +10,6 @@ import SiteHeader from '@/components/SiteHeader'
 const ACCENT = '#ff2d9b'
 const CYAN = '#00e5ff'
 const AMARELO = '#ffaa00'
-const DOURADO = '#ffaa00'
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const HORARIOS_FDS = ['08:00', '09:00', '10:00', '11:00', '12:00']
@@ -73,8 +72,7 @@ function parsePlanoKey(key: string): { label: string; icon: string } {
   if (lower.startsWith('coach_ct_pro')) {
     slugUnidade = key.substring('coach_ct_pro_'.length)
   } else {
-    const partes = key.split('_')
-    slugUnidade = partes.slice(1).join('_')
+    slugUnidade = key.split('_').slice(1).join('_')
   }
 
   const nomeUnidade: Record<string, string> = {
@@ -86,16 +84,15 @@ function parsePlanoKey(key: string): { label: string; icon: string } {
   return { label: `${tipo} — ${unidadeLabel}`, icon }
 }
 
-function HalterSVG({ estado, onClick }: { estado: 'livre' | 'ocupado' | 'meu' | 'fila' | 'bloqueado' | 'pro', onClick?: () => void }) {
+function HalterSVG({ estado, onClick }: { estado: 'livre' | 'ocupado' | 'meu' | 'fila' | 'bloqueado', onClick?: () => void }) {
   const cor =
     estado === 'ocupado' ? '#333' :
     estado === 'meu' ? CYAN :
     estado === 'fila' ? AMARELO :
     estado === 'bloqueado' ? '#ff4444' :
-    estado === 'pro' ? DOURADO :
     ACCENT
   const opacity = estado === 'ocupado' ? 0.3 : estado === 'bloqueado' ? 0.4 : 1
-  const clickable = estado === 'livre' || estado === 'pro'
+  const clickable = estado === 'livre'
   return (
     <svg width="36" height="36" viewBox="0 0 48 28"
       style={{ opacity, flexShrink: 0, cursor: clickable ? 'pointer' : 'default' }}
@@ -159,10 +156,10 @@ export default function AgendarPage() {
   const tipoVisualizacao: 'visitante' | 'coach_ct_pro' | 'padrao' =
     !user ? 'visitante' : (temCoachCtProAtivo ? 'coach_ct_pro' : 'padrao')
 
-  const janelaDias = tipoVisualizacao === 'visitante'
-    ? JANELA_VISITANTE_DIAS
-    : tipoVisualizacao === 'coach_ct_pro'
-      ? JANELA_COACH_CT_PRO_DIAS
+  const janelaDias = tipoVisualizacao === 'coach_ct_pro'
+    ? JANELA_COACH_CT_PRO_DIAS
+    : tipoVisualizacao === 'visitante'
+      ? JANELA_VISITANTE_DIAS
       : JANELA_PADRAO_DIAS
 
   const diasSemana = Array.from({ length: 7 }, (_, i) => {
@@ -352,7 +349,9 @@ export default function AgendarPage() {
   const dataSelecionada = diasSemana[diaSel]
   const dataSelAposLimite = dataSelecionada > dataMaxima
   const diasDesdHoje = Math.floor((dataSelecionada.getTime() - hojeRef.getTime()) / (1000 * 60 * 60 * 24))
-  const isDiaExclusivoCoachPro = tipoVisualizacao === 'visitante' && diasDesdHoje >= 7
+
+  // Dia exclusivo Pro: qualquer usuário (visitante ou padrão) além de 7 dias
+  const isDiaExclusivoPro = diasDesdHoje >= 7 && tipoVisualizacao !== 'coach_ct_pro'
 
   function jaAgendouNoDia(plano: string) { return agendamentosNoDia.some(a => a.tipo_credito === plano && ['agendado', 'confirmado', 'realizado'].includes(a.status)) }
   function naFila(hora: string) { return filasDoCliente.some(f => (f.horario || '').slice(0, 5) === hora) }
@@ -397,11 +396,6 @@ export default function AgendarPage() {
     if (!user) { router.push('/login'); return }
     if (semPlanoAtivo) { setModalSemPlano(true); return }
     abrirModalFila(hora)
-  }
-
-  function tentarSlotPro() {
-    if (!user) { router.push('/login'); return }
-    router.push('/comprar')
   }
 
   function abrirModalReserva(hora: string, vagas: number) {
@@ -539,9 +533,9 @@ export default function AgendarPage() {
         .dia-btn-disabled { opacity: 0.25; cursor: not-allowed !important; }
         .slot-row-h { transition: all .2s; }
         .slot-row-h:hover { border-color: ${ACCENT} !important; background: #ff2d9b08 !important; }
-        .slot-row-pro:hover { border-color: ${DOURADO} !important; background: #ffaa0008 !important; cursor: pointer; }
         .nav-semana-btn:hover:not(:disabled) { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
         .unidade-tab:hover { border-color: ${ACCENT} !important; color: #fff !important; }
+        .mini-card-pro:hover { border-color: ${ACCENT} !important; }
       `}</style>
 
       <SiteHeader />
@@ -606,7 +600,7 @@ export default function AgendarPage() {
           <div style={{ background: '#1a0a00', border: '1px solid #ff660033', borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1.5rem' }}>
             <div style={{ fontSize: 14, color: AMARELO, fontWeight: 600, marginBottom: 4 }}>⚠️ Sem créditos disponíveis</div>
             <div style={{ fontSize: 13, color: '#666', lineHeight: 1.6 }}>
-              {dataSelEhProximoMes ? 'Você não tem créditos para o mês selecionado nesta unidade.' : 'Seus créditos renovam no dia 1º do próximo mês. Você ainda pode treinar comprando sessões avulsas na recepção.'}
+              {dataSelEhProximoMes ? 'Você não tem créditos para o mês selecionado nesta unidade.' : 'Seus créditos renovam no dia 1º do próximo mês.'}
             </div>
           </div>
         )}
@@ -627,16 +621,16 @@ export default function AgendarPage() {
           </div>
         )}
 
-        {tipoVisualizacao === 'visitante' && semanaOffset === 0 && (
-          <div style={{ background: 'linear-gradient(90deg, #0a1a14 0%, #08080800 100%)', border: `1px solid #2ddd8b33`, borderRadius: 10, padding: '0.6rem 1rem', marginBottom: '0.75rem', fontSize: 12, color: '#2ddd8b', fontWeight: 600, fontFamily: "'DM Mono', monospace", letterSpacing: 0.5 }}>
-            📅 AGENDAMENTO LIVRE · próximos 7 dias
+        {isDiaExclusivoPro && !dataSelAposLimite && (
+          <div style={{ background: `linear-gradient(90deg, ${ACCENT}22 0%, #08080800 100%)`, border: `1px solid ${ACCENT}55`, borderRadius: 10, padding: '0.75rem 1rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 12, color: ACCENT, fontWeight: 700, fontFamily: "'DM Mono', monospace", letterSpacing: 0.5 }}>🏆 AGENDAMENTOS EXCLUSIVOS COACH CT PRO</div>
+            <button onClick={() => router.push('/comprar')} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 8, padding: '0.4rem 0.85rem', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>CONHECER PLANO →</button>
           </div>
         )}
 
-        {tipoVisualizacao === 'visitante' && semanaOffset === 1 && (
-          <div style={{ background: `linear-gradient(90deg, ${ACCENT}22 0%, #08080800 100%)`, border: `1px solid ${ACCENT}55`, borderRadius: 10, padding: '0.75rem 1rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <div style={{ fontSize: 12, color: ACCENT, fontWeight: 700, fontFamily: "'DM Mono', monospace", letterSpacing: 0.5 }}>🏆 AGENDAMENTOS EXCLUSIVOS COACH CT PRO</div>
-            <button onClick={() => router.push('/comprar')} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 8, padding: '0.4rem 0.85rem', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", letterSpacing: 0.5 }}>CONHECER PLANO →</button>
+        {!isDiaExclusivoPro && tipoVisualizacao === 'visitante' && semanaOffset === 0 && (
+          <div style={{ background: 'linear-gradient(90deg, #0a1a14 0%, #08080800 100%)', border: `1px solid #2ddd8b33`, borderRadius: 10, padding: '0.6rem 1rem', marginBottom: '0.75rem', fontSize: 12, color: '#2ddd8b', fontWeight: 600, fontFamily: "'DM Mono', monospace", letterSpacing: 0.5 }}>
+            📅 AGENDAMENTO LIVRE · próximos 7 dias
           </div>
         )}
 
@@ -678,56 +672,28 @@ export default function AgendarPage() {
         </div>
 
         {dataSelAposLimite ? (
-          tipoVisualizacao === 'padrao' ? (
-            <div style={{ background: '#0d0010', border: `1.5px solid ${ACCENT}44`, borderRadius: 16, padding: '2.5rem 2rem', textAlign: 'center' }}>
-              <div style={{ fontSize: 32, marginBottom: '1rem' }}>🏆</div>
-              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', letterSpacing: 1, marginBottom: '0.75rem' }}>AGENDAMENTO EXCLUSIVO</div>
-              <div style={{ fontSize: 13, color: '#888', lineHeight: 1.8, marginBottom: '1.5rem' }}>
-                Agendamentos com mais de 7 dias de antecedência são exclusivos para clientes do plano <strong style={{ color: '#fff' }}>Coach CT Pro</strong>.
-              </div>
-              <button onClick={() => router.push('/comprar')} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.75rem 1.75rem', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                Conhecer Coach CT Pro →
-              </button>
-            </div>
-          ) : (
-            <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#666' }}>
-              <div style={{ fontSize: 14, marginBottom: 8 }}>📅 Data ainda não liberada</div>
-              <div style={{ fontSize: 12, color: '#555', lineHeight: 1.6 }}>Agendamentos liberados em janela de 14 dias.</div>
-            </div>
-          )
+          <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#666' }}>
+            <div style={{ fontSize: 14, marginBottom: 8 }}>📅 Data ainda não liberada</div>
+            <div style={{ fontSize: 12, color: '#555', lineHeight: 1.6 }}>Agendamentos liberados em janela de 14 dias.</div>
+          </div>
         ) : !unidadeAtiva ? (
           <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#444' }}>Selecione uma unidade para ver os horários.</div>
         ) : loadingHorarios ? (
           <div style={{ textAlign: 'center', padding: '3rem', color: '#555' }}>Carregando horários...</div>
         ) : horariosFiltrados.length === 0 ? (
           <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#666', lineHeight: 1.7 }}>
-            {tipoDia === 'fds' ? (<><div style={{ fontSize: 32, marginBottom: 8 }}>📅</div><div style={{ fontSize: 14, color: '#888' }}>Não há coaches escalados neste dia ainda.</div><div style={{ fontSize: 12, color: '#555', marginTop: 4 }}>A escala de fim de semana é definida pela equipe.</div></>)
+            {tipoDia === 'fds' ? (<><div style={{ fontSize: 32, marginBottom: 8 }}>📅</div><div style={{ fontSize: 14, color: '#888' }}>Não há coaches escalados neste dia ainda.</div></>)
               : tipoDia === 'feriado' ? (<><div style={{ fontSize: 32, marginBottom: 8 }}>⭐</div><div style={{ fontSize: 14, color: '#888' }}>Feriado sem coaches escalados.</div></>)
               : semanaOffset === 0 && diaSel === 0 ? 'Não há mais horários disponíveis para hoje.' : 'Nenhum horário disponível neste dia.'}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {horariosFiltrados.map((h, i) => {
-              if (isDiaExclusivoCoachPro) {
-                return (
-                  <div key={i} className="slot-row-pro" onClick={tentarSlotPro}
-                    style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', padding: '1rem 1.25rem', borderRadius: 12, border: `1px solid ${DOURADO}33`, background: '#110900', cursor: 'pointer' }}>
-                    <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, fontWeight: 500, color: DOURADO, width: 58, flexShrink: 0, opacity: 0.7 }}>{h.hora}</div>
-                    <div style={{ display: 'flex', gap: 6, flex: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-                      {Array.from({ length: h.total }).map((_, vi) => <HalterSVG key={vi} estado="pro" />)}
-                    </div>
-                    <div style={{ flexShrink: 0, minWidth: 90, textAlign: 'right' }}>
-                      <div style={{ fontSize: 11, color: DOURADO, fontWeight: 700, marginBottom: 6, fontFamily: "'DM Mono', monospace", letterSpacing: 0.5 }}>🏆 Só Pro</div>
-                      <button onClick={e => { e.stopPropagation(); tentarSlotPro() }} style={{ background: 'transparent', color: DOURADO, border: `1px solid ${DOURADO}88`, borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Entrar →</button>
-                    </div>
-                  </div>
-                )
-              }
-
               const lotado = h.livres <= 0
               const clienteNaFila = naFila(h.hora)
               const jaAgendado = agendamentosNoDia.some(a => (a.horario || '').slice(0, 5) === h.hora && ['agendado', 'confirmado'].includes(a.status))
               const temFilaEsperaAqui = temFilaNoHorario(h.hora)
+
               return (
                 <div key={i} className="slot-row-h"
                   style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', padding: '1rem 1.25rem', borderRadius: 12, border: `1px solid ${jaAgendado ? CYAN + '44' : clienteNaFila ? AMARELO + '44' : '#222'}`, background: jaAgendado ? '#00e5ff08' : clienteNaFila ? '#ffaa0008' : '#111' }}>
@@ -739,13 +705,23 @@ export default function AgendarPage() {
                       else if (clienteNaFila && vi === 0) estado = 'fila'
                       else if (vi < h.ocupados) estado = 'ocupado'
                       else if (vi < h.ocupados + h.bloqueadas) estado = 'bloqueado'
-                      return <HalterSVG key={vi} estado={estado} onClick={() => !lotado && !jaAgendado && tentarAgendar(h.hora, h.livres)} />
+                      return <HalterSVG key={vi} estado={estado} onClick={!isDiaExclusivoPro ? () => !lotado && !jaAgendado && tentarAgendar(h.hora, h.livres) : undefined} />
                     })}
                   </div>
-                  <div style={{ flexShrink: 0, minWidth: 90, textAlign: 'right' }}>
-                    {jaAgendado ? (<div style={{ fontSize: 11, color: CYAN, fontWeight: 600 }}>RESERVADO ✓</div>)
-                      : clienteNaFila ? (<div style={{ fontSize: 11, color: AMARELO, fontWeight: 600 }}>NA FILA ⏳</div>)
-                      : (<>
+
+                  <div style={{ flexShrink: 0, minWidth: 110, textAlign: 'right' }}>
+                    {jaAgendado ? (
+                      <div style={{ fontSize: 11, color: CYAN, fontWeight: 600 }}>RESERVADO ✓</div>
+                    ) : clienteNaFila ? (
+                      <div style={{ fontSize: 11, color: AMARELO, fontWeight: 600 }}>NA FILA ⏳</div>
+                    ) : isDiaExclusivoPro ? (
+                      <div className="mini-card-pro" onClick={() => router.push('/comprar')}
+                        style={{ background: '#0d0010', border: `1px solid ${ACCENT}55`, borderRadius: 10, padding: '0.6rem 0.75rem', cursor: 'pointer', textAlign: 'left', transition: 'border-color .2s' }}>
+                        <div style={{ fontSize: 10, color: ACCENT, fontWeight: 700, letterSpacing: 0.5, marginBottom: 4, fontFamily: "'DM Mono', monospace" }}>🏆 Exclusivo Pro</div>
+                        <div style={{ fontSize: 11, color: '#aaa', textDecoration: 'underline', cursor: 'pointer' }}>Conhecer planos →</div>
+                      </div>
+                    ) : (
+                      <>
                         <div style={{ fontSize: 11, fontFamily: "'DM Mono', monospace", color: lotado ? '#ff4444' : h.livres <= 2 ? AMARELO : ACCENT, fontWeight: 600, marginBottom: 4 }}>
                           {lotado ? 'LOTADO' : h.livres === 1 ? '1 VAGA' : `${h.livres} VAGAS`}
                         </div>
@@ -753,7 +729,8 @@ export default function AgendarPage() {
                         {temFilaEsperaAqui && !lotado && <div style={{ fontSize: 9, color: AMARELO, marginBottom: 4 }}>⏳ há fila</div>}
                         {!lotado && <button onClick={() => tentarAgendar(h.hora, h.livres)} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Reservar</button>}
                         {lotado && <button onClick={() => tentarFila(h.hora)} style={{ background: 'transparent', color: AMARELO, border: `1px solid ${AMARELO}`, borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Entrar na fila</button>}
-                      </>)}
+                      </>
+                    )}
                   </div>
                 </div>
               )
@@ -814,7 +791,7 @@ export default function AgendarPage() {
             <div style={{ marginBottom: '1.5rem' }}>
               <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Como vai usar esta sessão?</div>
               {planosDisp.length === 0 ? (
-                <div style={{ background: '#1a0a00', border: '1px solid #ff660033', borderRadius: 10, padding: '1rem', fontSize: 13, color: AMARELO, lineHeight: 1.6 }}>⚠️ Você não tem créditos disponíveis. Compre sessões avulsas na recepção.</div>
+                <div style={{ background: '#1a0a00', border: '1px solid #ff660033', borderRadius: 10, padding: '1rem', fontSize: 13, color: AMARELO, lineHeight: 1.6 }}>⚠️ Você não tem créditos disponíveis.</div>
               ) : planosDisp.map(p => {
                 const { label, icon } = parsePlanoKey(p)
                 return (
@@ -839,13 +816,14 @@ export default function AgendarPage() {
                   <option value="">Qualquer coach disponível</option>
                   {coachesDisponiveis.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                 </select>
-                {coachesDisponiveis.length === 0 && <div style={{ fontSize: 11, color: '#666', marginTop: 6, lineHeight: 1.5 }}>Sem coaches disponíveis pra escolha neste horário. Vamos alocar um quando você chegar.</div>}
+                {coachesDisponiveis.length === 0 && <div style={{ fontSize: 11, color: '#666', marginTop: 6, lineHeight: 1.5 }}>Sem coaches disponíveis pra escolha neste horário.</div>}
               </div>
             )}
 
             <div style={{ background: temFila ? '#1a1000' : '#0a0a0a', border: `1px solid ${temFila ? AMARELO + '44' : '#1a1a1a'}`, borderRadius: 10, padding: '0.75rem 1rem', marginBottom: '1.5rem', fontSize: 12, lineHeight: 1.7 }}>
-              {temFila ? (<><div style={{ color: AMARELO, fontWeight: 600, marginBottom: 4 }}>⏳ Há fila de espera para este horário</div><div style={{ color: '#888' }}>Cancelamento gratuito <strong style={{ color: '#fff' }}>até 3h antes</strong> — desde que haja outra pessoa na fila.<br />Abaixo de 3h antes: <strong style={{ color: '#ff4444' }}>cancelamento bloqueado</strong>. Falta sem aviso gera bloqueio de conta.</div></>)
-                : <div style={{ color: '#555' }}>⚠️ Cancelamento gratuito <strong style={{ color: '#888' }}>até 12h antes</strong>. Entre 12h e 3h: só com fila de espera. Falta sem aviso gera bloqueio de conta.</div>}
+              {temFila
+                ? <><div style={{ color: AMARELO, fontWeight: 600, marginBottom: 4 }}>⏳ Há fila de espera para este horário</div><div style={{ color: '#888' }}>Cancelamento gratuito <strong style={{ color: '#fff' }}>até 3h antes</strong>. Abaixo de 3h: <strong style={{ color: '#ff4444' }}>bloqueado</strong>.</div></>
+                : <div style={{ color: '#555' }}>⚠️ Cancelamento gratuito <strong style={{ color: '#888' }}>até 12h antes</strong>. Falta sem aviso gera bloqueio de conta.</div>}
             </div>
             {erroModal && <div style={{ background: '#ff2d9b15', border: '1px solid #ff2d9b44', borderRadius: 8, padding: '0.6rem 1rem', fontSize: 13, color: ACCENT, marginBottom: '1rem' }}>{erroModal}</div>}
             <div style={{ display: 'flex', gap: 8 }}>
@@ -868,9 +846,9 @@ export default function AgendarPage() {
             <div style={{ background: '#1a1000', border: `1px solid ${AMARELO}33`, borderRadius: 10, padding: '1rem', marginBottom: '1.5rem', fontSize: 13, color: '#aaa', lineHeight: 1.7 }}>
               <div style={{ color: AMARELO, fontWeight: 600, marginBottom: 6 }}>⚠️ Atenção antes de entrar na fila</div>
               <ul style={{ paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <li>Se alguém cancelar a reserva, <strong style={{ color: '#fff' }}>você será automaticamente reservado na aula</strong> — até 3h antes do treino.</li>
-                <li>Após confirmado, você pode cancelar <strong style={{ color: '#fff' }}>até 3h antes</strong> — mas só se houver outra pessoa na fila.</li>
-                <li>Se não houver mais fila, <strong style={{ color: '#fff' }}>cancelamento bloqueado</strong> e falta sem aviso gera multa.</li>
+                <li>Se alguém cancelar, <strong style={{ color: '#fff' }}>você será automaticamente reservado</strong> — até 3h antes.</li>
+                <li>Após confirmado, cancelamento <strong style={{ color: '#fff' }}>até 3h antes</strong> — só com outra pessoa na fila.</li>
+                <li>Falta sem aviso gera multa.</li>
               </ul>
             </div>
             <div style={{ marginBottom: '1.5rem' }}>
@@ -891,7 +869,7 @@ export default function AgendarPage() {
               })}
             </div>
             <div style={{ marginBottom: '1.5rem' }}>
-              <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Como quer ser avisado quando a vaga abrir?</div>
+              <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Como quer ser avisado?</div>
               <div style={{ display: 'flex', gap: 8 }}>
                 {notifOpcoes.map(op => (
                   <div key={op.key} onClick={() => setNotifFila(op.key as any)}
@@ -901,12 +879,10 @@ export default function AgendarPage() {
                   </div>
                 ))}
               </div>
-              {notifFila === 'whatsapp' && cliente?.telefone && <div style={{ fontSize: 11, color: '#555', marginTop: 6 }}>📱 Aviso para ({cliente.telefone.slice(0, 2)}) {cliente.telefone.slice(2, 7)}-{cliente.telefone.slice(7)}</div>}
-              {notifFila === 'email' && cliente?.email && <div style={{ fontSize: 11, color: '#555', marginTop: 6 }}>📧 Aviso para {cliente.email}</div>}
             </div>
             <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer', marginBottom: '1.5rem' }}>
               <input type="checkbox" checked={filaAceite} onChange={e => setFilaAceite(e.target.checked)} style={{ marginTop: 2, accentColor: AMARELO, width: 16, height: 16, flexShrink: 0 }} />
-              <span style={{ fontSize: 13, color: '#888', lineHeight: 1.5 }}>Entendi as regras. Se uma vaga abrir, aceito o agendamento automático e as regras de cancelamento e multa.</span>
+              <span style={{ fontSize: 13, color: '#888', lineHeight: 1.5 }}>Entendi as regras. Se uma vaga abrir, aceito o agendamento automático.</span>
             </label>
             {erroFila && <div style={{ background: '#ffaa0015', border: '1px solid #ffaa0044', borderRadius: 8, padding: '0.6rem 1rem', fontSize: 13, color: AMARELO, marginBottom: '1rem' }}>{erroFila}</div>}
             <div style={{ display: 'flex', gap: 8 }}>
