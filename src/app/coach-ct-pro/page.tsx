@@ -31,32 +31,25 @@ export default function CoachCtProPage() {
         <div style={{ position: 'absolute', inset: 0, backgroundImage: 'url(/hero.jpg)', backgroundSize: 'cover', backgroundPosition: 'center', zIndex: 0 }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right, #080808f0 55%, #08080860 100%)', zIndex: 1 }} />
         <div style={{ position: 'relative', zIndex: 2, padding: '6rem 2.5rem', maxWidth: 1100, margin: '0 auto', width: '100%' }}>
-
           <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 3, color: ACCENT, fontFamily: "'DM Mono', monospace", marginBottom: '1.5rem' }}>
             // coach ct · nível seguinte
           </div>
-
           <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(56px, 8vw, 110px)', color: '#fff', lineHeight: 0.95, marginBottom: '1.5rem', letterSpacing: 2 }}>
             COACH CT<br /><span style={{ color: ACCENT }}>PRO</span>
           </div>
-
           <div style={{ fontSize: 'clamp(16px, 1.8vw, 22px)', color: '#aaa', fontStyle: 'italic', marginBottom: '2rem', maxWidth: 560, lineHeight: 1.6 }}>
             "Se o atual já parece luxo, isso aqui é praticamente irresponsável."
           </div>
-
           <div style={{ fontSize: 16, color: '#777', maxWidth: 520, lineHeight: 1.8, marginBottom: '3rem' }}>
             Feito para quem treina a sério. Não é o mais barato — e não foi feito pra ser.
             É o plano de quem já entendeu que <strong style={{ color: '#fff' }}>frequência, consistência e método</strong> não são opcionais.
           </div>
-
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <button onClick={() => router.push('/comprar')}
-              className="btn-pro-h"
+            <button onClick={() => router.push('/comprar')} className="btn-pro-h"
               style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 8, padding: '1rem 2.5rem', fontWeight: 700, fontSize: 16, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", transition: 'opacity .2s' }}>
               Quero o Pro →
             </button>
-            <button onClick={() => router.push('/agendar')}
-              className="btn-ghost-pro-h"
+            <button onClick={() => router.push('/agendar')} className="btn-ghost-pro-h"
               style={{ background: 'transparent', color: '#aaa', border: '1.5px solid #444', borderRadius: 8, padding: '1rem 2rem', fontWeight: 600, fontSize: 16, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", transition: 'all .2s' }}>
               Ver a grade →
             </button>
@@ -116,9 +109,9 @@ export default function CoachCtProPage() {
             },
             {
               num: '03',
-              titulo: '3 TREINOS POR SEMANA',
+              titulo: '12 TREINOS POR MÊS',
               sub: 'A frequência que transforma.',
-              desc: 'Wellhub Diamond chega a 2 treinos por semana. TotalPass TP6 a 2,5. O Coach CT Pro entrega 3 — com créditos suficientes para você não falhar nenhuma semana do semestre. Frequência é o único ingrediente que não tem substituto.',
+              desc: 'Wellhub Diamond tem até 8 treinos por mês. TotalPass TP6 tem até 10. O Coach CT Pro entrega 12 — com créditos suficientes para você não falhar nenhuma semana do semestre. Frequência é o único ingrediente que não tem substituto.',
             },
             {
               num: '04',
@@ -164,7 +157,7 @@ export default function CoachCtProPage() {
             ENTENDA A DIFERENÇA
           </div>
           <div style={{ fontSize: 16, color: '#555', marginBottom: '4rem', lineHeight: 1.6 }}>
-           Não é sobre o que os outros entregam. É sobre o que você passa a ter.
+            Não é sobre o que os outros entregam. É sobre o que você passa a ter.
           </div>
 
           <div className="comparativo-grid-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}>
@@ -173,24 +166,26 @@ export default function CoachCtProPage() {
                 label: 'Wellhub Diamond',
                 cor: '#9b59b6',
                 icon: '💜',
+                destaque: false,
                 items: [
-                  { label: 'Sessões/semana', val: '2×', destaque: false },
-                  { label: 'Janela de agendamento', val: '7 dias', destaque: false },
+                  { label: 'Treinos por mês', val: '8×' },
+                  { label: 'Janela de agendamento', val: '7 dias' },
                   { label: 'Escolha do coach', val: '✗', negativo: true },
                   { label: 'Créditos cumulativos', val: '✗', negativo: true },
-                  { label: 'Open Gym', val: '✓', destaque: false },
+                  { label: 'Open Gym', val: '✓' },
                 ],
               },
               {
                 label: 'TotalPass TP6',
                 cor: '#2980b9',
                 icon: '🔵',
+                destaque: false,
                 items: [
-                  { label: 'Sessões/semana', val: '2,5×', destaque: false },
-                  { label: 'Janela de agendamento', val: '7 dias', destaque: false },
+                  { label: 'Treinos por mês', val: '10×' },
+                  { label: 'Janela de agendamento', val: '7 dias' },
                   { label: 'Escolha do coach', val: '✗', negativo: true },
                   { label: 'Créditos cumulativos', val: '✗', negativo: true },
-                  { label: 'Open Gym', val: '✓', destaque: false },
+                  { label: 'Open Gym', val: '✓' },
                 ],
               },
               {
@@ -199,7 +194,7 @@ export default function CoachCtProPage() {
                 icon: '🏆',
                 destaque: true,
                 items: [
-                  { label: 'Sessões/semana', val: '3×', destaque: true },
+                  { label: 'Treinos por mês', val: '12×', destaque: true },
                   { label: 'Janela de agendamento', val: '14 dias', destaque: true },
                   { label: 'Escolha do coach', val: '✓', destaque: true },
                   { label: 'Créditos cumulativos', val: '✓', destaque: true },
@@ -226,7 +221,7 @@ export default function CoachCtProPage() {
                   {col.items.map((item, j) => (
                     <div key={j} style={{ borderBottom: '1px solid #1a1a1a', paddingBottom: '1rem' }}>
                       <div style={{ fontSize: 11, color: '#444', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{item.label}</div>
-                      <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: item.negativo ? '#333' : item.destaque ? ACCENT : '#fff', letterSpacing: 1 }}>{item.val}</div>
+                      <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: (item as any).negativo ? '#333' : (item as any).destaque ? ACCENT : '#fff', letterSpacing: 1 }}>{item.val}</div>
                     </div>
                   ))}
                 </div>
