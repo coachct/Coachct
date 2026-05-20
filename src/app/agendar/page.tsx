@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
 import { createClient } from '@/lib/supabase'
 import { dashboardDoRole } from '@/lib/auth-redirect'
+import SiteHeader from '@/components/SiteHeader'
 
 const ACCENT = '#ff2d9b'
 const CYAN = '#00e5ff'
@@ -82,7 +83,6 @@ function parsePlanoKey(key: string): { label: string; icon: string } {
     just_club_pinheiros: 'Pinheiros',
   }
   const unidadeLabel = nomeUnidade[slugUnidade] || slugUnidade.replace(/_/g, ' ')
-
   return { label: `${tipo} — ${unidadeLabel}`, icon }
 }
 
@@ -211,19 +211,13 @@ export default function AgendarPage() {
     const anoProximo = mesAtual === 12 ? anoAtual + 1 : anoAtual
 
     const { data: atual } = await supabase.rpc('saldo_creditos_cliente', {
-      p_cliente_id: clienteId,
-      p_mes: mesAtual,
-      p_ano: anoAtual,
-      p_unidade_id: unidadeId,
+      p_cliente_id: clienteId, p_mes: mesAtual, p_ano: anoAtual, p_unidade_id: unidadeId,
     })
     setSaldoMesAtual(atual || {})
 
     if (janelaProximoMesAberta) {
       const { data: proximo } = await supabase.rpc('saldo_creditos_cliente', {
-        p_cliente_id: clienteId,
-        p_mes: mesProximo,
-        p_ano: anoProximo,
-        p_unidade_id: unidadeId,
+        p_cliente_id: clienteId, p_mes: mesProximo, p_ano: anoProximo, p_unidade_id: unidadeId,
       })
       setSaldoMesProximo(proximo || {})
     } else {
@@ -234,7 +228,6 @@ export default function AgendarPage() {
   async function loadHorarios() {
     if (!unidadeAtiva) return
     setLoadingHorarios(true)
-
     try {
       const dataSel = diasSemana[diaSel]
       if (!dataSel) { setHorarios([]); setLoadingHorarios(false); return }
@@ -246,9 +239,7 @@ export default function AgendarPage() {
       const horaAtual = `${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}`
       const isDiaDe = dataStr === hoje
 
-      const { data: feriadoData } = await supabase
-        .from('feriados').select('*').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr).eq('ativo', true).maybeSingle()
-
+      const { data: feriadoData } = await supabase.from('feriados').select('*').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr).eq('ativo', true).maybeSingle()
       const ehFeriado = !!feriadoData
       const ehFds = diaSem === 0 || diaSem === 6
       const usaEscalaFds = ehFeriado || ehFds
@@ -281,12 +272,8 @@ export default function AgendarPage() {
         supabase.from('agendamentos').select('horario, status').eq('data', dataStr).eq('unidade_id', unidadeAtiva.id).neq('status', 'cancelado'),
         supabase.from('fila_espera').select('horario').eq('data', dataStr).eq('status', 'aguardando').eq('unidade_id', unidadeAtiva.id),
         supabase.from('vagas_bloqueadas').select('horario, quantidade').eq('data', dataStr).eq('ativo', true).eq('unidade_id', unidadeAtiva.id),
-        cliente
-          ? supabase.from('agendamentos').select('horario, tipo_credito, status').eq('data', dataStr).eq('cliente_id', cliente.id).eq('unidade_id', unidadeAtiva.id)
-          : Promise.resolve({ data: [] as any[] }),
-        cliente
-          ? supabase.from('fila_espera').select('horario').eq('data', dataStr).eq('cliente_id', cliente.id).eq('unidade_id', unidadeAtiva.id)
-          : Promise.resolve({ data: [] as any[] }),
+        cliente ? supabase.from('agendamentos').select('horario, tipo_credito, status').eq('data', dataStr).eq('cliente_id', cliente.id).eq('unidade_id', unidadeAtiva.id) : Promise.resolve({ data: [] as any[] }),
+        cliente ? supabase.from('fila_espera').select('horario').eq('data', dataStr).eq('cliente_id', cliente.id).eq('unidade_id', unidadeAtiva.id) : Promise.resolve({ data: [] as any[] }),
       ])
 
       const ags = agsRes.status === 'fulfilled' ? (agsRes.value as any).data : []
@@ -296,16 +283,10 @@ export default function AgendarPage() {
       const filas = filasRes.status === 'fulfilled' ? (filasRes.value as any).data : []
 
       const ocupados: Record<string, number> = {}
-      for (const a of (ags || [])) {
-        const hora = (a.horario || '').slice(0, 5)
-        ocupados[hora] = (ocupados[hora] || 0) + 1
-      }
+      for (const a of (ags || [])) { const hora = (a.horario || '').slice(0, 5); ocupados[hora] = (ocupados[hora] || 0) + 1 }
 
       const bloqueadasMap: Record<string, number> = {}
-      for (const b of (bloqueadas || [])) {
-        const hora = (b.horario || '').slice(0, 5)
-        bloqueadasMap[hora] = (bloqueadasMap[hora] || 0) + (b.quantidade || 1)
-      }
+      for (const b of (bloqueadas || [])) { const hora = (b.horario || '').slice(0, 5); bloqueadasMap[hora] = (bloqueadasMap[hora] || 0) + (b.quantidade || 1) }
 
       const resultado = Object.entries(porHora).map(([hora, total]) => {
         const bloq = bloqueadasMap[hora] || 0
@@ -330,9 +311,7 @@ export default function AgendarPage() {
     const dataObj = new Date(dataStr + 'T12:00:00')
     const diaSem = dataObj.getDay()
     const ehFds = diaSem === 0 || diaSem === 6
-
-    const { data: feriadoData } = await supabase
-      .from('feriados').select('*').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr).eq('ativo', true).maybeSingle()
+    const { data: feriadoData } = await supabase.from('feriados').select('*').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr).eq('ativo', true).maybeSingle()
     const ehFeriado = !!feriadoData
     const usaEscalaFds = ehFeriado || ehFds
 
@@ -341,25 +320,18 @@ export default function AgendarPage() {
       const { data: escala } = await supabase.from('escala_fds').select('coach_id').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr)
       coachIds = (escala || []).map((e: any) => e.coach_id).filter(Boolean)
     } else {
-      const { data: hors } = await supabase.from('coach_horarios')
-        .select('coach_id').eq('dia_semana', diaSem).eq('hora', horaStr).eq('ativo', true).eq('unidade_id', unidadeAtiva.id)
+      const { data: hors } = await supabase.from('coach_horarios').select('coach_id').eq('dia_semana', diaSem).eq('hora', horaStr).eq('ativo', true).eq('unidade_id', unidadeAtiva.id)
       coachIds = (hors || []).map((h: any) => h.coach_id).filter(Boolean)
     }
 
     if (coachIds.length === 0) { setCoachesDisponiveis([]); return }
 
-    const { data: ocupados } = await supabase.from('agendamentos')
-      .select('coach_id').eq('data', dataStr).eq('horario', horaStr + ':00')
-      .eq('unidade_id', unidadeAtiva.id).neq('status', 'cancelado').not('coach_id', 'is', null)
-
+    const { data: ocupados } = await supabase.from('agendamentos').select('coach_id').eq('data', dataStr).eq('horario', horaStr + ':00').eq('unidade_id', unidadeAtiva.id).neq('status', 'cancelado').not('coach_id', 'is', null)
     const idsOcupados = new Set((ocupados || []).map((a: any) => a.coach_id))
     const idsDisponiveis = coachIds.filter(id => !idsOcupados.has(id))
-
     if (idsDisponiveis.length === 0) { setCoachesDisponiveis([]); return }
 
-    const { data: coachesData } = await supabase.from('coaches')
-      .select('id, nome').in('id', idsDisponiveis).eq('ativo', true).order('nome')
-
+    const { data: coachesData } = await supabase.from('coaches').select('id, nome').in('id', idsDisponiveis).eq('ativo', true).order('nome')
     setCoachesDisponiveis(coachesData || [])
   }
 
@@ -379,38 +351,21 @@ export default function AgendarPage() {
 
   const dataSelecionada = diasSemana[diaSel]
   const dataSelAposLimite = dataSelecionada > dataMaxima
-
   const diasDesdHoje = Math.floor((dataSelecionada.getTime() - hojeRef.getTime()) / (1000 * 60 * 60 * 24))
   const isDiaExclusivoCoachPro = tipoVisualizacao === 'visitante' && diasDesdHoje >= 7
 
-  function jaAgendouNoDia(plano: string) {
-    return agendamentosNoDia.some(a => a.tipo_credito === plano && ['agendado', 'confirmado', 'realizado'].includes(a.status))
-  }
+  function jaAgendouNoDia(plano: string) { return agendamentosNoDia.some(a => a.tipo_credito === plano && ['agendado', 'confirmado', 'realizado'].includes(a.status)) }
+  function naFila(hora: string) { return filasDoCliente.some(f => (f.horario || '').slice(0, 5) === hora) }
+  function temFilaNoHorario(hora: string) { return filaGeral.some(f => (f.horario || '').slice(0, 5) === hora) }
 
-  function naFila(hora: string) {
-    return filasDoCliente.some(f => (f.horario || '').slice(0, 5) === hora)
-  }
-
-  function temFilaNoHorario(hora: string) {
-    return filaGeral.some(f => (f.horario || '').slice(0, 5) === hora)
-  }
-
-  // ─── Saldo para a data selecionada ───
-  // Coach CT Pro não depende de mês — usa sempre saldoMesAtual
-  // Planos mensais (Wellhub/TotalPass) usam o mês correto
   function saldoParaData(): Record<string, any> {
     const dataSel = diasSemana[diaSel]
     const agora = new Date()
     const mesmoMes = dataSel.getMonth() === agora.getMonth() && dataSel.getFullYear() === agora.getFullYear()
-
     if (mesmoMes) return saldoMesAtual
-
-    // Data de outro mês: planos mensais usam saldoMesProximo, Coach CT Pro usa saldoMesAtual
     const saldoMisto: Record<string, any> = { ...saldoMesProximo }
     for (const [chave, info] of Object.entries(saldoMesAtual)) {
-      if (chave.startsWith('coach_ct_pro_')) {
-        saldoMisto[chave] = info
-      }
+      if (chave.startsWith('coach_ct_pro_')) saldoMisto[chave] = info
     }
     return saldoMisto
   }
@@ -470,11 +425,7 @@ export default function AgendarPage() {
   }
 
   useEffect(() => {
-    if (!modalSlot || !tipoCredito) {
-      setCoachesDisponiveis([])
-      setCoachEscolhido('')
-      return
-    }
+    if (!modalSlot || !tipoCredito) { setCoachesDisponiveis([]); setCoachEscolhido(''); return }
     if (tipoCredito.startsWith('coach_ct_pro_')) {
       carregarCoachesDisponiveis(modalSlot.data, modalSlot.hora)
     } else {
@@ -499,10 +450,7 @@ export default function AgendarPage() {
     const anoRef = mesmoMes ? agora.getFullYear() : (agora.getMonth() === 11 ? agora.getFullYear() + 1 : agora.getFullYear())
 
     const { data: saldoAtualizado } = await supabase.rpc('saldo_creditos_cliente', {
-      p_cliente_id: cliente.id,
-      p_mes: mesRef,
-      p_ano: anoRef,
-      p_unidade_id: unidadeAtiva.id,
+      p_cliente_id: cliente.id, p_mes: mesRef, p_ano: anoRef, p_unidade_id: unidadeAtiva.id,
     })
 
     if (!saldoAtualizado || !saldoAtualizado[tipoCredito] || saldoAtualizado[tipoCredito].disponivel <= 0) {
@@ -516,12 +464,8 @@ export default function AgendarPage() {
 
     const ehCoachPro = tipoCredito.startsWith('coach_ct_pro_')
     const payload: any = {
-      cliente_id: cliente.id,
-      data: modalSlot.data,
-      horario: modalSlot.hora + ':00',
-      status: 'agendado',
-      tipo_credito: tipoCredito,
-      unidade_id: unidadeAtiva.id,
+      cliente_id: cliente.id, data: modalSlot.data, horario: modalSlot.hora + ':00',
+      status: 'agendado', tipo_credito: tipoCredito, unidade_id: unidadeAtiva.id,
     }
 
     if (ehCoachPro && coachEscolhido) {
@@ -531,14 +475,9 @@ export default function AgendarPage() {
     }
 
     const { error } = await supabase.from('agendamentos').insert(payload)
-
     if (error) { setErroModal('Erro ao agendar. Tente novamente.'); setConfirmando(false); return }
 
-    await Promise.all([
-      carregarSaldos(cliente.id, unidadeAtiva.id),
-      loadHorarios(),
-    ])
-
+    await Promise.all([carregarSaldos(cliente.id, unidadeAtiva.id), loadHorarios()])
     setContratoAssinado(true)
     setModalSlot(null)
     setConfirmando(false)
@@ -559,30 +498,17 @@ export default function AgendarPage() {
     }
 
     const { error } = await supabase.from('fila_espera').insert({
-      cliente_id: cliente.id,
-      data: modalFila.data,
-      horario: modalFila.hora + ':00',
-      tipo_credito: tipoFilaCredito,
-      status: 'aguardando',
-      unidade_id: unidadeAtiva.id,
+      cliente_id: cliente.id, data: modalFila.data, horario: modalFila.hora + ':00',
+      tipo_credito: tipoFilaCredito, status: 'aguardando', unidade_id: unidadeAtiva.id,
     })
 
     if (error) { setErroFila('Erro ao entrar na fila. Tente novamente.'); setEntrandoFila(false); return }
 
-    await Promise.all([
-      carregarSaldos(cliente.id, unidadeAtiva.id),
-      loadHorarios(),
-    ])
-
+    await Promise.all([carregarSaldos(cliente.id, unidadeAtiva.id), loadHorarios()])
     setContratoAssinado(true)
     setModalFila(null)
     setEntrandoFila(false)
     router.push('/minha-conta')
-  }
-
-  async function sair() {
-    await supabase.auth.signOut()
-    window.location.href = '/'
   }
 
   const dataFormatada = (dataStr: string) => {
@@ -616,33 +542,11 @@ export default function AgendarPage() {
         .slot-row-pro:hover { border-color: ${DOURADO} !important; background: #ffaa0008 !important; cursor: pointer; }
         .nav-semana-btn:hover:not(:disabled) { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
         .unidade-tab:hover { border-color: ${ACCENT} !important; color: #fff !important; }
-        .nav-link-cliente:hover { color: ${ACCENT} !important; }
-        @media (max-width: 640px) {
-          .header-nav-r { gap: 0.5rem !important; }
-          .header-nav-r .link-init { display: none !important; }
-        }
       `}</style>
 
-      <div style={{ background: '#08080895', backdropFilter: 'blur(16px)', borderBottom: '1px solid #1a1a1a', padding: '0 1.5rem', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
-        <div onClick={() => router.push('/')} style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', letterSpacing: 2, cursor: 'pointer' }}>
-          JUST<span style={{ color: ACCENT }}>CT</span>
-        </div>
-        <div className="header-nav-r" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-          <span onClick={() => router.push('/')} className="nav-link-cliente link-init" style={{ fontSize: 13, color: '#888', cursor: 'pointer', transition: 'color .2s' }}>Início</span>
-          {user && (
-            <>
-              <span onClick={() => router.push('/minha-conta')} className="nav-link-cliente" style={{ fontSize: 13, color: '#888', cursor: 'pointer', transition: 'color .2s' }}>Minha conta</span>
-              <span onClick={() => router.push('/meus-planos')} className="nav-link-cliente" style={{ fontSize: 13, color: '#888', cursor: 'pointer', transition: 'color .2s' }}>Meus planos</span>
-              <button onClick={sair} style={{ background: 'transparent', border: '1px solid #444', borderRadius: 8, padding: '0.4rem 1rem', color: '#bbb', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Sair</button>
-            </>
-          )}
-          {!user && (
-            <button onClick={() => router.push('/login')} style={{ background: 'transparent', border: '1px solid #444', borderRadius: 8, padding: '0.4rem 1rem', color: '#bbb', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Login</button>
-          )}
-        </div>
-      </div>
+      <SiteHeader />
 
-      <div style={{ maxWidth: 700, margin: '0 auto', padding: '2rem 1.5rem' }}>
+      <div style={{ maxWidth: 700, margin: '0 auto', padding: '6rem 1.5rem 2rem' }}>
         <div style={{ marginBottom: '1.5rem' }}>
           <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: '#fff' }}>AGENDAR TREINO</div>
           <div style={{ fontSize: 14, color: '#555', marginTop: 4 }}>Cada halter = uma vaga disponível</div>
@@ -731,12 +635,8 @@ export default function AgendarPage() {
 
         {tipoVisualizacao === 'visitante' && semanaOffset === 1 && (
           <div style={{ background: `linear-gradient(90deg, ${ACCENT}22 0%, #08080800 100%)`, border: `1px solid ${ACCENT}55`, borderRadius: 10, padding: '0.75rem 1rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <div style={{ fontSize: 12, color: ACCENT, fontWeight: 700, fontFamily: "'DM Mono', monospace", letterSpacing: 0.5 }}>
-              🏆 AGENDAMENTOS EXCLUSIVOS COACH CT PRO
-            </div>
-            <button onClick={() => router.push('/comprar')} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 8, padding: '0.4rem 0.85rem', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", letterSpacing: 0.5 }}>
-              CONHECER PLANO →
-            </button>
+            <div style={{ fontSize: 12, color: ACCENT, fontWeight: 700, fontFamily: "'DM Mono', monospace", letterSpacing: 0.5 }}>🏆 AGENDAMENTOS EXCLUSIVOS COACH CT PRO</div>
+            <button onClick={() => router.push('/comprar')} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 8, padding: '0.4rem 0.85rem', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", letterSpacing: 0.5 }}>CONHECER PLANO →</button>
           </div>
         )}
 
@@ -785,8 +685,7 @@ export default function AgendarPage() {
               <div style={{ fontSize: 13, color: '#888', lineHeight: 1.8, marginBottom: '1.5rem' }}>
                 Agendamentos com mais de 7 dias de antecedência são exclusivos para clientes do plano <strong style={{ color: '#fff' }}>Coach CT Pro</strong>.
               </div>
-              <button onClick={() => router.push('/comprar')}
-                style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.75rem 1.75rem', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+              <button onClick={() => router.push('/comprar')} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.75rem 1.75rem', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
                 Conhecer Coach CT Pro →
               </button>
             </div>
@@ -811,21 +710,15 @@ export default function AgendarPage() {
             {horariosFiltrados.map((h, i) => {
               if (isDiaExclusivoCoachPro) {
                 return (
-                  <div key={i} className="slot-row-pro"
-                    onClick={tentarSlotPro}
+                  <div key={i} className="slot-row-pro" onClick={tentarSlotPro}
                     style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', padding: '1rem 1.25rem', borderRadius: 12, border: `1px solid ${DOURADO}33`, background: '#110900', cursor: 'pointer' }}>
                     <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, fontWeight: 500, color: DOURADO, width: 58, flexShrink: 0, opacity: 0.7 }}>{h.hora}</div>
                     <div style={{ display: 'flex', gap: 6, flex: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-                      {Array.from({ length: h.total }).map((_, vi) => (
-                        <HalterSVG key={vi} estado="pro" />
-                      ))}
+                      {Array.from({ length: h.total }).map((_, vi) => <HalterSVG key={vi} estado="pro" />)}
                     </div>
                     <div style={{ flexShrink: 0, minWidth: 90, textAlign: 'right' }}>
                       <div style={{ fontSize: 11, color: DOURADO, fontWeight: 700, marginBottom: 6, fontFamily: "'DM Mono', monospace", letterSpacing: 0.5 }}>🏆 Só Pro</div>
-                      <button onClick={e => { e.stopPropagation(); tentarSlotPro() }}
-                        style={{ background: 'transparent', color: DOURADO, border: `1px solid ${DOURADO}88`, borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                        Entrar →
-                      </button>
+                      <button onClick={e => { e.stopPropagation(); tentarSlotPro() }} style={{ background: 'transparent', color: DOURADO, border: `1px solid ${DOURADO}88`, borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Entrar →</button>
                     </div>
                   </div>
                 )
@@ -944,13 +837,9 @@ export default function AgendarPage() {
                 <select value={coachEscolhido} onChange={e => setCoachEscolhido(e.target.value)}
                   style={{ width: '100%', background: '#0a0a0a', border: `1.5px solid ${coachEscolhido ? ACCENT : '#333'}`, borderRadius: 10, padding: '0.75rem 1rem', color: '#fff', fontSize: 14, fontFamily: "'DM Sans', sans-serif", cursor: 'pointer' }}>
                   <option value="">Qualquer coach disponível</option>
-                  {coachesDisponiveis.map(c => (
-                    <option key={c.id} value={c.id}>{c.nome}</option>
-                  ))}
+                  {coachesDisponiveis.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                 </select>
-                {coachesDisponiveis.length === 0 && (
-                  <div style={{ fontSize: 11, color: '#666', marginTop: 6, lineHeight: 1.5 }}>Sem coaches disponíveis pra escolha neste horário. Vamos alocar um quando você chegar.</div>
-                )}
+                {coachesDisponiveis.length === 0 && <div style={{ fontSize: 11, color: '#666', marginTop: 6, lineHeight: 1.5 }}>Sem coaches disponíveis pra escolha neste horário. Vamos alocar um quando você chegar.</div>}
               </div>
             )}
 
