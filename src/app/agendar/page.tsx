@@ -342,7 +342,7 @@ export default function AgendarPage() {
       coachIds = (escala || []).map((e: any) => e.coach_id).filter(Boolean)
     } else {
       const { data: hors } = await supabase.from('coach_horarios')
-        .select('coach_id').eq('dia_semana', diaSem).eq('hora', horaStr + ':00').eq('ativo', true).eq('unidade_id', unidadeAtiva.id)
+        .select('coach_id').eq('dia_semana', diaSem).eq('hora', horaStr).eq('ativo', true).eq('unidade_id', unidadeAtiva.id)
       coachIds = (hors || []).map((h: any) => h.coach_id).filter(Boolean)
     }
 
@@ -765,7 +765,6 @@ export default function AgendarPage() {
         </div>
 
         {dataSelAposLimite ? (
-          // ─── Bloqueio por janela — diferencia visitante/padrao/pro ───
           tipoVisualizacao === 'padrao' ? (
             <div style={{ background: '#0d0010', border: `1.5px solid ${ACCENT}44`, borderRadius: 16, padding: '2.5rem 2rem', textAlign: 'center' }}>
               <div style={{ fontSize: 32, marginBottom: '1rem' }}>🏆</div>
@@ -783,9 +782,7 @@ export default function AgendarPage() {
           ) : (
             <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#666' }}>
               <div style={{ fontSize: 14, marginBottom: 8 }}>📅 Data ainda não liberada</div>
-              <div style={{ fontSize: 12, color: '#555', lineHeight: 1.6 }}>
-                Agendamentos liberados em janela de 14 dias.
-              </div>
+              <div style={{ fontSize: 12, color: '#555', lineHeight: 1.6 }}>Agendamentos liberados em janela de 14 dias.</div>
             </div>
           )
         ) : !unidadeAtiva ? (
@@ -801,8 +798,6 @@ export default function AgendarPage() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {horariosFiltrados.map((h, i) => {
-
-              // ─── SLOT EXCLUSIVO COACH CT PRO (visitante na semana 2) ───
               if (isDiaExclusivoCoachPro) {
                 return (
                   <div key={i} className="slot-row-pro"
@@ -825,7 +820,6 @@ export default function AgendarPage() {
                 )
               }
 
-              // ─── SLOT NORMAL ───
               const lotado = h.livres <= 0
               const clienteNaFila = naFila(h.hora)
               const jaAgendado = agendamentosNoDia.some(a => (a.horario || '').slice(0, 5) === h.hora && ['agendado', 'confirmado'].includes(a.status))
