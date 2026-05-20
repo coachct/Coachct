@@ -385,6 +385,7 @@ export default function AgendarPage() {
   const todosSemSaldo = cliente && Object.keys(saldoExibir).length > 0 && planosDisp.length === 0
   const temFila = modalSlot ? temFilaNoHorario(modalSlot.hora) : false
   const dataSelEhProximoMes = diasSemana[diaSel].getMonth() !== new Date().getMonth() || diasSemana[diaSel].getFullYear() !== new Date().getFullYear()
+  const isCredPro = tipoCredito.startsWith('coach_ct_pro_')
 
   return (
     <div style={{ minHeight: '100vh', background: '#080808', fontFamily: "'DM Sans', sans-serif", color: '#f0f0f0' }}>
@@ -663,7 +664,7 @@ export default function AgendarPage() {
                 )
               })}
             </div>
-            {tipoCredito.startsWith('coach_ct_pro_') && (
+            {isCredPro && (
               <div style={{ marginBottom: '1.5rem' }}>
                 <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Deseja escolher seu coach?</div>
                 <select value={coachEscolhido} onChange={e => setCoachEscolhido(e.target.value)}
@@ -677,7 +678,8 @@ export default function AgendarPage() {
             <div style={{ background: temFila ? '#1a1000' : '#0a0a0a', border: `1px solid ${temFila ? AMARELO + '44' : '#1a1a1a'}`, borderRadius: 10, padding: '0.75rem 1rem', marginBottom: '1.5rem', fontSize: 12, lineHeight: 1.7 }}>
               {temFila
                 ? <><div style={{ color: AMARELO, fontWeight: 600, marginBottom: 4 }}>⏳ Há fila de espera para este horário</div><div style={{ color: '#888' }}>Cancelamento gratuito <strong style={{ color: '#fff' }}>até 3h antes</strong>. Abaixo de 3h: <strong style={{ color: '#ff4444' }}>bloqueado</strong>.</div></>
-                : <div style={{ color: '#555' }}>⚠️ Cancelamento gratuito <strong style={{ color: '#888' }}>até 12h antes</strong>. Falta sem aviso gera bloqueio.</div>}
+                : <div style={{ color: '#555' }}>⚠️ Cancelamento gratuito <strong style={{ color: '#888' }}>{isCredPro ? 'até 3h antes' : 'até 12h antes'}</strong>. Falta sem aviso gera bloqueio.</div>
+              }
             </div>
             {erroModal && <div style={{ background: '#ff2d9b15', border: '1px solid #ff2d9b44', borderRadius: 8, padding: '0.6rem 1rem', fontSize: 13, color: ACCENT, marginBottom: '1rem' }}>{erroModal}</div>}
             <div style={{ display: 'flex', gap: 8 }}>
