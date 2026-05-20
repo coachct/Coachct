@@ -395,11 +395,24 @@ export default function AgendarPage() {
     return filaGeral.some(f => (f.horario || '').slice(0, 5) === hora)
   }
 
+  // ─── Saldo para a data selecionada ───
+  // Coach CT Pro não depende de mês — usa sempre saldoMesAtual
+  // Planos mensais (Wellhub/TotalPass) usam o mês correto
   function saldoParaData(): Record<string, any> {
     const dataSel = diasSemana[diaSel]
     const agora = new Date()
     const mesmoMes = dataSel.getMonth() === agora.getMonth() && dataSel.getFullYear() === agora.getFullYear()
-    return mesmoMes ? saldoMesAtual : saldoMesProximo
+
+    if (mesmoMes) return saldoMesAtual
+
+    // Data de outro mês: planos mensais usam saldoMesProximo, Coach CT Pro usa saldoMesAtual
+    const saldoMisto: Record<string, any> = { ...saldoMesProximo }
+    for (const [chave, info] of Object.entries(saldoMesAtual)) {
+      if (chave.startsWith('coach_ct_pro_')) {
+        saldoMisto[chave] = info
+      }
+    }
+    return saldoMisto
   }
 
   function planosDisponiveisParaDia() {
@@ -768,9 +781,7 @@ export default function AgendarPage() {
           tipoVisualizacao === 'padrao' ? (
             <div style={{ background: '#0d0010', border: `1.5px solid ${ACCENT}44`, borderRadius: 16, padding: '2.5rem 2rem', textAlign: 'center' }}>
               <div style={{ fontSize: 32, marginBottom: '1rem' }}>🏆</div>
-              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', letterSpacing: 1, marginBottom: '0.75rem' }}>
-                AGENDAMENTO EXCLUSIVO
-              </div>
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', letterSpacing: 1, marginBottom: '0.75rem' }}>AGENDAMENTO EXCLUSIVO</div>
               <div style={{ fontSize: 13, color: '#888', lineHeight: 1.8, marginBottom: '1.5rem' }}>
                 Agendamentos com mais de 7 dias de antecedência são exclusivos para clientes do plano <strong style={{ color: '#fff' }}>Coach CT Pro</strong>.
               </div>
@@ -919,7 +930,7 @@ export default function AgendarPage() {
                     <span style={{ fontSize: 18 }}>{icon}</span>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 14, fontWeight: 600, color: tipoCredito === p ? '#fff' : '#888' }}>{label}</div>
-                      {saldoExibir[p] && <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>{saldoExibir[p].disponivel} sessões restantes {p.startsWith('coach_ct_pro_') ? '' : dataSelEhProximoMes ? 'no próximo mês' : 'este mês'}</div>}
+                      {saldoExibir[p] && <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>{saldoExibir[p].disponivel} sessões restantes {p.startsWith('coach_ct_pro_') ? 'no plano' : dataSelEhProximoMes ? 'no próximo mês' : 'este mês'}</div>}
                     </div>
                     <div style={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${tipoCredito === p ? ACCENT : '#444'}`, background: tipoCredito === p ? ACCENT : 'transparent', flexShrink: 0 }} />
                   </div>
