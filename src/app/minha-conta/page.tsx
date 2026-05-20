@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
 import { dashboardDoRole } from '@/lib/auth-redirect'
+import SiteHeader from '@/components/SiteHeader'
 
 const ACCENT = '#ff2d9b'
 const CYAN = '#00e5ff'
@@ -88,11 +89,7 @@ export default function MinhaContaPage() {
   }, [perfil])
 
   async function loadDados() {
-    const { data: cli } = await supabase
-      .from('clientes')
-      .select('*')
-      .eq('user_id', perfil!.id)
-      .maybeSingle()
+    const { data: cli } = await supabase.from('clientes').select('*').eq('user_id', perfil!.id).maybeSingle()
     setCliente(cli)
 
     if (cli) {
@@ -100,40 +97,12 @@ export default function MinhaContaPage() {
       const inicioProximoMes = `${anoProximo}-${String(mesProximo).padStart(2, '0')}-01`
       const fimProximoMes = `${anoProximo}-${String(mesProximo).padStart(2, '0')}-31`
 
-      const [
-        { data: ags },
-        { data: filasData },
-        { data: agsProx },
-        { data: cliPlanos },
-        { data: vendasData },
-      ] = await Promise.all([
-        supabase.from('agendamentos')
-          .select('*, unidades(nome)')
-          .eq('cliente_id', cli.id)
-          .gte('data', hoje)
-          .order('data').order('horario')
-          .limit(20),
-        supabase.from('fila_espera')
-          .select('*, unidades(nome)')
-          .eq('cliente_id', cli.id)
-          .eq('status', 'aguardando')
-          .gte('data', hoje)
-          .order('data').order('horario'),
-        supabase.from('agendamentos')
-          .select('id', { count: 'exact', head: false })
-          .eq('cliente_id', cli.id)
-          .gte('data', inicioProximoMes)
-          .lte('data', fimProximoMes)
-          .in('status', ['agendado', 'confirmado']),
-        supabase.from('cliente_planos')
-          .select('*, planos_disponiveis(id, nome, tipo, unidade_id)')
-          .eq('cliente_id', cli.id)
-          .eq('ativo', true),
-        supabase.from('vendas')
-          .select('*, produtos(nome, subtipo, dias_validade)')
-          .eq('cliente_id', cli.id)
-          .order('vendido_em', { ascending: false })
-          .limit(10),
+      const [{ data: ags }, { data: filasData }, { data: agsProx }, { data: cliPlanos }, { data: vendasData }] = await Promise.all([
+        supabase.from('agendamentos').select('*, unidades(nome)').eq('cliente_id', cli.id).gte('data', hoje).order('data').order('horario').limit(20),
+        supabase.from('fila_espera').select('*, unidades(nome)').eq('cliente_id', cli.id).eq('status', 'aguardando').gte('data', hoje).order('data').order('horario'),
+        supabase.from('agendamentos').select('id', { count: 'exact', head: false }).eq('cliente_id', cli.id).gte('data', inicioProximoMes).lte('data', fimProximoMes).in('status', ['agendado', 'confirmado']),
+        supabase.from('cliente_planos').select('*, planos_disponiveis(id, nome, tipo, unidade_id)').eq('cliente_id', cli.id).eq('ativo', true),
+        supabase.from('vendas').select('*, produtos(nome, subtipo, dias_validade)').eq('cliente_id', cli.id).order('vendido_em', { ascending: false }).limit(10),
       ])
 
       setAgendamentos(ags || [])
@@ -148,33 +117,13 @@ export default function MinhaContaPage() {
   }
 
   async function carregarTodosSaldos(clienteId: string, cliPlanos: any[]) {
-    const unidadeIds = [...new Set(
-      cliPlanos.map((cp: any) => cp.planos_disponiveis?.unidade_id).filter(Boolean)
-    )] as string[]
+    const unidadeIds = [...new Set(cliPlanos.map((cp: any) => cp.planos_disponiveis?.unidade_id).filter(Boolean))] as string[]
 
-    if (unidadeIds.length === 0) {
-      setSaldoAtual({})
-      setSaldoProximo({})
-      return
-    }
+    if (unidadeIds.length === 0) { setSaldoAtual({}); setSaldoProximo({}); return }
 
     const [saldosAtual, saldosProximo] = await Promise.all([
-      Promise.all(unidadeIds.map(uid =>
-        supabase.rpc('saldo_creditos_cliente', {
-          p_cliente_id: clienteId,
-          p_mes: mesAtual,
-          p_ano: anoAtual,
-          p_unidade_id: uid,
-        })
-      )),
-      Promise.all(unidadeIds.map(uid =>
-        supabase.rpc('saldo_creditos_cliente', {
-          p_cliente_id: clienteId,
-          p_mes: mesProximo,
-          p_ano: anoProximo,
-          p_unidade_id: uid,
-        })
-      )),
+      Promise.all(unidadeIds.map(uid => supabase.rpc('saldo_creditos_cliente', { p_cliente_id: clienteId, p_mes: mesAtual, p_ano: anoAtual, p_unidade_id: uid }))),
+      Promise.all(unidadeIds.map(uid => supabase.rpc('saldo_creditos_cliente', { p_cliente_id: clienteId, p_mes: mesProximo, p_ano: anoProximo, p_unidade_id: uid }))),
     ])
 
     const mergedAtual: Record<string, any> = {}
@@ -190,13 +139,8 @@ export default function MinhaContaPage() {
     const agora = new Date()
     const dataHoraAula = new Date(`${ag.data}T${ag.horario}`)
     const diffHoras = (dataHoraAula.getTime() - agora.getTime()) / (1000 * 60 * 60)
-
-    if (diffHoras <= 3) {
-      return { pode: false, aviso: 'Não é possível cancelar com menos de 3h de antecedência. Faltar gera bloqueio de conta e multa.' }
-    }
-    if (diffHoras <= 12) {
-      return { pode: true, aviso: 'Como há clientes na fila de espera, você pode cancelar normalmente. Seu crédito será devolvido e a vaga repassada.' }
-    }
+    if (diffHoras <= 3) return { pode: false, aviso: 'Não é possível cancelar com menos de 3h de antecedência. Faltar gera bloqueio de conta e multa.' }
+    if (diffHoras <= 12) return { pode: true, aviso: 'Como há clientes na fila de espera, você pode cancelar normalmente. Seu crédito será devolvido e a vaga repassada.' }
     return { pode: true, aviso: 'Você está cancelando com mais de 12h de antecedência. Seu crédito será devolvido integralmente.' }
   }
 
@@ -207,25 +151,13 @@ export default function MinhaContaPage() {
     const diffHoras = (dataHoraAula.getTime() - agora.getTime()) / (1000 * 60 * 60)
 
     if (diffHoras > 3 && diffHoras <= 12) {
-      const { data: fila } = await supabase
-        .from('fila_espera')
-        .select('id')
-        .eq('data', ag.data)
-        .eq('unidade_id', ag.unidade_id)
-        .eq('status', 'aguardando')
-        .limit(1)
-
+      const { data: fila } = await supabase.from('fila_espera').select('id').eq('data', ag.data).eq('unidade_id', ag.unidade_id).eq('status', 'aguardando').limit(1)
       if (!fila || fila.length === 0) {
-        setModalCancelar({
-          ...ag,
-          pode: false,
-          aviso: 'Faltam menos de 12h para o treino e não há ninguém na fila de espera. Cancelamento não permitido. Faltar gera bloqueio e multa.',
-        })
+        setModalCancelar({ ...ag, pode: false, aviso: 'Faltam menos de 12h para o treino e não há ninguém na fila de espera. Cancelamento não permitido. Faltar gera bloqueio e multa.' })
         setErroCancelar('')
         return
       }
     }
-
     setModalCancelar({ ...ag, pode: sit.pode, aviso: sit.aviso })
     setErroCancelar('')
   }
@@ -234,19 +166,8 @@ export default function MinhaContaPage() {
     if (!modalCancelar || !modalCancelar.pode) return
     setCancelando(true)
     setErroCancelar('')
-
-    const { error } = await supabase.from('agendamentos').update({
-      status: 'cancelado',
-      cancelado_em: new Date().toISOString(),
-      motivo_cancelamento: 'Cancelado pelo cliente',
-    }).eq('id', modalCancelar.id)
-
-    if (error) {
-      setErroCancelar('Erro ao cancelar. Tente novamente.')
-      setCancelando(false)
-      return
-    }
-
+    const { error } = await supabase.from('agendamentos').update({ status: 'cancelado', cancelado_em: new Date().toISOString(), motivo_cancelamento: 'Cancelado pelo cliente' }).eq('id', modalCancelar.id)
+    if (error) { setErroCancelar('Erro ao cancelar. Tente novamente.'); setCancelando(false); return }
     setModalCancelar(null)
     setCancelando(false)
     await loadDados()
@@ -256,26 +177,12 @@ export default function MinhaContaPage() {
     if (!modalSairFila) return
     setSaindoFila(true)
     const { error } = await supabase.from('fila_espera').delete().eq('id', modalSairFila.id)
-    if (!error) {
-      setModalSairFila(null)
-      await loadDados()
-    }
+    if (!error) { setModalSairFila(null); await loadDados() }
     setSaindoFila(false)
   }
 
-  async function sair() {
-    await supabase.auth.signOut()
-    window.location.href = '/'
-  }
-
-  function formatarValor(v: number) {
-    return `R$ ${Number(v).toFixed(2).replace('.', ',')}`
-  }
-
-  function formatarData(d: string) {
-    return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-  }
-
+  function formatarValor(v: number) { return `R$ ${Number(v).toFixed(2).replace('.', ',')}` }
+  function formatarData(d: string) { return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) }
   function labelFormaPagamento(f: string) {
     if (f === 'cartao_credito') return '💳 Cartão'
     if (f === 'pix') return '⚡ PIX'
@@ -295,10 +202,7 @@ export default function MinhaContaPage() {
   const temPlanoAtivo = clientePlanos.length > 0
   const todoSaldoMesEsgotado = temPlanoAtivo && Object.keys(saldoAtual).length > 0 && Object.values(saldoAtual).every((s: any) => s.disponivel === 0)
   const temSaldoNoProximoMes = Object.keys(saldoProximo).length > 0 && Object.values(saldoProximo).some((s: any) => s.disponivel > 0)
-  const planosProximoMes = Object.entries(saldoProximo)
-    .filter(([_, s]: [string, any]) => s.disponivel > 0)
-    .map(([plano, s]: [string, any]) => { const { label } = parsePlanoKey(plano); return `${s.disponivel} ${label}` })
-    .join(', ')
+  const planosProximoMes = Object.entries(saldoProximo).filter(([_, s]: [string, any]) => s.disponivel > 0).map(([plano, s]: [string, any]) => { const { label } = parsePlanoKey(plano); return `${s.disponivel} ${label}` }).join(', ')
 
   return (
     <div style={{ minHeight: '100vh', background: '#080808', fontFamily: "'DM Sans', sans-serif", color: '#f0f0f0' }}>
@@ -306,29 +210,11 @@ export default function MinhaContaPage() {
         @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
         .btn-acao:hover { transform: translateY(-1px); }
-        .nav-link-cliente:hover { color: ${ACCENT} !important; }
-        @media (max-width: 640px) {
-          .header-nav-r { gap: 0.5rem !important; }
-          .header-nav-r .link-init { display: none !important; }
-        }
       `}</style>
 
-      <div style={{ background: '#08080895', backdropFilter: 'blur(16px)', borderBottom: '1px solid #1a1a1a', padding: '0 1.5rem', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
-        <div onClick={() => router.push('/')} style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', letterSpacing: 2, cursor: 'pointer' }}>
-          JUST<span style={{ color: ACCENT }}>CT</span>
-        </div>
-        <div className="header-nav-r" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-          <span onClick={() => router.push('/')} className="nav-link-cliente link-init" style={{ fontSize: 13, color: '#888', cursor: 'pointer', transition: 'color .2s' }}>Início</span>
-          <span onClick={() => router.push('/meus-planos')} className="nav-link-cliente" style={{ fontSize: 13, color: '#888', cursor: 'pointer', transition: 'color .2s' }}>Meus planos</span>
-          <span style={{ fontSize: 13, color: '#aaa', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: ACCENT }} />
-            {perfil?.nome?.split(' ')[0]}
-          </span>
-          <button onClick={sair} style={{ background: 'transparent', border: '1px solid #444', borderRadius: 8, padding: '0.4rem 1rem', color: '#bbb', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Sair</button>
-        </div>
-      </div>
+      <SiteHeader />
 
-      <div style={{ maxWidth: 700, margin: '0 auto', padding: '2rem 1.5rem' }}>
+      <div style={{ maxWidth: 700, margin: '0 auto', padding: '6rem 1.5rem 2rem' }}>
         <div style={{ marginBottom: '1.5rem' }}>
           <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: '#fff', letterSpacing: 1 }}>Olá, {perfil?.nome?.split(' ')[0]}! 👋</div>
           <div style={{ fontSize: 14, color: '#aaa', marginTop: 4 }}>Bem-vindo à sua área do aluno</div>
