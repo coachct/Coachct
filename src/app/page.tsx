@@ -1,16 +1,63 @@
 'use client'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import { createClient } from '@/lib/supabase'
 import SiteHeader from '@/components/SiteHeader'
 
 const ACCENT = '#ff2d9b'
+const JUST_CT_ID = 'c28bf4bb-56f8-44ff-818a-c7836e58bcef'
 
 export default function LandingPage() {
   const { perfil, loading } = useAuth()
   const router = useRouter()
+  const supabase = createClient()
 
   const isCliente = perfil?.role === 'cliente'
   const isLogado = !!perfil
+
+  const [produtosPro, setProdutosPro] = useState<any[]>([])
+
+  useEffect(() => {
+    async function carregarPro() {
+      const { data } = await supabase
+        .from('produtos')
+        .select('*')
+        .eq('ativo', true)
+        .eq('subtipo', 'coach_ct_pro')
+        .or(`unidade_id.eq.${JUST_CT_ID},unidade_id.is.null`)
+        .order('valor', { ascending: false })
+      setProdutosPro(data || [])
+    }
+    carregarPro()
+  }, [])
+
+  function isPromo(p: any) { return /promo/i.test(p.nome || '') }
+  function isTrimestral(p: any) { return /trimestral/i.test(p.nome || '') }
+
+  function valorMensalPro(p: any) {
+    const total = Number(p.valor)
+    const parcelas = p.max_parcelas || 1
+    return { mensal: total / parcelas, total, parcelas }
+  }
+
+  function formatarValor(v: number) {
+    const reais = Math.floor(v)
+    const cents = Math.round((v - reais) * 100)
+    return { reais: `R$ ${reais.toLocaleString('pt-BR')}`, cents: cents > 0 ? `,${cents.toString().padStart(2, '0')}` : '' }
+  }
+
+  function beneficiosPro(p: any): string[] {
+    const trim = isTrimestral(p)
+    return [
+      '3 treinos / semana',
+      `${trim ? 36 : 72} sessões em ${trim ? 3 : 6} meses`,
+      'Escolha do coach no agendamento',
+      'Calendário preferencial · 14 dias',
+      'Cancelamento até 3h antes',
+      'Open Gym (acesso ao CT)',
+    ]
+  }
 
   const s: Record<string, any> = {
     page: { background: '#080808', minHeight: '100vh', color: '#f0f0f0', fontFamily: "'DM Sans', sans-serif" },
@@ -49,6 +96,9 @@ export default function LandingPage() {
         .pro-card-h:hover { border-color: ${ACCENT} !important; transform: translateY(-4px); }
         .pro-cta-h:hover { opacity: 0.85; }
         .pro-cta-ghost-h:hover { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
+        .coach-pro-card-home { transition: all .3s; }
+        .coach-pro-card-home:hover { transform: translateY(-6px); box-shadow: 0 12px 32px -8px ${ACCENT}33; }
+        .btn-pro-home-h:hover { opacity: 0.85; }
         @media (max-width: 768px) {
           .nav-links-d { display: none !important; }
           .hero-title-r { font-size: 36px !important; }
@@ -57,6 +107,7 @@ export default function LandingPage() {
           .grid2-r { grid-template-columns: 1fr !important; }
           .pro-grid-r { grid-template-columns: 1fr 1fr !important; }
           .pro-hero-r { grid-template-columns: 1fr !important; }
+          .pro-cards-home-r { grid-template-columns: 1fr !important; }
         }
       `}</style>
 
@@ -131,16 +182,13 @@ export default function LandingPage() {
 
       {/* COACH CT PRO */}
       <div id="coach-ct-pro" style={{ ...s.section, paddingBottom: '4rem' }}>
-
         <div style={s.sTag}>// próximo nível</div>
         <div style={{ fontSize: 'clamp(14px, 1.5vw, 18px)', color: '#666', fontStyle: 'italic', marginBottom: '1rem', maxWidth: 600, lineHeight: 1.6 }}>
           "Existe o padrão. E existe o que poucos acessam."
         </div>
-
         <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(48px, 6vw, 80px)', color: '#fff', lineHeight: 1, marginBottom: '3rem', letterSpacing: 2 }}>
           COACH CT <span style={{ color: ACCENT }}>PRO</span>
         </div>
-
         <div className="pro-hero-r" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3rem', marginBottom: '4rem', alignItems: 'center' }}>
           <div>
             <div style={{ fontSize: 16, color: '#aaa', lineHeight: 1.9, marginBottom: '2rem' }}>
@@ -166,9 +214,7 @@ export default function LandingPage() {
             <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, #080808cc 0%, transparent 50%)' }} />
           </div>
         </div>
-
         <div className="pro-grid-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
-
           <div className="pro-card-h" style={{ background: `linear-gradient(135deg, #1a0010 0%, #0d0008 100%)`, border: `1.5px solid ${ACCENT}44`, borderRadius: 16, padding: '1.5rem', position: 'relative' as const, overflow: 'hidden' }}>
             <div style={{ position: 'absolute', top: 0, right: 0, left: 0, height: 120, overflow: 'hidden' }}>
               <img src="/foto capa CT.jpg" alt="Ju Hitomi" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center top', opacity: 0.4 }} />
@@ -180,25 +226,21 @@ export default function LandingPage() {
               <div style={{ fontSize: 13, color: '#888', lineHeight: 1.6 }}>Todos os treinos do Coach CT Pro são elaborados por ela. Intensidade e método — garantidos.</div>
             </div>
           </div>
-
           <div className="pro-card-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem' }}>
             <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 52, color: ACCENT, lineHeight: 1, marginBottom: 4 }}>14</div>
             <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 18, color: '#fff', letterSpacing: 1, marginBottom: 8 }}>DIAS DE JANELA</div>
             <div style={{ fontSize: 13, color: '#555', lineHeight: 1.6 }}>Agende com até 2 semanas de antecedência. Wellhub e TotalPass ficam com 7. Você escolhe primeiro.</div>
           </div>
-
           <div className="pro-card-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem' }}>
             <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 52, color: ACCENT, lineHeight: 1, marginBottom: 4 }}>1×1</div>
             <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 18, color: '#fff', letterSpacing: 1, marginBottom: 8 }}>ESCOLHA DO COACH</div>
             <div style={{ fontSize: 13, color: '#555', lineHeight: 1.6 }}>Escolha o coach que vai te acompanhar no momento do agendamento. Sem surpresa na chegada.</div>
           </div>
-
           <div className="pro-card-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem' }}>
             <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 52, color: ACCENT, lineHeight: 1, marginBottom: 4 }}>3×</div>
             <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 18, color: '#fff', letterSpacing: 1, marginBottom: 8 }}>POR SEMANA</div>
             <div style={{ fontSize: 13, color: '#555', lineHeight: 1.6 }}>Diamond treina 2x. TP6 treina 2,5x. Pro treina 3x. A frequência que realmente transforma.</div>
           </div>
-
         </div>
       </div>
 
@@ -267,6 +309,68 @@ export default function LandingPage() {
             </div>
           </div>
         </div>
+
+        {/* COACH CT PRO — cards do banco */}
+        {produtosPro.length > 0 && (
+          <>
+            <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: ACCENT, marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>Coach CT Pro</div>
+            <div className="pro-cards-home-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem', marginBottom: '3rem' }}>
+              {produtosPro.map(p => {
+                const promo = isPromo(p)
+                const trim = isTrimestral(p)
+                const { mensal, total, parcelas } = valorMensalPro(p)
+                const mensalFmt = formatarValor(mensal)
+                const totalFmt = formatarValor(total)
+                const bens = beneficiosPro(p)
+                return (
+                  <div key={p.id} className="coach-pro-card-home" style={{
+                    position: 'relative' as const,
+                    background: promo ? `linear-gradient(135deg, #111 0%, #1a0a14 100%)` : '#111',
+                    border: `1.5px solid ${promo ? ACCENT : '#2a2a2a'}`,
+                    borderRadius: 16,
+                    padding: '2rem',
+                    display: 'flex',
+                    flexDirection: 'column' as const,
+                    overflow: 'hidden' as const,
+                  }}>
+                    {promo && (
+                      <div style={{ position: 'absolute' as const, top: 16, right: -38, background: ACCENT, color: '#fff', fontSize: 10, fontWeight: 700, padding: '0.3rem 3rem', transform: 'rotate(38deg)', letterSpacing: 1.5, fontFamily: "'DM Mono', monospace" }}>
+                        OFERTA LANÇAMENTO
+                      </div>
+                    )}
+                    <div style={{ marginBottom: '1.5rem' }}>
+                      <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: ACCENT, marginBottom: '0.5rem', fontFamily: "'DM Mono', monospace" }}>coach ct pro</div>
+                      <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: '#fff', letterSpacing: 1.5, lineHeight: 1.1 }}>{trim ? 'TRIMESTRAL' : 'SEMESTRAL'}</div>
+                      {promo && <div style={{ fontSize: 12, color: '#555', marginTop: 4, fontStyle: 'italic' }}>Fundador</div>}
+                    </div>
+                    <div style={{ marginBottom: '1.5rem' }}>
+                      {promo && <div style={{ fontSize: 14, color: '#555', textDecoration: 'line-through' as const, marginBottom: 4 }}>R$ 1.199 /mês</div>}
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
+                        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 52, color: '#fff', lineHeight: 1 }}>{mensalFmt.reais}<span style={{ fontSize: 26 }}>{mensalFmt.cents}</span></div>
+                        <div style={{ fontSize: 15, color: '#888' }}>/mês</div>
+                      </div>
+                      <div style={{ fontSize: 13, color: '#777', marginTop: 4, fontFamily: "'DM Mono', monospace" }}>{totalFmt.reais}{totalFmt.cents} em {parcelas}x</div>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column' as const, gap: '0.65rem', marginBottom: '1.5rem', flex: 1 }}>
+                      {bens.map((b, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                          <div style={{ width: 16, height: 16, borderRadius: '50%', background: `${ACCENT}25`, color: ACCENT, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>✓</div>
+                          <span style={{ fontSize: 13, color: '#ccc', lineHeight: 1.4 }}>{b}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <button onClick={() => router.push('/comprar')} className="btn-pro-home-h"
+                      style={{ background: promo ? ACCENT : 'transparent', color: promo ? '#fff' : ACCENT, border: promo ? 'none' : `1.5px solid ${ACCENT}`, borderRadius: 10, padding: '0.85rem', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", width: '100%', transition: 'opacity .2s', letterSpacing: 0.5 }}>
+                      COMPRAR AGORA →
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
+
+        {/* ACESSO AO ESPAÇO */}
         <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>Acesso ao espaço</div>
         <div className="grid3-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', marginBottom: '3rem' }}>
           {[
@@ -294,6 +398,8 @@ export default function LandingPage() {
             </div>
           ))}
         </div>
+
+        {/* CRÉDITOS AVULSOS */}
         <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>Créditos avulsos</div>
         <div className="grid2-r" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
           {[
