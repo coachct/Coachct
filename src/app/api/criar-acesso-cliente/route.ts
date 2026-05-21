@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
 
     // 2. Verifica se o email já está em uso no Auth
     const { data: authUsers } = await supabase.auth.admin.listUsers()
-    const emailJaUsado = authUsers?.users?.find(u => u.email?.toLowerCase() === cliente.email.toLowerCase())
+    const emailJaUsado = authUsers?.users?.find((u: any) => u.email?.toLowerCase() === cliente.email.toLowerCase())
 
     if (emailJaUsado) {
       return NextResponse.json({ 
