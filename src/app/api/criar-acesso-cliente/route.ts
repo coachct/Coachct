@@ -6,8 +6,6 @@ const REMETENTE = 'Just CT <nao-responda@justct.com.br>'
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://coach-ct.vercel.app'
 
 function gerarSenhaAleatoria(): string {
-  // 8 caracteres: letras maiúsculas, minúsculas e números
-  // Evita caracteres ambíguos: 0, O, I, l, 1
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
   let senha = ''
   const cryptoArr = new Uint8Array(8)
@@ -58,24 +56,38 @@ export async function POST(req: NextRequest) {
     }
 
     if (!cliente.email) {
-      return NextResponse.json({ 
-        error: 'Cliente sem email cadastrado. Cadastre o email antes de criar o acesso.' 
+      return NextResponse.json({
+        error: 'Cliente sem email cadastrado. Cadastre o email antes de criar o acesso.'
       }, { status: 400 })
     }
 
     if (cliente.user_id) {
-      return NextResponse.json({ 
-        error: 'Este cliente já tem acesso ao sistema.' 
+      return NextResponse.json({
+        error: 'Este cliente já tem acesso ao sistema.'
       }, { status: 400 })
     }
 
+    const emailCliente: string = String(cliente.email).toLowerCase()
+
     // 2. Verifica se o email já está em uso no Auth
-    const { data: authUsers } = await supabase.auth.admin.listUsers()
-    const emailJaUsado = authUsers?.users?.find((u: any) => u.email?.toLowerCase() === cliente.email.toLowerCase())
+    const { data: listaUsers, error: errList } = await supabase.auth.admin.listUsers()
+
+    if (errList) {
+      console.error('Erro ao listar usuarios:', errList)
+      return NextResponse.json({
+        error: 'Erro ao verificar email: ' + errList.message
+      }, { status: 500 })
+    }
+
+    const usuariosExistentes: any[] = (listaUsers?.users as any[]) || []
+    const emailJaUsado = usuariosExistentes.find((u: any) => {
+      const emailDoUser: string = String(u?.email || '').toLowerCase()
+      return emailDoUser === emailCliente
+    })
 
     if (emailJaUsado) {
-      return NextResponse.json({ 
-        error: 'Já existe um usuário com este email no sistema. Verifique se o cliente não tem cadastro com outro CPF.' 
+      return NextResponse.json({
+        error: 'Já existe um usuário com este email no sistema. Verifique se o cliente não tem cadastro com outro CPF.'
       }, { status: 400 })
     }
 
@@ -86,7 +98,7 @@ export async function POST(req: NextRequest) {
     const { data: novoUser, error: errAuth } = await supabase.auth.admin.createUser({
       email: cliente.email,
       password: senhaProvisoria,
-      email_confirm: true, // Já confirma o email automaticamente
+      email_confirm: true,
       user_metadata: {
         nome: cliente.nome,
         cpf: cliente.cpf,
@@ -96,8 +108,8 @@ export async function POST(req: NextRequest) {
 
     if (errAuth || !novoUser?.user) {
       console.error('Erro ao criar user no Auth:', errAuth)
-      return NextResponse.json({ 
-        error: 'Erro ao criar acesso: ' + (errAuth?.message || 'desconhecido') 
+      return NextResponse.json({
+        error: 'Erro ao criar acesso: ' + (errAuth?.message || 'desconhecido')
       }, { status: 500 })
     }
 
@@ -113,10 +125,9 @@ export async function POST(req: NextRequest) {
 
     if (errPerfil) {
       console.error('Erro ao criar perfil:', errPerfil)
-      // Rollback: deleta o user_auth criado
       await supabase.auth.admin.deleteUser(userId)
-      return NextResponse.json({ 
-        error: 'Erro ao criar perfil: ' + errPerfil.message 
+      return NextResponse.json({
+        error: 'Erro ao criar perfil: ' + errPerfil.message
       }, { status: 500 })
     }
 
@@ -128,16 +139,15 @@ export async function POST(req: NextRequest) {
 
     if (errLink) {
       console.error('Erro ao vincular user_id:', errLink)
-      // Rollback
       await supabase.from('perfis').delete().eq('id', userId)
       await supabase.auth.admin.deleteUser(userId)
-      return NextResponse.json({ 
-        error: 'Erro ao vincular acesso: ' + errLink.message 
+      return NextResponse.json({
+        error: 'Erro ao vincular acesso: ' + errLink.message
       }, { status: 500 })
     }
 
     // 7. Envia email de boas-vindas
-    const primeiroNome = (cliente.nome || '').split(' ')[0]
+    const primeiroNome = String(cliente.nome || '').split(' ')[0]
     const linkLogin = `${BASE_URL}/login`
 
     const html = `
@@ -240,8 +250,6 @@ export async function POST(req: NextRequest) {
 
     if (errEmail) {
       console.error('Erro ao enviar email:', errEmail)
-      // Não faz rollback aqui — o acesso foi criado com sucesso, só o email falhou
-      // Retorna a senha na resposta para a recepção poder passar manualmente
       return NextResponse.json({
         sucesso_parcial: true,
         senha_provisoria: senhaProvisoria,
@@ -259,8 +267,8 @@ export async function POST(req: NextRequest) {
 
   } catch (e: any) {
     console.error('Erro na route /api/criar-acesso-cliente:', e)
-    return NextResponse.json({ 
-      error: 'Erro interno: ' + (e.message || 'desconhecido') 
+    return NextResponse.json({
+      error: 'Erro interno: ' + (e.message || 'desconhecido')
     }, { status: 500 })
   }
 }
