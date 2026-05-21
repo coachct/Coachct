@@ -95,6 +95,8 @@ export async function POST(req: NextRequest) {
     const senhaProvisoria = gerarSenhaAleatoria()
 
     // 4. Cria usuário no Supabase Auth
+    // IMPORTANTE: passa role='cliente' no metadata pra que o trigger
+    // handle_new_user crie o perfil corretamente com role de cliente
     const { data: novoUser, error: errAuth } = await supabase.auth.admin.createUser({
       email: cliente.email,
       password: senhaProvisoria,
@@ -102,6 +104,7 @@ export async function POST(req: NextRequest) {
       user_metadata: {
         nome: cliente.nome,
         cpf: cliente.cpf,
+        role: 'cliente',
         criado_por_admin: true,
       },
     })
@@ -115,23 +118,9 @@ export async function POST(req: NextRequest) {
 
     const userId = novoUser.user.id
 
-    // 5. Cria registro em perfis
-    const { error: errPerfil } = await supabase.from('perfis').insert({
-      id: userId,
-      nome: cliente.nome,
-      role: 'cliente',
-      ativo: true,
-    })
-
-    if (errPerfil) {
-      console.error('Erro ao criar perfil:', errPerfil)
-      await supabase.auth.admin.deleteUser(userId)
-      return NextResponse.json({
-        error: 'Erro ao criar perfil: ' + errPerfil.message
-      }, { status: 500 })
-    }
-
-    // 6. Vincula user_id na tabela clientes
+    // 5. Vincula user_id na tabela clientes
+    // O perfil já foi criado automaticamente pelo trigger handle_new_user
+    // com nome, role='cliente' e ativo=true
     const { error: errLink } = await supabase
       .from('clientes')
       .update({ user_id: userId })
@@ -139,14 +128,14 @@ export async function POST(req: NextRequest) {
 
     if (errLink) {
       console.error('Erro ao vincular user_id:', errLink)
-      await supabase.from('perfis').delete().eq('id', userId)
+      // Rollback: deleta o auth user criado
       await supabase.auth.admin.deleteUser(userId)
       return NextResponse.json({
         error: 'Erro ao vincular acesso: ' + errLink.message
       }, { status: 500 })
     }
 
-    // 7. Envia email de boas-vindas
+    // 6. Envia email de boas-vindas
     const primeiroNome = String(cliente.nome || '').split(' ')[0]
     const linkLogin = `${BASE_URL}/login`
 
