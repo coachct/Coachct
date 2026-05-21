@@ -57,6 +57,27 @@ export default function AnalyticsCoachesPage() {
     if (perfil) loadAnalytics()
   }, [periodo, perfil, unidadeAtiva?.id])
 
+  function horaParaMinutos(hora: string): number {
+    const partes = hora.slice(0, 5).split(':').map(Number)
+    return partes[0] * 60 + partes[1]
+  }
+
+  function slotMaisProximo(timestampAula: string, slots: string[]): string {
+    // Pega HH:MM do timestamp da aula (UTC → Brasília = -3h)
+    const d = new Date(timestampAula)
+    const minAula = (d.getUTCHours() - 3 + 24) % 24 * 60 + d.getUTCMinutes()
+    let melhor = slots[0]
+    let menorDiff = Infinity
+    for (const slot of slots) {
+      const diff = Math.abs(horaParaMinutos(slot) - minAula)
+      if (diff < menorDiff) {
+        menorDiff = diff
+        melhor = slot
+      }
+    }
+    return melhor
+  }
+
   async function loadAnalytics() {
     setLoadingData(true)
 
@@ -65,7 +86,6 @@ export default function AnalyticsCoachesPage() {
     const dataInicioStr = dataInicio.toISOString()
     const hoje = new Date().toISOString()
 
-    // Query principal: tabela AULAS (sessões reais registradas pelos coaches)
     let aulasQuery = supabase
       .from('aulas')
       .select('id, coach_id, cliente_id, horario_agendado, finalizada_em, status, unidade_id, clientes(nome), coaches(nome)')
@@ -73,13 +93,11 @@ export default function AnalyticsCoachesPage() {
       .gte('finalizada_em', dataInicioStr)
       .lte('finalizada_em', hoje)
 
-    // Query de coach_horarios para disponibilidade
     let horariosQuery = supabase
       .from('coach_horarios')
       .select('coach_id, hora, dia_semana')
       .eq('ativo', true)
 
-    // Aplica filtro de unidade se disponível
     if (unidadeAtiva) {
       aulasQuery = aulasQuery.eq('unidade_id', unidadeAtiva.id)
       horariosQuery = horariosQuery.eq('unidade_id', unidadeAtiva.id)
@@ -98,7 +116,7 @@ export default function AnalyticsCoachesPage() {
     dataInicioDate.setDate(dataInicioDate.getDate() - periodo)
 
     calcularOcupacao(aulas || [], horarios || [], coachesData || [], dataInicioDate.toISOString().split('T')[0], new Date().toISOString().split('T')[0])
-    calcularPreferencias(aulas || [])
+    calcularPreferencias(aulas || [], horarios || [])
     calcularAfinidades(aulas || [])
 
     setLoadingData(false)
@@ -135,19 +153,24 @@ export default function AnalyticsCoachesPage() {
     setOcupacao(resultado)
   }
 
-  function calcularPreferencias(aulas: any[]) {
-    const porHorario: Record<string, Record<string, number>> = {}
+  function calcularPreferencias(aulas: any[], horarios: any[]) {
+    // Extrai slots únicos da grade
+    const slotsUnicos = [...new Set(horarios.map(h => h.hora.slice(0, 5)))].sort()
+
+    if (slotsUnicos.length === 0) return
+
+    const porSlot: Record<string, Record<string, number>> = {}
     const nomesCoach: Record<string, string> = {}
 
     for (const a of aulas) {
       if (!a.coach_id || !a.horario_agendado) continue
-      const hora = new Date(a.horario_agendado).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })
-      if (!porHorario[hora]) porHorario[hora] = {}
-      porHorario[hora][a.coach_id] = (porHorario[hora][a.coach_id] || 0) + 1
+      const slot = slotMaisProximo(a.horario_agendado, slotsUnicos)
+      if (!porSlot[slot]) porSlot[slot] = {}
+      porSlot[slot][a.coach_id] = (porSlot[slot][a.coach_id] || 0) + 1
       nomesCoach[a.coach_id] = (a.coaches as any)?.nome || '—'
     }
 
-    const resultado: PreferenciaHorario[] = Object.entries(porHorario)
+    const resultado: PreferenciaHorario[] = Object.entries(porSlot)
       .map(([horario, coachMap]) => {
         const total = Object.values(coachMap).reduce((a, b) => a + b, 0)
         const coaches = Object.entries(coachMap)
@@ -162,7 +185,7 @@ export default function AnalyticsCoachesPage() {
         return { horario, coaches }
       })
       .sort((a, b) => a.horario.localeCompare(b.horario))
-      .slice(0, 8)
+      .slice(0, 10)
 
     setPreferencias(resultado)
   }
@@ -314,7 +337,7 @@ export default function AnalyticsCoachesPage() {
               <div className="flex items-center gap-2 mb-4">
                 <Clock size={16} className="text-primary-600" />
                 <h2 className="text-sm font-semibold text-gray-900">Preferência por Horário</h2>
-                <span className="text-xs text-gray-400 ml-auto">quem é mais escolhido em cada slot</span>
+                <span className="text-xs text-gray-400 ml-auto">quem é mais escolhido em cada slot da grade</span>
               </div>
               {preferencias.length === 0 ? (
                 <div className="text-center py-8 text-gray-400 text-sm">Sem dados suficientes.</div>
