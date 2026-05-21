@@ -62,46 +62,49 @@ export default function AnalyticsCoachesPage() {
 
     const dataInicio = new Date()
     dataInicio.setDate(dataInicio.getDate() - periodo)
-    const dataInicioStr = dataInicio.toISOString().split('T')[0]
-    const hoje = new Date().toISOString().split('T')[0]
+    const dataInicioStr = dataInicio.toISOString()
+    const hoje = new Date().toISOString()
 
-    // Query base — filtra por unidade só se houver múltiplas no futuro
-    let agsQuery = supabase
-      .from('agendamentos')
-      .select('id, horario, coach_id, cliente_id, data, status, clientes(nome), coaches(nome)')
-      .gte('data', dataInicioStr)
-      .lte('data', hoje)
-      .not('coach_id', 'is', null)
-      .neq('status', 'cancelado')
+    // Query principal: tabela AULAS (sessões reais registradas pelos coaches)
+    let aulasQuery = supabase
+      .from('aulas')
+      .select('id, coach_id, cliente_id, horario_agendado, finalizada_em, status, unidade_id, clientes(nome), coaches(nome)')
+      .eq('status', 'finalizada')
+      .gte('finalizada_em', dataInicioStr)
+      .lte('finalizada_em', hoje)
 
+    // Query de coach_horarios para disponibilidade
     let horariosQuery = supabase
       .from('coach_horarios')
-      .select('coach_id, hora, dia_semana, coaches(nome)')
+      .select('coach_id, hora, dia_semana')
       .eq('ativo', true)
 
-    // Aplica filtro de unidade apenas se unidade estiver selecionada
+    // Aplica filtro de unidade se disponível
     if (unidadeAtiva) {
-      agsQuery = agsQuery.eq('unidade_id', unidadeAtiva.id)
+      aulasQuery = aulasQuery.eq('unidade_id', unidadeAtiva.id)
       horariosQuery = horariosQuery.eq('unidade_id', unidadeAtiva.id)
     }
 
-    const [{ data: ags }, { data: horarios }, { data: coachesData }] = await Promise.all([
-      agsQuery,
+    const [{ data: aulas }, { data: horarios }, { data: coachesData }] = await Promise.all([
+      aulasQuery,
       horariosQuery,
       supabase.from('coaches').select('id, nome').eq('ativo', true),
     ])
 
     setCoachesAtivos((coachesData || []).length)
-    setTotalSessoes((ags || []).length)
+    setTotalSessoes((aulas || []).length)
 
-    calcularOcupacao(ags || [], horarios || [], coachesData || [], dataInicioStr, hoje)
-    calcularPreferencias(ags || [])
-    calcularAfinidades(ags || [])
+    const dataInicioDate = new Date()
+    dataInicioDate.setDate(dataInicioDate.getDate() - periodo)
+
+    calcularOcupacao(aulas || [], horarios || [], coachesData || [], dataInicioDate.toISOString().split('T')[0], new Date().toISOString().split('T')[0])
+    calcularPreferencias(aulas || [])
+    calcularAfinidades(aulas || [])
 
     setLoadingData(false)
   }
 
-  function calcularOcupacao(ags: any[], horarios: any[], coaches: any[], dataInicio: string, dataFim: string) {
+  function calcularOcupacao(aulas: any[], horarios: any[], coaches: any[], dataInicio: string, dataFim: string) {
     const diasNoPeriodo: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 }
     const d = new Date(dataInicio + 'T12:00:00')
     const fim = new Date(dataFim + 'T12:00:00')
@@ -117,42 +120,31 @@ export default function AnalyticsCoachesPage() {
     }
 
     const alocMap: Record<string, number> = {}
-    const nomeMap: Record<string, string> = {}
-    for (const ag of ags) {
-      if (!ag.coach_id) continue
-      alocMap[ag.coach_id] = (alocMap[ag.coach_id] || 0) + 1
-      nomeMap[ag.coach_id] = (ag.coaches as any)?.nome || '—'
-    }
-    for (const c of coaches) {
-      nomeMap[c.id] = c.nome
+    for (const a of aulas) {
+      if (!a.coach_id) continue
+      alocMap[a.coach_id] = (alocMap[a.coach_id] || 0) + 1
     }
 
     const resultado: CoachOcupacao[] = coaches.map(c => {
       const total_alocado = alocMap[c.id] || 0
       const total_disponivel = dispMap[c.id] || 0
       const taxa = total_disponivel > 0 ? Math.round((total_alocado / total_disponivel) * 100) : 0
-      return {
-        coach_id: c.id,
-        coach_nome: c.nome,
-        total_alocado,
-        total_disponivel,
-        taxa_ocupacao: taxa,
-      }
+      return { coach_id: c.id, coach_nome: c.nome, total_alocado, total_disponivel, taxa_ocupacao: taxa }
     }).sort((a, b) => b.total_alocado - a.total_alocado)
 
     setOcupacao(resultado)
   }
 
-  function calcularPreferencias(ags: any[]) {
+  function calcularPreferencias(aulas: any[]) {
     const porHorario: Record<string, Record<string, number>> = {}
     const nomesCoach: Record<string, string> = {}
 
-    for (const ag of ags) {
-      if (!ag.coach_id) continue
-      const hora = (ag.horario || '').slice(0, 5)
+    for (const a of aulas) {
+      if (!a.coach_id || !a.horario_agendado) continue
+      const hora = new Date(a.horario_agendado).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })
       if (!porHorario[hora]) porHorario[hora] = {}
-      porHorario[hora][ag.coach_id] = (porHorario[hora][ag.coach_id] || 0) + 1
-      nomesCoach[ag.coach_id] = (ag.coaches as any)?.nome || '—'
+      porHorario[hora][a.coach_id] = (porHorario[hora][a.coach_id] || 0) + 1
+      nomesCoach[a.coach_id] = (a.coaches as any)?.nome || '—'
     }
 
     const resultado: PreferenciaHorario[] = Object.entries(porHorario)
@@ -175,17 +167,17 @@ export default function AnalyticsCoachesPage() {
     setPreferencias(resultado)
   }
 
-  function calcularAfinidades(ags: any[]) {
+  function calcularAfinidades(aulas: any[]) {
     const pares: Record<string, number> = {}
     const nomesCliente: Record<string, string> = {}
     const nomesCoach: Record<string, string> = {}
 
-    for (const ag of ags) {
-      if (!ag.coach_id || !ag.cliente_id) continue
-      const chave = `${ag.cliente_id}__${ag.coach_id}`
+    for (const a of aulas) {
+      if (!a.coach_id || !a.cliente_id) continue
+      const chave = `${a.cliente_id}__${a.coach_id}`
       pares[chave] = (pares[chave] || 0) + 1
-      nomesCliente[ag.cliente_id] = (ag.clientes as any)?.nome || '—'
-      nomesCoach[ag.coach_id] = (ag.coaches as any)?.nome || '—'
+      nomesCliente[a.cliente_id] = (a.clientes as any)?.nome || '—'
+      nomesCoach[a.coach_id] = (a.coaches as any)?.nome || '—'
     }
 
     const resultado: AfinidadeCliente[] = Object.entries(pares)
@@ -247,7 +239,7 @@ export default function AnalyticsCoachesPage() {
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { icon: <BarChart2 size={16} />, label: 'Sessões no período', value: totalSessoes },
+            { icon: <BarChart2 size={16} />, label: 'Sessões finalizadas', value: totalSessoes },
             { icon: <Users size={16} />, label: 'Coaches ativos', value: coachesAtivos },
             { icon: <TrendingUp size={16} />, label: 'Média por coach', value: coachesAtivos > 0 ? Math.round(totalSessoes / coachesAtivos) : 0 },
             { icon: <Clock size={16} />, label: 'Horários analisados', value: preferencias.length },
@@ -267,8 +259,8 @@ export default function AnalyticsCoachesPage() {
         ) : totalSessoes === 0 ? (
           <div className="card text-center py-16 text-gray-400">
             <BarChart2 size={32} className="mx-auto mb-3 opacity-30" />
-            <div className="text-sm">Nenhuma sessão com coach alocado encontrada no período.</div>
-            <div className="text-xs mt-2 text-gray-300">Os dados aparecem conforme a recepção aloca coaches nas sessões.</div>
+            <div className="text-sm">Nenhuma sessão finalizada encontrada no período.</div>
+            <div className="text-xs mt-2 text-gray-300">Os dados aparecem conforme os coaches finalizam sessões no sistema.</div>
           </div>
         ) : (
           <>
@@ -277,7 +269,7 @@ export default function AnalyticsCoachesPage() {
               <div className="flex items-center gap-2 mb-4">
                 <TrendingUp size={16} className="text-primary-600" />
                 <h2 className="text-sm font-semibold text-gray-900">Ocupação por Coach</h2>
-                <span className="text-xs text-gray-400 ml-auto">últimos {periodo} dias</span>
+                <span className="text-xs text-gray-400 ml-auto">últimos {periodo} dias · sessões finalizadas</span>
               </div>
               <div className="space-y-3">
                 {ocupacao.filter(c => c.total_alocado > 0).map((c, i) => (
