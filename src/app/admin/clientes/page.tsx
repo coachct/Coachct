@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
 import { useRouter } from 'next/navigation'
-import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap, Gift, CalendarClock, Edit2 } from 'lucide-react'
+import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap, Gift, CalendarClock, Edit2, Mail, Copy, Clock, Link as LinkIcon } from 'lucide-react'
 import UnidadeSelector from '@/components/UnidadeSelector'
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
@@ -82,6 +82,13 @@ export default function AdminClientesPage() {
 
   const [modalAtivarPlano, setModalAtivarPlano] = useState<any>(null)
   const [salvandoPlano, setSalvandoPlano] = useState(false)
+  const [erroAtivacao, setErroAtivacao] = useState('')
+
+  const [modalLinkAceite, setModalLinkAceite] = useState<{ link: string; plano: any; cpId: string } | null>(null)
+  const [copiado, setCopiado] = useState(false)
+  const [enviandoEmail, setEnviandoEmail] = useState(false)
+  const [emailEnviado, setEmailEnviado] = useState(false)
+  const [erroEmail, setErroEmail] = useState('')
 
   const [cancelandoId, setCancelandoId] = useState<string | null>(null)
 
@@ -185,6 +192,7 @@ export default function AdminClientesPage() {
       .from('cliente_planos')
       .select(`
         id, ativo, contrato_aceito_em, inicio, fim, produto_id, venda_id,
+        aceite_pendente, token_aceite, token_expira_em,
         planos_disponiveis(id, nome, tipo, creditos_mes, unidade_id, unidades(id, nome, tipo)),
         produtos(id, nome, subtipo, unidade_id, unidades(id, nome, tipo), dias_validade)
       `)
@@ -325,69 +333,153 @@ export default function AdminClientesPage() {
     setAba('vendas')
   }
 
+  // ============================================
+  // NOVO FLUXO: Ativação de plano com aceite pendente
+  // ============================================
   async function ativarPlano(planoId: string) {
     if (!clienteSel) return
-    setSalvandoPlano(true)
 
-    const { data: existente } = await supabase
-      .from('cliente_planos')
-      .select('id, ativo')
-      .eq('cliente_id', clienteSel.id)
-      .eq('plano_id', planoId)
-      .maybeSingle()
-
-    let errPlano = null
-
-    if (existente) {
-      const { error } = await supabase.from('cliente_planos').update({
-        ativo: true,
-        contrato_aceito_em: new Date().toISOString(),
-        fim: null,
-      }).eq('id', existente.id)
-      errPlano = error
-    } else {
-      const { error } = await supabase.from('cliente_planos').insert({
-        cliente_id: clienteSel.id,
-        plano_id: planoId,
-        ativo: true,
-        contrato_aceito_em: new Date().toISOString(),
-      })
-      errPlano = error
-    }
-
-    if (errPlano) {
-      setSalvandoPlano(false)
-      alert('Erro ao ativar plano: ' + errPlano.message)
+    if (!clienteSel.email) {
+      setErroAtivacao('Cliente sem email cadastrado. Cadastre o email do cliente antes de ativar o plano.')
       return
     }
 
-    const planoInfo = planosDisponiveis.find(p => p.id === planoId)
-    if (planoInfo) {
-      const agora = new Date()
-      const mes = agora.getMonth() + 1
-      const ano = agora.getFullYear()
+    setSalvandoPlano(true)
+    setErroAtivacao('')
 
-      const { error: errCreditos } = await supabase.from('cliente_creditos').insert({
-        cliente_id: clienteSel.id,
-        tipo: planoInfo.tipo,
-        mes,
-        ano,
-        total: planoInfo.creditos_mes,
-        usado: 0,
-        unidade_id: planoInfo.unidade_id,
-        gerado_automatico: false,
-        observacao: 'Gerado na ativação do plano pelo admin',
+    try {
+      // 1. Gera o token único de aceite
+      const { data: tokenData, error: errToken } = await supabase.rpc('gerar_token_aceite')
+      if (errToken || !tokenData) throw new Error('Erro ao gerar token de aceite')
+      const token = tokenData as string
+
+      // 2. Define validade do token: 7 dias
+      const expiraEm = new Date()
+      expiraEm.setDate(expiraEm.getDate() + 7)
+
+      // 3. Verifica se já existe cliente_plano para este plano
+      const { data: existente } = await supabase
+        .from('cliente_planos')
+        .select('id, ativo')
+        .eq('cliente_id', clienteSel.id)
+        .eq('plano_id', planoId)
+        .maybeSingle()
+
+      let cliPlanoId: string | null = null
+
+      if (existente) {
+        const { error } = await supabase.from('cliente_planos').update({
+          ativo: true,
+          inicio: new Date().toISOString().split('T')[0],
+          fim: null,
+          aceite_pendente: true,
+          token_aceite: token,
+          token_expira_em: expiraEm.toISOString(),
+          contrato_aceito_em: null,
+        }).eq('id', existente.id)
+        if (error) throw error
+        cliPlanoId = existente.id
+      } else {
+        const { data: novo, error } = await supabase.from('cliente_planos').insert({
+          cliente_id: clienteSel.id,
+          plano_id: planoId,
+          ativo: true,
+          inicio: new Date().toISOString().split('T')[0],
+          aceite_pendente: true,
+          token_aceite: token,
+          token_expira_em: expiraEm.toISOString(),
+        }).select('id').single()
+        if (error) throw error
+        cliPlanoId = novo?.id || null
+      }
+
+      // 4. Monta a URL de aceite
+      const baseUrl = window.location.origin
+      const linkAceite = `${baseUrl}/aceite-termo?token=${token}`
+
+      // 5. Recarrega os dados do cliente
+      await carregarPlanosCliente(clienteSel.id)
+
+      // 6. Mostra o modal com o link gerado
+      const planoInfo = planosDisponiveis.find(p => p.id === planoId)
+      setModalAtivarPlano(null)
+      setModalLinkAceite({
+        link: linkAceite,
+        plano: planoInfo,
+        cpId: cliPlanoId!,
+      })
+      setCopiado(false)
+      setEmailEnviado(false)
+      setErroEmail('')
+
+    } catch (e: any) {
+      console.error(e)
+      setErroAtivacao('Erro ao ativar plano: ' + (e.message || 'desconhecido'))
+    } finally {
+      setSalvandoPlano(false)
+    }
+  }
+
+  async function copiarLink() {
+    if (!modalLinkAceite) return
+    try {
+      await navigator.clipboard.writeText(modalLinkAceite.link)
+      setCopiado(true)
+      setTimeout(() => setCopiado(false), 3000)
+    } catch (e) {
+      alert('Não foi possível copiar. Selecione e copie manualmente.')
+    }
+  }
+
+  async function enviarEmailAceite() {
+    if (!modalLinkAceite || !clienteSel) return
+
+    setEnviandoEmail(true)
+    setErroEmail('')
+
+    try {
+      const res = await fetch('/api/enviar-aceite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cliente_plano_id: modalLinkAceite.cpId,
+        }),
       })
 
-      if (errCreditos && !errCreditos.message.includes('duplicate')) {
-        console.error('Erro ao gerar créditos:', errCreditos)
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Erro ao enviar email')
       }
+
+      setEmailEnviado(true)
+    } catch (e: any) {
+      console.error(e)
+      setErroEmail(e.message || 'Erro ao enviar email. Tente novamente ou envie o link manualmente.')
+    } finally {
+      setEnviandoEmail(false)
+    }
+  }
+
+  async function reenviarLinkAceite(cp: any) {
+    if (!clienteSel) return
+    if (!cp.token_aceite) {
+      alert('Este plano não tem token de aceite. Desative e ative novamente.')
+      return
     }
 
-    setSalvandoPlano(false)
-    setModalAtivarPlano(null)
-    await carregarPlanosCliente(clienteSel.id)
-    await carregarSaldo(clienteSel.id)
+    const baseUrl = window.location.origin
+    const linkAceite = `${baseUrl}/aceite-termo?token=${cp.token_aceite}`
+    const planoInfo = cp.planos_disponiveis
+
+    setModalLinkAceite({
+      link: linkAceite,
+      plano: planoInfo,
+      cpId: cp.id,
+    })
+    setCopiado(false)
+    setEmailEnviado(false)
+    setErroEmail('')
   }
 
   async function desativarPlano(cpId: string) {
@@ -395,6 +487,9 @@ export default function AdminClientesPage() {
     await supabase.from('cliente_planos').update({
       ativo: false,
       fim: new Date().toISOString().split('T')[0],
+      aceite_pendente: false,
+      token_aceite: null,
+      token_expira_em: null,
     }).eq('id', cpId)
     await carregarPlanosCliente(clienteSel.id)
     await carregarSaldo(clienteSel.id)
@@ -970,27 +1065,50 @@ export default function AdminClientesPage() {
                                 saldoMes[k]?.unidade_id === u.id && saldoMes[k]?.tipo_plano === pd?.tipo
                               )
                               const saldo = saldoKey ? saldoMes[saldoKey] : null
+                              const pendente = cp.aceite_pendente
 
                               return (
-                                <div key={cp.id} className="border border-gray-200 rounded-xl p-3 flex items-center gap-3">
-                                  <div className="flex-1">
-                                    <div className="text-sm font-medium text-gray-900">{pd?.nome}</div>
-                                    <div className="text-xs text-gray-500 mt-0.5">
-                                      {pd?.creditos_mes} sessões/mês
-                                      {saldo && (
-                                        <> · <span className="font-bold text-primary-600">{saldo.disponivel}</span> disponível este mês</>
+                                <div key={cp.id} className={`border rounded-xl p-3 ${pendente ? 'border-orange-300 bg-orange-50' : 'border-gray-200'}`}>
+                                  <div className="flex items-center gap-3">
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="text-sm font-medium text-gray-900">{pd?.nome}</span>
+                                        {pendente && (
+                                          <span className="text-xs px-2 py-0.5 rounded-full bg-orange-200 text-orange-800 font-semibold flex items-center gap-1">
+                                            <Clock size={10} /> Aguardando aceite
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="text-xs text-gray-500 mt-0.5">
+                                        {pd?.creditos_mes} sessões/mês
+                                        {!pendente && saldo && (
+                                          <> · <span className="font-bold text-primary-600">{saldo.disponivel}</span> disponível este mês</>
+                                        )}
+                                      </div>
+                                      {cp.contrato_aceito_em && !pendente && (
+                                        <div className="text-xs text-gray-400 mt-0.5">
+                                          Termo aceito em {new Date(cp.contrato_aceito_em).toLocaleDateString('pt-BR')}
+                                        </div>
+                                      )}
+                                      {pendente && cp.token_expira_em && (
+                                        <div className="text-xs text-orange-700 mt-1">
+                                          Link válido até {new Date(cp.token_expira_em).toLocaleDateString('pt-BR')}
+                                        </div>
                                       )}
                                     </div>
-                                    {cp.contrato_aceito_em && (
-                                      <div className="text-xs text-gray-400 mt-0.5">
-                                        Contrato aceito em {new Date(cp.contrato_aceito_em).toLocaleDateString('pt-BR')}
-                                      </div>
-                                    )}
+                                    <div className="flex flex-col gap-1">
+                                      {pendente && (
+                                        <button onClick={() => reenviarLinkAceite(cp)}
+                                          className="btn btn-sm gap-1 bg-orange-500 text-white hover:bg-orange-600">
+                                          <LinkIcon size={11} /> Ver link
+                                        </button>
+                                      )}
+                                      <button onClick={() => desativarPlano(cp.id)}
+                                        className="btn btn-sm gap-1 text-red-500 hover:bg-red-50">
+                                        <Trash2 size={12} /> Desativar
+                                      </button>
+                                    </div>
                                   </div>
-                                  <button onClick={() => desativarPlano(cp.id)}
-                                    className="btn btn-sm gap-1 text-red-500 hover:bg-red-50">
-                                    <Trash2 size={12} /> Desativar
-                                  </button>
                                 </div>
                               )
                             })}
@@ -1007,7 +1125,7 @@ export default function AdminClientesPage() {
                       </div>
                       <div className="space-y-2">
                         {planosDisponiveisParaAtivar().map(p => (
-                          <button key={p.id} onClick={() => setModalAtivarPlano(p)}
+                          <button key={p.id} onClick={() => { setModalAtivarPlano(p); setErroAtivacao('') }}
                             className="w-full bg-white border border-gray-200 rounded-xl p-3 flex items-center justify-between hover:border-primary-400 transition-all text-left">
                             <div>
                               <div className="text-sm font-medium text-gray-900">{p.nome}</div>
@@ -1519,19 +1637,108 @@ export default function AdminClientesPage() {
               </div>
             </div>
 
-            <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 mb-4 text-xs text-yellow-800">
-              ⚠️ Esta ação simula o aceite de contrato pelo cliente. O cliente precisa estar presente e ciente da ativação.
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs text-blue-800 space-y-2">
+              <div className="font-semibold flex items-center gap-1">
+                <Mail size={12} /> Como funciona
+              </div>
+              <div className="leading-relaxed">
+                Será gerado um link único para o cliente <strong>{clienteSel?.nome}</strong> aceitar o Termo de Adesão Wellhub/TotalPass.
+                Após a ativação, você pode <strong>enviar por email</strong> ou <strong>copiar o link</strong> para mandar via WhatsApp.
+              </div>
+              <div className="leading-relaxed pt-1 border-t border-blue-200">
+                ⚠️ Os créditos só serão liberados após o cliente aceitar o termo.
+              </div>
             </div>
+
+            {!clienteSel?.email && (
+              <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-4 text-xs text-orange-800">
+                ⚠️ Cliente sem email cadastrado. Cadastre o email antes de continuar.
+              </div>
+            )}
+
+            {erroAtivacao && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-sm text-red-600">
+                {erroAtivacao}
+              </div>
+            )}
 
             <div className="flex gap-2">
               <button onClick={() => setModalAtivarPlano(null)} className="btn flex-1 text-gray-500 border border-gray-200">
                 Cancelar
               </button>
-              <button onClick={() => ativarPlano(modalAtivarPlano.id)} disabled={salvandoPlano}
-                className="btn flex-1 bg-primary-600 text-white hover:bg-primary-700">
-                {salvandoPlano ? 'Ativando...' : 'Ativar plano'}
+              <button onClick={() => ativarPlano(modalAtivarPlano.id)} disabled={salvandoPlano || !clienteSel?.email}
+                className="btn flex-1 bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50">
+                {salvandoPlano ? 'Gerando link...' : 'Gerar link de aceite'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {modalLinkAceite && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <div className="font-bold text-gray-900 flex items-center gap-2">
+                  <Check size={18} className="text-green-600" /> Link de aceite gerado
+                </div>
+                <div className="text-xs text-gray-400 mt-0.5">{modalLinkAceite.plano?.nome}</div>
+              </div>
+              <button onClick={() => setModalLinkAceite(null)} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-4 text-xs text-orange-800">
+              <div className="font-semibold mb-1 flex items-center gap-1">
+                <Clock size={12} /> Aguardando aceite do cliente
+              </div>
+              <div className="leading-relaxed">
+                O cliente precisa acessar o link, ler o Termo de Adesão e confirmar o aceite digitalmente. Os créditos só serão liberados após o aceite.
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <div className="text-xs text-gray-500 mb-2 font-semibold uppercase tracking-wide">Link de aceite</div>
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 break-all text-xs text-gray-700 font-mono mb-2">
+                {modalLinkAceite.link}
+              </div>
+              <button onClick={copiarLink}
+                className={`w-full btn gap-1 ${copiado ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+                {copiado ? <><Check size={14} /> Copiado!</> : <><Copy size={14} /> Copiar link</>}
+              </button>
+            </div>
+
+            <div className="border-t border-gray-200 pt-4">
+              <div className="text-xs text-gray-500 mb-2 font-semibold uppercase tracking-wide">Enviar por email</div>
+              <div className="text-xs text-gray-500 mb-3">
+                Email do cliente: <strong className="text-gray-700">{clienteSel?.email}</strong>
+              </div>
+
+              {emailEnviado ? (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-sm text-green-700 flex items-center gap-2">
+                  <Check size={14} /> Email enviado com sucesso!
+                </div>
+              ) : (
+                <button onClick={enviarEmailAceite} disabled={enviandoEmail}
+                  className="w-full btn gap-1 bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50">
+                  <Mail size={14} /> {enviandoEmail ? 'Enviando...' : 'Enviar email com o link'}
+                </button>
+              )}
+
+              {erroEmail && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-3 text-xs text-red-600 flex items-start gap-2">
+                  <AlertCircle size={12} className="mt-0.5 flex-shrink-0" />
+                  {erroEmail}
+                </div>
+              )}
+            </div>
+
+            <button onClick={() => setModalLinkAceite(null)}
+              className="w-full mt-4 btn text-gray-500 border border-gray-200">
+              Fechar
+            </button>
           </div>
         </div>
       )}
