@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
 import { useRouter } from 'next/navigation'
-import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap, Gift, CalendarClock, Edit2, Mail, Copy, Clock, Link as LinkIcon } from 'lucide-react'
+import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap, Gift, CalendarClock, Edit2, Mail, Copy, Clock, Link as LinkIcon, UserPlus, KeyRound } from 'lucide-react'
 import UnidadeSelector from '@/components/UnidadeSelector'
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
@@ -28,6 +28,10 @@ const FORMAS_PAGAMENTO = [
 function formatarBR(data: string | Date) {
   const d = typeof data === 'string' ? new Date(data + 'T12:00:00') : data
   return d.toLocaleDateString('pt-BR')
+}
+
+function validarEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
 }
 
 export default function AdminClientesPage() {
@@ -66,6 +70,10 @@ export default function AdminClientesPage() {
   const [formNovo, setFormNovo] = useState({ nome: '', email: '', telefone: '', cpf: '' })
   const [criando, setCriando] = useState(false)
   const [erroCriar, setErroCriar] = useState('')
+  const [modalAcessoCriado, setModalAcessoCriado] = useState<{ email: string; senha?: string; sucessoEmail: boolean } | null>(null)
+
+  const [criandoAcesso, setCriandoAcesso] = useState(false)
+  const [erroCriarAcesso, setErroCriarAcesso] = useState('')
 
   const [modalVenda, setModalVenda] = useState(false)
   const [produtosDisp, setProdutosDisp] = useState<any[]>([])
@@ -146,6 +154,7 @@ export default function AdminClientesPage() {
     setVendas([])
     setModalSlot(null)
     setTipoCredito('')
+    setErroCriarAcesso('')
     await Promise.all([
       carregarSaldo(cliente.id),
       carregarHistorico(cliente.id),
@@ -201,6 +210,12 @@ export default function AdminClientesPage() {
     setPlanosCliente(data || [])
   }
 
+  async function recarregarClienteSel() {
+    if (!clienteSel) return
+    const { data } = await supabase.from('clientes').select('*').eq('id', clienteSel.id).maybeSingle()
+    if (data) setClienteSel(data)
+  }
+
   async function salvarEdicao() {
     setSalvando(true)
     const { error } = await supabase.from('clientes').update({
@@ -228,22 +243,158 @@ export default function AdminClientesPage() {
   async function criarCliente() {
     setCriando(true)
     setErroCriar('')
-    const { error } = await supabase.from('clientes').insert({
-      nome: formNovo.nome,
-      email: formNovo.email || null,
-      telefone: formNovo.telefone,
-      cpf: formNovo.cpf.replace(/\D/g, ''),
-      bloqueado: false,
-    })
-    if (error) {
-      setErroCriar('Erro ao cadastrar. Verifique os dados.')
-    } else {
+
+    // Validações obrigatórias
+    if (!formNovo.nome.trim() || formNovo.nome.trim().split(' ').length < 2) {
+      setErroCriar('Nome completo é obrigatório (nome e sobrenome).')
+      setCriando(false)
+      return
+    }
+    if (!formNovo.email.trim()) {
+      setErroCriar('Email é obrigatório para criar o acesso ao sistema.')
+      setCriando(false)
+      return
+    }
+    if (!validarEmail(formNovo.email)) {
+      setErroCriar('Email inválido. Verifique o formato.')
+      setCriando(false)
+      return
+    }
+    if (!formNovo.cpf.trim() || formNovo.cpf.replace(/\D/g, '').length !== 11) {
+      setErroCriar('CPF inválido. Digite os 11 dígitos.')
+      setCriando(false)
+      return
+    }
+
+    const cpfLimpo = formNovo.cpf.replace(/\D/g, '')
+    const emailLimpo = formNovo.email.trim().toLowerCase()
+
+    // Verifica duplicidade de CPF
+    const { data: cpfExistente } = await supabase
+      .from('clientes')
+      .select('id, nome')
+      .eq('cpf', cpfLimpo)
+      .maybeSingle()
+
+    if (cpfExistente) {
+      setErroCriar(`Já existe um cliente cadastrado com este CPF: ${cpfExistente.nome}`)
+      setCriando(false)
+      return
+    }
+
+    // Verifica duplicidade de email
+    const { data: emailExistente } = await supabase
+      .from('clientes')
+      .select('id, nome')
+      .eq('email', emailLimpo)
+      .maybeSingle()
+
+    if (emailExistente) {
+      setErroCriar(`Já existe um cliente cadastrado com este email: ${emailExistente.nome}`)
+      setCriando(false)
+      return
+    }
+
+    // 1. Cria o cliente na tabela clientes
+    const { data: novoClienteData, error: errCli } = await supabase
+      .from('clientes')
+      .insert({
+        nome: formNovo.nome.trim(),
+        email: emailLimpo,
+        telefone: formNovo.telefone.trim(),
+        cpf: cpfLimpo,
+        bloqueado: false,
+      })
+      .select()
+      .single()
+
+    if (errCli || !novoClienteData) {
+      setErroCriar('Erro ao cadastrar: ' + (errCli?.message || 'desconhecido'))
+      setCriando(false)
+      return
+    }
+
+    // 2. Cria o acesso (chamada à API)
+    try {
+      const res = await fetch('/api/criar-acesso-cliente', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cliente_id: novoClienteData.id }),
+      })
+
+      const result = await res.json()
+
+      if (!res.ok) {
+        // Cliente foi criado, mas acesso falhou. Mostra aviso.
+        setErroCriar(
+          'Cliente cadastrado, mas houve um erro ao criar o acesso: ' +
+          (result.error || 'desconhecido') +
+          '. Acesse o cliente e tente criar o acesso novamente.'
+        )
+        setCriando(false)
+        setNovoCliente(false)
+        setFormNovo({ nome: '', email: '', telefone: '', cpf: '' })
+        setBusca('')
+        setClientes([])
+        return
+      }
+
+      // Sucesso total ou parcial (acesso criado, mas pode não ter enviado email)
       setNovoCliente(false)
       setFormNovo({ nome: '', email: '', telefone: '', cpf: '' })
       setBusca('')
       setClientes([])
+
+      setModalAcessoCriado({
+        email: emailLimpo,
+        senha: result.sucesso_parcial ? result.senha_provisoria : undefined,
+        sucessoEmail: !!result.email_enviado,
+      })
+    } catch (e: any) {
+      setErroCriar('Cliente criado, mas falha ao criar acesso: ' + (e.message || 'desconhecido'))
+    } finally {
+      setCriando(false)
     }
-    setCriando(false)
+  }
+
+  async function criarAcessoClienteExistente() {
+    if (!clienteSel) return
+    if (!clienteSel.email) {
+      setErroCriarAcesso('Cadastre o email do cliente antes de criar o acesso.')
+      return
+    }
+
+    setCriandoAcesso(true)
+    setErroCriarAcesso('')
+
+    try {
+      const res = await fetch('/api/criar-acesso-cliente', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cliente_id: clienteSel.id }),
+      })
+
+      const result = await res.json()
+
+      if (!res.ok) {
+        setErroCriarAcesso(result.error || 'Erro ao criar acesso')
+        setCriandoAcesso(false)
+        return
+      }
+
+      // Recarrega o cliente para atualizar o user_id
+      await recarregarClienteSel()
+
+      setModalAcessoCriado({
+        email: clienteSel.email,
+        senha: result.sucesso_parcial ? result.senha_provisoria : undefined,
+        sucessoEmail: !!result.email_enviado,
+      })
+    } catch (e: any) {
+      setErroCriarAcesso('Erro: ' + (e.message || 'desconhecido'))
+    } finally {
+      setCriandoAcesso(false)
+    }
   }
 
   async function abrirVenda() {
@@ -333,14 +484,16 @@ export default function AdminClientesPage() {
     setAba('vendas')
   }
 
-  // ============================================
-  // NOVO FLUXO: Ativação de plano com aceite pendente
-  // ============================================
   async function ativarPlano(planoId: string) {
     if (!clienteSel) return
 
     if (!clienteSel.email) {
-      setErroAtivacao('Cliente sem email cadastrado. Cadastre o email do cliente antes de ativar o plano.')
+      setErroAtivacao('Cliente sem email cadastrado. Cadastre o email antes de ativar o plano.')
+      return
+    }
+
+    if (!clienteSel.user_id) {
+      setErroAtivacao('Cliente sem acesso ao sistema. Crie o acesso primeiro na aba Dados.')
       return
     }
 
@@ -348,16 +501,13 @@ export default function AdminClientesPage() {
     setErroAtivacao('')
 
     try {
-      // 1. Gera o token único de aceite
       const { data: tokenData, error: errToken } = await supabase.rpc('gerar_token_aceite')
       if (errToken || !tokenData) throw new Error('Erro ao gerar token de aceite')
       const token = tokenData as string
 
-      // 2. Define validade do token: 7 dias
       const expiraEm = new Date()
       expiraEm.setDate(expiraEm.getDate() + 7)
 
-      // 3. Verifica se já existe cliente_plano para este plano
       const { data: existente } = await supabase
         .from('cliente_planos')
         .select('id, ativo')
@@ -393,14 +543,11 @@ export default function AdminClientesPage() {
         cliPlanoId = novo?.id || null
       }
 
-      // 4. Monta a URL de aceite
       const baseUrl = window.location.origin
       const linkAceite = `${baseUrl}/aceite-termo?token=${token}`
 
-      // 5. Recarrega os dados do cliente
       await carregarPlanosCliente(clienteSel.id)
 
-      // 6. Mostra o modal com o link gerado
       const planoInfo = planosDisponiveis.find(p => p.id === planoId)
       setModalAtivarPlano(null)
       setModalLinkAceite({
@@ -716,6 +863,11 @@ export default function AdminClientesPage() {
   const ehCortesia = formVenda.desconto_percentual === 100
   const ehAcesso = produtoSelecionado?.subtipo === 'acesso'
 
+  // Cenários do botão de acesso
+  const clienteTemAcesso = !!clienteSel?.user_id
+  const clienteTemEmailSemAcesso = !clienteTemAcesso && !!clienteSel?.email
+  const clienteSemEmailSemAcesso = !clienteTemAcesso && !clienteSel?.email
+
   if (loading || loadingUnidade || !perfil) return (
     <div className="flex items-center justify-center h-screen">
       <div className="w-8 h-8 border-4 border-primary-400 border-t-transparent rounded-full animate-spin" />
@@ -807,6 +959,7 @@ export default function AdminClientesPage() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-semibold text-gray-900">{c.nome}</span>
                         {c.bloqueado && <span className="text-xs px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">Bloqueado</span>}
+                        {!c.user_id && <span className="text-xs px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700">Sem acesso</span>}
                       </div>
                       <div className="text-xs text-gray-500 mt-0.5">
                         {c.cpf && <span className="font-mono">{c.cpf}</span>}
@@ -858,11 +1011,61 @@ export default function AdminClientesPage() {
                   <div className="w-14 h-14 rounded-full bg-white/20 text-white text-xl font-bold flex items-center justify-center flex-shrink-0">
                     {clienteSel.nome?.slice(0, 2).toUpperCase()}
                   </div>
-                  <div>
+                  <div className="flex-1">
                     <div className="font-bold text-lg leading-tight">{clienteSel.nome}</div>
-                    <div className="text-primary-200 text-sm mt-0.5">{clienteSel.email || '—'}</div>
+                    <div className="text-primary-200 text-sm mt-0.5">{clienteSel.email || 'Sem email cadastrado'}</div>
                   </div>
+                  {clienteTemAcesso ? (
+                    <span className="bg-green-500 bg-opacity-30 border border-green-300 text-green-100 text-xs px-2 py-1 rounded-full font-semibold flex items-center gap-1 flex-shrink-0">
+                      <Check size={12} /> Acesso ativo
+                    </span>
+                  ) : (
+                    <span className="bg-orange-500 bg-opacity-30 border border-orange-300 text-orange-100 text-xs px-2 py-1 rounded-full font-semibold flex items-center gap-1 flex-shrink-0">
+                      <KeyRound size={12} /> Sem acesso
+                    </span>
+                  )}
                 </div>
+
+                {/* Card: Criar acesso (só aparece se não tem acesso) */}
+                {!clienteTemAcesso && (
+                  <div className="card border-l-4 border-l-orange-400 bg-orange-50">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-orange-200 text-orange-700 flex items-center justify-center flex-shrink-0">
+                        <KeyRound size={18} />
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-sm font-semibold text-orange-900 mb-1">Cliente sem acesso ao sistema</div>
+                        {clienteSemEmailSemAcesso ? (
+                          <>
+                            <div className="text-xs text-orange-700 mb-3">
+                              Para criar o acesso, primeiro cadastre o email do cliente clicando em "Editar" no card abaixo.
+                            </div>
+                            <button disabled
+                              className="btn btn-sm bg-gray-200 text-gray-400 cursor-not-allowed gap-1">
+                              <KeyRound size={12} /> Cadastre o email primeiro
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <div className="text-xs text-orange-700 mb-3">
+                              Será gerada uma senha provisória e enviado um email de boas-vindas para <strong>{clienteSel.email}</strong> com os dados de acesso.
+                            </div>
+                            {erroCriarAcesso && (
+                              <div className="bg-red-50 border border-red-200 rounded-lg p-2 mb-3 text-xs text-red-700">
+                                {erroCriarAcesso}
+                              </div>
+                            )}
+                            <button onClick={criarAcessoClienteExistente} disabled={criandoAcesso}
+                              className="btn btn-sm gap-1 bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50">
+                              <KeyRound size={12} />
+                              {criandoAcesso ? 'Criando acesso...' : 'Criar acesso e enviar boas-vindas'}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {planosJustCT.filter(isPlanoVigente).length > 0 && (
                   <div className="card border-l-4 border-l-amber-400">
@@ -1123,10 +1326,21 @@ export default function AdminClientesPage() {
                       <div className="text-sm font-semibold text-primary-800 mb-3 flex items-center gap-2">
                         <Plus size={14} /> Ativar app parceiro em {unidadeAtiva.nome}
                       </div>
+                      {!clienteTemAcesso && (
+                        <div className="bg-orange-100 border border-orange-200 rounded-lg p-3 mb-3 text-xs text-orange-800 flex items-start gap-2">
+                          <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+                          <div>
+                            <strong>Atenção:</strong> Cliente sem acesso ao sistema. Vá para a aba <strong>Dados</strong> e crie o acesso antes de ativar planos.
+                          </div>
+                        </div>
+                      )}
                       <div className="space-y-2">
                         {planosDisponiveisParaAtivar().map(p => (
                           <button key={p.id} onClick={() => { setModalAtivarPlano(p); setErroAtivacao('') }}
-                            className="w-full bg-white border border-gray-200 rounded-xl p-3 flex items-center justify-between hover:border-primary-400 transition-all text-left">
+                            disabled={!clienteTemAcesso}
+                            className={`w-full bg-white border border-gray-200 rounded-xl p-3 flex items-center justify-between transition-all text-left ${
+                              clienteTemAcesso ? 'hover:border-primary-400 cursor-pointer' : 'opacity-50 cursor-not-allowed'
+                            }`}>
                             <div>
                               <div className="text-sm font-medium text-gray-900">{p.nome}</div>
                               <div className="text-xs text-gray-500">{p.creditos_mes} sessões/mês</div>
@@ -1650,12 +1864,6 @@ export default function AdminClientesPage() {
               </div>
             </div>
 
-            {!clienteSel?.email && (
-              <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-4 text-xs text-orange-800">
-                ⚠️ Cliente sem email cadastrado. Cadastre o email antes de continuar.
-              </div>
-            )}
-
             {erroAtivacao && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-sm text-red-600">
                 {erroAtivacao}
@@ -1666,7 +1874,7 @@ export default function AdminClientesPage() {
               <button onClick={() => setModalAtivarPlano(null)} className="btn flex-1 text-gray-500 border border-gray-200">
                 Cancelar
               </button>
-              <button onClick={() => ativarPlano(modalAtivarPlano.id)} disabled={salvandoPlano || !clienteSel?.email}
+              <button onClick={() => ativarPlano(modalAtivarPlano.id)} disabled={salvandoPlano}
                 className="btn flex-1 bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50">
                 {salvandoPlano ? 'Gerando link...' : 'Gerar link de aceite'}
               </button>
@@ -1805,35 +2013,123 @@ export default function AdminClientesPage() {
       {novoCliente && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-5">
-              <div className="font-semibold text-gray-900 text-lg">Novo cliente</div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="font-semibold text-gray-900 text-lg flex items-center gap-2">
+                <UserPlus size={20} className="text-primary-600" /> Novo cliente
+              </div>
               <button onClick={() => setNovoCliente(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
 
-            <div className="space-y-3">
-              {[
-                { label: 'Nome completo', key: 'nome', type: 'text' },
-                { label: 'Email', key: 'email', type: 'email' },
-                { label: 'Telefone', key: 'telefone', type: 'text' },
-                { label: 'CPF', key: 'cpf', type: 'text' },
-              ].map(f => (
-                <div key={f.key}>
-                  <label className="text-xs text-gray-500 mb-1 block font-medium">{f.label}</label>
-                  <input type={f.type} className="input w-full"
-                    value={formNovo[f.key as keyof typeof formNovo] as string}
-                    onChange={e => setFormNovo({ ...formNovo, [f.key]: e.target.value })} />
-                </div>
-              ))}
+            <div className="text-xs text-gray-500 mb-4">
+              Após cadastrar, o sistema criará automaticamente o acesso e enviará as boas-vindas por email.
             </div>
 
-            {erroCriar && <div className="mt-3 text-sm text-red-600">{erroCriar}</div>}
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block font-medium">
+                  Nome completo <span className="text-red-500">*</span>
+                </label>
+                <input type="text" className="input w-full"
+                  placeholder="Ex: Maria Silva"
+                  value={formNovo.nome}
+                  onChange={e => setFormNovo({ ...formNovo, nome: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block font-medium">
+                  Email <span className="text-red-500">*</span>
+                </label>
+                <input type="email" className="input w-full"
+                  placeholder="cliente@email.com"
+                  value={formNovo.email}
+                  onChange={e => setFormNovo({ ...formNovo, email: e.target.value })} />
+                <div className="text-xs text-gray-400 mt-1">Será usado para acesso ao sistema e envio das boas-vindas</div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block font-medium">Telefone</label>
+                <input type="text" className="input w-full"
+                  placeholder="(11) 99999-9999"
+                  value={formNovo.telefone}
+                  onChange={e => setFormNovo({ ...formNovo, telefone: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block font-medium">
+                  CPF <span className="text-red-500">*</span>
+                </label>
+                <input type="text" className="input w-full"
+                  placeholder="00000000000"
+                  value={formNovo.cpf}
+                  onChange={e => setFormNovo({ ...formNovo, cpf: e.target.value })} />
+              </div>
+            </div>
+
+            {erroCriar && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-3 text-sm text-red-600 flex items-start gap-2">
+                <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+                {erroCriar}
+              </div>
+            )}
 
             <div className="flex gap-2 mt-6">
               <button onClick={() => setNovoCliente(false)} className="btn flex-1 text-gray-500 border border-gray-200">Cancelar</button>
-              <button onClick={criarCliente} disabled={criando} className="btn flex-1 bg-primary-600 text-white font-medium">
-                {criando ? 'Cadastrando...' : 'Cadastrar'}
+              <button onClick={criarCliente} disabled={criando} className="btn flex-1 bg-primary-600 text-white font-medium gap-1">
+                <UserPlus size={14} />
+                {criando ? 'Cadastrando...' : 'Cadastrar e criar acesso'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {modalAcessoCriado && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="font-bold text-gray-900 flex items-center gap-2">
+                <Check size={18} className="text-green-600" />
+                {modalAcessoCriado.sucessoEmail ? 'Acesso criado com sucesso' : 'Acesso criado'}
+              </div>
+              <button onClick={() => setModalAcessoCriado(null)} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            </div>
+
+            {modalAcessoCriado.sucessoEmail ? (
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4">
+                <div className="flex items-start gap-3">
+                  <Mail size={20} className="text-green-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <div className="text-sm font-semibold text-green-900 mb-1">Email de boas-vindas enviado</div>
+                    <div className="text-xs text-green-700 leading-relaxed">
+                      O cliente recebeu em <strong>{modalAcessoCriado.email}</strong> um email com os dados de acesso e a senha provisória.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-4 text-xs text-orange-800">
+                  <div className="font-semibold mb-1">⚠️ Email não foi enviado</div>
+                  <div className="leading-relaxed">
+                    O acesso foi criado, mas o email de boas-vindas falhou. Anote a senha provisória e passe ao cliente manualmente.
+                  </div>
+                </div>
+
+                <div className="bg-gray-900 rounded-xl p-4 mb-4">
+                  <div className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-2">Senha provisória</div>
+                  <div className="font-mono text-2xl text-primary-300 font-bold tracking-wider mb-2">
+                    {modalAcessoCriado.senha}
+                  </div>
+                  <div className="text-xs text-gray-400">
+                    Email de login: <span className="text-white font-mono">{modalAcessoCriado.email}</span>
+                  </div>
+                </div>
+              </>
+            )}
+
+            <button onClick={() => setModalAcessoCriado(null)}
+              className="w-full btn bg-primary-600 text-white hover:bg-primary-700">
+              Entendi
+            </button>
           </div>
         </div>
       )}
