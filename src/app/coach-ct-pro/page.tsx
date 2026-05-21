@@ -65,11 +65,20 @@ export default function CoachCtProPage() {
         .btn-ghost-pro-h:hover { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
         .coach-pro-card { transition: all .3s; }
         .coach-pro-card:hover { transform: translateY(-6px); box-shadow: 0 12px 32px -8px ${ACCENT}33; }
+        .comparativo-tabela { width: 100%; border-collapse: separate; border-spacing: 0; }
+        .comparativo-tabela th, .comparativo-tabela td { padding: 1.25rem 1rem; text-align: center; }
+        .comparativo-tabela th:first-child, .comparativo-tabela td:first-child { text-align: left; padding-left: 1.5rem; }
+        .comparativo-tabela tbody tr { border-top: 1px solid #1a1a1a; }
+        .comparativo-tabela tbody tr:nth-child(even) td { background: #0d0d0d; }
+        .comparativo-tabela tbody tr:nth-child(even) td.col-pro { background: #1a0010; }
+        .comparativo-tabela td.col-pro { background: #15000c; }
         @media (max-width: 768px) {
           .beneficios-grid-r { grid-template-columns: 1fr !important; }
-          .comparativo-grid-r { grid-template-columns: 1fr !important; }
           .precos-grid-r { grid-template-columns: 1fr !important; }
           .cards-banco-r { grid-template-columns: 1fr !important; }
+          .comparativo-tabela th, .comparativo-tabela td { padding: 0.85rem 0.4rem; font-size: 13px; }
+          .comparativo-tabela th:first-child, .comparativo-tabela td:first-child { padding-left: 0.75rem; }
+          .label-mobile-hide { display: none; }
         }
       `}</style>
 
@@ -275,7 +284,7 @@ export default function CoachCtProPage() {
         </div>
       </div>
 
-      {/* ─── 5. COMPARATIVO ─── */}
+      {/* ─── 5. COMPARATIVO (TABELA) ─── */}
       <div style={{ padding: '6rem 2.5rem', maxWidth: 1100, margin: '0 auto' }}>
         <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 3, color: ACCENT, fontFamily: "'DM Mono', monospace", marginBottom: '1rem' }}>
           // lado a lado
@@ -287,73 +296,58 @@ export default function CoachCtProPage() {
           Não é sobre o que os outros entregam. É sobre o que você passa a ter.
         </div>
 
-        <div className="comparativo-grid-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}>
-          {[
-            {
-              label: 'Wellhub Diamond',
-              cor: '#9b59b6',
-              icon: '💜',
-              destaque: false,
-              items: [
-                { label: 'Treinos por mês', val: '8×' },
-                { label: 'Janela de agendamento', val: '7 dias' },
-                { label: 'Escolha do coach', val: '✗', negativo: true },
-                { label: 'Créditos cumulativos', val: '✗', negativo: true },
-                { label: 'Open Gym', val: '✓' },
-              ],
-            },
-            {
-              label: 'TotalPass TP6',
-              cor: '#2980b9',
-              icon: '🔵',
-              destaque: false,
-              items: [
-                { label: 'Treinos por mês', val: '10×' },
-                { label: 'Janela de agendamento', val: '7 dias' },
-                { label: 'Escolha do coach', val: '✗', negativo: true },
-                { label: 'Créditos cumulativos', val: '✗', negativo: true },
-                { label: 'Open Gym', val: '✓' },
-              ],
-            },
-            {
-              label: 'Coach CT Pro',
-              cor: ACCENT,
-              icon: '🏆',
-              destaque: true,
-              items: [
-                { label: 'Treinos por mês', val: '12×', destaque: true },
-                { label: 'Janela de agendamento', val: '14 dias', destaque: true },
-                { label: 'Escolha do coach', val: '✓', destaque: true },
-                { label: 'Créditos cumulativos', val: '✓', destaque: true },
-                { label: 'Open Gym', val: '✓', destaque: true },
-              ],
-            },
-          ].map((col, i) => (
-            <div key={i} style={{
-              background: col.destaque ? `linear-gradient(135deg, #1a0010 0%, #0d0008 100%)` : '#0f0f0f',
-              border: `1.5px solid ${col.destaque ? col.cor : '#1e1e1e'}`,
-              borderRadius: 16,
-              padding: '2rem',
-              position: 'relative' as const,
-              overflow: 'hidden',
-            }}>
-              {col.destaque && (
-                <div style={{ position: 'absolute', top: 16, right: -30, background: ACCENT, color: '#fff', fontSize: 10, fontWeight: 700, padding: '0.25rem 3rem', transform: 'rotate(38deg)', letterSpacing: 1.5, fontFamily: "'DM Mono', monospace" }}>
-                  VOCÊ
-                </div>
-              )}
-              <div style={{ fontSize: 22, marginBottom: 8 }}>{col.icon}</div>
-              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 20, color: col.destaque ? '#fff' : '#888', letterSpacing: 1, marginBottom: '1.5rem' }}>{col.label}</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                {col.items.map((item, j) => (
-                  <div key={j} style={{ borderBottom: '1px solid #1a1a1a', paddingBottom: '1rem' }}>
-                    <div style={{ fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{item.label}</div>
-                    <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: (item as any).negativo ? '#333' : (item as any).destaque ? ACCENT : '#fff', letterSpacing: 1 }}>{item.val}</div>
+        <div style={{ background: '#0a0a0a', border: '1px solid #1e1e1e', borderRadius: 16, overflow: 'hidden' }}>
+          <table className="comparativo-tabela">
+            <thead>
+              <tr style={{ background: '#0f0f0f' }}>
+                <th style={{ fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 2, fontWeight: 600, fontFamily: "'DM Mono', monospace" }}>
+                  Recurso
+                </th>
+                <th>
+                  <div style={{ fontSize: 18, marginBottom: 4 }}>💜</div>
+                  <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 16, color: '#888', letterSpacing: 1, lineHeight: 1.2 }}>
+                    WELLHUB<br /><span className="label-mobile-hide">DIAMOND</span>
                   </div>
-                ))}
-              </div>
-            </div>
-          ))}
+                </th>
+                <th>
+                  <div style={{ fontSize: 18, marginBottom: 4 }}>🔵</div>
+                  <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 16, color: '#888', letterSpacing: 1, lineHeight: 1.2 }}>
+                    TOTALPASS<br /><span className="label-mobile-hide">TP6</span>
+                  </div>
+                </th>
+                <th className="col-pro" style={{ position: 'relative' }}>
+                  <div style={{ fontSize: 18, marginBottom: 4 }}>🏆</div>
+                  <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 16, color: ACCENT, letterSpacing: 1, lineHeight: 1.2 }}>
+                    COACH<br />CT PRO
+                  </div>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { label: 'Treinos / mês', wh: '8×', tp: '10×', pro: '12×' },
+                { label: 'Janela', wh: '7 dias', tp: '7 dias', pro: '14 dias' },
+                { label: 'Escolha do coach', wh: '✗', tp: '✗', pro: '✓' },
+                { label: 'Cumulativos', wh: '✗', tp: '✗', pro: '✓' },
+                { label: 'Open Gym', wh: '✓', tp: '✓', pro: '✓' },
+              ].map((row, i) => (
+                <tr key={i}>
+                  <td style={{ fontSize: 13, color: '#aaa', fontWeight: 500, letterSpacing: 0.3 }}>
+                    {row.label}
+                  </td>
+                  <td style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: row.wh === '✗' ? '#333' : '#888', letterSpacing: 1 }}>
+                    {row.wh}
+                  </td>
+                  <td style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: row.tp === '✗' ? '#333' : '#888', letterSpacing: 1 }}>
+                    {row.tp}
+                  </td>
+                  <td className="col-pro" style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: ACCENT, letterSpacing: 1, fontWeight: 700 }}>
+                    {row.pro}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 
