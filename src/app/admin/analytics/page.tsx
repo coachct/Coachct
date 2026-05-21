@@ -54,11 +54,10 @@ export default function AnalyticsCoachesPage() {
   }, [perfil, loading])
 
   useEffect(() => {
-    if (perfil && unidadeAtiva) loadAnalytics()
+    if (perfil) loadAnalytics()
   }, [periodo, perfil, unidadeAtiva?.id])
 
   async function loadAnalytics() {
-    if (!unidadeAtiva) return
     setLoadingData(true)
 
     const dataInicio = new Date()
@@ -66,31 +65,33 @@ export default function AnalyticsCoachesPage() {
     const dataInicioStr = dataInicio.toISOString().split('T')[0]
     const hoje = new Date().toISOString().split('T')[0]
 
-    // Busca todos agendamentos do período com coach alocado
-    const { data: ags } = await supabase
+    // Query base — filtra por unidade só se houver múltiplas no futuro
+    let agsQuery = supabase
       .from('agendamentos')
       .select('id, horario, coach_id, cliente_id, data, status, clientes(nome), coaches(nome)')
-      .eq('unidade_id', unidadeAtiva.id)
       .gte('data', dataInicioStr)
       .lte('data', hoje)
       .not('coach_id', 'is', null)
       .neq('status', 'cancelado')
 
-    // Busca coach_horarios para calcular disponibilidade
-    const { data: horarios } = await supabase
+    let horariosQuery = supabase
       .from('coach_horarios')
       .select('coach_id, hora, dia_semana, coaches(nome)')
-      .eq('unidade_id', unidadeAtiva.id)
       .eq('ativo', true)
 
-    // Busca coaches ativos
-    const { data: coachesData } = await supabase
-      .from('coaches')
-      .select('id, nome')
-      .eq('unidade_id', unidadeAtiva.id)
-      .eq('ativo', true)
+    // Aplica filtro de unidade apenas se unidade estiver selecionada
+    if (unidadeAtiva) {
+      agsQuery = agsQuery.eq('unidade_id', unidadeAtiva.id)
+      horariosQuery = horariosQuery.eq('unidade_id', unidadeAtiva.id)
+    }
 
-    setCoachesAtivos(coachesData?.length || 0)
+    const [{ data: ags }, { data: horarios }, { data: coachesData }] = await Promise.all([
+      agsQuery,
+      horariosQuery,
+      supabase.from('coaches').select('id, nome').eq('ativo', true),
+    ])
+
+    setCoachesAtivos((coachesData || []).length)
     setTotalSessoes((ags || []).length)
 
     calcularOcupacao(ags || [], horarios || [], coachesData || [], dataInicioStr, hoje)
@@ -101,24 +102,20 @@ export default function AnalyticsCoachesPage() {
   }
 
   function calcularOcupacao(ags: any[], horarios: any[], coaches: any[], dataInicio: string, dataFim: string) {
-    // Conta dias úteis no período por dia da semana
-    const diasNoperiodo: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 }
+    const diasNoPeriodo: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 }
     const d = new Date(dataInicio + 'T12:00:00')
     const fim = new Date(dataFim + 'T12:00:00')
     while (d <= fim) {
-      diasNoperiodo[d.getDay()] = (diasNoperiodo[d.getDay()] || 0) + 1
+      diasNoPeriodo[d.getDay()] = (diasNoPeriodo[d.getDay()] || 0) + 1
       d.setDate(d.getDate() + 1)
     }
 
-    // Disponibilidade por coach = soma de horários × dias daquele dia da semana
     const dispMap: Record<string, number> = {}
     for (const h of horarios) {
-      const chave = h.coach_id
-      const disp = diasNoperiodo[h.dia_semana] || 0
-      dispMap[chave] = (dispMap[chave] || 0) + disp
+      const disp = diasNoPeriodo[h.dia_semana] || 0
+      dispMap[h.coach_id] = (dispMap[h.coach_id] || 0) + disp
     }
 
-    // Alocações por coach
     const alocMap: Record<string, number> = {}
     const nomeMap: Record<string, string> = {}
     for (const ag of ags) {
@@ -147,7 +144,6 @@ export default function AnalyticsCoachesPage() {
   }
 
   function calcularPreferencias(ags: any[]) {
-    // Agrupa por horário
     const porHorario: Record<string, Record<string, number>> = {}
     const nomesCoach: Record<string, string> = {}
 
@@ -174,13 +170,12 @@ export default function AnalyticsCoachesPage() {
         return { horario, coaches }
       })
       .sort((a, b) => a.horario.localeCompare(b.horario))
-      .slice(0, 8) // top 8 horários
+      .slice(0, 8)
 
     setPreferencias(resultado)
   }
 
   function calcularAfinidades(ags: any[]) {
-    // Pares cliente-coach
     const pares: Record<string, number> = {}
     const nomesCliente: Record<string, string> = {}
     const nomesCoach: Record<string, string> = {}
@@ -194,7 +189,7 @@ export default function AnalyticsCoachesPage() {
     }
 
     const resultado: AfinidadeCliente[] = Object.entries(pares)
-      .filter(([_, count]) => count >= 2) // só pares com 2+ treinos juntos
+      .filter(([_, count]) => count >= 2)
       .map(([chave, count]) => {
         const [cliente_id, coach_id] = chave.split('__')
         return {
@@ -204,7 +199,7 @@ export default function AnalyticsCoachesPage() {
         }
       })
       .sort((a, b) => b.total_treinos - a.total_treinos)
-      .slice(0, 15) // top 15 pares
+      .slice(0, 15)
 
     setAfinidades(resultado)
   }
@@ -224,7 +219,6 @@ export default function AnalyticsCoachesPage() {
   return (
     <div className="min-h-screen bg-gray-50">
 
-      {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
@@ -251,7 +245,6 @@ export default function AnalyticsCoachesPage() {
 
       <div className="max-w-5xl mx-auto px-6 py-6 space-y-6">
 
-        {/* Cards resumo */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
             { icon: <BarChart2 size={16} />, label: 'Sessões no período', value: totalSessoes },
@@ -287,7 +280,7 @@ export default function AnalyticsCoachesPage() {
                 <span className="text-xs text-gray-400 ml-auto">últimos {periodo} dias</span>
               </div>
               <div className="space-y-3">
-                {ocupacao.map((c, i) => (
+                {ocupacao.filter(c => c.total_alocado > 0).map((c, i) => (
                   <div key={c.coach_id}>
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-2">
@@ -311,6 +304,16 @@ export default function AnalyticsCoachesPage() {
                     </div>
                   </div>
                 ))}
+                {ocupacao.filter(c => c.total_alocado === 0).length > 0 && (
+                  <div className="pt-3 border-t border-gray-100">
+                    <div className="text-xs text-gray-400 mb-2">Sem sessões no período:</div>
+                    <div className="flex flex-wrap gap-2">
+                      {ocupacao.filter(c => c.total_alocado === 0).map(c => (
+                        <span key={c.coach_id} className="text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded-full">{c.coach_nome}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -334,13 +337,13 @@ export default function AnalyticsCoachesPage() {
                       <div className="space-y-2">
                         {h.coaches.map((c, i) => (
                           <div key={c.coach_id} className="flex items-center gap-2">
-                            <span className="text-xs text-gray-400 w-4">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`}</span>
+                            <span className="text-xs w-5">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`}</span>
                             <span className="text-xs text-gray-700 w-28 truncate">{c.coach_nome}</span>
                             <div className="flex-1 bg-gray-100 rounded-full h-1.5">
                               <div className="h-1.5 rounded-full bg-primary-400" style={{ width: `${c.taxa_preferencia}%` }} />
                             </div>
                             <span className="text-xs font-semibold text-primary-600 w-10 text-right">{c.taxa_preferencia}%</span>
-                            <span className="text-xs text-gray-400 w-16 text-right">{c.total_alocado}x</span>
+                            <span className="text-xs text-gray-400 w-12 text-right">{c.total_alocado}x</span>
                           </div>
                         ))}
                       </div>
