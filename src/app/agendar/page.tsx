@@ -117,10 +117,17 @@ export default function AgendarPage() {
   const [contratoAssinado, setContratoAssinado] = useState(false)
   const [aceiteCheck, setAceiteCheck] = useState(false)
   const [modalSemPlano, setModalSemPlano] = useState(false)
+  const [modalSemCartao, setModalSemCartao] = useState(false)
 
   const janelaProximoMesAberta = dentroDaJanelaProximoMes()
   const temCoachCtProAtivo = Object.entries(saldoMesAtual).some(([c, i]: [string, any]) => c.startsWith('coach_ct_pro_') && i?.disponivel > 0)
   const tipoVisualizacao: 'visitante' | 'coach_ct_pro' | 'padrao' = !user ? 'visitante' : temCoachCtProAtivo ? 'coach_ct_pro' : 'padrao'
+
+  // Detecta se cliente tem plano Wellhub/TotalPass ativo (precisa de cartão pra cobrir multas)
+  const temPlanoParceiroAtivo = Object.entries(saldoMesAtual).some(([k, v]: [string, any]) =>
+    (k.startsWith('wellhub_') || k.startsWith('totalpass_')) && v?.disponivel > 0
+  )
+  const precisaCartao = !!cliente && temPlanoParceiroAtivo && !cliente?.pagarme_card_id
 
   const diasSemana = Array.from({ length: 7 }, (_, i) => {
     const d = new Date()
@@ -302,12 +309,14 @@ export default function AgendarPage() {
   function tentarAgendar(hora: string, vagas: number) {
     if (!user) { router.push('/login'); return }
     if (semPlanoAtivo) { setModalSemPlano(true); return }
+    if (precisaCartao) { setModalSemCartao(true); return }
     abrirModalReserva(hora, vagas)
   }
 
   function tentarFila(hora: string) {
     if (!user) { router.push('/login'); return }
     if (semPlanoAtivo) { setModalSemPlano(true); return }
+    if (precisaCartao) { setModalSemCartao(true); return }
     abrirModalFila(hora)
   }
 
@@ -423,6 +432,16 @@ export default function AgendarPage() {
               <div style={{ fontSize: 13, color: '#888', lineHeight: 1.5 }}>Ative seu Wellhub, TotalPass ou compre sessões avulsas para começar a agendar.</div>
             </div>
             <button onClick={() => router.push('/meus-planos')} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.65rem 1.25rem', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' }}>Ative seu plano →</button>
+          </div>
+        )}
+
+        {!semPlanoAtivo && precisaCartao && (
+          <div style={{ background: '#1a1000', border: `1.5px solid ${AMARELO}55`, borderRadius: 16, padding: '1.25rem 1.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontSize: 14, color: AMARELO, fontWeight: 700, marginBottom: 4 }}>💳 Cadastre um cartão para liberar agendamentos</div>
+              <div style={{ fontSize: 13, color: '#888', lineHeight: 1.5 }}>Como seu plano é Wellhub/TotalPass, precisamos de um cartão registrado pra cobrir multas por faltas. <strong style={{ color: '#fff' }}>Nada será cobrado agora.</strong></div>
+            </div>
+            <button onClick={() => router.push('/cadastrar-cartao')} style={{ background: AMARELO, color: '#000', border: 'none', borderRadius: 10, padding: '0.65rem 1.25rem', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' }}>Cadastrar cartão →</button>
           </div>
         )}
 
@@ -607,6 +626,25 @@ export default function AgendarPage() {
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => setModalSemPlano(false)} style={{ flex: 1, background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.85rem', color: '#888', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Fechar</button>
               <button onClick={() => router.push('/meus-planos')} style={{ flex: 2, background: ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Ative seu plano →</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalSemCartao && (
+        <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#111', border: `1.5px solid ${AMARELO}55`, borderRadius: 20, width: '100%', maxWidth: 420, padding: '1.5rem' }}>
+            <div style={{ fontSize: 36, marginBottom: '1rem', textAlign: 'center' }}>💳</div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: 8, textAlign: 'center' }}>CARTÃO NECESSÁRIO</div>
+            <div style={{ fontSize: 14, color: '#aaa', lineHeight: 1.7, marginBottom: '1rem', textAlign: 'center' }}>
+              Como seu plano é <strong style={{ color: '#fff' }}>Wellhub/TotalPass</strong>, precisamos de um cartão cadastrado pra cobrir possíveis multas por faltas.
+            </div>
+            <div style={{ background: '#0a0a0a', border: `1px solid ${AMARELO}33`, borderRadius: 10, padding: '0.75rem 1rem', marginBottom: '1.5rem', fontSize: 13, color: AMARELO, textAlign: 'center', fontWeight: 600 }}>
+              🔒 Nada será cobrado agora
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setModalSemCartao(false)} style={{ flex: 1, background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.85rem', color: '#888', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Fechar</button>
+              <button onClick={() => router.push('/cadastrar-cartao')} style={{ flex: 2, background: AMARELO, color: '#000', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Cadastrar cartão →</button>
             </div>
           </div>
         </div>
