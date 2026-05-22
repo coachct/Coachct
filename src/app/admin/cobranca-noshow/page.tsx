@@ -76,6 +76,7 @@ export default function CobrancaNoShowPage() {
 
     const { de, ate } = getRangeData()
 
+    // 1. Busca faltas do período na unidade
     const { data: agsRaw, error } = await supabase
       .from('agendamentos')
       .select(`
@@ -98,29 +99,71 @@ export default function CobrancaNoShowPage() {
     }
 
     const ags: any[] = agsRaw || []
-    let vendasMap: Record<string, any> = {}
+
+    // 2. Para cada falta, verifica se já foi cobrada
+    //    Verifica em DOIS lugares:
+    //    a) cobrancas_pendentes com status='pago' (cliente regularizou ou admin cobrou via fluxo novo)
+    //    b) vendas com produto_id=multa (fallback pra cobranças antigas)
+    let cobrancasMap: Record<string, any> = {} // por agendamento_id
 
     if (ags.length > 0) {
+      const clienteIds = ags.map((a: any) => a.cliente_id)
+
+      // a) Busca cobranças pendentes/pagas/canceladas relacionadas aos clientes
+      const { data: cobs } = await supabase
+        .from('cobrancas_pendentes')
+        .select('*')
+        .in('cliente_id', clienteIds)
+
+      for (const c of ((cobs as any[]) || [])) {
+        // Extrai agendamento_id da observacao "agendamento_id: xxx"
+        const match = c.observacao?.match(/agendamento_id:\s*([a-f0-9-]{36})/i)
+        if (match) {
+          const agId = match[1]
+          // Mantém o registro mais relevante (pago > pendente > cancelado)
+          const existente = cobrancasMap[agId]
+          if (!existente || (c.status === 'pago' && existente.status !== 'pago')) {
+            cobrancasMap[agId] = c
+          }
+        }
+      }
+
+      // b) Fallback: vendas diretas de multa (cobrança feita pelo admin direto)
       const { data: vendas } = await supabase
         .from('vendas')
         .select('id, cliente_id, valor_total, vendido_em, observacao')
         .eq('produto_id', PRODUTO_MULTA_ID)
-        .in('cliente_id', ags.map((a: any) => a.cliente_id))
+        .in('cliente_id', clienteIds)
 
       for (const v of ((vendas as any[]) || [])) {
         const match = v.observacao?.match(/agendamento ([a-f0-9-]{36})/i)
         if (match) {
-          vendasMap[match[1]] = v
+          const agId = match[1]
+          // Se já tem cobrança paga registrada via cobrancas_pendentes, não sobrescreve
+          if (!cobrancasMap[agId] || cobrancasMap[agId].status !== 'pago') {
+            cobrancasMap[agId] = {
+              status: 'pago',
+              valor: v.valor_total,
+              pago_em: v.vendido_em,
+              _venda_direta: true,
+            }
+          }
         }
       }
     }
 
+    // 3. Enriquece cada falta com status real
     const enriquecidas = ags.map((a: any) => {
-      const venda = vendasMap[a.id]
+      const cob = cobrancasMap[a.id]
       let statusCobranca: 'pendente' | 'cobrado' | 'sem_cartao' = 'pendente'
-      if (venda) statusCobranca = 'cobrado'
-      else if (!a.clientes?.pagarme_card_id) statusCobranca = 'sem_cartao'
-      return { ...a, statusCobranca, venda }
+
+      if (cob?.status === 'pago') {
+        statusCobranca = 'cobrado'
+      } else if (!a.clientes?.pagarme_card_id) {
+        statusCobranca = 'sem_cartao'
+      }
+
+      return { ...a, statusCobranca, cobranca: cob }
     })
 
     setFaltas(enriquecidas)
@@ -370,9 +413,9 @@ export default function CobrancaNoShowPage() {
                           <span>· {cliente.pagarme_card_brand} •••• {cliente.pagarme_card_last4}</span>
                         )}
                       </div>
-                      {cobrado && f.venda && (
+                      {cobrado && f.cobranca?.pago_em && (
                         <div className="text-xs text-green-600 mt-1">
-                          Cobrado em {new Date(f.venda.vendido_em).toLocaleDateString('pt-BR')} · {formatarMoeda(f.venda.valor_total)}
+                          Cobrado em {new Date(f.cobranca.pago_em).toLocaleDateString('pt-BR')} · {formatarMoeda(f.cobranca.valor || VALOR_MULTA)}
                         </div>
                       )}
                     </div>
@@ -380,7 +423,7 @@ export default function CobrancaNoShowPage() {
                     <div className="flex-shrink-0">
                       {cobrado ? (
                         <div className="text-xs text-green-700 font-bold text-right">
-                          ✓ {formatarMoeda(f.venda?.valor_total || VALOR_MULTA)}
+                          ✓ {formatarMoeda(f.cobranca?.valor || VALOR_MULTA)}
                         </div>
                       ) : !temCartao ? (
                         <button disabled className="btn btn-sm bg-gray-100 text-gray-400 cursor-not-allowed">
