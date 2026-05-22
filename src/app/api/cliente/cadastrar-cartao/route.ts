@@ -9,6 +9,7 @@ const supabase = createClient(
 
 const PAGARME_API_URL = 'https://api.pagar.me/core/v5'
 const PAGARME_API_KEY = process.env.PAGARME_API_KEY!
+const PRODUTO_MULTA_ID = '7a0e93e1-98b0-4125-a993-7a688e8e34bb'
 
 function getAuthHeader() {
   const credentials = Buffer.from(`${PAGARME_API_KEY}:`).toString('base64')
@@ -17,7 +18,7 @@ function getAuthHeader() {
 
 export async function POST(req: NextRequest) {
   try {
-    // 1. Autenticação: lê o JWT do header e descobre quem é o usuário
+    // 1. Autenticação
     const authHeader = req.headers.get('authorization') || ''
     const token = authHeader.replace('Bearer ', '')
     
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Token inválido' }, { status: 401 })
     }
 
-    // 2. Busca o cliente vinculado a esse usuário
+    // 2. Busca o cliente
     const { data: cliente, error: errCliente } = await supabase
       .from('clientes')
       .select('*')
@@ -42,11 +43,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 })
     }
 
-    if (cliente.bloqueado) {
-      return NextResponse.json({ error: 'Cliente bloqueado. Regularize pendências antes de cadastrar cartão.' }, { status: 403 })
-    }
+    // OBS: cliente bloqueado PODE cadastrar/trocar cartão — é justamente o caminho de regularização
 
-    // 3. Valida dados do cartão recebidos
+    // 3. Valida dados do cartão
     const body = await req.json()
     const { numero, nome, cvv, mes, ano } = body
 
@@ -75,7 +74,7 @@ export async function POST(req: NextRequest) {
     const cpfLimpo = (cliente.cpf || '').replace(/\D/g, '')
     const telLimpo = (cliente.telefone || '').replace(/\D/g, '')
 
-    // 4. PASSO A — Criar (ou recuperar) o customer no Pagar.me
+    // 4. Cria ou recupera customer no Pagar.me
     let pagarmeCustomerId = cliente.pagarme_customer_id
 
     if (!pagarmeCustomerId) {
@@ -129,14 +128,13 @@ export async function POST(req: NextRequest) {
 
       pagarmeCustomerId = customerData.id
 
-      // Salva o customer_id no cliente
       await supabase
         .from('clientes')
         .update({ pagarme_customer_id: pagarmeCustomerId })
         .eq('id', cliente.id)
     }
 
-    // 5. PASSO B — Criar o cartão no customer (ZeroDollar valida automaticamente, sem cobrar)
+    // 5. Cria cartão (ZeroDollar valida sem cobrar)
     const cardPayload = {
       number: numeroLimpo,
       holder_name: String(nome).trim(),
@@ -166,7 +164,6 @@ export async function POST(req: NextRequest) {
 
     const cardData = await cardResp.json()
 
-    // 6. Trata resposta
     if (!cardResp.ok || cardData.status === 'invalid') {
       console.error('Erro ao criar cartão no Pagar.me:', JSON.stringify(cardData, null, 2))
       
@@ -197,12 +194,12 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
-    // 7. Cartão criado e validado com sucesso — salva no cliente
+    // 6. Cartão validado — salva no cliente
     const cardId = cardData.id
     const last4 = cardData.last_four_digits || numeroLimpo.slice(-4)
     const brand = (cardData.brand || '').toLowerCase()
 
-    // Se já tinha cartão salvo, vamos apagar o antigo do Pagar.me (não acumular)
+    // Apaga cartão antigo do Pagar.me
     if (cliente.pagarme_card_id && cliente.pagarme_card_id !== cardId) {
       try {
         await fetch(
@@ -217,8 +214,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Atualiza o cliente com os dados do novo cartão
-    const { error: errUpdate } = await supabase
+    await supabase
       .from('clientes')
       .update({
         pagarme_card_id: cardId,
@@ -228,11 +224,6 @@ export async function POST(req: NextRequest) {
       })
       .eq('id', cliente.id)
 
-    if (errUpdate) {
-      console.error('Erro ao salvar cartão no cliente:', errUpdate)
-    }
-
-    // Log de sucesso
     await supabase.from('cartoes_log').insert({
       cliente_id: cliente.id,
       operacao: 'cadastro',
@@ -249,12 +240,147 @@ export async function POST(req: NextRequest) {
       operado_por: user.id,
     })
 
+    // ============================================================
+    // 7. NOVO: Após salvar cartão, tenta cobrar pendências
+    // ============================================================
+    const { data: pendencias } = await supabase
+      .from('cobrancas_pendentes')
+      .select('*')
+      .eq('cliente_id', cliente.id)
+      .eq('status', 'pendente')
+      .order('cobrado_em', { ascending: true })
+
+    let resumoPendencias = {
+      havia: 0,
+      cobradas: 0,
+      falhadas: 0,
+      valor_cobrado: 0,
+      cliente_desbloqueado: false,
+    }
+
+    if (pendencias && pendencias.length > 0) {
+      resumoPendencias.havia = pendencias.length
+
+      for (const pend of pendencias) {
+        const valorCentavos = Math.round(Number(pend.valor) * 100)
+
+        const orderPayload = {
+          customer_id: pagarmeCustomerId,
+          items: [
+            {
+              amount: valorCentavos,
+              description: pend.motivo,
+              quantity: 1,
+              code: `pendencia_${pend.id}`,
+            },
+          ],
+          payments: [
+            {
+              payment_method: 'credit_card',
+              credit_card: {
+                card_id: cardId,
+                operation_type: 'auth_and_capture',
+                installments: 1,
+                statement_descriptor: 'JUSTCT MULTA',
+              },
+            },
+          ],
+        }
+
+        const orderResp = await fetch(`${PAGARME_API_URL}/orders`, {
+          method: 'POST',
+          headers: {
+            'Authorization': getAuthHeader(),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(orderPayload),
+        })
+
+        const orderData = await orderResp.json()
+        const aprovado = orderResp.ok && orderData?.status === 'paid'
+
+        // Log da tentativa
+        await supabase.from('cartoes_log').insert({
+          cliente_id: cliente.id,
+          operacao: 'cobranca_apos_cadastro',
+          pagarme_customer_id: pagarmeCustomerId,
+          pagarme_card_id: cardId,
+          pagarme_order_id: orderData?.id || null,
+          sucesso: aprovado,
+          valor: Number(pend.valor),
+          motivo: `Tentativa automática após cadastro de cartão — ${pend.motivo}`,
+          erro: !aprovado ? JSON.stringify(orderData) : null,
+          request_payload: orderPayload,
+          response_payload: orderData,
+          operado_por: user.id,
+        })
+
+        if (aprovado) {
+          // Marca pendência como paga
+          await supabase
+            .from('cobrancas_pendentes')
+            .update({
+              status: 'pago',
+              pago_em: new Date().toISOString(),
+              pagarme_order_id: orderData.id,
+            })
+            .eq('id', pend.id)
+
+          // Tenta extrair unidade_id da observacao "agendamento_id: xxx"
+          let unidadeId: string | null = null
+          const matchAg = pend.observacao?.match(/agendamento_id:\s*([a-f0-9-]{36})/i)
+          if (matchAg) {
+            const { data: ag } = await supabase
+              .from('agendamentos')
+              .select('unidade_id')
+              .eq('id', matchAg[1])
+              .maybeSingle()
+            unidadeId = ag?.unidade_id || null
+          }
+
+          // Registra venda
+          await supabase.from('vendas').insert({
+            produto_id: PRODUTO_MULTA_ID,
+            cliente_id: cliente.id,
+            quantidade: 1,
+            valor_unitario: Number(pend.valor),
+            valor_total: Number(pend.valor),
+            valor_original: Number(pend.valor),
+            desconto_percentual: 0,
+            forma_pagamento: 'cartao_credito',
+            vendido_por: user.id,
+            unidade_id: unidadeId,
+            observacao: `Multa regularizada pelo cliente — pendência ${pend.id} — order_id ${orderData.id}`,
+          })
+
+          resumoPendencias.cobradas++
+          resumoPendencias.valor_cobrado += Number(pend.valor)
+        } else {
+          resumoPendencias.falhadas++
+        }
+      }
+
+      // Se TODAS aprovadas, desbloqueia cliente
+      if (resumoPendencias.falhadas === 0 && resumoPendencias.cobradas > 0) {
+        await supabase
+          .from('clientes')
+          .update({
+            bloqueado: false,
+            motivo_bloqueio: null,
+          })
+          .eq('id', cliente.id)
+
+        resumoPendencias.cliente_desbloqueado = true
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       cartao: {
         last4,
         brand,
       },
+      pendencias: resumoPendencias,
     })
 
   } catch (err: any) {
