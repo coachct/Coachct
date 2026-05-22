@@ -63,7 +63,6 @@ export default function CobrancaNoShowPage() {
       d.setDate(d.getDate() - 30)
       de = d.toISOString().split('T')[0]
     } else {
-      // tudo — pega últimos 365 dias
       const d = new Date(hoje)
       d.setDate(d.getDate() - 365)
       de = d.toISOString().split('T')[0]
@@ -77,8 +76,7 @@ export default function CobrancaNoShowPage() {
 
     const { de, ate } = getRangeData()
 
-    // 1. Busca agendamentos com status='falta' na unidade ativa no período
-    const { data: ags, error } = await supabase
+    const { data: agsRaw, error } = await supabase
       .from('agendamentos')
       .select(`
         id, cliente_id, coach_id, data, horario, status, tipo_credito, unidade_id,
@@ -99,20 +97,17 @@ export default function CobrancaNoShowPage() {
       return
     }
 
-    // 2. Para cada falta, verifica se já foi cobrada (busca em vendas)
-    const agIds = (ags || []).map(a => a.id)
+    const ags: any[] = agsRaw || []
     let vendasMap: Record<string, any> = {}
 
-    if (agIds.length > 0) {
-      // Busca vendas de multa pra esses agendamentos
+    if (ags.length > 0) {
       const { data: vendas } = await supabase
         .from('vendas')
         .select('id, cliente_id, valor_total, vendido_em, observacao')
         .eq('produto_id', PRODUTO_MULTA_ID)
-        .in('cliente_id', (ags || []).map(a => a.cliente_id))
+        .in('cliente_id', ags.map((a: any) => a.cliente_id))
 
-      // Mapeia vendas por agendamento_id (que está na observacao)
-      for (const v of (vendas || [])) {
+      for (const v of ((vendas as any[]) || [])) {
         const match = v.observacao?.match(/agendamento ([a-f0-9-]{36})/i)
         if (match) {
           vendasMap[match[1]] = v
@@ -120,8 +115,7 @@ export default function CobrancaNoShowPage() {
       }
     }
 
-    // 3. Enriquece cada falta com status de cobrança
-    const enriquecidas = (ags || []).map(a => {
+    const enriquecidas = ags.map((a: any) => {
       const venda = vendasMap[a.id]
       let statusCobranca: 'pendente' | 'cobrado' | 'sem_cartao' = 'pendente'
       if (venda) statusCobranca = 'cobrado'
@@ -187,20 +181,18 @@ export default function CobrancaNoShowPage() {
     }
   }
 
-  // Filtra por status
-  const faltasFiltradas = faltas.filter(f => {
+  const faltasFiltradas = faltas.filter((f: any) => {
     if (filtroStatus === 'todos') return true
     return f.statusCobranca === filtroStatus
   })
 
-  // KPIs
   const totalFaltas = faltas.length
   const valorPotencial = faltas.length * VALOR_MULTA
-  const totalCobrado = faltas.filter(f => f.statusCobranca === 'cobrado').length
+  const totalCobrado = faltas.filter((f: any) => f.statusCobranca === 'cobrado').length
   const valorCobrado = totalCobrado * VALOR_MULTA
-  const totalPendente = faltas.filter(f => f.statusCobranca === 'pendente').length
+  const totalPendente = faltas.filter((f: any) => f.statusCobranca === 'pendente').length
   const valorPendente = totalPendente * VALOR_MULTA
-  const totalSemCartao = faltas.filter(f => f.statusCobranca === 'sem_cartao').length
+  const totalSemCartao = faltas.filter((f: any) => f.statusCobranca === 'sem_cartao').length
 
   if (loading || loadingUnidade || !perfil) return (
     <div className="flex items-center justify-center h-screen">
@@ -220,7 +212,6 @@ export default function CobrancaNoShowPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header sticky */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div>
           <div className="text-base font-semibold text-gray-900">Cobrança No-Show</div>
@@ -231,7 +222,6 @@ export default function CobrancaNoShowPage() {
 
       <div className="max-w-5xl mx-auto px-6 py-5">
 
-        {/* KPIs */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
           <div className="card">
             <div className="flex items-center gap-2 mb-1">
@@ -272,7 +262,6 @@ export default function CobrancaNoShowPage() {
           </div>
         </div>
 
-        {/* Filtros */}
         <div className="bg-white rounded-2xl border border-gray-200 p-3 mb-5">
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-1 text-xs text-gray-500 font-semibold uppercase tracking-wide">
@@ -313,7 +302,6 @@ export default function CobrancaNoShowPage() {
           </div>
         </div>
 
-        {/* Lista */}
         {loadingFaltas ? (
           <div className="flex justify-center py-12">
             <div className="w-8 h-8 border-4 border-primary-400 border-t-transparent rounded-full animate-spin" />
@@ -328,7 +316,7 @@ export default function CobrancaNoShowPage() {
           </div>
         ) : (
           <div className="space-y-2">
-            {faltasFiltradas.map(f => {
+            {faltasFiltradas.map((f: any) => {
               const cliente = f.clientes
               const temCartao = !!cliente?.pagarme_card_id
               const cobrado = f.statusCobranca === 'cobrado'
@@ -340,7 +328,6 @@ export default function CobrancaNoShowPage() {
                   'border-l-orange-400'
                 }`}>
                   <div className="flex items-center gap-3 flex-wrap">
-                    {/* Data */}
                     <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center flex-shrink-0 ${
                       cobrado ? 'bg-green-50' : !temCartao ? 'bg-red-50' : 'bg-orange-50'
                     }`}>
@@ -356,7 +343,6 @@ export default function CobrancaNoShowPage() {
                       </div>
                     </div>
 
-                    {/* Info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-semibold text-gray-900">{cliente?.nome || 'Cliente removido'}</span>
@@ -391,7 +377,6 @@ export default function CobrancaNoShowPage() {
                       )}
                     </div>
 
-                    {/* Ação */}
                     <div className="flex-shrink-0">
                       {cobrado ? (
                         <div className="text-xs text-green-700 font-bold text-right">
@@ -416,7 +401,6 @@ export default function CobrancaNoShowPage() {
         )}
       </div>
 
-      {/* Modal de confirmação de cobrança */}
       {modalCobranca && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6">
