@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/useAuth'
 import SiteHeader from '@/components/SiteHeader'
 
 const ACCENT = '#ff2d9b'
+const VERDE = '#2ddd8b'
 
 export default function CadastrarCartaoPage() {
   const router = useRouter()
@@ -17,8 +18,8 @@ export default function CadastrarCartaoPage() {
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
   const [sucesso, setSucesso] = useState(false)
+  const [resultadoPendencias, setResultadoPendencias] = useState<any>(null)
 
-  // Formulário
   const [numero, setNumero] = useState('')
   const [nome, setNome] = useState('')
   const [cvv, setCvv] = useState('')
@@ -75,7 +76,6 @@ export default function CadastrarCartaoPage() {
     setSalvando(true)
 
     try {
-      // Pega o token de auth pra enviar no header
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.access_token) {
         setErro('Sessão expirada. Faça login novamente.')
@@ -107,9 +107,9 @@ export default function CadastrarCartaoPage() {
       }
 
       setSucesso(true)
+      setResultadoPendencias(data.pendencias || null)
       await carregarCliente()
 
-      // Limpa o formulário
       setNumero('')
       setNome('')
       setCvv('')
@@ -133,6 +133,11 @@ export default function CadastrarCartaoPage() {
 
   const cartaoSalvo = cliente?.pagarme_card_id && cliente?.pagarme_card_last4
 
+  // Lógica de exibição após sucesso
+  const pendenciasResolvidas = resultadoPendencias?.havia > 0 && resultadoPendencias?.cliente_desbloqueado
+  const pendenciasParciais = resultadoPendencias?.havia > 0 && !resultadoPendencias?.cliente_desbloqueado && resultadoPendencias?.cobradas > 0
+  const pendenciasFalharam = resultadoPendencias?.havia > 0 && resultadoPendencias?.cobradas === 0
+
   const card = { background: '#111', border: '1px solid #222', borderRadius: 16, padding: '2rem' }
   const inputStyle = {
     width: '100%', background: '#080808', border: '1px solid #333', borderRadius: 10,
@@ -152,7 +157,7 @@ export default function CadastrarCartaoPage() {
         @keyframes spin { to { transform: rotate(360deg) } }
         input:focus { outline: none; border-color: ${ACCENT} !important; }
         .btn-primary-h:hover { opacity: 0.85; }
-        .btn-ghost-h:hover { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
+        .btn-verde-h:hover { opacity: 0.85; }
       `}</style>
 
       <SiteHeader />
@@ -165,7 +170,7 @@ export default function CadastrarCartaoPage() {
         </div>
 
         {/* Cartão atualmente salvo */}
-        {cartaoSalvo && (
+        {cartaoSalvo && !sucesso && (
           <div style={{ ...card, marginBottom: '1.5rem', borderColor: '#22c55e44', background: '#0a1f0f' }}>
             <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#22c55e', marginBottom: '0.5rem', fontFamily: "'DM Mono', monospace" }}>// cartão atual</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -177,16 +182,64 @@ export default function CadastrarCartaoPage() {
                 <div style={{ fontSize: 13, color: '#888' }}>Cartão cadastrado e validado</div>
               </div>
             </div>
-            {!sucesso && (
-              <div style={{ marginTop: '1rem', fontSize: 13, color: '#aaa', lineHeight: 1.6 }}>
-                Para trocar, preencha um novo cartão abaixo. O antigo será substituído.
-              </div>
-            )}
+            <div style={{ marginTop: '1rem', fontSize: 13, color: '#aaa', lineHeight: 1.6 }}>
+              Para trocar, preencha um novo cartão abaixo. O antigo será substituído.
+            </div>
           </div>
         )}
 
-        {/* Mensagem de sucesso */}
-        {sucesso && (
+        {/* SUCESSO — PENDÊNCIA REGULARIZADA */}
+        {sucesso && pendenciasResolvidas && (
+          <div style={{ ...card, marginBottom: '1.5rem', borderColor: VERDE, background: `${VERDE}10`, textAlign: 'center' as const }}>
+            <div style={{ fontSize: 48, marginBottom: '0.5rem' }}>✓</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: '#fff', marginBottom: '0.75rem', fontFamily: "'Bebas Neue', sans-serif", letterSpacing: 1 }}>
+              PENDÊNCIA REGULARIZADA COM SUCESSO!
+            </div>
+            <div style={{ fontSize: 14, color: '#ddd', lineHeight: 1.7, marginBottom: '1rem' }}>
+              Foram cobrados <strong style={{ color: VERDE }}>R$ {Number(resultadoPendencias.valor_cobrado).toFixed(2).replace('.', ',')}</strong> ({resultadoPendencias.cobradas} {resultadoPendencias.cobradas === 1 ? 'cobrança' : 'cobranças'}) no seu novo cartão.
+            </div>
+            <div style={{ background: '#0a0a0a', border: `1px solid ${VERDE}33`, borderRadius: 10, padding: '0.75rem 1rem', fontSize: 13, color: VERDE, fontWeight: 600 }}>
+              🎉 Sua conta foi desbloqueada — você já pode agendar treinos novamente!
+            </div>
+          </div>
+        )}
+
+        {/* SUCESSO — PENDÊNCIAS PARCIAIS (algumas falharam) */}
+        {sucesso && pendenciasParciais && (
+          <div style={{ ...card, marginBottom: '1.5rem', borderColor: '#ffaa00', background: '#1a1000', textAlign: 'center' as const }}>
+            <div style={{ fontSize: 40, marginBottom: '0.5rem' }}>⚠️</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: '#fff', marginBottom: '0.75rem', fontFamily: "'Bebas Neue', sans-serif", letterSpacing: 1 }}>
+              REGULARIZAÇÃO PARCIAL
+            </div>
+            <div style={{ fontSize: 14, color: '#ddd', lineHeight: 1.7, marginBottom: '1rem' }}>
+              {resultadoPendencias.cobradas} de {resultadoPendencias.havia} {resultadoPendencias.havia === 1 ? 'cobrança foi' : 'cobranças foram'} aprovadas (R$ {Number(resultadoPendencias.valor_cobrado).toFixed(2).replace('.', ',')}).
+              <br />
+              <strong style={{ color: '#ffaa00' }}>{resultadoPendencias.falhadas}</strong> ainda {resultadoPendencias.falhadas === 1 ? 'precisa' : 'precisam'} ser regularizada{resultadoPendencias.falhadas > 1 ? 's' : ''}.
+            </div>
+            <div style={{ background: '#0a0a0a', border: '1px solid #ffaa0033', borderRadius: 10, padding: '0.75rem 1rem', fontSize: 13, color: '#ffaa00' }}>
+              Sua conta continua bloqueada. Tente outro cartão.
+            </div>
+          </div>
+        )}
+
+        {/* SUCESSO — PENDÊNCIAS FALHARAM TODAS */}
+        {sucesso && pendenciasFalharam && (
+          <div style={{ ...card, marginBottom: '1.5rem', borderColor: '#ff4444', background: '#1a0000', textAlign: 'center' as const }}>
+            <div style={{ fontSize: 40, marginBottom: '0.5rem' }}>🚫</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: '#fff', marginBottom: '0.75rem', fontFamily: "'Bebas Neue', sans-serif", letterSpacing: 1 }}>
+              CARTÃO RECUSADO PARA COBRANÇA
+            </div>
+            <div style={{ fontSize: 14, color: '#ddd', lineHeight: 1.7, marginBottom: '1rem' }}>
+              O cartão foi cadastrado, mas a cobrança da pendência de <strong>R$ {Number(resultadoPendencias.havia * 99).toFixed(2).replace('.', ',')}</strong> não foi aprovada.
+            </div>
+            <div style={{ background: '#0a0000', border: '1px solid #ff444433', borderRadius: 10, padding: '0.75rem 1rem', fontSize: 13, color: '#ff4444' }}>
+              Tente outro cartão para regularizar e desbloquear sua conta.
+            </div>
+          </div>
+        )}
+
+        {/* SUCESSO — sem pendências (caso normal de primeiro cadastro) */}
+        {sucesso && !resultadoPendencias?.havia && (
           <div style={{ ...card, marginBottom: '1.5rem', borderColor: ACCENT, background: `${ACCENT}10`, textAlign: 'center' as const }}>
             <div style={{ fontSize: 40, marginBottom: '0.5rem' }}>✓</div>
             <div style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: '0.5rem' }}>Cartão cadastrado com sucesso!</div>
@@ -196,7 +249,7 @@ export default function CadastrarCartaoPage() {
           </div>
         )}
 
-        {/* Explicação */}
+        {/* Explicação (antes de cadastrar) */}
         {!sucesso && (
           <div style={{ ...card, marginBottom: '1.5rem', background: '#0d0d0d' }}>
             <div style={{ fontSize: 13, color: '#aaa', lineHeight: 1.7 }}>
@@ -249,11 +302,21 @@ export default function CadastrarCartaoPage() {
           </div>
         )}
 
+        {/* Botões após sucesso */}
         {sucesso && (
-          <button onClick={() => router.push('/agendar')} className="btn-primary-h"
-            style={{ width: '100%', background: ACCENT, color: '#fff', border: 'none', borderRadius: 12, padding: '1rem', fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-            Agendar Treino →
-          </button>
+          <>
+            {pendenciasResolvidas || !resultadoPendencias?.havia ? (
+              <button onClick={() => router.push('/agendar')} className="btn-verde-h"
+                style={{ width: '100%', background: VERDE, color: '#000', border: 'none', borderRadius: 12, padding: '1rem', fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                Agendar Treino →
+              </button>
+            ) : (
+              <button onClick={() => { setSucesso(false); setResultadoPendencias(null) }} className="btn-primary-h"
+                style={{ width: '100%', background: ACCENT, color: '#fff', border: 'none', borderRadius: 12, padding: '1rem', fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                Tentar outro cartão →
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>
