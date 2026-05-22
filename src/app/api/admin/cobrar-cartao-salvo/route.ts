@@ -88,13 +88,16 @@ export async function POST(req: NextRequest) {
 
     // 7. Monta payload Pagar.me — MIT com card_id salvo
     const valorCentavos = Math.round(Number(valor) * 100)
+    const horarioFmt = (ag.horario || '').slice(0, 5)
+
     const pagarmePayload = {
       customer_id: cliente.pagarme_customer_id,
       items: [
         {
           amount: valorCentavos,
-          description: `Multa No-Show — Agendamento ${ag.data} ${(ag.horario || '').slice(0, 5)}`,
+          description: `Multa No-Show — Agendamento ${ag.data} ${horarioFmt}`,
           quantity: 1,
+          code: `multa_${agendamento_id}`,
         },
       ],
       payments: [
@@ -149,7 +152,7 @@ export async function POST(req: NextRequest) {
       await supabase.from('cobrancas_pendentes').insert({
         cliente_id: cliente.id,
         valor: Number(valor),
-        motivo: `Multa no-show — agendamento ${ag.data} ${(ag.horario || '').slice(0, 5)}`,
+        motivo: `Multa no-show — agendamento ${ag.data} ${horarioFmt}`,
         status: 'pendente',
         pagarme_order_id: dataPagarme?.id || null,
         criado_por: perfil.id,
@@ -183,7 +186,6 @@ export async function POST(req: NextRequest) {
 
     if (errVenda) {
       console.error('Erro ao inserir venda:', errVenda)
-      // Cobrança foi feita mas falhou ao registrar — admin precisa saber
       return NextResponse.json({
         error: 'Cobrança realizada no cartão, mas falhou ao registrar venda. Contate o suporte.',
         order_id: dataPagarme.id,
