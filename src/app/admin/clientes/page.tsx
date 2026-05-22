@@ -1,10 +1,10 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
 import { useRouter } from 'next/navigation'
-import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap, Gift, CalendarClock, Edit2, Mail, Copy, Clock, Link as LinkIcon, UserPlus, KeyRound } from 'lucide-react'
+import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap, Gift, CalendarClock, Edit2, Mail, Copy, Clock, Link as LinkIcon, UserPlus, KeyRound, Camera, Upload, Trash } from 'lucide-react'
 import UnidadeSelector from '@/components/UnidadeSelector'
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
@@ -105,6 +105,17 @@ export default function AdminClientesPage() {
   const [ajustandoVencimento, setAjustandoVencimento] = useState(false)
   const [erroVencimento, setErroVencimento] = useState('')
 
+  // === FOTO ===
+  const [fotoUrl, setFotoUrl] = useState<string | null>(null)
+  const [modalFoto, setModalFoto] = useState(false)
+  const [streamCam, setStreamCam] = useState<MediaStream | null>(null)
+  const [fotoCapturada, setFotoCapturada] = useState<string | null>(null)
+  const [salvandoFoto, setSalvandoFoto] = useState(false)
+  const [erroFoto, setErroFoto] = useState('')
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   useEffect(() => {
     if (loading) return
     if (!perfil) { router.push('/'); return }
@@ -155,12 +166,32 @@ export default function AdminClientesPage() {
     setModalSlot(null)
     setTipoCredito('')
     setErroCriarAcesso('')
+    setFotoUrl(null)
     await Promise.all([
       carregarSaldo(cliente.id),
       carregarHistorico(cliente.id),
       carregarVendas(cliente.id),
       carregarPlanosCliente(cliente.id),
+      carregarFotoUrl(cliente),
     ])
+  }
+
+  // === FOTO: carregar URL assinada da foto atual ===
+  async function carregarFotoUrl(cliente: any) {
+    if (!cliente?.foto_url) { setFotoUrl(null); return }
+    try {
+      const { data, error } = await supabase
+        .storage
+        .from('fotos-clientes')
+        .createSignedUrl(cliente.foto_url, 3600) // válida por 1 hora
+      if (error || !data?.signedUrl) {
+        setFotoUrl(null)
+        return
+      }
+      setFotoUrl(data.signedUrl)
+    } catch {
+      setFotoUrl(null)
+    }
   }
 
   async function carregarSaldo(clienteId: string) {
@@ -213,7 +244,10 @@ export default function AdminClientesPage() {
   async function recarregarClienteSel() {
     if (!clienteSel) return
     const { data } = await supabase.from('clientes').select('*').eq('id', clienteSel.id).maybeSingle()
-    if (data) setClienteSel(data)
+    if (data) {
+      setClienteSel(data)
+      await carregarFotoUrl(data)
+    }
   }
 
   async function salvarEdicao() {
@@ -240,11 +274,175 @@ export default function AdminClientesPage() {
     setClienteSel({ ...clienteSel, bloqueado: false, motivo_bloqueio: null })
   }
 
+  // === FOTO: abrir modal e iniciar webcam ===
+  async function abrirModalFoto() {
+    setErroFoto('')
+    setFotoCapturada(null)
+    setModalFoto(true)
+    // Inicia webcam
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: false,
+      })
+      setStreamCam(stream)
+      // Aguarda o video element estar disponível
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream
+          videoRef.current.play().catch(() => {})
+        }
+      }, 100)
+    } catch (e: any) {
+      setErroFoto('Não foi possível acessar a webcam: ' + (e?.message || 'permissão negada'))
+    }
+  }
+
+  function fecharModalFoto() {
+    if (streamCam) {
+      streamCam.getTracks().forEach(t => t.stop())
+      setStreamCam(null)
+    }
+    setModalFoto(false)
+    setFotoCapturada(null)
+    setErroFoto('')
+  }
+
+  // === FOTO: capturar frame da webcam ===
+  function capturarFoto() {
+    if (!videoRef.current || !canvasRef.current) return
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.drawImage(video, 0, 0)
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+    setFotoCapturada(dataUrl)
+  }
+
+  function descartarCaptura() {
+    setFotoCapturada(null)
+  }
+
+  // === FOTO: upload de arquivo do PC ===
+  function clicarUpload() {
+    fileInputRef.current?.click()
+  }
+
+  async function processarArquivoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validações
+    if (!['image/jpeg', 'image/png'].includes(file.type)) {
+      setErroFoto('Apenas imagens JPEG ou PNG são aceitas.')
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setErroFoto('Imagem muito grande. Tamanho máximo: 2 MB.')
+      return
+    }
+
+    // Converte pra dataURL pra preview
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const result = ev.target?.result as string
+      setFotoCapturada(result)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  // === FOTO: salvar no Supabase Storage ===
+  async function salvarFoto() {
+    if (!fotoCapturada || !clienteSel?.cpf) return
+
+    setSalvandoFoto(true)
+    setErroFoto('')
+
+    try {
+      // Converte dataURL para Blob
+      const res = await fetch(fotoCapturada)
+      const blob = await res.blob()
+
+      // Nome do arquivo = CPF.jpg
+      const cpfLimpo = clienteSel.cpf.replace(/\D/g, '')
+      const fileName = `${cpfLimpo}.jpg`
+
+      // Upload (upsert = sobrescreve se já existir)
+      const { error: errUpload } = await supabase
+        .storage
+        .from('fotos-clientes')
+        .upload(fileName, blob, {
+          contentType: 'image/jpeg',
+          upsert: true,
+        })
+
+      if (errUpload) {
+        setErroFoto('Erro ao enviar foto: ' + errUpload.message)
+        setSalvandoFoto(false)
+        return
+      }
+
+      // Atualiza foto_url no cliente
+      const { error: errUpdate } = await supabase
+        .from('clientes')
+        .update({ foto_url: fileName })
+        .eq('id', clienteSel.id)
+
+      if (errUpdate) {
+        setErroFoto('Erro ao salvar referência: ' + errUpdate.message)
+        setSalvandoFoto(false)
+        return
+      }
+
+      // Recarrega cliente e foto
+      await recarregarClienteSel()
+      fecharModalFoto()
+    } catch (e: any) {
+      setErroFoto('Erro inesperado: ' + (e?.message || 'desconhecido'))
+    } finally {
+      setSalvandoFoto(false)
+    }
+  }
+
+  // === FOTO: remover foto atual ===
+  async function removerFoto() {
+    if (!clienteSel?.foto_url) return
+    if (!confirm('Remover a foto deste cliente?')) return
+
+    setSalvandoFoto(true)
+    setErroFoto('')
+
+    try {
+      // Deleta do bucket
+      await supabase.storage.from('fotos-clientes').remove([clienteSel.foto_url])
+
+      // Limpa foto_url
+      const { error } = await supabase
+        .from('clientes')
+        .update({ foto_url: null })
+        .eq('id', clienteSel.id)
+
+      if (error) {
+        setErroFoto('Erro ao remover: ' + error.message)
+        setSalvandoFoto(false)
+        return
+      }
+
+      await recarregarClienteSel()
+    } catch (e: any) {
+      setErroFoto('Erro: ' + (e?.message || 'desconhecido'))
+    } finally {
+      setSalvandoFoto(false)
+    }
+  }
+
   async function criarCliente() {
     setCriando(true)
     setErroCriar('')
 
-    // Validações obrigatórias
     if (!formNovo.nome.trim() || formNovo.nome.trim().split(' ').length < 2) {
       setErroCriar('Nome completo é obrigatório (nome e sobrenome).')
       setCriando(false)
@@ -269,7 +467,6 @@ export default function AdminClientesPage() {
     const cpfLimpo = formNovo.cpf.replace(/\D/g, '')
     const emailLimpo = formNovo.email.trim().toLowerCase()
 
-    // Verifica duplicidade de CPF
     const { data: cpfExistente } = await supabase
       .from('clientes')
       .select('id, nome')
@@ -282,7 +479,6 @@ export default function AdminClientesPage() {
       return
     }
 
-    // Verifica duplicidade de email
     const { data: emailExistente } = await supabase
       .from('clientes')
       .select('id, nome')
@@ -295,7 +491,6 @@ export default function AdminClientesPage() {
       return
     }
 
-    // 1. Cria o cliente na tabela clientes
     const { data: novoClienteData, error: errCli } = await supabase
       .from('clientes')
       .insert({
@@ -314,7 +509,6 @@ export default function AdminClientesPage() {
       return
     }
 
-    // 2. Cria o acesso (chamada à API)
     try {
       const res = await fetch('/api/criar-acesso-cliente', {
         method: 'POST',
@@ -325,7 +519,6 @@ export default function AdminClientesPage() {
       const result = await res.json()
 
       if (!res.ok) {
-        // Cliente foi criado, mas acesso falhou. Mostra aviso.
         setErroCriar(
           'Cliente cadastrado, mas houve um erro ao criar o acesso: ' +
           (result.error || 'desconhecido') +
@@ -339,7 +532,6 @@ export default function AdminClientesPage() {
         return
       }
 
-      // Sucesso total ou parcial (acesso criado, mas pode não ter enviado email)
       setNovoCliente(false)
       setFormNovo({ nome: '', email: '', telefone: '', cpf: '' })
       setBusca('')
@@ -382,7 +574,6 @@ export default function AdminClientesPage() {
         return
       }
 
-      // Recarrega o cliente para atualizar o user_id
       await recarregarClienteSel()
 
       setModalAcessoCriado({
@@ -863,10 +1054,10 @@ export default function AdminClientesPage() {
   const ehCortesia = formVenda.desconto_percentual === 100
   const ehAcesso = produtoSelecionado?.subtipo === 'acesso'
 
-  // Cenários do botão de acesso
   const clienteTemAcesso = !!clienteSel?.user_id
   const clienteTemEmailSemAcesso = !clienteTemAcesso && !!clienteSel?.email
   const clienteSemEmailSemAcesso = !clienteTemAcesso && !clienteSel?.email
+  const clienteTemCpf = !!clienteSel?.cpf && clienteSel.cpf.replace(/\D/g, '').length === 11
 
   if (loading || loadingUnidade || !perfil) return (
     <div className="flex items-center justify-center h-screen">
@@ -1008,8 +1199,27 @@ export default function AdminClientesPage() {
             {aba === 'dados' && (
               <div className="space-y-4">
                 <div className="bg-gradient-to-br from-primary-600 to-primary-800 rounded-2xl p-5 text-white flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-full bg-white/20 text-white text-xl font-bold flex items-center justify-center flex-shrink-0">
-                    {clienteSel.nome?.slice(0, 2).toUpperCase()}
+                  {/* AVATAR / FOTO */}
+                  <div className="relative flex-shrink-0">
+                    {fotoUrl ? (
+                      <img src={fotoUrl} alt={clienteSel.nome}
+                        className="w-14 h-14 rounded-full object-cover border-2 border-white/30" />
+                    ) : (
+                      <div className="w-14 h-14 rounded-full bg-white/20 text-white text-xl font-bold flex items-center justify-center">
+                        {clienteSel.nome?.slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                    <button
+                      onClick={() => clienteTemCpf && abrirModalFoto()}
+                      disabled={!clienteTemCpf}
+                      title={clienteTemCpf ? 'Trocar foto' : 'Cadastre o CPF antes de tirar foto'}
+                      className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center border-2 border-primary-700 transition-all ${
+                        clienteTemCpf
+                          ? 'bg-white text-primary-700 hover:bg-primary-100 cursor-pointer'
+                          : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      }`}>
+                      <Camera size={12} />
+                    </button>
                   </div>
                   <div className="flex-1">
                     <div className="font-bold text-lg leading-tight">{clienteSel.nome}</div>
@@ -1025,6 +1235,16 @@ export default function AdminClientesPage() {
                     </span>
                   )}
                 </div>
+
+                {/* Aviso CPF para foto */}
+                {!clienteTemCpf && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800 flex items-start gap-2">
+                    <Camera size={14} className="mt-0.5 flex-shrink-0" />
+                    <div>
+                      Para cadastrar a foto facial do cliente, cadastre primeiro o <strong>CPF</strong> (11 dígitos) clicando em "Editar" no card de informações abaixo.
+                    </div>
+                  </div>
+                )}
 
                 {/* Card: Criar acesso (só aparece se não tem acesso) */}
                 {!clienteTemAcesso && (
@@ -1173,6 +1393,14 @@ export default function AdminClientesPage() {
                     ))}
                   </div>
                 </div>
+
+                {/* Botão remover foto (só se tem foto) */}
+                {clienteSel.foto_url && (
+                  <button onClick={removerFoto} disabled={salvandoFoto}
+                    className="btn w-full gap-1 text-red-600 border border-red-200 hover:bg-red-50">
+                    <Trash size={14} /> {salvandoFoto ? 'Removendo...' : 'Remover foto'}
+                  </button>
+                )}
               </div>
             )}
 
@@ -1590,6 +1818,94 @@ export default function AdminClientesPage() {
           </>
         )}
       </div>
+
+      {/* === MODAL FOTO === */}
+      {modalFoto && (
+        <div className="fixed inset-0 bg-black/70 z-[70] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <div className="font-bold text-gray-900 flex items-center gap-2">
+                  <Camera size={18} className="text-primary-600" /> Foto facial
+                </div>
+                <div className="text-xs text-gray-400 mt-0.5">
+                  {clienteSel?.nome} · CPF {clienteSel?.cpf}
+                </div>
+              </div>
+              <button onClick={fecharModalFoto} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            </div>
+
+            <input
+              type="file"
+              accept="image/jpeg,image/png"
+              ref={fileInputRef}
+              onChange={processarArquivoUpload}
+              style={{ display: 'none' }}
+            />
+
+            {!fotoCapturada ? (
+              <>
+                <div className="bg-black rounded-xl overflow-hidden mb-3 aspect-[4/3] relative">
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-cover"
+                  />
+                  {!streamCam && (
+                    <div className="absolute inset-0 flex items-center justify-center text-white text-sm">
+                      Carregando câmera...
+                    </div>
+                  )}
+                </div>
+                <canvas ref={canvasRef} style={{ display: 'none' }} />
+
+                <div className="flex gap-2">
+                  <button onClick={capturarFoto} disabled={!streamCam}
+                    className="btn flex-1 bg-primary-600 text-white hover:bg-primary-700 gap-1 disabled:opacity-50">
+                    <Camera size={14} /> Tirar foto
+                  </button>
+                  <button onClick={clicarUpload}
+                    className="btn gap-1 border border-gray-200 text-gray-700 hover:bg-gray-50">
+                    <Upload size={14} /> Enviar arquivo
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="bg-gray-100 rounded-xl overflow-hidden mb-3 aspect-[4/3]">
+                  <img src={fotoCapturada} alt="Captura" className="w-full h-full object-cover" />
+                </div>
+
+                <div className="flex gap-2">
+                  <button onClick={descartarCaptura}
+                    className="btn flex-1 border border-gray-200 text-gray-700 hover:bg-gray-50 gap-1">
+                    <X size={14} /> Tirar outra
+                  </button>
+                  <button onClick={salvarFoto} disabled={salvandoFoto}
+                    className="btn flex-1 bg-green-600 text-white hover:bg-green-700 gap-1 disabled:opacity-50">
+                    <Check size={14} /> {salvandoFoto ? 'Salvando...' : 'Confirmar e salvar'}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {erroFoto && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-3 text-sm text-red-600 flex items-start gap-2">
+                <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+                {erroFoto}
+              </div>
+            )}
+
+            <div className="text-xs text-gray-400 text-center mt-4">
+              📸 Tire a foto com boa iluminação, rosto centralizado e sem óculos escuros ou bonés.
+            </div>
+          </div>
+        </div>
+      )}
 
       {modalSlot && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-4">
