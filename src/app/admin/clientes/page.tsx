@@ -4,10 +4,15 @@ import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
 import { useRouter } from 'next/navigation'
-import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap, Gift, CalendarClock, Edit2, Mail, Copy, Clock, Link as LinkIcon, UserPlus, KeyRound, Camera, Upload, Trash } from 'lucide-react'
+import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap, Gift, CalendarClock, Edit2, Mail, Copy, Clock, Link as LinkIcon, UserPlus, KeyRound, Camera, Upload, Trash, Wifi, WifiOff } from 'lucide-react'
 import UnidadeSelector from '@/components/UnidadeSelector'
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+
+// === iDFace ===
+const IDFACE_IP = '192.168.15.129'
+const IDFACE_USER = 'admin'
+const IDFACE_PASS = 'admin'
 
 const statusConfig: Record<string, { label: string; color: string }> = {
   agendado:   { label: 'Agendado',   color: 'bg-blue-100 text-blue-700' },
@@ -32,6 +37,121 @@ function formatarBR(data: string | Date) {
 
 function validarEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+}
+
+// === iDFace: Login (retorna session) ===
+async function idfaceLogin(): Promise<string | null> {
+  try {
+    const res = await fetch(`http://${IDFACE_IP}/login.fcgi`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ login: IDFACE_USER, password: IDFACE_PASS }),
+    })
+    const data = await res.json()
+    return data?.session || null
+  } catch (e) {
+    console.error('iDFace login error:', e)
+    return null
+  }
+}
+
+// === iDFace: Criar ou atualizar usuário (código = CPF int64) ===
+async function idfaceUpsertUser(session: string, cpf: string, nome: string): Promise<boolean> {
+  const userId = parseInt(cpf, 10)
+  try {
+    // Tenta criar — se já existe, vai retornar erro mas tudo bem
+    const res = await fetch(`http://${IDFACE_IP}/create_objects.fcgi?session=${session}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        object: 'users',
+        values: [{ id: userId, name: nome, registration: cpf }],
+      }),
+    })
+    const data = await res.json()
+    // Se criou OK ou se erro foi de duplicate, considera sucesso
+    if (data?.ids?.length > 0) return true
+    // Caso já exista, tenta atualizar
+    const resUpd = await fetch(`http://${IDFACE_IP}/modify_objects.fcgi?session=${session}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        object: 'users',
+        values: { name: nome, registration: cpf },
+        where: { users: { id: userId } },
+      }),
+    })
+    const dataUpd = await resUpd.json()
+    return dataUpd?.changes >= 0
+  } catch (e) {
+    console.error('iDFace upsert user error:', e)
+    return false
+  }
+}
+
+// === iDFace: Enviar foto vinculada ao usuário ===
+async function idfaceUploadFoto(session: string, cpf: string, fotoBlob: Blob): Promise<boolean> {
+  const userId = parseInt(cpf, 10)
+  try {
+    // Converte blob pra base64 puro (sem prefixo data:)
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const result = reader.result as string
+        const pure = result.split(',')[1]
+        resolve(pure)
+      }
+      reader.onerror = reject
+      reader.readAsDataURL(fotoBlob)
+    })
+
+    const res = await fetch(`http://${IDFACE_IP}/user_set_image.fcgi?session=${session}&user_id=${userId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_images: [{ user_id: userId, image: base64, timestamp: Math.floor(Date.now() / 1000) }],
+      }),
+    })
+    const data = await res.json()
+    return data?.success === true || data?.user_images?.length > 0
+  } catch (e) {
+    console.error('iDFace upload foto error:', e)
+    return false
+  }
+}
+
+// === iDFace: Remover usuário ===
+async function idfaceRemoveUser(session: string, cpf: string): Promise<boolean> {
+  const userId = parseInt(cpf, 10)
+  try {
+    const res = await fetch(`http://${IDFACE_IP}/destroy_objects.fcgi?session=${session}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        object: 'users',
+        where: { users: { id: userId } },
+      }),
+    })
+    const data = await res.json()
+    return data?.changes >= 0
+  } catch (e) {
+    console.error('iDFace remove user error:', e)
+    return false
+  }
+}
+
+// === Função orquestradora: sincroniza tudo ===
+async function sincronizarIdFace(cpf: string, nome: string, fotoBlob: Blob): Promise<{ ok: boolean; erro?: string }> {
+  const session = await idfaceLogin()
+  if (!session) return { ok: false, erro: 'Não foi possível conectar ao iDFace. Verifique se o equipamento está ligado e na rede.' }
+
+  const userOk = await idfaceUpsertUser(session, cpf, nome)
+  if (!userOk) return { ok: false, erro: 'Erro ao criar/atualizar usuário no iDFace.' }
+
+  const fotoOk = await idfaceUploadFoto(session, cpf, fotoBlob)
+  if (!fotoOk) return { ok: false, erro: 'Erro ao enviar foto ao iDFace.' }
+
+  return { ok: true }
 }
 
 export default function AdminClientesPage() {
@@ -112,6 +232,9 @@ export default function AdminClientesPage() {
   const [fotoCapturada, setFotoCapturada] = useState<string | null>(null)
   const [salvandoFoto, setSalvandoFoto] = useState(false)
   const [erroFoto, setErroFoto] = useState('')
+  const [statusSync, setStatusSync] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle')
+  const [erroSync, setErroSync] = useState('')
+  const [resincronizando, setResincronizando] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -167,6 +290,8 @@ export default function AdminClientesPage() {
     setTipoCredito('')
     setErroCriarAcesso('')
     setFotoUrl(null)
+    setStatusSync('idle')
+    setErroSync('')
     await Promise.all([
       carregarSaldo(cliente.id),
       carregarHistorico(cliente.id),
@@ -176,14 +301,13 @@ export default function AdminClientesPage() {
     ])
   }
 
-  // === FOTO: carregar URL assinada da foto atual ===
   async function carregarFotoUrl(cliente: any) {
     if (!cliente?.foto_url) { setFotoUrl(null); return }
     try {
       const { data, error } = await supabase
         .storage
         .from('fotos-clientes')
-        .createSignedUrl(cliente.foto_url, 3600) // válida por 1 hora
+        .createSignedUrl(cliente.foto_url, 3600)
       if (error || !data?.signedUrl) {
         setFotoUrl(null)
         return
@@ -274,19 +398,16 @@ export default function AdminClientesPage() {
     setClienteSel({ ...clienteSel, bloqueado: false, motivo_bloqueio: null })
   }
 
-  // === FOTO: abrir modal e iniciar webcam ===
   async function abrirModalFoto() {
     setErroFoto('')
     setFotoCapturada(null)
     setModalFoto(true)
-    // Inicia webcam
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
         audio: false,
       })
       setStreamCam(stream)
-      // Aguarda o video element estar disponível
       setTimeout(() => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream
@@ -308,7 +429,6 @@ export default function AdminClientesPage() {
     setErroFoto('')
   }
 
-  // === FOTO: capturar frame da webcam ===
   function capturarFoto() {
     if (!videoRef.current || !canvasRef.current) return
     const video = videoRef.current
@@ -326,7 +446,6 @@ export default function AdminClientesPage() {
     setFotoCapturada(null)
   }
 
-  // === FOTO: upload de arquivo do PC ===
   function clicarUpload() {
     fileInputRef.current?.click()
   }
@@ -334,8 +453,6 @@ export default function AdminClientesPage() {
   async function processarArquivoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-
-    // Validações
     if (!['image/jpeg', 'image/png'].includes(file.type)) {
       setErroFoto('Apenas imagens JPEG ou PNG são aceitas.')
       return
@@ -344,8 +461,6 @@ export default function AdminClientesPage() {
       setErroFoto('Imagem muito grande. Tamanho máximo: 2 MB.')
       return
     }
-
-    // Converte pra dataURL pra preview
     const reader = new FileReader()
     reader.onload = (ev) => {
       const result = ev.target?.result as string
@@ -354,7 +469,6 @@ export default function AdminClientesPage() {
     reader.readAsDataURL(file)
   }
 
-  // === FOTO: salvar no Supabase Storage ===
   async function salvarFoto() {
     if (!fotoCapturada || !clienteSel?.cpf) return
 
@@ -362,15 +476,12 @@ export default function AdminClientesPage() {
     setErroFoto('')
 
     try {
-      // Converte dataURL para Blob
       const res = await fetch(fotoCapturada)
       const blob = await res.blob()
 
-      // Nome do arquivo = CPF.jpg
       const cpfLimpo = clienteSel.cpf.replace(/\D/g, '')
       const fileName = `${cpfLimpo}.jpg`
 
-      // Upload (upsert = sobrescreve se já existir)
       const { error: errUpload } = await supabase
         .storage
         .from('fotos-clientes')
@@ -385,7 +496,6 @@ export default function AdminClientesPage() {
         return
       }
 
-      // Atualiza foto_url no cliente
       const { error: errUpdate } = await supabase
         .from('clientes')
         .update({ foto_url: fileName })
@@ -397,9 +507,19 @@ export default function AdminClientesPage() {
         return
       }
 
-      // Recarrega cliente e foto
       await recarregarClienteSel()
       fecharModalFoto()
+
+      // Sincroniza com iDFace
+      setStatusSync('syncing')
+      setErroSync('')
+      const sync = await sincronizarIdFace(cpfLimpo, clienteSel.nome, blob)
+      if (sync.ok) {
+        setStatusSync('success')
+      } else {
+        setStatusSync('error')
+        setErroSync(sync.erro || 'Erro desconhecido na sincronização.')
+      }
     } catch (e: any) {
       setErroFoto('Erro inesperado: ' + (e?.message || 'desconhecido'))
     } finally {
@@ -407,19 +527,63 @@ export default function AdminClientesPage() {
     }
   }
 
-  // === FOTO: remover foto atual ===
+  async function ressincronizar() {
+    if (!clienteSel?.cpf || !clienteSel?.foto_url) return
+    setResincronizando(true)
+    setStatusSync('syncing')
+    setErroSync('')
+
+    try {
+      // Baixa a foto do Supabase pra enviar pro iDFace
+      const { data, error } = await supabase
+        .storage
+        .from('fotos-clientes')
+        .download(clienteSel.foto_url)
+
+      if (error || !data) {
+        setStatusSync('error')
+        setErroSync('Erro ao baixar foto do storage.')
+        setResincronizando(false)
+        return
+      }
+
+      const cpfLimpo = clienteSel.cpf.replace(/\D/g, '')
+      const sync = await sincronizarIdFace(cpfLimpo, clienteSel.nome, data)
+
+      if (sync.ok) {
+        setStatusSync('success')
+      } else {
+        setStatusSync('error')
+        setErroSync(sync.erro || 'Erro desconhecido.')
+      }
+    } catch (e: any) {
+      setStatusSync('error')
+      setErroSync('Erro: ' + (e?.message || 'desconhecido'))
+    } finally {
+      setResincronizando(false)
+    }
+  }
+
   async function removerFoto() {
     if (!clienteSel?.foto_url) return
-    if (!confirm('Remover a foto deste cliente?')) return
+    if (!confirm('Remover a foto deste cliente? Ela também será removida do iDFace.')) return
 
     setSalvandoFoto(true)
     setErroFoto('')
 
     try {
-      // Deleta do bucket
+      // Remove do storage
       await supabase.storage.from('fotos-clientes').remove([clienteSel.foto_url])
 
-      // Limpa foto_url
+      // Remove do iDFace
+      if (clienteSel.cpf) {
+        const cpfLimpo = clienteSel.cpf.replace(/\D/g, '')
+        const session = await idfaceLogin()
+        if (session) {
+          await idfaceRemoveUser(session, cpfLimpo)
+        }
+      }
+
       const { error } = await supabase
         .from('clientes')
         .update({ foto_url: null })
@@ -431,6 +595,8 @@ export default function AdminClientesPage() {
         return
       }
 
+      setStatusSync('idle')
+      setErroSync('')
       await recarregarClienteSel()
     } catch (e: any) {
       setErroFoto('Erro: ' + (e?.message || 'desconhecido'))
@@ -1058,6 +1224,7 @@ export default function AdminClientesPage() {
   const clienteTemEmailSemAcesso = !clienteTemAcesso && !!clienteSel?.email
   const clienteSemEmailSemAcesso = !clienteTemAcesso && !clienteSel?.email
   const clienteTemCpf = !!clienteSel?.cpf && clienteSel.cpf.replace(/\D/g, '').length === 11
+  const clienteTemFoto = !!clienteSel?.foto_url
 
   if (loading || loadingUnidade || !perfil) return (
     <div className="flex items-center justify-center h-screen">
@@ -1199,7 +1366,6 @@ export default function AdminClientesPage() {
             {aba === 'dados' && (
               <div className="space-y-4">
                 <div className="bg-gradient-to-br from-primary-600 to-primary-800 rounded-2xl p-5 text-white flex items-center gap-4">
-                  {/* AVATAR / FOTO */}
                   <div className="relative flex-shrink-0">
                     {fotoUrl ? (
                       <img src={fotoUrl} alt={clienteSel.nome}
@@ -1209,17 +1375,6 @@ export default function AdminClientesPage() {
                         {clienteSel.nome?.slice(0, 2).toUpperCase()}
                       </div>
                     )}
-                    <button
-                      onClick={() => clienteTemCpf && abrirModalFoto()}
-                      disabled={!clienteTemCpf}
-                      title={clienteTemCpf ? 'Trocar foto' : 'Cadastre o CPF antes de tirar foto'}
-                      className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center border-2 border-primary-700 transition-all ${
-                        clienteTemCpf
-                          ? 'bg-white text-primary-700 hover:bg-primary-100 cursor-pointer'
-                          : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                      }`}>
-                      <Camera size={12} />
-                    </button>
                   </div>
                   <div className="flex-1">
                     <div className="font-bold text-lg leading-tight">{clienteSel.nome}</div>
@@ -1236,17 +1391,82 @@ export default function AdminClientesPage() {
                   )}
                 </div>
 
-                {/* Aviso CPF para foto */}
-                {!clienteTemCpf && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800 flex items-start gap-2">
-                    <Camera size={14} className="mt-0.5 flex-shrink-0" />
-                    <div>
-                      Para cadastrar a foto facial do cliente, cadastre primeiro o <strong>CPF</strong> (11 dígitos) clicando em "Editar" no card de informações abaixo.
+                {/* Card: Foto facial — visível e direto */}
+                <div className={`card border-l-4 ${clienteTemFoto ? 'border-l-green-400 bg-green-50' : 'border-l-blue-400 bg-blue-50'}`}>
+                  <div className="flex items-start gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                      clienteTemFoto ? 'bg-green-200 text-green-700' : 'bg-blue-200 text-blue-700'
+                    }`}>
+                      <Camera size={18} />
+                    </div>
+                    <div className="flex-1">
+                      <div className={`text-sm font-semibold mb-1 ${clienteTemFoto ? 'text-green-900' : 'text-blue-900'}`}>
+                        {clienteTemFoto ? 'Foto facial cadastrada' : 'Foto facial não cadastrada'}
+                      </div>
+                      {!clienteTemCpf ? (
+                        <>
+                          <div className="text-xs text-blue-700 mb-3">
+                            Para cadastrar a foto facial, primeiro cadastre o <strong>CPF</strong> do cliente clicando em "Editar" no card de informações abaixo.
+                          </div>
+                          <button disabled className="btn btn-sm bg-gray-200 text-gray-400 cursor-not-allowed gap-1">
+                            <Camera size={12} /> Cadastre o CPF primeiro
+                          </button>
+                        </>
+                      ) : clienteTemFoto ? (
+                        <>
+                          {/* Status de sincronização */}
+                          {statusSync === 'syncing' && (
+                            <div className="text-xs text-blue-700 mb-3 flex items-center gap-1">
+                              <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                              Sincronizando com iDFace...
+                            </div>
+                          )}
+                          {statusSync === 'success' && (
+                            <div className="text-xs text-green-700 mb-3 flex items-center gap-1">
+                              <Wifi size={12} /> Sincronizado com iDFace
+                            </div>
+                          )}
+                          {statusSync === 'error' && (
+                            <div className="bg-orange-100 border border-orange-300 rounded-lg p-2 mb-3 text-xs text-orange-800 flex items-start gap-1">
+                              <WifiOff size={12} className="mt-0.5 flex-shrink-0" />
+                              <div>
+                                <div className="font-semibold">Foto salva, mas não sincronizada com iDFace</div>
+                                <div className="opacity-80 mt-0.5">{erroSync}</div>
+                              </div>
+                            </div>
+                          )}
+                          <div className="flex gap-2 flex-wrap">
+                            <button onClick={abrirModalFoto}
+                              className="btn btn-sm gap-1 bg-primary-600 text-white hover:bg-primary-700">
+                              <Camera size={12} /> Trocar foto
+                            </button>
+                            {statusSync === 'error' && (
+                              <button onClick={ressincronizar} disabled={resincronizando}
+                                className="btn btn-sm gap-1 bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50">
+                                <Wifi size={12} /> {resincronizando ? 'Sincronizando...' : 'Tentar sincronizar de novo'}
+                              </button>
+                            )}
+                            <button onClick={removerFoto} disabled={salvandoFoto}
+                              className="btn btn-sm gap-1 text-red-600 border border-red-200 hover:bg-red-50">
+                              <Trash size={12} /> Remover
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-xs text-blue-700 mb-3">
+                            Cadastre a foto facial do cliente. A foto será automaticamente sincronizada com o iDFace para reconhecimento na entrada.
+                          </div>
+                          <button onClick={abrirModalFoto}
+                            className="btn btn-sm gap-1 bg-primary-600 text-white hover:bg-primary-700">
+                            <Camera size={12} /> Cadastrar foto facial
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
-                )}
+                </div>
 
-                {/* Card: Criar acesso (só aparece se não tem acesso) */}
                 {!clienteTemAcesso && (
                   <div className="card border-l-4 border-l-orange-400 bg-orange-50">
                     <div className="flex items-start gap-3">
@@ -1393,14 +1613,6 @@ export default function AdminClientesPage() {
                     ))}
                   </div>
                 </div>
-
-                {/* Botão remover foto (só se tem foto) */}
-                {clienteSel.foto_url && (
-                  <button onClick={removerFoto} disabled={salvandoFoto}
-                    className="btn w-full gap-1 text-red-600 border border-red-200 hover:bg-red-50">
-                    <Trash size={14} /> {salvandoFoto ? 'Removendo...' : 'Remover foto'}
-                  </button>
-                )}
               </div>
             )}
 
@@ -1819,7 +2031,6 @@ export default function AdminClientesPage() {
         )}
       </div>
 
-      {/* === MODAL FOTO === */}
       {modalFoto && (
         <div className="fixed inset-0 bg-black/70 z-[70] flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
