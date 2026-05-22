@@ -250,9 +250,9 @@ export default function CadastrarCartaoPage() {
         )}
 
         {sucesso && (
-          <button onClick={() => router.push('/')} className="btn-primary-h"
+          <button onClick={() => router.push('/agendar')} className="btn-primary-h"
             style={{ width: '100%', background: ACCENT, color: '#fff', border: 'none', borderRadius: 12, padding: '1rem', fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-            Voltar à home →
+            Agendar Treino →
           </button>
         )}
       </div>
