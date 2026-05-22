@@ -39,7 +39,9 @@ function validarEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
 }
 
-// === iDFace: Login (retorna session) ===
+// === iDFace API ===
+
+// Login → retorna session
 async function idfaceLogin(): Promise<string | null> {
   try {
     const res = await fetch(`http://${IDFACE_IP}/login.fcgi`, {
@@ -55,81 +57,105 @@ async function idfaceLogin(): Promise<string | null> {
   }
 }
 
-// === iDFace: Criar ou atualizar usuário (código = CPF int64) ===
-async function idfaceUpsertUser(session: string, cpf: string, nome: string): Promise<boolean> {
-  const userId = parseInt(cpf, 10)
+// Buscar usuário pelo CPF (registration) → retorna id numérico ou null
+async function idfaceBuscarUserId(session: string, cpf: string): Promise<number | null> {
   try {
-    // Tenta criar — se já existe, vai retornar erro mas tudo bem
+    const res = await fetch(`http://${IDFACE_IP}/load_objects.fcgi?session=${session}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        object: 'users',
+        where: { users: { registration: cpf } },
+      }),
+    })
+    const data = await res.json()
+    if (data?.users && data.users.length > 0) {
+      return data.users[0].id as number
+    }
+    return null
+  } catch (e) {
+    console.error('iDFace buscar user error:', e)
+    return null
+  }
+}
+
+// Criar usuário com registration=CPF → retorna id criado ou null
+async function idfaceCriarUser(session: string, cpf: string, nome: string): Promise<number | null> {
+  try {
     const res = await fetch(`http://${IDFACE_IP}/create_objects.fcgi?session=${session}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         object: 'users',
-        values: [{ id: userId, name: nome, registration: cpf }],
+        values: [{ registration: cpf, name: nome }],
       }),
     })
     const data = await res.json()
-    // Se criou OK ou se erro foi de duplicate, considera sucesso
-    if (data?.ids?.length > 0) return true
-    // Caso já exista, tenta atualizar
-    const resUpd = await fetch(`http://${IDFACE_IP}/modify_objects.fcgi?session=${session}`, {
+    if (data?.ids && data.ids.length > 0) {
+      return data.ids[0] as number
+    }
+    return null
+  } catch (e) {
+    console.error('iDFace criar user error:', e)
+    return null
+  }
+}
+
+// Atualizar nome do usuário (caso já exista)
+async function idfaceAtualizarUser(session: string, userId: number, nome: string): Promise<boolean> {
+  try {
+    const res = await fetch(`http://${IDFACE_IP}/modify_objects.fcgi?session=${session}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         object: 'users',
-        values: { name: nome, registration: cpf },
+        values: { name: nome },
         where: { users: { id: userId } },
       }),
     })
-    const dataUpd = await resUpd.json()
-    return dataUpd?.changes >= 0
+    const data = await res.json()
+    return data?.changes >= 0
   } catch (e) {
-    console.error('iDFace upsert user error:', e)
+    console.error('iDFace atualizar user error:', e)
     return false
   }
 }
 
-// === iDFace: Enviar foto vinculada ao usuário ===
-async function idfaceUploadFoto(session: string, cpf: string, fotoBlob: Blob): Promise<boolean> {
-  const userId = parseInt(cpf, 10)
+// Enviar foto vinculada ao user_id (octet-stream com bytes brutos)
+async function idfaceUploadFoto(session: string, userId: number, fotoBlob: Blob): Promise<{ ok: boolean; erro?: string }> {
   try {
-    // Converte blob pra base64 puro (sem prefixo data:)
-    const base64 = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => {
-        const result = reader.result as string
-        const pure = result.split(',')[1]
-        resolve(pure)
-      }
-      reader.onerror = reject
-      reader.readAsDataURL(fotoBlob)
-    })
+    const timestamp = Math.floor(Date.now() / 1000)
+    const url = `http://${IDFACE_IP}/user_set_image.fcgi?user_id=${userId}&timestamp=${timestamp}&match=0&session=${session}`
 
-    const res = await fetch(`http://${IDFACE_IP}/user_set_image.fcgi?session=${session}&user_id=${userId}`, {
+    const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_images: [{ user_id: userId, image: base64, timestamp: Math.floor(Date.now() / 1000) }],
-      }),
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: fotoBlob,
     })
     const data = await res.json()
-    return data?.success === true || data?.user_images?.length > 0
-  } catch (e) {
+
+    if (data?.success === true) {
+      return { ok: true }
+    }
+
+    // Mensagem de erro detalhada
+    const erro = data?.errors?.[0]?.message || 'Erro desconhecido'
+    return { ok: false, erro }
+  } catch (e: any) {
     console.error('iDFace upload foto error:', e)
-    return false
+    return { ok: false, erro: e?.message || 'Erro de conexão' }
   }
 }
 
-// === iDFace: Remover usuário ===
-async function idfaceRemoveUser(session: string, cpf: string): Promise<boolean> {
-  const userId = parseInt(cpf, 10)
+// Remover usuário do iDFace
+async function idfaceRemoverUser(session: string, cpf: string): Promise<boolean> {
   try {
     const res = await fetch(`http://${IDFACE_IP}/destroy_objects.fcgi?session=${session}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         object: 'users',
-        where: { users: { id: userId } },
+        where: { users: { registration: cpf } },
       }),
     })
     const data = await res.json()
@@ -140,18 +166,31 @@ async function idfaceRemoveUser(session: string, cpf: string): Promise<boolean> 
   }
 }
 
-// === Função orquestradora: sincroniza tudo ===
+// Orquestrador: garante usuário + envia foto
 async function sincronizarIdFace(cpf: string, nome: string, fotoBlob: Blob): Promise<{ ok: boolean; erro?: string }> {
+  // 1. Login
   const session = await idfaceLogin()
-  if (!session) return { ok: false, erro: 'Não foi possível conectar ao iDFace. Verifique se o equipamento está ligado e na rede.' }
+  if (!session) {
+    return { ok: false, erro: 'Não foi possível conectar ao iDFace. Verifique se o equipamento está ligado e na rede.' }
+  }
 
-  const userOk = await idfaceUpsertUser(session, cpf, nome)
-  if (!userOk) return { ok: false, erro: 'Erro ao criar/atualizar usuário no iDFace.' }
+  // 2. Buscar se usuário já existe
+  let userId = await idfaceBuscarUserId(session, cpf)
 
-  const fotoOk = await idfaceUploadFoto(session, cpf, fotoBlob)
-  if (!fotoOk) return { ok: false, erro: 'Erro ao enviar foto ao iDFace.' }
+  // 3. Se não existe, criar
+  if (!userId) {
+    userId = await idfaceCriarUser(session, cpf, nome)
+    if (!userId) {
+      return { ok: false, erro: 'Erro ao criar usuário no iDFace.' }
+    }
+  } else {
+    // Se existe, atualiza nome (caso tenha mudado)
+    await idfaceAtualizarUser(session, userId, nome)
+  }
 
-  return { ok: true }
+  // 4. Enviar foto
+  const result = await idfaceUploadFoto(session, userId, fotoBlob)
+  return result
 }
 
 export default function AdminClientesPage() {
@@ -534,7 +573,6 @@ export default function AdminClientesPage() {
     setErroSync('')
 
     try {
-      // Baixa a foto do Supabase pra enviar pro iDFace
       const { data, error } = await supabase
         .storage
         .from('fotos-clientes')
@@ -572,15 +610,13 @@ export default function AdminClientesPage() {
     setErroFoto('')
 
     try {
-      // Remove do storage
       await supabase.storage.from('fotos-clientes').remove([clienteSel.foto_url])
 
-      // Remove do iDFace
       if (clienteSel.cpf) {
         const cpfLimpo = clienteSel.cpf.replace(/\D/g, '')
         const session = await idfaceLogin()
         if (session) {
-          await idfaceRemoveUser(session, cpfLimpo)
+          await idfaceRemoverUser(session, cpfLimpo)
         }
       }
 
@@ -1391,7 +1427,6 @@ export default function AdminClientesPage() {
                   )}
                 </div>
 
-                {/* Card: Foto facial — visível e direto */}
                 <div className={`card border-l-4 ${clienteTemFoto ? 'border-l-green-400 bg-green-50' : 'border-l-blue-400 bg-blue-50'}`}>
                   <div className="flex items-start gap-3">
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
@@ -1414,7 +1449,6 @@ export default function AdminClientesPage() {
                         </>
                       ) : clienteTemFoto ? (
                         <>
-                          {/* Status de sincronização */}
                           {statusSync === 'syncing' && (
                             <div className="text-xs text-blue-700 mb-3 flex items-center gap-1">
                               <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
