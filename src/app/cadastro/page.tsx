@@ -10,11 +10,12 @@ const ACCENT = '#ff2d9b'
 export default function CadastroPage() {
   const router = useRouter()
   const supabase = createClient()
-  const { perfil } = useAuth()
+  const { perfil, loading: loadingAuth } = useAuth()
 
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
   const [sucesso, setSucesso] = useState(false)
+  const [jaSubmeteu, setJaSubmeteu] = useState(false)
 
   const [nome, setNome] = useState('')
   const [cpf, setCpf] = useState('')
@@ -24,12 +25,15 @@ export default function CadastroPage() {
   const [senha2, setSenha2] = useState('')
   const [notificacao, setNotificacao] = useState<'whatsapp' | 'email' | 'nenhuma'>('whatsapp')
 
-  // Se já está logado, redireciona pro dashboard do role
+  // Redireciona SE já está logado antes de chegar nessa página (não durante o cadastro)
+  // jaSubmeteu = true impede o redirect automático após signUp
   useEffect(() => {
+    if (loadingAuth) return
+    if (jaSubmeteu) return
     if (perfil && perfil.role) {
       router.push(dashboardDoRole(perfil.role))
     }
-  }, [perfil])
+  }, [perfil, loadingAuth, jaSubmeteu])
 
   function formatarCPF(v: string) {
     return v.replace(/\D/g, '').slice(0, 11)
@@ -54,6 +58,10 @@ export default function CadastroPage() {
     if (senha.length < 6) { setErro('A senha deve ter pelo menos 6 caracteres.'); return }
     if (senha !== senha2) { setErro('As senhas não coincidem.'); return }
 
+    // IMPORTANTE: marca como "já submeteu" pra impedir o useEffect de redirecionar
+    // automaticamente quando o useAuth detectar a sessão nova criada pelo signUp.
+    // O redirect agora é controlado MANUALMENTE no final desta função.
+    setJaSubmeteu(true)
     setSalvando(true)
 
     const cpfLimpo = cpf.replace(/\D/g, '')
@@ -66,6 +74,7 @@ export default function CadastroPage() {
     if (cpfExiste) {
       setErro('Este CPF já está cadastrado. Faça login ou recupere sua senha.')
       setSalvando(false)
+      setJaSubmeteu(false)
       return
     }
 
@@ -78,13 +87,22 @@ export default function CadastroPage() {
     if (emailExiste) {
       setErro('Este email já está cadastrado. Faça login ou recupere sua senha.')
       setSalvando(false)
+      setJaSubmeteu(false)
       return
     }
 
+    // 1. Cria user no Auth — passa role='cliente' no user_metadata
+    // pra que o trigger handle_new_user crie o perfil correto desde o início
+    // (sem isso, o trigger usa default 'coach')
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password: senha,
-      options: { data: { nome } }
+      options: {
+        data: {
+          nome: nome.trim(),
+          role: 'cliente',
+        }
+      }
     })
 
     if (authError || !authData.user) {
@@ -92,11 +110,17 @@ export default function CadastroPage() {
         ? 'Este email já está cadastrado.'
         : 'Erro ao criar conta. Tente novamente.')
       setSalvando(false)
+      setJaSubmeteu(false)
       return
     }
 
     const userId = authData.user.id
 
+    // 2. Aguarda um pouco pra garantir que o trigger handle_new_user terminou de criar o perfil
+    await new Promise(res => setTimeout(res, 500))
+
+    // 3. Força o perfil a ter role='cliente' (defesa em profundidade)
+    // Caso o trigger por algum motivo tenha criado errado, isso corrige.
     await supabase.from('perfis').upsert({
       id: userId,
       nome: nome.trim(),
@@ -104,6 +128,7 @@ export default function CadastroPage() {
       ativo: true,
     })
 
+    // 4. Cria registro em clientes
     const { error: clienteError } = await supabase.from('clientes').insert({
       user_id: userId,
       nome: nome.trim(),
@@ -119,12 +144,20 @@ export default function CadastroPage() {
     if (clienteError) {
       setErro('Erro ao finalizar cadastro. Entre em contato com a recepção.')
       setSalvando(false)
+      setJaSubmeteu(false)
       return
     }
 
     setSalvando(false)
     setSucesso(true)
-    setTimeout(() => router.push('/minha-conta'), 1500)
+
+    // 5. Redirect manual e controlado pro /meus-planos
+    // (não pro /minha-conta, porque cliente novo sem plano não tem nada lá)
+    // Usa window.location pra forçar reload completo e garantir que o useAuth
+    // pegue o perfil correto na nova navegação
+    setTimeout(() => {
+      window.location.href = '/meus-planos'
+    }, 1500)
   }
 
   const inputStyle = {
@@ -176,7 +209,7 @@ export default function CadastroPage() {
             <div style={{ textAlign: 'center', padding: '2rem 0' }}>
               <div style={{ fontSize: 48, marginBottom: '1rem' }}>🎉</div>
               <div style={{ fontSize: 20, fontWeight: 600, color: '#fff', marginBottom: 8 }}>Conta criada!</div>
-              <div style={{ fontSize: 14, color: '#555' }}>Redirecionando para sua conta...</div>
+              <div style={{ fontSize: 14, color: '#555' }}>Redirecionando para ativar seus planos...</div>
             </div>
           ) : (
             <>
