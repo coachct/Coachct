@@ -28,8 +28,7 @@ function parsePlanoKey(key: string): { label: string; icon: string } {
   else if (lower.startsWith('avulso') || lower.startsWith('credito')) { tipo = 'Crédito Avulso'; icon = '🎟️'; slugUnidade = key.split('_').slice(1).join('_') }
   else { tipo = key }
   const nomeUnidade: Record<string, string> = { just_ct: 'Just CT', just_club_vila_olimpia: 'Vila Olímpia', just_club_pinheiros: 'Pinheiros' }
-  const unidadeLabel = nomeUnidade[slugUnidade] || slugUnidade.replace(/_/g, ' ')
-  return { label: `${tipo} — ${unidadeLabel}`, icon }
+  return { label: `${tipo} — ${nomeUnidade[slugUnidade] || slugUnidade.replace(/_/g, ' ')}`, icon }
 }
 
 function hojeStr(): string {
@@ -106,32 +105,21 @@ export default function AdminAgendaPage() {
     let coachsFinal: any[] = []
 
     if (ehFds) {
-      // 🔧 FIX: duas queries separadas em vez de join (evita erro de FK não configurada)
+      // 🔧 FIX: join com hint de coluna — funciona sem FK formal definida
       const { data: escala } = await supabase
         .from('escala_fds')
-        .select('coach_id')
+        .select('coach_id, coaches:coach_id(id, nome)')
         .eq('data', data)
         .eq('unidade_id', unidadeAtiva.id)
 
-      if (escala && escala.length > 0) {
-        const coachIds = escala.map((e: any) => e.coach_id).filter(Boolean)
-        const { data: coachesData } = await supabase
-          .from('coaches')
-          .select('id, nome')
-          .in('id', coachIds)
-
-        const coachMap: Record<string, any> = {}
-        for (const c of (coachesData || [])) coachMap[c.id] = c
-
-        for (const e of escala) {
-          for (const hora of HORARIOS_FDS) {
-            coachsFinal.push({
-              id: `${e.coach_id}-${hora}`,
-              hora: hora + ':00',
-              coach_id: e.coach_id,
-              coaches: coachMap[e.coach_id] || { id: e.coach_id, nome: 'Coach' },
-            })
-          }
+      for (const e of (escala || []) as any[]) {
+        for (const hora of HORARIOS_FDS) {
+          coachsFinal.push({
+            id: `${e.coach_id}-${hora}`,
+            hora: hora + ':00',
+            coach_id: e.coach_id,
+            coaches: e.coaches || { id: e.coach_id, nome: 'Coach' },
+          })
         }
       }
     } else {
@@ -370,7 +358,6 @@ export default function AdminAgendaPage() {
                     <div className="text-sm text-gray-400 text-center mt-3">Nenhum cliente encontrado.</div>
                   )}
                 </div>
-
                 {agendamentosAtivos.length === 0 ? (
                   <div className="card text-center py-12 text-gray-400 text-sm">Nenhum agendamento para este dia.</div>
                 ) : (
@@ -539,7 +526,7 @@ export default function AdminAgendaPage() {
                 <div className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-2">Bloquear novas vagas</div>
                 <div className="bg-gray-50 rounded-lg p-3 mb-3 text-xs text-gray-600 flex items-start gap-2">
                   <AlertCircle size={13} className="text-gray-400 mt-0.5 flex-shrink-0" />
-                  <span>Há {modalBloqueio.vagasLivres} vaga(s) livre(s) neste horário.</span>
+                  <span>Há {modalBloqueio.vagasLivres} vaga(s) livre(s) neste horário. Bloqueios impedem que clientes reservem essas vagas.</span>
                 </div>
                 <div className="mb-3">
                   <label className="text-xs text-gray-500 mb-1 block font-medium">Quantidade</label>
@@ -583,7 +570,7 @@ export default function AdminAgendaPage() {
               <>
                 <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-3 text-xs text-blue-700 flex items-start gap-2">
                   <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
-                  <span>Você pode liberar parte ou todas as vagas.</span>
+                  <span>Você pode liberar parte ou todas as vagas. Para cada vaga liberada, se houver fila, o próximo cliente é confirmado automaticamente.</span>
                 </div>
                 <div className="mb-4">
                   <label className="text-xs text-gray-500 mb-1 block font-medium">Quantas vagas liberar?</label>
