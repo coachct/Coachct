@@ -56,8 +56,8 @@ export default function AdminAgendaPage() {
   const [alocandoId, setAlocandoId] = useState<string | null>(null)
   const [busca, setBusca] = useState('')
   const [abaAtiva, setAbaAtiva] = useState<'agendamentos' | 'grade'>('agendamentos')
-  // 🔧 Mapa de id → nome de todos os coaches, carregado uma vez
-  const [coachMap, setCoachMap] = useState<Record<string, string>>({})
+  // 🔧 Mapa user_id → { id: coaches.id, nome } — igual à tela de Escala
+  const [coachMap, setCoachMap] = useState<Record<string, { id: string; nome: string }>>({})
 
   const [modalBloqueio, setModalBloqueio] = useState<{ horario: string; vagasLivres: number; bloqueiosAtivos: any[] } | null>(null)
   const [qtdBloquear, setQtdBloquear] = useState(1)
@@ -81,12 +81,14 @@ export default function AdminAgendaPage() {
     if (!loading && perfil?.role !== 'admin') router.push('/')
   }, [perfil, loading])
 
-  // 🔧 Carrega todos os coaches uma vez ao montar
+  // 🔧 Carrega coaches indexados por user_id (igual à tela de Escala)
   useEffect(() => {
     async function carregarCoaches() {
-      const { data: lista } = await supabase.from('coaches').select('id, nome').eq('ativo', true)
-      const mapa: Record<string, string> = {}
-      for (const c of (lista || [])) mapa[c.id] = c.nome
+      const { data: lista } = await supabase.from('coaches').select('id, nome, user_id').eq('ativo', true)
+      const mapa: Record<string, { id: string; nome: string }> = {}
+      for (const c of (lista || [])) {
+        if (c.user_id) mapa[c.user_id] = { id: c.id, nome: c.nome }
+      }
       setCoachMap(mapa)
     }
     if (perfil) carregarCoaches()
@@ -118,7 +120,7 @@ export default function AdminAgendaPage() {
     let coachsFinal: any[] = []
 
     if (ehFds) {
-      // 🔧 FDS: busca só os IDs e monta coaches usando o mapa local
+      // escala_fds.coach_id guarda user_id — usamos coachMap para resolver nome e coaches.id
       const { data: escala } = await supabase
         .from('escala_fds')
         .select('coach_id')
@@ -126,13 +128,13 @@ export default function AdminAgendaPage() {
         .eq('unidade_id', unidadeAtiva.id)
 
       for (const e of (escala || []) as any[]) {
-        const nome = coachMap[e.coach_id] || '...'
+        const info = coachMap[e.coach_id]
         for (const hora of HORARIOS_FDS) {
           coachsFinal.push({
             id: `${e.coach_id}-${hora}`,
             hora: hora + ':00',
-            coach_id: e.coach_id,
-            coaches: { id: e.coach_id, nome },
+            coach_id: info?.id || e.coach_id,
+            coaches: { id: info?.id || e.coach_id, nome: info?.nome || '?' },
           })
         }
       }
