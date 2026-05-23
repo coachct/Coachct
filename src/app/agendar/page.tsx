@@ -17,6 +17,39 @@ const HORARIOS_FDS = ['08:00', '09:00', '10:00', '11:00', '12:00']
 
 const JANELA_DIAS = 14
 
+// ============================================================
+// HELPERS DE DATA — só strings YYYY-MM-DD, sem timezone, sem cálculo doido
+// ============================================================
+function hojeLocal(): string {
+  const d = new Date()
+  const ano = d.getFullYear()
+  const mes = String(d.getMonth() + 1).padStart(2, '0')
+  const dia = String(d.getDate()).padStart(2, '0')
+  return `${ano}-${mes}-${dia}`
+}
+
+function somarDias(dataStr: string, n: number): string {
+  // T12:00:00 = meio-dia → evita qualquer issue de DST/timezone
+  const d = new Date(dataStr + 'T12:00:00')
+  d.setDate(d.getDate() + n)
+  const ano = d.getFullYear()
+  const mes = String(d.getMonth() + 1).padStart(2, '0')
+  const dia = String(d.getDate()).padStart(2, '0')
+  return `${ano}-${mes}-${dia}`
+}
+
+function diaSemanaDeData(dataStr: string): number {
+  return new Date(dataStr + 'T12:00:00').getDay()
+}
+
+function diaMesDeData(dataStr: string): number {
+  return new Date(dataStr + 'T12:00:00').getDate()
+}
+
+function mesAbrevDeData(dataStr: string): string {
+  return new Date(dataStr + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' })
+}
+
 function dentroDaJanelaProximoMes(): boolean {
   const hoje = new Date()
   const ultimoDiaMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).getDate()
@@ -133,11 +166,12 @@ export default function AgendarPage() {
   const clienteBloqueado = !!cliente?.bloqueado
   const temCobrancaPendente = cobrancasPendentes.length > 0
 
-  const diasSemana = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date()
-    d.setDate(d.getDate() + semanaOffset * 7 + i)
-    return d
-  })
+  // 🔧 NOVO: dias da semana como STRINGS YYYY-MM-DD diretas (sem objeto Date)
+  // Calendário simples: hoje + N dias
+  const hojeStr = hojeLocal()
+  const diasSemana: string[] = Array.from({ length: 7 }, (_, i) => somarDias(hojeStr, semanaOffset * 7 + i))
+  const dataMaximaStr = somarDias(hojeStr, JANELA_DIAS)
+  const semanasMaximas = Math.floor(JANELA_DIAS / 7)
 
   useEffect(() => {
     if (loading) return
@@ -196,14 +230,12 @@ export default function AgendarPage() {
     if (!unidadeAtiva) return
     setLoadingHorarios(true)
     try {
-      const dataSel = diasSemana[diaSel]
-      if (!dataSel) { setHorarios([]); setLoadingHorarios(false); return }
-      const diaSem = dataSel.getDay()
-      const dataStr = dataSel.toISOString().split('T')[0]
-      const hoje = new Date().toISOString().split('T')[0]
+      const dataStr = diasSemana[diaSel]  // 🔧 já é string YYYY-MM-DD direta
+      if (!dataStr) { setHorarios([]); setLoadingHorarios(false); return }
+      const diaSem = diaSemanaDeData(dataStr)
       const agora = new Date()
       const horaAtual = `${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}`
-      const isDiaDe = dataStr === hoje
+      const isDiaDe = dataStr === hojeStr
       const { data: feriadoData } = await supabase.from('feriados').select('*').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr).eq('ativo', true).maybeSingle()
       const ehFeriado = !!feriadoData
       const ehFds = diaSem === 0 || diaSem === 6
@@ -255,7 +287,7 @@ export default function AgendarPage() {
 
   async function carregarCoachesDisponiveis(dataStr: string, horaStr: string) {
     if (!unidadeAtiva) return
-    const diaSem = new Date(dataStr + 'T12:00:00').getDay()
+    const diaSem = diaSemanaDeData(dataStr)
     const { data: feriadoData } = await supabase.from('feriados').select('*').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr).eq('ativo', true).maybeSingle()
     const usaEscalaFds = !!feriadoData || diaSem === 0 || diaSem === 6
     let coachIds: string[] = []
@@ -275,12 +307,6 @@ export default function AgendarPage() {
     setCoachesDisponiveis(coachesData || [])
   }
 
-  const hojeRef = new Date()
-  hojeRef.setHours(0, 0, 0, 0)
-  const dataMaxima = new Date(hojeRef)
-  dataMaxima.setDate(dataMaxima.getDate() + JANELA_DIAS)
-  const semanasMaximas = Math.floor(JANELA_DIAS / 7)
-
   const horariosFiltrados = horarios.filter(h => {
     const hr = parseInt(h.hora)
     if (periodo === 'manha') return hr < 12
@@ -289,9 +315,12 @@ export default function AgendarPage() {
     return true
   })
 
-  const dataSelecionada = diasSemana[diaSel]
-  const dataSelAposLimite = dataSelecionada > dataMaxima
-  const diasDesdHoje = Math.floor((dataSelecionada.getTime() - hojeRef.getTime()) / (1000 * 60 * 60 * 24))
+  const dataSelStr = diasSemana[diaSel]  // string YYYY-MM-DD
+  const dataSelAposLimite = dataSelStr > dataMaximaStr
+  // Diferença em dias: compara strings simples ou converte ambas pra Date
+  const diasDesdHoje = Math.round(
+    (new Date(dataSelStr + 'T12:00:00').getTime() - new Date(hojeStr + 'T12:00:00').getTime()) / (1000 * 60 * 60 * 24)
+  )
   const isDiaExclusivoPro = diasDesdHoje >= 7 && tipoVisualizacao !== 'coach_ct_pro'
 
   function jaAgendouNoDia(plano: string) { return agendamentosNoDia.some(a => a.tipo_credito === plano && ['agendado', 'confirmado', 'realizado'].includes(a.status)) }
@@ -299,9 +328,12 @@ export default function AgendarPage() {
   function temFilaNoHorario(hora: string) { return filaGeral.some(f => (f.horario || '').slice(0, 5) === hora) }
 
   function saldoParaData(): Record<string, any> {
-    const dataSel = diasSemana[diaSel]
     const agora = new Date()
-    const mesmoMes = dataSel.getMonth() === agora.getMonth() && dataSel.getFullYear() === agora.getFullYear()
+    // dataSelStr é YYYY-MM-DD; pega mês/ano direto da string
+    const [anoSelStr, mesSelStr] = dataSelStr.split('-')
+    const mesSel = parseInt(mesSelStr)
+    const anoSel = parseInt(anoSelStr)
+    const mesmoMes = mesSel === (agora.getMonth() + 1) && anoSel === agora.getFullYear()
     if (mesmoMes) return saldoMesAtual
     const saldoMisto: Record<string, any> = { ...saldoMesProximo }
     for (const [chave, info] of Object.entries(saldoMesAtual)) {
@@ -340,14 +372,14 @@ export default function AgendarPage() {
   }
 
   function abrirModalReserva(hora: string, vagas: number) {
-    const dataStr = diasSemana[diaSel].toISOString().split('T')[0]
+    const dataStr = diasSemana[diaSel]  // já é YYYY-MM-DD
     setModalSlot({ data: dataStr, hora, vagas })
     setTipoCredito(''); setCoachEscolhido(''); setCoachesDisponiveis([]); setErroModal('')
     if (!contratoAssinado) setMostrarContrato(true)
   }
 
   function abrirModalFila(hora: string) {
-    const dataStr = diasSemana[diaSel].toISOString().split('T')[0]
+    const dataStr = diasSemana[diaSel]  // já é YYYY-MM-DD
     setModalFila({ data: dataStr, hora })
     setTipoFilaCredito(''); setErroFila(''); setFilaAceite(false)
     setNotifFila(cliente?.notificacao_preferida || 'whatsapp')
@@ -365,11 +397,14 @@ export default function AgendarPage() {
     if (!modalSlot || !cliente || !unidadeAtiva) return
     if (clienteBloqueado) { setErroModal('Sua conta está bloqueada.'); return }
     if (jaAgendouNoDia(tipoCredito)) { const { label } = parsePlanoKey(tipoCredito); setErroModal(`Você já tem um agendamento com ${label} neste dia.`); return }
+    // Pega mês/ano do modalSlot.data (string YYYY-MM-DD)
+    const [anoSelStr, mesSelStr] = modalSlot.data.split('-')
+    const mesSel = parseInt(mesSelStr)
+    const anoSel = parseInt(anoSelStr)
     const agora = new Date()
-    const dataSel = diasSemana[diaSel]
-    const mesmoMes = dataSel.getMonth() === agora.getMonth() && dataSel.getFullYear() === agora.getFullYear()
-    const mesRef = mesmoMes ? agora.getMonth() + 1 : (agora.getMonth() === 11 ? 1 : agora.getMonth() + 2)
-    const anoRef = mesmoMes ? agora.getFullYear() : (agora.getMonth() === 11 ? agora.getFullYear() + 1 : agora.getFullYear())
+    const mesmoMes = mesSel === (agora.getMonth() + 1) && anoSel === agora.getFullYear()
+    const mesRef = mesmoMes ? agora.getMonth() + 1 : mesSel
+    const anoRef = mesmoMes ? agora.getFullYear() : anoSel
     const { data: saldoAtualizado } = await supabase.rpc('saldo_creditos_cliente', { p_cliente_id: cliente.id, p_mes: mesRef, p_ano: anoRef, p_unidade_id: unidadeAtiva.id })
     if (!saldoAtualizado || !saldoAtualizado[tipoCredito] || saldoAtualizado[tipoCredito].disponivel <= 0) {
       setErroModal('Saldo insuficiente.'); await carregarSaldos(cliente.id, unidadeAtiva.id); return
@@ -414,7 +449,10 @@ export default function AgendarPage() {
   const saldoExibir = saldoParaData()
   const todosSemSaldo = cliente && Object.keys(saldoExibir).length > 0 && planosDisp.length === 0
   const temFila = modalSlot ? temFilaNoHorario(modalSlot.hora) : false
-  const dataSelEhProximoMes = diasSemana[diaSel].getMonth() !== new Date().getMonth() || diasSemana[diaSel].getFullYear() !== new Date().getFullYear()
+  // dataSelEhProximoMes: mês da data selecionada != mês de hoje
+  const [hojeAnoStr, hojeMesStr] = hojeStr.split('-')
+  const [selAnoStr, selMesStr] = dataSelStr.split('-')
+  const dataSelEhProximoMes = (hojeAnoStr !== selAnoStr) || (hojeMesStr !== selMesStr)
   const isCredPro = tipoCredito.startsWith('coach_ct_pro_')
 
   return (
@@ -599,16 +637,19 @@ export default function AgendarPage() {
               <button className="nav-semana-btn" onClick={() => { setSemanaOffset(o => Math.max(0, o - 1)); setDiaSel(0) }} disabled={semanaOffset === 0}
                 style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #333', background: 'transparent', color: semanaOffset === 0 ? '#333' : '#fff', fontSize: 18, cursor: semanaOffset === 0 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .2s' }}>‹</button>
               <div style={{ display: 'flex', gap: 6, flex: 1 }}>
-                {diasSemana.map((d, i) => {
+                {diasSemana.map((dStr, i) => {
                   const isHoje = semanaOffset === 0 && i === 0
                   const isSel = i === diaSel
-                  const diaForaLimite = d > dataMaxima
+                  const diaForaLimite = dStr > dataMaximaStr
+                  const diaSemNum = diaSemanaDeData(dStr)
+                  const diaNum = diaMesDeData(dStr)
+                  const mesAbrev = mesAbrevDeData(dStr)
                   return (
                     <div key={i} className={`dia-btn-h ${diaForaLimite ? 'dia-btn-disabled' : ''}`} onClick={() => !diaForaLimite && setDiaSel(i)}
                       style={{ padding: '0.6rem 0.25rem', borderRadius: 10, border: `1.5px solid ${isSel ? ACCENT : '#222'}`, background: isSel ? `${ACCENT}15` : 'transparent', textAlign: 'center' }}>
-                      <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, color: isSel ? ACCENT : '#555', fontWeight: 600, marginBottom: 2 }}>{isHoje ? 'HOJE' : DIAS_SEMANA[d.getDay()]}</div>
-                      <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 20, color: isSel ? '#fff' : '#888', lineHeight: 1 }}>{d.getDate()}</div>
-                      <div style={{ fontSize: 9, color: isSel ? ACCENT : '#444', textTransform: 'uppercase' }}>{d.toLocaleDateString('pt-BR', { month: 'short' })}</div>
+                      <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, color: isSel ? ACCENT : '#555', fontWeight: 600, marginBottom: 2 }}>{isHoje ? 'HOJE' : DIAS_SEMANA[diaSemNum]}</div>
+                      <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 20, color: isSel ? '#fff' : '#888', lineHeight: 1 }}>{diaNum}</div>
+                      <div style={{ fontSize: 9, color: isSel ? ACCENT : '#444', textTransform: 'uppercase' }}>{mesAbrev}</div>
                     </div>
                   )
                 })}
