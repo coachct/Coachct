@@ -15,6 +15,8 @@ const HORARIOS = [
   '19:30','20:00'
 ]
 
+const HORARIOS_FDS = ['08:00', '09:00', '10:00', '11:00', '12:00']
+
 function parsePlanoKey(key: string): { label: string; icon: string } {
   const lower = (key || '').toLowerCase()
   let tipo = ''
@@ -110,18 +112,15 @@ export default function AdminAgendaPage() {
     if (!unidadeAtiva) return
     if (manter_scroll) scrollRef.current = window.scrollY
     const diaSem = new Date(data + 'T12:00:00').getDay()
+    const ehFds = diaSem === 0 || diaSem === 6
 
-    const [{ data: ags }, { data: coachs }, { data: bloqs }] = await Promise.all([
+    // Busca agendamentos e bloqueios (sempre)
+    const [{ data: ags }, { data: bloqs }] = await Promise.all([
       supabase.from('agendamentos')
         .select('*, clientes(nome, cpf, telefone)')
         .eq('data', data)
         .eq('unidade_id', unidadeAtiva.id)
         .order('horario'),
-      supabase.from('coach_horarios')
-        .select('*, coaches(id, nome)')
-        .eq('dia_semana', diaSem)
-        .eq('unidade_id', unidadeAtiva.id)
-        .eq('ativo', true),
       supabase.from('vagas_bloqueadas')
         .select('*, perfis:bloqueado_por(nome)')
         .eq('data', data)
@@ -129,8 +128,39 @@ export default function AdminAgendaPage() {
         .eq('ativo', true),
     ])
 
+    // Busca coaches: se FDS lê escala_fds e gera horarios virtuais; senão lê coach_horarios
+    let coachsFinal: any[] = []
+
+    if (ehFds) {
+      const { data: escala } = await supabase
+        .from('escala_fds')
+        .select('coach_id, coaches(id, nome)')
+        .eq('data', data)
+        .eq('unidade_id', unidadeAtiva.id)
+
+      // Cada coach escalado cobre os 5 horários do FDS (08:00 a 12:00)
+      for (const e of (escala || []) as any[]) {
+        for (const hora of HORARIOS_FDS) {
+          coachsFinal.push({
+            id: `${e.coach_id}-${hora}`,
+            hora: hora + ':00',
+            coach_id: e.coach_id,
+            coaches: e.coaches,
+          })
+        }
+      }
+    } else {
+      const { data: coachs } = await supabase
+        .from('coach_horarios')
+        .select('*, coaches(id, nome)')
+        .eq('dia_semana', diaSem)
+        .eq('unidade_id', unidadeAtiva.id)
+        .eq('ativo', true)
+      coachsFinal = coachs || []
+    }
+
     setAgendamentos(ags || [])
-    setCoaches(coachs || [])
+    setCoaches(coachsFinal)
     setBloqueios(bloqs || [])
     setLoadingData(false)
 
