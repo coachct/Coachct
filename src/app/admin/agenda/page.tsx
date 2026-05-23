@@ -56,6 +56,8 @@ export default function AdminAgendaPage() {
   const [alocandoId, setAlocandoId] = useState<string | null>(null)
   const [busca, setBusca] = useState('')
   const [abaAtiva, setAbaAtiva] = useState<'agendamentos' | 'grade'>('agendamentos')
+  // 🔧 Mapa de id → nome de todos os coaches, carregado uma vez
+  const [coachMap, setCoachMap] = useState<Record<string, string>>({})
 
   const [modalBloqueio, setModalBloqueio] = useState<{ horario: string; vagasLivres: number; bloqueiosAtivos: any[] } | null>(null)
   const [qtdBloquear, setQtdBloquear] = useState(1)
@@ -78,6 +80,17 @@ export default function AdminAgendaPage() {
   useEffect(() => {
     if (!loading && perfil?.role !== 'admin') router.push('/')
   }, [perfil, loading])
+
+  // 🔧 Carrega todos os coaches uma vez ao montar
+  useEffect(() => {
+    async function carregarCoaches() {
+      const { data: lista } = await supabase.from('coaches').select('id, nome').eq('ativo', true)
+      const mapa: Record<string, string> = {}
+      for (const c of (lista || [])) mapa[c.id] = c.nome
+      setCoachMap(mapa)
+    }
+    if (perfil) carregarCoaches()
+  }, [perfil])
 
   useEffect(() => {
     if (perfil && unidadeAtiva) loadData()
@@ -105,20 +118,21 @@ export default function AdminAgendaPage() {
     let coachsFinal: any[] = []
 
     if (ehFds) {
-      // 🔧 FIX: join com hint de coluna — funciona sem FK formal definida
+      // 🔧 FDS: busca só os IDs e monta coaches usando o mapa local
       const { data: escala } = await supabase
         .from('escala_fds')
-        .select('coach_id, coaches:coach_id(id, nome)')
+        .select('coach_id')
         .eq('data', data)
         .eq('unidade_id', unidadeAtiva.id)
 
       for (const e of (escala || []) as any[]) {
+        const nome = coachMap[e.coach_id] || '...'
         for (const hora of HORARIOS_FDS) {
           coachsFinal.push({
             id: `${e.coach_id}-${hora}`,
             hora: hora + ':00',
             coach_id: e.coach_id,
-            coaches: e.coaches || { id: e.coach_id, nome: 'Coach' },
+            coaches: { id: e.coach_id, nome },
           })
         }
       }
