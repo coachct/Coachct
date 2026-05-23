@@ -8,6 +8,8 @@ import SiteHeader from '@/components/SiteHeader'
 import { TEXTO_TERMO_WELLHUB_TOTALPASS, VERSAO_TERMO_WELLHUB_TOTALPASS } from '@/lib/contratos/termo-wellhub-totalpass'
 
 const ACCENT = '#ff2d9b'
+const VERDE = '#2ddd8b'
+const AMARELO = '#ffaa00'
 
 function dentroDaJanelaProximoMes(): boolean {
   const hoje = new Date()
@@ -32,6 +34,7 @@ export default function MeusPlanosPage() {
   const [scrollLido, setScrollLido] = useState(false)
   const [ativando, setAtivando] = useState(false)
   const [erroAtivacao, setErroAtivacao] = useState('')
+  const [planoAtivadoSucesso, setPlanoAtivadoSucesso] = useState<any>(null)
 
   const agora = new Date()
   const mesAtual = agora.getMonth() + 1
@@ -75,6 +78,7 @@ export default function MeusPlanosPage() {
     setAceiteCheck(false)
     setScrollLido(false)
     setErroAtivacao('')
+    setPlanoAtivadoSucesso(null)
   }
 
   function handleScroll(e: React.UIEvent<HTMLPreElement>) {
@@ -154,7 +158,15 @@ export default function MeusPlanosPage() {
         await supabase.rpc('gerar_creditos_cliente_ativacao', { p_cliente_id: cliente.id, p_mes: mesProximo, p_ano: anoProximo })
       }
 
-      setModalPlano(null)
+      // 5. Guarda info do plano ativado para mostrar tela de sucesso
+      setPlanoAtivadoSucesso({
+        nome: modalPlano.nome,
+        creditos_mes: modalPlano.creditos_mes,
+        tipo: modalPlano.tipo,
+        unidade: modalPlano.unidades?.nome,
+      })
+
+      // Recarrega dados em background (não fecha o modal)
       await loadDados()
     } catch (e: any) {
       console.error(e)
@@ -162,6 +174,21 @@ export default function MeusPlanosPage() {
     } finally {
       setAtivando(false)
     }
+  }
+
+  function fecharModalSucesso() {
+    setModalPlano(null)
+    setPlanoAtivadoSucesso(null)
+  }
+
+  function irParaCartao() {
+    fecharModalSucesso()
+    router.push('/cadastrar-cartao')
+  }
+
+  function irParaAgenda() {
+    fecharModalSucesso()
+    router.push('/agendar')
   }
 
   if (loading || loadingData) return (
@@ -177,12 +204,16 @@ export default function MeusPlanosPage() {
   const nomeBate = nomeAceite.trim().toLowerCase() === (cliente?.nome || '').trim().toLowerCase()
   const podeAtivar = scrollLido && aceiteCheck && nomeAceite.trim() && nomeBate
 
+  // Verifica se cliente já tem cartão (vai influenciar o CTA da tela de sucesso)
+  const jaTemCartao = !!cliente?.pagarme_card_id
+
   return (
     <div style={{ minHeight: '100vh', background: '#080808', fontFamily: "'DM Sans', sans-serif", color: '#f0f0f0' }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
         .plano-card:hover { border-color: ${ACCENT} !important; }
+        .btn-sucesso-h:hover { opacity: 0.9; transform: translateY(-1px); }
       `}</style>
 
       <SiteHeader />
@@ -284,7 +315,7 @@ export default function MeusPlanosPage() {
         </div>
       </div>
 
-      {modalPlano && (
+      {modalPlano && !planoAtivadoSucesso && (
         <div style={{ position: 'fixed', inset: 0, background: '#000000dd', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: '#111', border: '1px solid #333', borderRadius: 20, width: '100%', maxWidth: 560, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '1.5rem 1.5rem 1rem', borderBottom: '1px solid #222' }}>
@@ -330,6 +361,80 @@ export default function MeusPlanosPage() {
               <div style={{ fontSize: 10, color: '#555', marginTop: 8, textAlign: 'center' as const, lineHeight: 1.5 }}>
                 Seu aceite será registrado com data, hora e dispositivo de origem.
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {planoAtivadoSucesso && (
+        <div style={{ position: 'fixed', inset: 0, background: '#000000ee', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#0a0f0a', border: `2px solid ${VERDE}55`, borderRadius: 20, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto' }}>
+
+            <div style={{ padding: '2rem 1.5rem 1rem', textAlign: 'center' as const, borderBottom: '1px solid #1a2a1a' }}>
+              <div style={{ fontSize: 56, marginBottom: '0.5rem', lineHeight: 1 }}>🎉</div>
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: VERDE, letterSpacing: 1, marginBottom: 6 }}>PLANO ATIVADO COM SUCESSO!</div>
+              <div style={{ fontSize: 15, color: '#fff', fontWeight: 600 }}>{planoAtivadoSucesso.nome}</div>
+              <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>{planoAtivadoSucesso.unidade}</div>
+            </div>
+
+            <div style={{ padding: '1.5rem' }}>
+
+              <div style={{ background: '#0a1a0a', border: `1px solid ${VERDE}33`, borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1rem', textAlign: 'center' as const }}>
+                <div style={{ fontSize: 12, color: VERDE, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 4 }}>Seu direito mensal</div>
+                <div style={{ fontSize: 28, color: '#fff', fontWeight: 700, fontFamily: "'Bebas Neue', sans-serif" }}>
+                  {planoAtivadoSucesso.creditos_mes} treinos Coach CT
+                </div>
+                <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>por mês — créditos renovam dia 1º</div>
+              </div>
+
+              <div style={{ background: '#1a1000', border: `1px solid ${AMARELO}33`, borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1rem' }}>
+                <div style={{ fontSize: 12, color: AMARELO, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 8 }}>⚠️ Fique atento às regras</div>
+                <ul style={{ paddingLeft: '1.2rem', fontSize: 13, color: '#ddd', lineHeight: 1.8 }}>
+                  <li>Cancele com <strong style={{ color: '#fff' }}>12h de antecedência</strong> pra devolver o crédito</li>
+                  <li>Falta sem aviso gera <strong style={{ color: '#fff' }}>bloqueio e multa de R$ 99</strong></li>
+                  <li>Agendamentos liberados em janela de <strong style={{ color: '#fff' }}>7 dias</strong></li>
+                </ul>
+              </div>
+
+              {!jaTemCartao && (
+                <div style={{ background: '#1a0014', border: `1.5px solid ${ACCENT}55`, borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <span style={{ fontSize: 20 }}>💳</span>
+                    <div style={{ fontSize: 13, color: ACCENT, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase' as const }}>Antes de agendar</div>
+                  </div>
+                  <div style={{ fontSize: 13, color: '#ddd', lineHeight: 1.7, marginBottom: 8 }}>
+                    Pra concluir agendamentos, precisaremos de um <strong style={{ color: '#fff' }}>cartão de crédito salvo no sistema</strong>.
+                  </div>
+                  <div style={{ background: '#0a0a0a', border: `1px solid ${VERDE}33`, borderRadius: 8, padding: '0.6rem 0.85rem', fontSize: 12, color: VERDE, fontWeight: 600, textAlign: 'center' as const }}>
+                    🔒 Fique tranquilo — nada será cobrado agora
+                  </div>
+                </div>
+              )}
+
+              {jaTemCartao && (
+                <div style={{ background: '#0a1a0a', border: `1px solid ${VERDE}44`, borderRadius: 12, padding: '0.85rem 1rem', marginBottom: '1.5rem', fontSize: 13, color: VERDE, fontWeight: 600, textAlign: 'center' as const }}>
+                  ✓ Você já tem cartão cadastrado — pode agendar agora!
+                </div>
+              )}
+
+              {!jaTemCartao ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <button onClick={irParaCartao} className="btn-sucesso-h"
+                    style={{ width: '100%', background: ACCENT, color: '#fff', border: 'none', borderRadius: 12, padding: '1rem', fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", transition: 'all .2s' }}>
+                    💳 Cadastrar cartão →
+                  </button>
+                  <button onClick={irParaAgenda}
+                    style={{ width: '100%', background: 'transparent', border: '1px solid #333', borderRadius: 12, padding: '0.85rem', fontWeight: 500, fontSize: 14, color: '#888', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                    Ver grade de horários
+                  </button>
+                </div>
+              ) : (
+                <button onClick={irParaAgenda} className="btn-sucesso-h"
+                  style={{ width: '100%', background: VERDE, color: '#000', border: 'none', borderRadius: 12, padding: '1rem', fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", transition: 'all .2s' }}>
+                  Agendar Treino →
+                </button>
+              )}
+
             </div>
           </div>
         </div>
