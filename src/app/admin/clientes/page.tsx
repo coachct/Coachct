@@ -15,6 +15,11 @@ const IDFACE_IP = '192.168.15.129'
 const IDFACE_USER = 'admin'
 const IDFACE_PASS = 'admin'
 
+// 🔧 FIX timezone — usa data local, não UTC
+function dataLocalStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
 const statusConfig: Record<string, { label: string; color: string }> = {
   agendado:   { label: 'Agendado',   color: 'bg-blue-100 text-blue-700' },
   confirmado: { label: 'Confirmado', color: 'bg-green-100 text-green-700' },
@@ -44,115 +49,74 @@ function validarEmail(email: string): boolean {
 async function idfaceLogin(): Promise<string | null> {
   try {
     const res = await fetch(`http://${IDFACE_IP}/login.fcgi`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ login: IDFACE_USER, password: IDFACE_PASS }),
     })
     const data = await res.json()
     return data?.session || null
-  } catch (e) {
-    console.error('iDFace login error:', e)
-    return null
-  }
+  } catch (e) { console.error('iDFace login error:', e); return null }
 }
 
 async function idfaceBuscarUserId(session: string, cpf: string): Promise<number | null> {
   try {
     const res = await fetch(`http://${IDFACE_IP}/load_objects.fcgi?session=${session}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        object: 'users',
-        where: { users: { registration: cpf } },
-      }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ object: 'users', where: { users: { registration: cpf } } }),
     })
     const data = await res.json()
     if (data?.users && data.users.length > 0) return data.users[0].id as number
     return null
-  } catch (e) {
-    console.error('iDFace buscar user error:', e)
-    return null
-  }
+  } catch (e) { console.error('iDFace buscar user error:', e); return null }
 }
 
 async function idfaceCriarUser(session: string, cpf: string, nome: string): Promise<number | null> {
   try {
     const res = await fetch(`http://${IDFACE_IP}/create_objects.fcgi?session=${session}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        object: 'users',
-        values: [{ registration: cpf, name: nome }],
-      }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ object: 'users', values: [{ registration: cpf, name: nome }] }),
     })
     const data = await res.json()
     if (data?.ids && data.ids.length > 0) return data.ids[0] as number
     return null
-  } catch (e) {
-    console.error('iDFace criar user error:', e)
-    return null
-  }
+  } catch (e) { console.error('iDFace criar user error:', e); return null }
 }
 
 async function idfaceAtualizarUser(session: string, userId: number, nome: string): Promise<boolean> {
   try {
     const res = await fetch(`http://${IDFACE_IP}/modify_objects.fcgi?session=${session}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        object: 'users',
-        values: { name: nome },
-        where: { users: { id: userId } },
-      }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ object: 'users', values: { name: nome }, where: { users: { id: userId } } }),
     })
     const data = await res.json()
     return data?.changes >= 0
-  } catch (e) {
-    console.error('iDFace atualizar user error:', e)
-    return false
-  }
+  } catch (e) { console.error('iDFace atualizar user error:', e); return false }
 }
 
 async function idfaceUploadFoto(session: string, userId: number, fotoBlob: Blob): Promise<{ ok: boolean; erro?: string }> {
   try {
     const timestamp = Math.floor(Date.now() / 1000)
     const url = `http://${IDFACE_IP}/user_set_image.fcgi?user_id=${userId}&timestamp=${timestamp}&match=0&session=${session}`
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/octet-stream' },
-      body: fotoBlob,
-    })
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: fotoBlob })
     const data = await res.json()
     if (data?.success === true) return { ok: true }
-    const erro = data?.errors?.[0]?.message || 'Erro desconhecido'
-    return { ok: false, erro }
-  } catch (e: any) {
-    console.error('iDFace upload foto error:', e)
-    return { ok: false, erro: e?.message || 'Erro de conexão' }
-  }
+    return { ok: false, erro: data?.errors?.[0]?.message || 'Erro desconhecido' }
+  } catch (e: any) { return { ok: false, erro: e?.message || 'Erro de conexão' } }
 }
 
 async function idfaceRemoverUser(session: string, cpf: string): Promise<boolean> {
   try {
     const res = await fetch(`http://${IDFACE_IP}/destroy_objects.fcgi?session=${session}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        object: 'users',
-        where: { users: { registration: cpf } },
-      }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ object: 'users', where: { users: { registration: cpf } } }),
     })
     const data = await res.json()
     return data?.changes >= 0
-  } catch (e) {
-    console.error('iDFace remove user error:', e)
-    return false
-  }
+  } catch (e) { console.error('iDFace remove user error:', e); return false }
 }
 
 async function sincronizarIdFace(cpf: string, nome: string, fotoBlob: Blob): Promise<{ ok: boolean; erro?: string }> {
   const session = await idfaceLogin()
-  if (!session) return { ok: false, erro: 'Não foi possível conectar ao iDFace. Verifique se o equipamento está ligado e na rede.' }
+  if (!session) return { ok: false, erro: 'Não foi possível conectar ao iDFace.' }
   let userId = await idfaceBuscarUserId(session, cpf)
   if (!userId) {
     userId = await idfaceCriarUser(session, cpf, nome)
@@ -160,8 +124,7 @@ async function sincronizarIdFace(cpf: string, nome: string, fotoBlob: Blob): Pro
   } else {
     await idfaceAtualizarUser(session, userId, nome)
   }
-  const result = await idfaceUploadFoto(session, userId, fotoBlob)
-  return result
+  return await idfaceUploadFoto(session, userId, fotoBlob)
 }
 
 export default function AdminClientesPage() {
@@ -208,12 +171,8 @@ export default function AdminClientesPage() {
   const [modalVenda, setModalVenda] = useState(false)
   const [produtosDisp, setProdutosDisp] = useState<any[]>([])
   const [formVenda, setFormVenda] = useState({
-    produto_id: '',
-    quantidade: 1,
-    valor_unitario: 0,
-    desconto_percentual: 0,
-    forma_pagamento: 'pix',
-    observacao: '',
+    produto_id: '', quantidade: 1, valor_unitario: 0,
+    desconto_percentual: 0, forma_pagamento: 'pix', observacao: '',
   })
   const [vendendo, setVendendo] = useState(false)
   const [erroVenda, setErroVenda] = useState('')
@@ -260,9 +219,7 @@ export default function AdminClientesPage() {
     else setClientes([])
   }, [busca])
 
-  useEffect(() => {
-    if (perfil) carregarUnidadesEPlanos()
-  }, [perfil])
+  useEffect(() => { if (perfil) carregarUnidadesEPlanos() }, [perfil])
 
   async function carregarUnidadesEPlanos() {
     const [{ data: unidades }, { data: planos }] = await Promise.all([
@@ -275,35 +232,20 @@ export default function AdminClientesPage() {
 
   async function buscarClientes() {
     setLoadingClientes(true)
-    const { data } = await supabase
-      .from('clientes')
-      .select('*')
+    const { data } = await supabase.from('clientes').select('*')
       .or(`nome.ilike.%${busca}%,cpf.ilike.%${busca}%,email.ilike.%${busca}%`)
-      .order('nome')
-      .limit(20)
+      .order('nome').limit(20)
     setClientes(data || [])
     setLoadingClientes(false)
   }
 
   async function abrirCliente(cliente: any) {
-    setClienteSel(cliente)
-    setForm({ ...cliente })
-    setEditando(false)
-    setAba('dados')
-    setHistorico([])
-    setVendas([])
-    setModalSlot(null)
-    setTipoCredito('')
-    setErroCriarAcesso('')
-    setFotoUrl(null)
-    setStatusSync('idle')
-    setErroSync('')
+    setClienteSel(cliente); setForm({ ...cliente }); setEditando(false); setAba('dados')
+    setHistorico([]); setVendas([]); setModalSlot(null); setTipoCredito('')
+    setErroCriarAcesso(''); setFotoUrl(null); setStatusSync('idle'); setErroSync('')
     await Promise.all([
-      carregarSaldo(cliente.id),
-      carregarHistorico(cliente.id),
-      carregarVendas(cliente.id),
-      carregarPlanosCliente(cliente.id),
-      carregarFotoUrl(cliente),
+      carregarSaldo(cliente.id), carregarHistorico(cliente.id),
+      carregarVendas(cliente.id), carregarPlanosCliente(cliente.id), carregarFotoUrl(cliente),
     ])
   }
 
@@ -319,21 +261,21 @@ export default function AdminClientesPage() {
   async function carregarSaldo(clienteId: string) {
     const agora = new Date()
     const { data } = await supabase.rpc('saldo_creditos_cliente', {
-      p_cliente_id: clienteId,
-      p_mes: agora.getMonth() + 1,
-      p_ano: agora.getFullYear(),
-      p_unidade_id: null,
+      p_cliente_id: clienteId, p_mes: agora.getMonth() + 1, p_ano: agora.getFullYear(), p_unidade_id: null,
     })
     setSaldoMes(data || {})
   }
 
   async function carregarHistorico(clienteId: string) {
-    const { data } = await supabase.from('agendamentos').select('*, unidades(nome)').eq('cliente_id', clienteId).order('data', { ascending: false }).limit(50)
+    const { data } = await supabase.from('agendamentos').select('*, unidades(nome)')
+      .eq('cliente_id', clienteId).order('data', { ascending: false }).limit(50)
     setHistorico(data || [])
   }
 
   async function carregarVendas(clienteId: string) {
-    const { data } = await supabase.from('vendas').select('*, produtos(nome, tipo, subtipo), perfis:vendido_por(nome), unidades(nome)').eq('cliente_id', clienteId).order('vendido_em', { ascending: false }).limit(50)
+    const { data } = await supabase.from('vendas')
+      .select('*, produtos(nome, tipo, subtipo), perfis:vendido_por(nome), unidades(nome)')
+      .eq('cliente_id', clienteId).order('vendido_em', { ascending: false }).limit(50)
     setVendas(data || [])
   }
 
@@ -360,10 +302,8 @@ export default function AdminClientesPage() {
     }).eq('id', clienteSel.id)
     if (!error) {
       const updated = { ...clienteSel, ...form }
-      setClienteSel(updated)
-      setEditando(false)
-      await carregarSaldo(updated.id)
-      buscarClientes()
+      setClienteSel(updated); setEditando(false)
+      await carregarSaldo(updated.id); buscarClientes()
     }
     setSalvando(false)
   }
@@ -392,8 +332,7 @@ export default function AdminClientesPage() {
     if (!videoRef.current || !canvasRef.current) return
     const video = videoRef.current; const canvas = canvasRef.current
     canvas.width = video.videoWidth; canvas.height = video.videoHeight
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
+    const ctx = canvas.getContext('2d'); if (!ctx) return
     ctx.drawImage(video, 0, 0)
     setFotoCapturada(canvas.toDataURL('image/jpeg', 0.85))
   }
@@ -402,8 +341,7 @@ export default function AdminClientesPage() {
   function clicarUpload() { fileInputRef.current?.click() }
 
   async function processarArquivoUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const file = e.target.files?.[0]; if (!file) return
     if (!['image/jpeg', 'image/png'].includes(file.type)) { setErroFoto('Apenas imagens JPEG ou PNG são aceitas.'); return }
     if (file.size > 2 * 1024 * 1024) { setErroFoto('Imagem muito grande. Tamanho máximo: 2 MB.'); return }
     const reader = new FileReader()
@@ -415,16 +353,13 @@ export default function AdminClientesPage() {
     if (!fotoCapturada || !clienteSel?.cpf) return
     setSalvandoFoto(true); setErroFoto('')
     try {
-      const res = await fetch(fotoCapturada)
-      const blob = await res.blob()
-      const cpfLimpo = clienteSel.cpf.replace(/\D/g, '')
-      const fileName = `${cpfLimpo}.jpg`
+      const res = await fetch(fotoCapturada); const blob = await res.blob()
+      const cpfLimpo = clienteSel.cpf.replace(/\D/g, ''); const fileName = `${cpfLimpo}.jpg`
       const { error: errUpload } = await supabase.storage.from('fotos-clientes').upload(fileName, blob, { contentType: 'image/jpeg', upsert: true })
       if (errUpload) { setErroFoto('Erro ao enviar foto: ' + errUpload.message); setSalvandoFoto(false); return }
       const { error: errUpdate } = await supabase.from('clientes').update({ foto_url: fileName }).eq('id', clienteSel.id)
       if (errUpdate) { setErroFoto('Erro ao salvar referência: ' + errUpdate.message); setSalvandoFoto(false); return }
-      await recarregarClienteSel()
-      fecharModalFoto()
+      await recarregarClienteSel(); fecharModalFoto()
       setStatusSync('syncing'); setErroSync('')
       const sync = await sincronizarIdFace(cpfLimpo, clienteSel.nome, blob)
       if (sync.ok) setStatusSync('success')
@@ -460,8 +395,7 @@ export default function AdminClientesPage() {
       }
       const { error } = await supabase.from('clientes').update({ foto_url: null }).eq('id', clienteSel.id)
       if (error) { setErroFoto('Erro ao remover: ' + error.message); setSalvandoFoto(false); return }
-      setStatusSync('idle'); setErroSync('')
-      await recarregarClienteSel()
+      setStatusSync('idle'); setErroSync(''); await recarregarClienteSel()
     } catch (e: any) { setErroFoto('Erro: ' + (e?.message || 'desconhecido')) }
     finally { setSalvandoFoto(false) }
   }
@@ -472,8 +406,7 @@ export default function AdminClientesPage() {
     if (!formNovo.email.trim()) { setErroCriar('Email é obrigatório para criar o acesso ao sistema.'); setCriando(false); return }
     if (!validarEmail(formNovo.email)) { setErroCriar('Email inválido. Verifique o formato.'); setCriando(false); return }
     if (!formNovo.cpf.trim() || formNovo.cpf.replace(/\D/g, '').length !== 11) { setErroCriar('CPF inválido. Digite os 11 dígitos.'); setCriando(false); return }
-    const cpfLimpo = formNovo.cpf.replace(/\D/g, '')
-    const emailLimpo = formNovo.email.trim().toLowerCase()
+    const cpfLimpo = formNovo.cpf.replace(/\D/g, ''); const emailLimpo = formNovo.email.trim().toLowerCase()
     const { data: cpfExistente } = await supabase.from('clientes').select('id, nome').eq('cpf', cpfLimpo).maybeSingle()
     if (cpfExistente) { setErroCriar(`Já existe um cliente cadastrado com este CPF: ${cpfExistente.nome}`); setCriando(false); return }
     const { data: emailExistente } = await supabase.from('clientes').select('id, nome').eq('email', emailLimpo).maybeSingle()
@@ -518,15 +451,13 @@ export default function AdminClientesPage() {
 
   async function abrirVenda() {
     if (!unidadeAtiva) return
-    const { data } = await supabase.from('produtos').select('*').eq('ativo', true).or(`unidade_id.eq.${unidadeAtiva.id},unidade_id.is.null`).order('nome')
+    const { data } = await supabase.from('produtos').select('*').eq('ativo', true)
+      .or(`unidade_id.eq.${unidadeAtiva.id},unidade_id.is.null`).order('nome')
     setProdutosDisp(data || [])
     setFormVenda({
       produto_id: data && data[0] ? data[0].id : '',
-      quantidade: 1,
-      valor_unitario: data && data[0] ? Number(data[0].valor) : 0,
-      desconto_percentual: 0,
-      forma_pagamento: 'pix',
-      observacao: '',
+      quantidade: 1, valor_unitario: data && data[0] ? Number(data[0].valor) : 0,
+      desconto_percentual: 0, forma_pagamento: 'pix', observacao: '',
     })
     setErroVenda(''); setModalVenda(true)
   }
@@ -537,7 +468,9 @@ export default function AdminClientesPage() {
   }
 
   function aplicarCortesia() { setFormVenda({ ...formVenda, desconto_percentual: 100, forma_pagamento: 'cortesia' }) }
-  function limparDesconto() { setFormVenda({ ...formVenda, desconto_percentual: 0, forma_pagamento: formVenda.forma_pagamento === 'cortesia' ? 'pix' : formVenda.forma_pagamento }) }
+  function limparDesconto() {
+    setFormVenda({ ...formVenda, desconto_percentual: 0, forma_pagamento: formVenda.forma_pagamento === 'cortesia' ? 'pix' : formVenda.forma_pagamento })
+  }
 
   async function confirmarVenda() {
     if (!unidadeAtiva) return
@@ -573,13 +506,18 @@ export default function AdminClientesPage() {
       const { data: existente } = await supabase.from('cliente_planos').select('id, ativo').eq('cliente_id', clienteSel.id).eq('plano_id', planoId).maybeSingle()
       let cliPlanoId: string | null = null
       if (existente) {
-        const { error } = await supabase.from('cliente_planos').update({ ativo: true, inicio: new Date().toISOString().split('T')[0], fim: null, aceite_pendente: true, token_aceite: token, token_expira_em: expiraEm.toISOString(), contrato_aceito_em: null }).eq('id', existente.id)
-        if (error) throw error
-        cliPlanoId = existente.id
+        const { error } = await supabase.from('cliente_planos').update({
+          ativo: true, inicio: new Date().toISOString().split('T')[0], fim: null,
+          aceite_pendente: true, token_aceite: token, token_expira_em: expiraEm.toISOString(), contrato_aceito_em: null,
+        }).eq('id', existente.id)
+        if (error) throw error; cliPlanoId = existente.id
       } else {
-        const { data: novo, error } = await supabase.from('cliente_planos').insert({ cliente_id: clienteSel.id, plano_id: planoId, ativo: true, inicio: new Date().toISOString().split('T')[0], aceite_pendente: true, token_aceite: token, token_expira_em: expiraEm.toISOString() }).select('id').single()
-        if (error) throw error
-        cliPlanoId = novo?.id || null
+        const { data: novo, error } = await supabase.from('cliente_planos').insert({
+          cliente_id: clienteSel.id, plano_id: planoId, ativo: true,
+          inicio: new Date().toISOString().split('T')[0],
+          aceite_pendente: true, token_aceite: token, token_expira_em: expiraEm.toISOString(),
+        }).select('id').single()
+        if (error) throw error; cliPlanoId = novo?.id || null
       }
       const linkAceite = `${window.location.origin}/aceite-termo?token=${token}`
       await carregarPlanosCliente(clienteSel.id)
@@ -601,7 +539,10 @@ export default function AdminClientesPage() {
     if (!modalLinkAceite || !clienteSel) return
     setEnviandoEmail(true); setErroEmail('')
     try {
-      const res = await fetch('/api/enviar-aceite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cliente_plano_id: modalLinkAceite.cpId }) })
+      const res = await fetch('/api/enviar-aceite', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cliente_plano_id: modalLinkAceite.cpId }),
+      })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || 'Erro ao enviar email')
       setEmailEnviado(true)
@@ -619,9 +560,11 @@ export default function AdminClientesPage() {
 
   async function desativarPlano(cpId: string) {
     if (!confirm('Desativar este plano? O cliente perderá acesso a partir de hoje.')) return
-    await supabase.from('cliente_planos').update({ ativo: false, fim: new Date().toISOString().split('T')[0], aceite_pendente: false, token_aceite: null, token_expira_em: null }).eq('id', cpId)
-    await carregarPlanosCliente(clienteSel.id)
-    await carregarSaldo(clienteSel.id)
+    await supabase.from('cliente_planos').update({
+      ativo: false, fim: new Date().toISOString().split('T')[0],
+      aceite_pendente: false, token_aceite: null, token_expira_em: null,
+    }).eq('id', cpId)
+    await carregarPlanosCliente(clienteSel.id); await carregarSaldo(clienteSel.id)
   }
 
   function abrirAjusteVencimento(cp: any) { setModalVencimento(cp); setNovoVencimento(cp.fim || ''); setErroVencimento('') }
@@ -633,14 +576,15 @@ export default function AdminClientesPage() {
     const { error } = await supabase.from('cliente_planos').update({ fim: novoVencimento }).eq('id', modalVencimento.id)
     setAjustandoVencimento(false)
     if (error) { setErroVencimento('Erro ao salvar: ' + error.message); return }
-    setModalVencimento(null)
-    await carregarPlanosCliente(clienteSel.id)
+    setModalVencimento(null); await carregarPlanosCliente(clienteSel.id)
   }
 
   async function cancelarAgendamento(agId: string) {
     if (!confirm('Cancelar este agendamento? O crédito será devolvido ao cliente.')) return
     setCancelandoId(agId)
-    const { error } = await supabase.from('agendamentos').update({ status: 'cancelado', cancelado_em: new Date().toISOString(), motivo_cancelamento: 'Cancelado pelo admin' }).eq('id', agId)
+    const { error } = await supabase.from('agendamentos').update({
+      status: 'cancelado', cancelado_em: new Date().toISOString(), motivo_cancelamento: 'Cancelado pelo admin',
+    }).eq('id', agId)
     setCancelandoId(null)
     if (error) { alert('Erro ao cancelar: ' + error.message); return }
     await Promise.all([carregarSaldo(clienteSel.id), carregarHistorico(clienteSel.id)])
@@ -652,8 +596,10 @@ export default function AdminClientesPage() {
     return planosDisponiveis.filter(p => p.unidade_id === unidadeAtiva.id && !planosAtivos.includes(p.id))
   }
 
+  // 🔧 diasSemana usa datas locais
   const diasSemana = Array.from({ length: 7 }, (_, i) => {
     const d = new Date()
+    d.setHours(12, 0, 0, 0)
     d.setDate(d.getDate() + semanaOffset * 7 + i)
     return d
   })
@@ -662,35 +608,25 @@ export default function AdminClientesPage() {
     if (aba === 'agendar' && unidadeAtiva) carregarHorariosAgendar()
   }, [aba, diaSel, semanaOffset, unidadeAtiva?.id])
 
-  // 🔧 FIX: detecta FDS e busca escala_fds em vez de coach_horarios
   async function carregarHorariosAgendar() {
     if (!unidadeAtiva) return
     const dataSel = diasSemana[diaSel]
     const diaSemNum = dataSel.getDay()
-    const dataStr = dataSel.toISOString().split('T')[0]
+    const dataStr = dataLocalStr(dataSel) // 🔧 FIX timezone
     const ehFds = diaSemNum === 0 || diaSemNum === 6
 
     const porHora: Record<string, number> = {}
 
     if (ehFds) {
       const { data: escala } = await supabase
-        .from('escala_fds')
-        .select('coach_id')
-        .eq('data', dataStr)
-        .eq('unidade_id', unidadeAtiva.id)
+        .from('escala_fds').select('coach_id')
+        .eq('data', dataStr).eq('unidade_id', unidadeAtiva.id)
       const qtd = (escala || []).length
-      if (qtd > 0) {
-        for (const hora of HORARIOS_FDS) {
-          porHora[hora] = qtd
-        }
-      }
+      if (qtd > 0) { for (const hora of HORARIOS_FDS) porHora[hora] = qtd }
     } else {
       const { data: hors } = await supabase
-        .from('coach_horarios')
-        .select('hora')
-        .eq('dia_semana', diaSemNum)
-        .eq('unidade_id', unidadeAtiva.id)
-        .eq('ativo', true)
+        .from('coach_horarios').select('hora')
+        .eq('dia_semana', diaSemNum).eq('unidade_id', unidadeAtiva.id).eq('ativo', true)
       for (const h of (hors || [])) {
         const hora = (h.hora || '').slice(0, 5)
         porHora[hora] = (porHora[hora] || 0) + 1
@@ -698,8 +634,10 @@ export default function AdminClientesPage() {
     }
 
     const [{ data: ags }, { data: bloqueadas }] = await Promise.all([
-      supabase.from('agendamentos').select('horario').eq('data', dataStr).eq('unidade_id', unidadeAtiva.id).neq('status', 'cancelado'),
-      supabase.from('vagas_bloqueadas').select('horario, quantidade').eq('data', dataStr).eq('unidade_id', unidadeAtiva.id).eq('ativo', true),
+      supabase.from('agendamentos').select('horario')
+        .eq('data', dataStr).eq('unidade_id', unidadeAtiva.id).neq('status', 'cancelado'),
+      supabase.from('vagas_bloqueadas').select('horario, quantidade')
+        .eq('data', dataStr).eq('unidade_id', unidadeAtiva.id).eq('ativo', true),
     ])
 
     const ocupados: Record<string, number> = {}
@@ -714,8 +652,7 @@ export default function AdminClientesPage() {
     }
 
     const resultado = Object.entries(porHora).map(([hora, total]) => {
-      const bloq = bloqueadasMap[hora] || 0
-      const ocup = ocupados[hora] || 0
+      const bloq = bloqueadasMap[hora] || 0; const ocup = ocupados[hora] || 0
       return { hora, total, ocupados: ocup, bloqueadas: bloq, livres: Math.max(0, total - ocup - bloq) }
     }).sort((a, b) => a.hora.localeCompare(b.hora))
 
@@ -724,10 +661,11 @@ export default function AdminClientesPage() {
 
   async function abrirModal(hora: string) {
     if (!unidadeAtiva) return
-    const dataStr = diasSemana[diaSel].toISOString().split('T')[0]
+    const dataStr = dataLocalStr(diasSemana[diaSel]) // 🔧 FIX timezone
     const dataObj = diasSemana[diaSel]
     const { data: saldoData } = await supabase.rpc('saldo_creditos_cliente', {
-      p_cliente_id: clienteSel.id, p_mes: dataObj.getMonth() + 1, p_ano: dataObj.getFullYear(), p_unidade_id: unidadeAtiva.id,
+      p_cliente_id: clienteSel.id, p_mes: dataObj.getMonth() + 1,
+      p_ano: dataObj.getFullYear(), p_unidade_id: unidadeAtiva.id,
     })
     setSaldoMes(saldoData || {})
     setModalSlot({ hora, data: dataStr }); setTipoCredito(''); setErroModal('')
@@ -747,7 +685,7 @@ export default function AdminClientesPage() {
     setAba('agendamentos')
   }
 
-  const hoje = new Date().toISOString().split('T')[0]
+  const hoje = dataLocalStr(new Date()) // 🔧 FIX timezone
   const agendamentosFuturos = historico.filter(a => a.data >= hoje && ['agendado','confirmado'].includes(a.status)).sort((a, b) => a.data.localeCompare(b.data))
   const agendamentosPassados = historico.filter(a => a.data < hoje || ['realizado','falta','cancelado'].includes(a.status)).sort((a, b) => b.data.localeCompare(a.data))
 
@@ -766,16 +704,14 @@ export default function AdminClientesPage() {
 
   const appsPorUnidade: Record<string, any[]> = {}
   for (const cp of planosAppsParceiros) {
-    const u = cp.planos_disponiveis?.unidades
-    if (!u) continue
+    const u = cp.planos_disponiveis?.unidades; if (!u) continue
     if (!appsPorUnidade[u.id]) appsPorUnidade[u.id] = []
     appsPorUnidade[u.id].push(cp)
   }
 
   const saldosPorUnidade: Record<string, any[]> = {}
   for (const [key, info] of Object.entries(saldoMes)) {
-    const uid = (info as any).unidade_id
-    if (!uid) continue
+    const uid = (info as any).unidade_id; if (!uid) continue
     if (!saldosPorUnidade[uid]) saldosPorUnidade[uid] = []
     saldosPorUnidade[uid].push({ key, ...info as any })
   }
@@ -793,7 +729,6 @@ export default function AdminClientesPage() {
   const ehAcesso = produtoSelecionado?.subtipo === 'acesso'
 
   const clienteTemAcesso = !!clienteSel?.user_id
-  const clienteTemEmailSemAcesso = !clienteTemAcesso && !!clienteSel?.email
   const clienteSemEmailSemAcesso = !clienteTemAcesso && !clienteSel?.email
   const clienteTemCpf = !!clienteSel?.cpf && clienteSel.cpf.replace(/\D/g, '').length === 11
   const clienteTemFoto = !!clienteSel?.foto_url
@@ -816,7 +751,6 @@ export default function AdminClientesPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-3">
           {clienteSel && (
@@ -840,12 +774,12 @@ export default function AdminClientesPage() {
       </div>
 
       <div className="max-w-3xl mx-auto px-6 py-5">
-
         {!clienteSel && (
           <>
             <div className="relative mb-4">
               <Search size={14} className="absolute left-3 top-3 text-gray-400" />
-              <input className="input pl-9 w-full" placeholder="Buscar por nome, CPF ou email..." value={busca} onChange={e => setBusca(e.target.value)} autoFocus />
+              <input className="input pl-9 w-full" placeholder="Buscar por nome, CPF ou email..."
+                value={busca} onChange={e => setBusca(e.target.value)} autoFocus />
             </div>
             {busca.trim().length < 2 ? (
               <div className="text-center py-16">
@@ -954,7 +888,7 @@ export default function AdminClientesPage() {
                       </div>
                       {!clienteTemCpf ? (
                         <>
-                          <div className="text-xs text-blue-700 mb-3">Para cadastrar a foto facial, primeiro cadastre o <strong>CPF</strong> do cliente clicando em "Editar" no card de informações abaixo.</div>
+                          <div className="text-xs text-blue-700 mb-3">Para cadastrar a foto facial, primeiro cadastre o <strong>CPF</strong> do cliente.</div>
                           <button disabled className="btn btn-sm bg-gray-200 text-gray-400 cursor-not-allowed gap-1"><Camera size={12} /> Cadastre o CPF primeiro</button>
                         </>
                       ) : clienteTemFoto ? (
@@ -991,12 +925,12 @@ export default function AdminClientesPage() {
                         <div className="text-sm font-semibold text-orange-900 mb-1">Cliente sem acesso ao sistema</div>
                         {clienteSemEmailSemAcesso ? (
                           <>
-                            <div className="text-xs text-orange-700 mb-3">Para criar o acesso, primeiro cadastre o email do cliente clicando em "Editar" no card abaixo.</div>
+                            <div className="text-xs text-orange-700 mb-3">Para criar o acesso, primeiro cadastre o email do cliente.</div>
                             <button disabled className="btn btn-sm bg-gray-200 text-gray-400 cursor-not-allowed gap-1"><KeyRound size={12} /> Cadastre o email primeiro</button>
                           </>
                         ) : (
                           <>
-                            <div className="text-xs text-orange-700 mb-3">Será gerada uma senha provisória e enviado um email de boas-vindas para <strong>{clienteSel.email}</strong> com os dados de acesso.</div>
+                            <div className="text-xs text-orange-700 mb-3">Será gerada uma senha provisória e enviado um email de boas-vindas para <strong>{clienteSel.email}</strong>.</div>
                             {erroCriarAcesso && <div className="bg-red-50 border border-red-200 rounded-lg p-2 mb-3 text-xs text-red-700">{erroCriarAcesso}</div>}
                             <button onClick={criarAcessoClienteExistente} disabled={criandoAcesso} className="btn btn-sm gap-1 bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50">
                               <KeyRound size={12} />{criandoAcesso ? 'Criando acesso...' : 'Criar acesso e enviar boas-vindas'}
@@ -1092,7 +1026,7 @@ export default function AdminClientesPage() {
                 <div>
                   <div className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2 flex items-center gap-2"><CalendarClock size={12} /> Planos Just CT</div>
                   {planosJustCT.length === 0 ? (
-                    <div className="card text-center py-6 text-gray-400 text-sm">Nenhum plano de acesso ativo. Venda um Plano Semestral ou Anual.</div>
+                    <div className="card text-center py-6 text-gray-400 text-sm">Nenhum plano de acesso ativo.</div>
                   ) : (
                     <div className="space-y-2">
                       {planosJustCT.map(cp => {
@@ -1130,8 +1064,7 @@ export default function AdminClientesPage() {
                     <div className="card text-center py-6 text-gray-400 text-sm">Cliente sem planos de app parceiro ativos.</div>
                   ) : (
                     todasUnidades.map(u => {
-                      const planosU = appsPorUnidade[u.id] || []
-                      if (planosU.length === 0) return null
+                      const planosU = appsPorUnidade[u.id] || []; if (planosU.length === 0) return null
                       return (
                         <div key={u.id} className="card mb-2">
                           <div className="flex items-center gap-2 mb-3">
@@ -1170,7 +1103,6 @@ export default function AdminClientesPage() {
                       )
                     })
                   )}
-
                   {planosDisponiveisParaAtivar().length > 0 && (
                     <div className="card border-2 border-dashed border-primary-200 bg-primary-50">
                       <div className="text-sm font-semibold text-primary-800 mb-3 flex items-center gap-2"><Plus size={14} /> Ativar app parceiro em {unidadeAtiva.nome}</div>
@@ -1205,7 +1137,7 @@ export default function AdminClientesPage() {
                   <button onClick={abrirVenda} className="btn btn-sm gap-1 bg-green-600 text-white hover:bg-green-700"><ShoppingCart size={12} /> Nova venda</button>
                 </div>
                 {vendas.length === 0 ? (
-                  <div className="card text-center py-12 text-gray-400 text-sm">Nenhuma venda registrada para este cliente.</div>
+                  <div className="card text-center py-12 text-gray-400 text-sm">Nenhuma venda registrada.</div>
                 ) : (
                   <div className="space-y-2">
                     {vendas.map(v => {
@@ -1469,7 +1401,7 @@ export default function AdminClientesPage() {
                   <div>
                     <label className="text-xs text-gray-500 mb-1 block font-medium">Quantidade</label>
                     <input type="number" min={1} max={20} className="input w-full" value={formVenda.quantidade} onChange={e => setFormVenda({ ...formVenda, quantidade: parseInt(e.target.value) || 1 })} />
-                    {ehAcesso && formVenda.quantidade > 1 && <div className="text-xs text-amber-600 mt-1">⚠️ Vai somar a vigência (ex: 2x semestral = 360 dias)</div>}
+                    {ehAcesso && formVenda.quantidade > 1 && <div className="text-xs text-amber-600 mt-1">⚠️ Vai somar a vigência</div>}
                   </div>
                   <div>
                     <label className="text-xs text-gray-500 mb-1 block font-medium">Valor unitário (R$)</label>
@@ -1487,7 +1419,8 @@ export default function AdminClientesPage() {
                   </div>
                   {!ehCortesia && (
                     <div className="flex items-center gap-2">
-                      <input type="number" min={0} max={100} step={1} className="input flex-1" placeholder="0" value={formVenda.desconto_percentual || ''} onChange={e => setFormVenda({ ...formVenda, desconto_percentual: parseFloat(e.target.value) || 0 })} />
+                      <input type="number" min={0} max={100} step={1} className="input flex-1" placeholder="0"
+                        value={formVenda.desconto_percentual || ''} onChange={e => setFormVenda({ ...formVenda, desconto_percentual: parseFloat(e.target.value) || 0 })} />
                       <span className="text-sm text-amber-800 font-medium">%</span>
                     </div>
                   )}
@@ -1520,7 +1453,9 @@ export default function AdminClientesPage() {
                 )}
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block font-medium">Observação (opcional)</label>
-                  <textarea className="input w-full resize-none" rows={2} value={formVenda.observacao} onChange={e => setFormVenda({ ...formVenda, observacao: e.target.value })} placeholder={ehCortesia ? "Ex: cortesia primeiro cliente go-live" : "Ex: cliente pagou parcelado..."} />
+                  <textarea className="input w-full resize-none" rows={2} value={formVenda.observacao}
+                    onChange={e => setFormVenda({ ...formVenda, observacao: e.target.value })}
+                    placeholder={ehCortesia ? "Ex: cortesia primeiro cliente go-live" : "Ex: cliente pagou parcelado..."} />
                 </div>
                 {erroVenda && <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-600 flex items-start gap-2"><AlertCircle size={14} className="mt-0.5 flex-shrink-0" />{erroVenda}</div>}
                 <div className="flex gap-2">
@@ -1548,7 +1483,7 @@ export default function AdminClientesPage() {
             </div>
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs text-blue-800 space-y-2">
               <div className="font-semibold flex items-center gap-1"><Mail size={12} /> Como funciona</div>
-              <div className="leading-relaxed">Será gerado um link único para o cliente <strong>{clienteSel?.nome}</strong> aceitar o Termo de Adesão Wellhub/TotalPass. Após a ativação, você pode <strong>enviar por email</strong> ou <strong>copiar o link</strong> para mandar via WhatsApp.</div>
+              <div className="leading-relaxed">Será gerado um link único para o cliente <strong>{clienteSel?.nome}</strong> aceitar o Termo de Adesão. Após a ativação, você pode <strong>enviar por email</strong> ou <strong>copiar o link</strong> para mandar via WhatsApp.</div>
               <div className="leading-relaxed pt-1 border-t border-blue-200">⚠️ Os créditos só serão liberados após o cliente aceitar o termo.</div>
             </div>
             {erroAtivacao && <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-sm text-red-600">{erroAtivacao}</div>}
@@ -1574,7 +1509,7 @@ export default function AdminClientesPage() {
             </div>
             <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-4 text-xs text-orange-800">
               <div className="font-semibold mb-1 flex items-center gap-1"><Clock size={12} /> Aguardando aceite do cliente</div>
-              <div className="leading-relaxed">O cliente precisa acessar o link, ler o Termo de Adesão e confirmar o aceite digitalmente. Os créditos só serão liberados após o aceite.</div>
+              <div className="leading-relaxed">O cliente precisa acessar o link e confirmar o aceite digitalmente. Os créditos só serão liberados após o aceite.</div>
             </div>
             <div className="mb-4">
               <div className="text-xs text-gray-500 mb-2 font-semibold uppercase tracking-wide">Link de aceite</div>
@@ -1610,7 +1545,7 @@ export default function AdminClientesPage() {
               </div>
               <button onClick={() => setModalVencimento(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-xs text-amber-800">💡 Use este ajuste quando o cliente comprou o plano fora do sistema e você precisa retroagir ou estender o vencimento.</div>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-xs text-amber-800">💡 Use este ajuste quando o cliente comprou o plano fora do sistema e você precisa ajustar o vencimento.</div>
             <div className="space-y-3">
               <div>
                 <div className="text-xs text-gray-500 mb-1">Início do plano</div>
@@ -1644,14 +1579,15 @@ export default function AdminClientesPage() {
             <div className="space-y-3">
               {[
                 { label: 'Nome completo', key: 'nome', type: 'text', placeholder: 'Ex: Maria Silva', required: true },
-                { label: 'Email', key: 'email', type: 'email', placeholder: 'cliente@email.com', required: true, hint: 'Será usado para acesso ao sistema e envio das boas-vindas' },
+                { label: 'Email', key: 'email', type: 'email', placeholder: 'cliente@email.com', required: true, hint: 'Será usado para acesso ao sistema' },
                 { label: 'Telefone', key: 'telefone', type: 'text', placeholder: '(11) 99999-9999', required: false },
                 { label: 'CPF', key: 'cpf', type: 'text', placeholder: '00000000000', required: true },
               ].map(f => (
                 <div key={f.key}>
                   <label className="text-xs text-gray-500 mb-1 block font-medium">{f.label} {f.required && <span className="text-red-500">*</span>}</label>
-                  <input type={f.type} className="input w-full" placeholder={f.placeholder} value={(formNovo as any)[f.key]} onChange={e => setFormNovo({ ...formNovo, [f.key]: e.target.value })} />
-                  {f.hint && <div className="text-xs text-gray-400 mt-1">{f.hint}</div>}
+                  <input type={f.type} className="input w-full" placeholder={f.placeholder}
+                    value={(formNovo as any)[f.key]} onChange={e => setFormNovo({ ...formNovo, [f.key]: e.target.value })} />
+                  {(f as any).hint && <div className="text-xs text-gray-400 mt-1">{(f as any).hint}</div>}
                 </div>
               ))}
             </div>
@@ -1687,12 +1623,12 @@ export default function AdminClientesPage() {
               <>
                 <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-4 text-xs text-orange-800">
                   <div className="font-semibold mb-1">⚠️ Email não foi enviado</div>
-                  <div className="leading-relaxed">O acesso foi criado, mas o email de boas-vindas falhou. Anote a senha provisória e passe ao cliente manualmente.</div>
+                  <div className="leading-relaxed">O acesso foi criado, mas o email falhou. Anote a senha provisória.</div>
                 </div>
                 <div className="bg-gray-900 rounded-xl p-4 mb-4">
                   <div className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-2">Senha provisória</div>
                   <div className="font-mono text-2xl text-primary-300 font-bold tracking-wider mb-2">{modalAcessoCriado.senha}</div>
-                  <div className="text-xs text-gray-400">Email de login: <span className="text-white font-mono">{modalAcessoCriado.email}</span></div>
+                  <div className="text-xs text-gray-400">Email: <span className="text-white font-mono">{modalAcessoCriado.email}</span></div>
                 </div>
               </>
             )}
