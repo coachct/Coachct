@@ -21,6 +21,18 @@ function formatarMoeda(v: number) {
   return `R$ ${Number(v).toFixed(2).replace('.', ',')}`
 }
 
+// 🔧 FIX timezone — data local, não UTC
+function hojeLocal(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
+function subtrairDias(dataStr: string, dias: number): string {
+  const d = new Date(dataStr + 'T12:00:00')
+  d.setDate(d.getDate() - dias)
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
 export default function CobrancaNoShowPage() {
   const { perfil, loading } = useAuth()
   const { unidadeAtiva, loading: loadingUnidade } = useUnidade()
@@ -48,24 +60,17 @@ export default function CobrancaNoShowPage() {
   }, [perfil, unidadeAtiva?.id, filtroPeriodo])
 
   function getRangeData(): { de: string; ate: string } {
-    const hoje = new Date()
-    const ate = hoje.toISOString().split('T')[0]
+    const ate = hojeLocal() // 🔧 data local
     let de = ate
 
     if (filtroPeriodo === 'hoje') {
       de = ate
     } else if (filtroPeriodo === 'semana') {
-      const d = new Date(hoje)
-      d.setDate(d.getDate() - 7)
-      de = d.toISOString().split('T')[0]
+      de = subtrairDias(ate, 7)
     } else if (filtroPeriodo === 'mes') {
-      const d = new Date(hoje)
-      d.setDate(d.getDate() - 30)
-      de = d.toISOString().split('T')[0]
+      de = subtrairDias(ate, 30)
     } else {
-      const d = new Date(hoje)
-      d.setDate(d.getDate() - 365)
-      de = d.toISOString().split('T')[0]
+      de = subtrairDias(ate, 365)
     }
     return { de, ate }
   }
@@ -76,7 +81,6 @@ export default function CobrancaNoShowPage() {
 
     const { de, ate } = getRangeData()
 
-    // 1. Busca faltas do período na unidade
     const { data: agsRaw, error } = await supabase
       .from('agendamentos')
       .select(`
@@ -100,27 +104,20 @@ export default function CobrancaNoShowPage() {
 
     const ags: any[] = agsRaw || []
 
-    // 2. Para cada falta, verifica se já foi cobrada
-    //    Verifica em DOIS lugares:
-    //    a) cobrancas_pendentes com status='pago' (cliente regularizou ou admin cobrou via fluxo novo)
-    //    b) vendas com produto_id=multa (fallback pra cobranças antigas)
-    let cobrancasMap: Record<string, any> = {} // por agendamento_id
+    let cobrancasMap: Record<string, any> = {}
 
     if (ags.length > 0) {
       const clienteIds = ags.map((a: any) => a.cliente_id)
 
-      // a) Busca cobranças pendentes/pagas/canceladas relacionadas aos clientes
       const { data: cobs } = await supabase
         .from('cobrancas_pendentes')
         .select('*')
         .in('cliente_id', clienteIds)
 
       for (const c of ((cobs as any[]) || [])) {
-        // Extrai agendamento_id da observacao "agendamento_id: xxx"
         const match = c.observacao?.match(/agendamento_id:\s*([a-f0-9-]{36})/i)
         if (match) {
           const agId = match[1]
-          // Mantém o registro mais relevante (pago > pendente > cancelado)
           const existente = cobrancasMap[agId]
           if (!existente || (c.status === 'pago' && existente.status !== 'pago')) {
             cobrancasMap[agId] = c
@@ -128,7 +125,6 @@ export default function CobrancaNoShowPage() {
         }
       }
 
-      // b) Fallback: vendas diretas de multa (cobrança feita pelo admin direto)
       const { data: vendas } = await supabase
         .from('vendas')
         .select('id, cliente_id, valor_total, vendido_em, observacao')
@@ -139,7 +135,6 @@ export default function CobrancaNoShowPage() {
         const match = v.observacao?.match(/agendamento ([a-f0-9-]{36})/i)
         if (match) {
           const agId = match[1]
-          // Se já tem cobrança paga registrada via cobrancas_pendentes, não sobrescreve
           if (!cobrancasMap[agId] || cobrancasMap[agId].status !== 'pago') {
             cobrancasMap[agId] = {
               status: 'pago',
@@ -152,17 +147,11 @@ export default function CobrancaNoShowPage() {
       }
     }
 
-    // 3. Enriquece cada falta com status real
     const enriquecidas = ags.map((a: any) => {
       const cob = cobrancasMap[a.id]
       let statusCobranca: 'pendente' | 'cobrado' | 'sem_cartao' = 'pendente'
-
-      if (cob?.status === 'pago') {
-        statusCobranca = 'cobrado'
-      } else if (!a.clientes?.pagarme_card_id) {
-        statusCobranca = 'sem_cartao'
-      }
-
+      if (cob?.status === 'pago') statusCobranca = 'cobrado'
+      else if (!a.clientes?.pagarme_card_id) statusCobranca = 'sem_cartao'
       return { ...a, statusCobranca, cobranca: cob }
     })
 
@@ -171,50 +160,26 @@ export default function CobrancaNoShowPage() {
   }
 
   function abrirModalCobranca(falta: any) {
-    setModalCobranca(falta)
-    setErroCobranca('')
-    setSucessoCobranca(null)
+    setModalCobranca(falta); setErroCobranca(''); setSucessoCobranca(null)
   }
 
   function fecharModal() {
-    setModalCobranca(null)
-    setErroCobranca('')
-    setSucessoCobranca(null)
+    setModalCobranca(null); setErroCobranca(''); setSucessoCobranca(null)
   }
 
   async function confirmarCobranca() {
     if (!modalCobranca) return
-    setCobrando(true)
-    setErroCobranca('')
-
+    setCobrando(true); setErroCobranca('')
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) {
-        setErroCobranca('Sessão expirada. Faça login novamente.')
-        setCobrando(false)
-        return
-      }
-
+      if (!session?.access_token) { setErroCobranca('Sessão expirada. Faça login novamente.'); setCobrando(false); return }
       const res = await fetch('/api/admin/cobrar-cartao-salvo', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          agendamento_id: modalCobranca.id,
-          valor: VALOR_MULTA,
-        }),
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ agendamento_id: modalCobranca.id, valor: VALOR_MULTA }),
       })
-
       const data = await res.json()
-
-      if (!res.ok) {
-        setErroCobranca(data.error || 'Erro ao processar cobrança')
-        setCobrando(false)
-        return
-      }
-
+      if (!res.ok) { setErroCobranca(data.error || 'Erro ao processar cobrança'); setCobrando(false); return }
       setSucessoCobranca(data)
       await carregarFaltas()
     } catch (err: any) {
@@ -267,49 +232,30 @@ export default function CobrancaNoShowPage() {
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
           <div className="card">
-            <div className="flex items-center gap-2 mb-1">
-              <AlertTriangle size={14} className="text-orange-500" />
-              <div className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Faltas</div>
-            </div>
+            <div className="flex items-center gap-2 mb-1"><AlertTriangle size={14} className="text-orange-500" /><div className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Faltas</div></div>
             <div className="text-2xl font-bold text-gray-900">{totalFaltas}</div>
             <div className="text-xs text-gray-400 mt-0.5">no período</div>
           </div>
-
           <div className="card">
-            <div className="flex items-center gap-2 mb-1">
-              <DollarSign size={14} className="text-blue-500" />
-              <div className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Potencial</div>
-            </div>
+            <div className="flex items-center gap-2 mb-1"><DollarSign size={14} className="text-blue-500" /><div className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Potencial</div></div>
             <div className="text-2xl font-bold text-blue-700">{formatarMoeda(valorPotencial)}</div>
             <div className="text-xs text-gray-400 mt-0.5">total das multas</div>
           </div>
-
           <div className="card">
-            <div className="flex items-center gap-2 mb-1">
-              <Check size={14} className="text-green-500" />
-              <div className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Cobrado</div>
-            </div>
+            <div className="flex items-center gap-2 mb-1"><Check size={14} className="text-green-500" /><div className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Cobrado</div></div>
             <div className="text-2xl font-bold text-green-700">{formatarMoeda(valorCobrado)}</div>
             <div className="text-xs text-gray-400 mt-0.5">{totalCobrado} de {totalFaltas}</div>
           </div>
-
           <div className="card">
-            <div className="flex items-center gap-2 mb-1">
-              <CreditCard size={14} className="text-orange-500" />
-              <div className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Pendente</div>
-            </div>
+            <div className="flex items-center gap-2 mb-1"><CreditCard size={14} className="text-orange-500" /><div className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Pendente</div></div>
             <div className="text-2xl font-bold text-orange-700">{formatarMoeda(valorPendente)}</div>
-            <div className="text-xs text-gray-400 mt-0.5">
-              {totalPendente} pendente{totalSemCartao > 0 && ` · ${totalSemCartao} sem cartão`}
-            </div>
+            <div className="text-xs text-gray-400 mt-0.5">{totalPendente} pendente{totalSemCartao > 0 && ` · ${totalSemCartao} sem cartão`}</div>
           </div>
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-200 p-3 mb-5">
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-1 text-xs text-gray-500 font-semibold uppercase tracking-wide">
-              <Filter size={12} /> Período:
-            </div>
+            <div className="flex items-center gap-1 text-xs text-gray-500 font-semibold uppercase tracking-wide"><Filter size={12} /> Período:</div>
             {[
               { key: 'hoje', label: 'Hoje' },
               { key: 'semana', label: '7 dias' },
@@ -317,18 +263,12 @@ export default function CobrancaNoShowPage() {
               { key: 'tudo', label: '12 meses' },
             ].map(p => (
               <button key={p.key} onClick={() => setFiltroPeriodo(p.key as FiltroPeriodo)}
-                className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
-                  filtroPeriodo === p.key ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}>
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${filtroPeriodo === p.key ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                 {p.label}
               </button>
             ))}
-
             <div className="w-px h-5 bg-gray-200 mx-1" />
-
-            <div className="flex items-center gap-1 text-xs text-gray-500 font-semibold uppercase tracking-wide">
-              Status:
-            </div>
+            <div className="flex items-center gap-1 text-xs text-gray-500 font-semibold uppercase tracking-wide">Status:</div>
             {[
               { key: 'todos', label: 'Todos' },
               { key: 'pendente', label: 'Pendente' },
@@ -336,9 +276,7 @@ export default function CobrancaNoShowPage() {
               { key: 'sem_cartao', label: 'Sem cartão' },
             ].map(s => (
               <button key={s.key} onClick={() => setFiltroStatus(s.key as FiltroStatus)}
-                className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
-                  filtroStatus === s.key ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}>
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${filtroStatus === s.key ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                 {s.label}
               </button>
             ))}
@@ -363,55 +301,29 @@ export default function CobrancaNoShowPage() {
               const cliente = f.clientes
               const temCartao = !!cliente?.pagarme_card_id
               const cobrado = f.statusCobranca === 'cobrado'
-
               return (
-                <div key={f.id} className={`card border-l-4 ${
-                  cobrado ? 'border-l-green-400' :
-                  !temCartao ? 'border-l-red-400' :
-                  'border-l-orange-400'
-                }`}>
+                <div key={f.id} className={`card border-l-4 ${cobrado ? 'border-l-green-400' : !temCartao ? 'border-l-red-400' : 'border-l-orange-400'}`}>
                   <div className="flex items-center gap-3 flex-wrap">
-                    <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center flex-shrink-0 ${
-                      cobrado ? 'bg-green-50' : !temCartao ? 'bg-red-50' : 'bg-orange-50'
-                    }`}>
-                      <div className={`text-sm font-bold leading-none ${
-                        cobrado ? 'text-green-700' : !temCartao ? 'text-red-700' : 'text-orange-700'
-                      }`}>
+                    <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center flex-shrink-0 ${cobrado ? 'bg-green-50' : !temCartao ? 'bg-red-50' : 'bg-orange-50'}`}>
+                      <div className={`text-sm font-bold leading-none ${cobrado ? 'text-green-700' : !temCartao ? 'text-red-700' : 'text-orange-700'}`}>
                         {new Date(f.data + 'T12:00:00').getDate()}
                       </div>
-                      <div className={`text-xs uppercase ${
-                        cobrado ? 'text-green-500' : !temCartao ? 'text-red-500' : 'text-orange-500'
-                      }`}>
+                      <div className={`text-xs uppercase ${cobrado ? 'text-green-500' : !temCartao ? 'text-red-500' : 'text-orange-500'}`}>
                         {new Date(f.data + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' })}
                       </div>
                     </div>
-
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-semibold text-gray-900">{cliente?.nome || 'Cliente removido'}</span>
                         <span className="font-mono text-xs text-gray-500">{(f.horario || '').slice(0, 5)}</span>
-                        {cobrado && (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-semibold flex items-center gap-1">
-                            <Check size={10} /> Cobrado
-                          </span>
-                        )}
-                        {!temCartao && !cobrado && (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold">
-                            Sem cartão
-                          </span>
-                        )}
-                        {temCartao && !cobrado && (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-semibold">
-                            Pendente
-                          </span>
-                        )}
+                        {cobrado && <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-semibold flex items-center gap-1"><Check size={10} /> Cobrado</span>}
+                        {!temCartao && !cobrado && <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold">Sem cartão</span>}
+                        {temCartao && !cobrado && <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-semibold">Pendente</span>}
                       </div>
                       <div className="text-xs text-gray-500 mt-1 flex items-center gap-2 flex-wrap">
                         {f.coaches?.nome && <span>Coach: <strong>{f.coaches.nome}</strong></span>}
                         {f.tipo_credito && <span>· {f.tipo_credito}</span>}
-                        {temCartao && (
-                          <span>· {cliente.pagarme_card_brand} •••• {cliente.pagarme_card_last4}</span>
-                        )}
+                        {temCartao && <span>· {cliente.pagarme_card_brand} •••• {cliente.pagarme_card_last4}</span>}
                       </div>
                       {cobrado && f.cobranca?.pago_em && (
                         <div className="text-xs text-green-600 mt-1">
@@ -419,19 +331,13 @@ export default function CobrancaNoShowPage() {
                         </div>
                       )}
                     </div>
-
                     <div className="flex-shrink-0">
                       {cobrado ? (
-                        <div className="text-xs text-green-700 font-bold text-right">
-                          ✓ {formatarMoeda(f.cobranca?.valor || VALOR_MULTA)}
-                        </div>
+                        <div className="text-xs text-green-700 font-bold text-right">✓ {formatarMoeda(f.cobranca?.valor || VALOR_MULTA)}</div>
                       ) : !temCartao ? (
-                        <button disabled className="btn btn-sm bg-gray-100 text-gray-400 cursor-not-allowed">
-                          Sem cartão
-                        </button>
+                        <button disabled className="btn btn-sm bg-gray-100 text-gray-400 cursor-not-allowed">Sem cartão</button>
                       ) : (
-                        <button onClick={() => abrirModalCobranca(f)}
-                          className="btn btn-sm gap-1 bg-orange-500 text-white hover:bg-orange-600">
+                        <button onClick={() => abrirModalCobranca(f)} className="btn btn-sm gap-1 bg-orange-500 text-white hover:bg-orange-600">
                           <CreditCard size={12} /> Cobrar {formatarMoeda(VALOR_MULTA)}
                         </button>
                       )}
@@ -452,11 +358,8 @@ export default function CobrancaNoShowPage() {
                 <CreditCard size={18} className="text-orange-600" />
                 {sucessoCobranca ? 'Cobrança realizada' : 'Confirmar cobrança'}
               </div>
-              <button onClick={fecharModal} className="text-gray-400 hover:text-gray-600">
-                <X size={18} />
-              </button>
+              <button onClick={fecharModal} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
-
             {!sucessoCobranca ? (
               <>
                 <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-4">
@@ -468,22 +371,16 @@ export default function CobrancaNoShowPage() {
                     <div>Motivo: <strong>Falta em {formatarBR(modalCobranca.data)} às {(modalCobranca.horario || '').slice(0, 5)}</strong></div>
                   </div>
                 </div>
-
                 <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs text-blue-800">
                   💡 Após cobrança aprovada, o cliente será <strong>desbloqueado automaticamente</strong>.
                 </div>
-
                 {erroCobranca && (
                   <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-sm text-red-600 flex items-start gap-2">
-                    <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
-                    {erroCobranca}
+                    <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />{erroCobranca}
                   </div>
                 )}
-
                 <div className="flex gap-2">
-                  <button onClick={fecharModal} className="btn flex-1 text-gray-500 border border-gray-200">
-                    Cancelar
-                  </button>
+                  <button onClick={fecharModal} className="btn flex-1 text-gray-500 border border-gray-200">Cancelar</button>
                   <button onClick={confirmarCobranca} disabled={cobrando}
                     className="btn flex-1 bg-orange-500 text-white hover:bg-orange-600 gap-1 disabled:opacity-50">
                     <CreditCard size={14} /> {cobrando ? 'Cobrando...' : `Cobrar ${formatarMoeda(VALOR_MULTA)}`}
@@ -500,10 +397,7 @@ export default function CobrancaNoShowPage() {
                     Cliente desbloqueado automaticamente.
                   </div>
                 </div>
-
-                <button onClick={fecharModal} className="w-full btn bg-primary-600 text-white hover:bg-primary-700">
-                  Entendi
-                </button>
+                <button onClick={fecharModal} className="w-full btn bg-primary-600 text-white hover:bg-primary-700">Entendi</button>
               </>
             )}
           </div>
