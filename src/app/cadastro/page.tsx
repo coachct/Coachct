@@ -174,9 +174,9 @@ export default function CadastroPage() {
                   <input style={inputStyle} type="email" placeholder="seu@email.com" value={email} onChange={e => setEmail(e.target.value)} />
                 </div>
 
-                {/* ── Sexo ── */}
+                {/* ── Gênero ── */}
                 <div>
-                  <label style={labelStyle}>Sexo *</label>
+                  <label style={labelStyle}>Gênero *</label>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                     {([
                       { key: 'M' as const, label: 'Masculino', icon: '♂️' },
@@ -202,9 +202,6 @@ export default function CadastroPage() {
                         }} />
                       </div>
                     ))}
-                  </div>
-                  <div style={{ fontSize: 11, color: '#444', marginTop: 6, paddingLeft: 2 }}>
-                    Necessário para aulas com restrição de gênero (ex: Lift for Girls).
                   </div>
                 </div>
 
