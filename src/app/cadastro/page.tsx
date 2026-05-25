@@ -23,16 +23,13 @@ export default function CadastroPage() {
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   const [senha2, setSenha2] = useState('')
+  const [sexo, setSexo] = useState<'M' | 'F' | ''>('')
   const [notificacao, setNotificacao] = useState<'whatsapp' | 'email' | 'nenhuma'>('whatsapp')
 
-  // Redireciona SE já está logado antes de chegar nessa página (não durante o cadastro)
-  // jaSubmeteu = true impede o redirect automático após signUp
   useEffect(() => {
     if (loadingAuth) return
     if (jaSubmeteu) return
-    if (perfil && perfil.role) {
-      router.push(dashboardDoRole(perfil.role))
-    }
+    if (perfil && perfil.role) router.push(dashboardDoRole(perfil.role))
   }, [perfil, loadingAuth, jaSubmeteu])
 
   function formatarCPF(v: string) {
@@ -55,80 +52,42 @@ export default function CadastroPage() {
     if (cpf.replace(/\D/g, '').length < 11) { setErro('CPF inválido.'); return }
     if (telefone.replace(/\D/g, '').length < 10) { setErro('Telefone inválido.'); return }
     if (!email.trim()) { setErro('Preencha o email.'); return }
+    if (!sexo) { setErro('Selecione seu sexo.'); return }
     if (senha.length < 6) { setErro('A senha deve ter pelo menos 6 caracteres.'); return }
     if (senha !== senha2) { setErro('As senhas não coincidem.'); return }
 
-    // IMPORTANTE: marca como "já submeteu" pra impedir o useEffect de redirecionar
-    // automaticamente quando o useAuth detectar a sessão nova criada pelo signUp.
-    // O redirect agora é controlado MANUALMENTE no final desta função.
     setJaSubmeteu(true)
     setSalvando(true)
 
     const cpfLimpo = cpf.replace(/\D/g, '')
-    const { data: cpfExiste } = await supabase
-      .from('clientes')
-      .select('id')
-      .eq('cpf', cpfLimpo)
-      .maybeSingle()
-
+    const { data: cpfExiste } = await supabase.from('clientes').select('id').eq('cpf', cpfLimpo).maybeSingle()
     if (cpfExiste) {
       setErro('Este CPF já está cadastrado. Faça login ou recupere sua senha.')
-      setSalvando(false)
-      setJaSubmeteu(false)
-      return
+      setSalvando(false); setJaSubmeteu(false); return
     }
 
-    const { data: emailExiste } = await supabase
-      .from('clientes')
-      .select('id')
-      .ilike('email', email.trim())
-      .maybeSingle()
-
+    const { data: emailExiste } = await supabase.from('clientes').select('id').ilike('email', email.trim()).maybeSingle()
     if (emailExiste) {
       setErro('Este email já está cadastrado. Faça login ou recupere sua senha.')
-      setSalvando(false)
-      setJaSubmeteu(false)
-      return
+      setSalvando(false); setJaSubmeteu(false); return
     }
 
-    // 1. Cria user no Auth — passa role='cliente' no user_metadata
-    // pra que o trigger handle_new_user crie o perfil correto desde o início
-    // (sem isso, o trigger usa default 'coach')
     const { data: authData, error: authError } = await supabase.auth.signUp({
-      email,
-      password: senha,
-      options: {
-        data: {
-          nome: nome.trim(),
-          role: 'cliente',
-        }
-      }
+      email, password: senha,
+      options: { data: { nome: nome.trim(), role: 'cliente' } }
     })
 
     if (authError || !authData.user) {
       setErro(authError?.message === 'User already registered'
         ? 'Este email já está cadastrado.'
         : 'Erro ao criar conta. Tente novamente.')
-      setSalvando(false)
-      setJaSubmeteu(false)
-      return
+      setSalvando(false); setJaSubmeteu(false); return
     }
 
     const userId = authData.user.id
-
-    // 2. Aguarda um pouco pra garantir que o trigger handle_new_user terminou de criar o perfil
     await new Promise(res => setTimeout(res, 500))
+    await supabase.from('perfis').upsert({ id: userId, nome: nome.trim(), role: 'cliente', ativo: true })
 
-    // 3. Força o perfil a ter role='cliente' (defesa em profundidade)
-    // Caso o trigger por algum motivo tenha criado errado, isso corrige.
-    await supabase.from('perfis').upsert({
-      id: userId,
-      nome: nome.trim(),
-      role: 'cliente',
-      ativo: true,
-    })
-
-    // 4. Cria registro em clientes
     const { error: clienteError } = await supabase.from('clientes').insert({
       user_id: userId,
       nome: nome.trim(),
@@ -136,6 +95,7 @@ export default function CadastroPage() {
       telefone: telefone.replace(/\D/g, ''),
       whatsapp: telefone.replace(/\D/g, ''),
       email: email.trim(),
+      sexo,
       notificacao_preferida: notificacao,
       bloqueado: false,
       ativo: true,
@@ -143,48 +103,27 @@ export default function CadastroPage() {
 
     if (clienteError) {
       setErro('Erro ao finalizar cadastro. Entre em contato com a recepção.')
-      setSalvando(false)
-      setJaSubmeteu(false)
-      return
+      setSalvando(false); setJaSubmeteu(false); return
     }
 
     setSalvando(false)
     setSucesso(true)
-
-    // 5. Redirect manual e controlado pro /meus-planos
-    // (não pro /minha-conta, porque cliente novo sem plano não tem nada lá)
-    // Usa window.location pra forçar reload completo e garantir que o useAuth
-    // pegue o perfil correto na nova navegação
-    setTimeout(() => {
-      window.location.href = '/meus-planos'
-    }, 1500)
+    setTimeout(() => { window.location.href = '/meus-planos' }, 1500)
   }
 
   const inputStyle = {
-    width: '100%',
-    background: '#080808',
-    border: '1px solid #333',
-    borderRadius: 10,
-    padding: '0.75rem 1rem',
-    color: '#fff',
-    fontSize: 14,
-    fontFamily: "'DM Sans', sans-serif",
-    boxSizing: 'border-box' as const,
+    width: '100%', background: '#080808', border: '1px solid #333',
+    borderRadius: 10, padding: '0.75rem 1rem', color: '#fff', fontSize: 14,
+    fontFamily: "'DM Sans', sans-serif", boxSizing: 'border-box' as const,
   }
-
   const labelStyle = {
-    fontSize: 12,
-    color: '#555',
-    display: 'block',
-    marginBottom: 6,
-    textTransform: 'uppercase' as const,
-    letterSpacing: 1,
+    fontSize: 12, color: '#555', display: 'block', marginBottom: 6,
+    textTransform: 'uppercase' as const, letterSpacing: 1,
   }
-
   const notifOpcoes = [
     { key: 'whatsapp', label: 'WhatsApp', icon: '💬', desc: 'Aviso pelo número cadastrado' },
-    { key: 'email', label: 'Email', icon: '📧', desc: 'Aviso no seu email' },
-    { key: 'nenhuma', label: 'Nenhuma', icon: '🔕', desc: 'Sem notificações' },
+    { key: 'email',    label: 'Email',    icon: '📧', desc: 'Aviso no seu email' },
+    { key: 'nenhuma',  label: 'Nenhuma',  icon: '🔕', desc: 'Sem notificações' },
   ]
 
   return (
@@ -204,7 +143,6 @@ export default function CadastroPage() {
         </div>
 
         <div style={{ background: '#111', border: '1px solid #222', borderRadius: 20, padding: '2rem' }}>
-
           {sucesso ? (
             <div style={{ textAlign: 'center', padding: '2rem 0' }}>
               <div style={{ fontSize: 48, marginBottom: '1rem' }}>🎉</div>
@@ -218,38 +156,66 @@ export default function CadastroPage() {
 
                 <div>
                   <label style={labelStyle}>Nome completo *</label>
-                  <input style={inputStyle} type="text" placeholder="Seu nome completo"
-                    value={nome} onChange={e => setNome(e.target.value)} />
+                  <input style={inputStyle} type="text" placeholder="Seu nome completo" value={nome} onChange={e => setNome(e.target.value)} />
                 </div>
 
                 <div>
                   <label style={labelStyle}>CPF *</label>
-                  <input style={inputStyle} type="text" placeholder="000.000.000-00"
-                    value={cpf} onChange={e => setCpf(formatarCPF(e.target.value))} />
+                  <input style={inputStyle} type="text" placeholder="000.000.000-00" value={cpf} onChange={e => setCpf(formatarCPF(e.target.value))} />
                 </div>
 
                 <div>
                   <label style={labelStyle}>Telefone / WhatsApp *</label>
-                  <input style={inputStyle} type="text" placeholder="(11) 99999-9999"
-                    value={telefone} onChange={e => setTelefone(formatarTel(e.target.value))} />
+                  <input style={inputStyle} type="text" placeholder="(11) 99999-9999" value={telefone} onChange={e => setTelefone(formatarTel(e.target.value))} />
                 </div>
 
                 <div>
                   <label style={labelStyle}>Email *</label>
-                  <input style={inputStyle} type="email" placeholder="seu@email.com"
-                    value={email} onChange={e => setEmail(e.target.value)} />
+                  <input style={inputStyle} type="email" placeholder="seu@email.com" value={email} onChange={e => setEmail(e.target.value)} />
+                </div>
+
+                {/* ── Sexo ── */}
+                <div>
+                  <label style={labelStyle}>Sexo *</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    {([
+                      { key: 'M' as const, label: 'Masculino', icon: '♂️' },
+                      { key: 'F' as const, label: 'Feminino',  icon: '♀️' },
+                    ]).map(op => (
+                      <div key={op.key} onClick={() => setSexo(op.key)}
+                        style={{
+                          border: `1.5px solid ${sexo === op.key ? ACCENT : '#333'}`,
+                          background: sexo === op.key ? `${ACCENT}15` : 'transparent',
+                          borderRadius: 10, padding: '0.75rem 1rem',
+                          cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.6rem',
+                          transition: 'all .15s',
+                        }}>
+                        <span style={{ fontSize: 20 }}>{op.icon}</span>
+                        <span style={{ fontSize: 14, fontWeight: 600, color: sexo === op.key ? '#fff' : '#777', flex: 1 }}>
+                          {op.label}
+                        </span>
+                        <div style={{
+                          width: 14, height: 14, borderRadius: '50%',
+                          border: `2px solid ${sexo === op.key ? ACCENT : '#444'}`,
+                          background: sexo === op.key ? ACCENT : 'transparent',
+                          flexShrink: 0,
+                        }} />
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#444', marginTop: 6, paddingLeft: 2 }}>
+                    Necessário para aulas com restrição de gênero (ex: Lift for Girls).
+                  </div>
                 </div>
 
                 <div>
                   <label style={labelStyle}>Senha *</label>
-                  <input style={inputStyle} type="password" placeholder="Mínimo 6 caracteres"
-                    value={senha} onChange={e => setSenha(e.target.value)} />
+                  <input style={inputStyle} type="password" placeholder="Mínimo 6 caracteres" value={senha} onChange={e => setSenha(e.target.value)} />
                 </div>
 
                 <div>
                   <label style={labelStyle}>Confirmar senha *</label>
-                  <input style={inputStyle} type="password" placeholder="Repita a senha"
-                    value={senha2} onChange={e => setSenha2(e.target.value)} />
+                  <input style={inputStyle} type="password" placeholder="Repita a senha" value={senha2} onChange={e => setSenha2(e.target.value)} />
                 </div>
 
                 <div>
