@@ -94,8 +94,13 @@ export default function JustClubAdminPage() {
   const [editandoGrupo, setEditandoGrupo] = useState<any | null>(null)
   const [nomeGrupoEdit, setNomeGrupoEdit] = useState('')
 
-  // Modal replicação
-  const [modalReplicar,    setModalReplicar]    = useState<any | null>(null) // aula selecionada
+  // Recorrência no modal de criação
+  const [formReplicar,   setFormReplicar]   = useState(false)
+  const [formMeses,      setFormMeses]      = useState(1)
+  const [formInicio,     setFormInicio]     = useState(dataLocalStr(new Date()))
+
+  // Modal replicação (aulas já existentes)
+  const [modalReplicar,    setModalReplicar]    = useState<any | null>(null)
   const [replicarMeses,    setReplicarMeses]    = useState(1)
   const [replicarInicio,   setReplicarInicio]   = useState(dataLocalStr(new Date()))
   const [replicando,       setReplicando]       = useState(false)
@@ -154,6 +159,9 @@ export default function JustClubAdminPage() {
   function abrirNovaAula() {
     setEditando(null)
     setForm({ ...FORM_VAZIO, grupo_muscular_id: gruposAtivos[0]?.id || '', coach_id: coaches[0]?.id || '' })
+    setFormReplicar(false)
+    setFormMeses(1)
+    setFormInicio(dataLocalStr(new Date()))
     setModalAberto(true)
   }
 
@@ -177,12 +185,31 @@ export default function JustClubAdminPage() {
       duracao_min: form.duracao_min, capacidade: form.capacidade,
       so_mulheres: form.tipo === 'lift_for_girls' ? true : form.so_mulheres, ativo: true,
     }
-    const { error } = editando
-      ? await supabase.from('club_aulas').update(payload).eq('id', editando.id)
-      : await supabase.from('club_aulas').insert(payload)
+
+    let aulaId = editando?.id
+    if (editando) {
+      const { error } = await supabase.from('club_aulas').update(payload).eq('id', editando.id)
+      if (error) { showMsg('Erro: ' + error.message); setSalvando(false); return }
+    } else {
+      const { data: novaAula, error } = await supabase.from('club_aulas').insert(payload).select('id').single()
+      if (error) { showMsg('Erro: ' + error.message); setSalvando(false); return }
+      aulaId = novaAula?.id
+    }
+
+    // Replicar automaticamente se solicitado (só na criação)
+    if (!editando && formReplicar && aulaId) {
+      const dataFim = dataFimPorMeses(formMeses)
+      const datas = gerarDatas(form.dia_semana, formInicio, dataFim)
+      if (datas.length > 0) {
+        const rows = datas.map(data => ({ aula_id: aulaId, data, status: 'ativa' }))
+        await supabase.from('club_ocorrencias').insert(rows)
+      }
+      showMsg(`Aula criada e ${datas.length} ocorrência${datas.length !== 1 ? 's' : ''} gerada${datas.length !== 1 ? 's' : ''}!`)
+    } else {
+      showMsg(editando ? 'Aula atualizada!' : 'Aula criada!')
+    }
+
     setSalvando(false)
-    if (error) { showMsg('Erro: ' + error.message); return }
-    showMsg(editando ? 'Aula atualizada!' : 'Aula criada!')
     setModalAberto(false); setEditando(null)
     await carregarAulas()
   }
@@ -606,6 +633,50 @@ export default function JustClubAdminPage() {
                     <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.so_mulheres?'translate-x-5':''}`}/>
                   </button>
                   <span className="text-sm text-gray-700">Somente mulheres</span>
+                </div>
+              )}
+
+              {/* Recorrência — só na criação */}
+              {!editando && (
+                <div className="border border-gray-200 rounded-xl overflow-hidden">
+                  <button type="button"
+                    onClick={() => setFormReplicar(r => !r)}
+                    className={`w-full flex items-center gap-3 px-4 py-3 transition-colors ${formReplicar ? 'bg-cyan-50' : 'bg-gray-50 hover:bg-gray-100'}`}>
+                    <div className={`w-10 h-6 rounded-full transition-colors flex-shrink-0 relative ${formReplicar ? 'bg-cyan-500' : 'bg-gray-300'}`}>
+                      <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${formReplicar ? 'translate-x-4' : ''}`}/>
+                    </div>
+                    <div className="flex-1 text-left">
+                      <span className="text-sm font-medium text-gray-800">Gerar recorrências agora</span>
+                      <p className="text-xs text-gray-400 mt-0.5">Cria as datas automaticamente ao salvar</p>
+                    </div>
+                    <RefreshCw size={14} className={formReplicar ? 'text-cyan-600' : 'text-gray-400'} />
+                  </button>
+
+                  {formReplicar && (
+                    <div className="px-4 py-4 space-y-3 border-t border-gray-100 bg-white">
+                      <div>
+                        <label className="label">A partir de</label>
+                        <input type="date" className="input" value={formInicio}
+                          onChange={e => setFormInicio(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="label">Por quantos meses?</label>
+                        <div className="grid grid-cols-4 gap-2">
+                          {[1, 2, 3, 6].map(m => (
+                            <button key={m} type="button" onClick={() => setFormMeses(m)}
+                              className={`py-2 rounded-xl text-sm font-semibold transition-all border ${
+                                formMeses === m ? 'border-cyan-400 bg-cyan-50 text-cyan-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                              }`}>
+                              {m}m
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="bg-cyan-50 rounded-xl px-3 py-2 text-xs text-cyan-700">
+                        📅 {gerarDatas(form.dia_semana, formInicio, dataFimPorMeses(formMeses)).length} ocorrências serão criadas · até {dataFimPorMeses(formMeses)}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
