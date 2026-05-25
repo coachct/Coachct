@@ -6,7 +6,7 @@ import { useUnidade } from '@/hooks/useUnidade'
 import { useRouter } from 'next/navigation'
 import {
   Plus, Save, X, Calendar, List, AlertCircle,
-  Pencil, Power, Users, Clock, ChevronDown, ChevronUp
+  Pencil, Power, Users, Clock, ChevronDown, ChevronUp, Tag, Trash2
 } from 'lucide-react'
 import UnidadeSelector from '@/components/UnidadeSelector'
 
@@ -18,9 +18,9 @@ const DIAS_ABREV  = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const DIAS_FULL   = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado']
 
 const TIPOS = [
-  { value: 'lift',              label: 'Lift' },
-  { value: 'lift_for_girls',   label: 'Lift for Girls' },
-  { value: 'running_funcional',label: 'Running + Funcional' },
+  { value: 'lift',               label: 'Lift' },
+  { value: 'lift_for_girls',    label: 'Lift for Girls' },
+  { value: 'running_funcional', label: 'Running + Funcional' },
 ]
 
 const HORARIOS = [
@@ -51,8 +51,8 @@ function tipoLabel(t: string) {
 }
 
 function tipoColor(t: string) {
-  if (t === 'lift')              return 'bg-blue-100 text-blue-700'
-  if (t === 'lift_for_girls')   return 'bg-pink-100 text-pink-700'
+  if (t === 'lift')             return 'bg-blue-100 text-blue-700'
+  if (t === 'lift_for_girls')  return 'bg-pink-100 text-pink-700'
   return 'bg-cyan-100 text-cyan-700'
 }
 
@@ -65,9 +65,9 @@ function capacidadePadrao(tipo: string) {
 // ─────────────────────────────────────────────
 
 export default function JustClubAdminPage() {
-  const { perfil, loading }                = useAuth()
+  const { perfil, loading }                 = useAuth()
   const { unidadeAtiva, loading: loadingU } = useUnidade()
-  const router  = useRouter()
+  const router   = useRouter()
   const supabase = createClient()
 
   // Dados gerais
@@ -78,16 +78,22 @@ export default function JustClubAdminPage() {
   const [msg, setMsg] = useState('')
 
   // Navegação
-  const [abaAtiva, setAbaAtiva] = useState<'lista' | 'grade'>('lista')
+  const [abaAtiva, setAbaAtiva] = useState<'lista' | 'grade' | 'grupos'>('lista')
 
-  // Modal cadastro / edição
+  // Modal cadastro / edição de aula
   const [modalAberto, setModalAberto] = useState(false)
   const [editando,    setEditando]    = useState<any | null>(null)
   const [form,        setForm]        = useState({ ...FORM_VAZIO })
   const [salvando,    setSalvando]    = useState(false)
 
-  // Grade — controle de dias expandidos
+  // Grade — dias expandidos
   const [diasExpandidos, setDiasExpandidos] = useState<Set<number>>(new Set([1,2,3,4,5]))
+
+  // Grupos musculares — CRUD inline
+  const [novoGrupo,        setNovoGrupo]        = useState('')
+  const [salvandoGrupo,    setSalvandoGrupo]    = useState(false)
+  const [editandoGrupo,    setEditandoGrupo]    = useState<any | null>(null)
+  const [nomeGrupoEdit,    setNomeGrupoEdit]    = useState('')
 
   // ─── Auth guard ───
   useEffect(() => {
@@ -98,21 +104,59 @@ export default function JustClubAdminPage() {
 
   // ─── Carrega coaches e grupos (independe de unidade) ───
   useEffect(() => {
-    if (perfil) carregarCoachesEGrupos()
+    if (perfil) carregarGrupos()
   }, [perfil])
 
-  // ─── Carrega aulas ao trocar de unidade ───
+  // ─── Carrega aulas e coaches ao trocar de unidade ───
   useEffect(() => {
-    if (perfil && unidadeAtiva) carregarAulas()
+    if (perfil && unidadeAtiva) {
+      carregarAulas()
+      carregarCoachesDaUnidade()
+    }
   }, [perfil, unidadeAtiva?.id])
 
-  async function carregarCoachesEGrupos() {
-    const [{ data: cs }, { data: gs }] = await Promise.all([
-      supabase.from('coaches').select('id, nome').eq('ativo', true).order('nome'),
-      supabase.from('grupos_musculares').select('id, nome').eq('ativo', true).order('nome'),
-    ])
-    setCoaches(cs || [])
-    setGrupos(gs || [])
+  // ─────────────────────────────────────────────
+  // Carregamento de dados
+  // ─────────────────────────────────────────────
+
+  async function carregarGrupos() {
+    // Busca todos os grupos (sem filtrar ativo — campo pode ser null no banco)
+    const { data } = await supabase
+      .from('grupos_musculares')
+      .select('id, nome, ativo')
+      .order('nome')
+    setGrupos(data || [])
+  }
+
+  async function carregarCoachesDaUnidade() {
+    if (!unidadeAtiva) return
+
+    // 1º) tenta buscar coaches que têm horários nesta unidade
+    const { data: horarios } = await supabase
+      .from('coach_horarios')
+      .select('coach_id')
+      .eq('unidade_id', unidadeAtiva.id)
+      .eq('ativo', true)
+
+    const idsUnidade = [...new Set((horarios || []).map((h: any) => h.coach_id))]
+
+    if (idsUnidade.length > 0) {
+      const { data: cs } = await supabase
+        .from('coaches')
+        .select('id, nome')
+        .eq('ativo', true)
+        .in('id', idsUnidade)
+        .order('nome')
+      setCoaches(cs || [])
+    } else {
+      // fallback: mostra todos (unidade ainda sem horários cadastrados)
+      const { data: cs } = await supabase
+        .from('coaches')
+        .select('id, nome')
+        .eq('ativo', true)
+        .order('nome')
+      setCoaches(cs || [])
+    }
   }
 
   async function carregarAulas() {
@@ -128,12 +172,15 @@ export default function JustClubAdminPage() {
     setLoadingData(false)
   }
 
-  // ─── Modal helpers ───
+  // ─────────────────────────────────────────────
+  // Modal de aula
+  // ─────────────────────────────────────────────
+
   function abrirNovaAula() {
     setEditando(null)
     setForm({
       ...FORM_VAZIO,
-      grupo_muscular_id: grupos[0]?.id || '',
+      grupo_muscular_id: grupos.find(g => g.ativo !== false)?.id || '',
       coach_id:          coaches[0]?.id || '',
     })
     setModalAberto(true)
@@ -159,7 +206,6 @@ export default function JustClubAdminPage() {
     setEditando(null)
   }
 
-  // ─── Salvar (criar ou atualizar) ───
   async function salvar() {
     if (!unidadeAtiva) return
     if (!form.grupo_muscular_id) { showMsg('Selecione o grupo muscular.'); return }
@@ -180,16 +226,11 @@ export default function JustClubAdminPage() {
       ativo:             true,
     }
 
-    let error: any = null
-
-    if (editando) {
-      ;({ error } = await supabase.from('club_aulas').update(payload).eq('id', editando.id))
-    } else {
-      ;({ error } = await supabase.from('club_aulas').insert(payload))
-    }
+    const { error } = editando
+      ? await supabase.from('club_aulas').update(payload).eq('id', editando.id)
+      : await supabase.from('club_aulas').insert(payload)
 
     setSalvando(false)
-
     if (error) { showMsg('Erro: ' + error.message); return }
 
     showMsg(editando ? 'Aula atualizada com sucesso!' : 'Aula criada com sucesso!')
@@ -197,21 +238,57 @@ export default function JustClubAdminPage() {
     await carregarAulas()
   }
 
-  // ─── Ativar / desativar ───
   async function toggleAtivo(aula: any) {
     await supabase.from('club_aulas').update({ ativo: !aula.ativo }).eq('id', aula.id)
     await carregarAulas()
   }
 
-  // ─── Msg temporária ───
+  // ─────────────────────────────────────────────
+  // CRUD Grupos musculares
+  // ─────────────────────────────────────────────
+
+  async function criarGrupo() {
+    if (!novoGrupo.trim()) return
+    setSalvandoGrupo(true)
+    const { error } = await supabase
+      .from('grupos_musculares')
+      .insert({ nome: novoGrupo.trim(), ativo: true })
+    setSalvandoGrupo(false)
+    if (error) { showMsg('Erro: ' + error.message); return }
+    setNovoGrupo('')
+    await carregarGrupos()
+    showMsg('Grupo criado!')
+  }
+
+  async function salvarEdicaoGrupo() {
+    if (!editandoGrupo || !nomeGrupoEdit.trim()) return
+    const { error } = await supabase
+      .from('grupos_musculares')
+      .update({ nome: nomeGrupoEdit.trim() })
+      .eq('id', editandoGrupo.id)
+    if (error) { showMsg('Erro: ' + error.message); return }
+    setEditandoGrupo(null)
+    setNomeGrupoEdit('')
+    await carregarGrupos()
+    showMsg('Grupo atualizado!')
+  }
+
+  async function toggleGrupo(grupo: any) {
+    await supabase
+      .from('grupos_musculares')
+      .update({ ativo: grupo.ativo === false ? true : false })
+      .eq('id', grupo.id)
+    await carregarGrupos()
+  }
+
+  // ─────────────────────────────────────────────
+  // Helpers de UI
+  // ─────────────────────────────────────────────
+
   function showMsg(texto: string) {
     setMsg(texto)
     setTimeout(() => setMsg(''), 3500)
   }
-
-  // ─── Dados para a grade ───
-  const aulasAtivas = aulas.filter(a => a.ativo)
-  const porDia = DIAS_ABREV.map((_, i) => aulasAtivas.filter(a => a.dia_semana === i))
 
   function toggleDia(idx: number) {
     setDiasExpandidos(prev => {
@@ -221,7 +298,14 @@ export default function JustClubAdminPage() {
     })
   }
 
-  // ─── Loading guards ───
+  const aulasAtivas = aulas.filter(a => a.ativo)
+  const porDia      = DIAS_ABREV.map((_, i) => aulasAtivas.filter(a => a.dia_semana === i))
+  const gruposAtivos = grupos.filter(g => g.ativo !== false)
+
+  // ─────────────────────────────────────────────
+  // Loading guards
+  // ─────────────────────────────────────────────
+
   if (loading || loadingU) return (
     <div className="flex items-center justify-center h-screen">
       <div className="w-8 h-8 border-4 border-primary-400 border-t-transparent rounded-full animate-spin" />
@@ -230,8 +314,8 @@ export default function JustClubAdminPage() {
 
   if (!unidadeAtiva) return (
     <div className="flex items-center justify-center h-screen p-6 text-center">
-      <AlertCircle size={32} className="text-orange-500 mx-auto mb-3" />
       <div>
+        <AlertCircle size={32} className="text-orange-500 mx-auto mb-3" />
         <h2 className="text-lg font-semibold text-gray-900">Sem acesso a unidades</h2>
         <p className="text-sm text-gray-500 mt-2">Configure em /admin/permissoes.</p>
       </div>
@@ -254,16 +338,31 @@ export default function JustClubAdminPage() {
         <div className="flex gap-4 mt-1 text-sm text-gray-500 flex-wrap">
           <span>✅ {aulas.filter(a => a.ativo).length} ativas</span>
           <span>⏸ {aulas.filter(a => !a.ativo).length} inativas</span>
-          <span>📅 {new Set(aulas.filter(a=>a.ativo).map(a=>a.dia_semana)).size} dia(s)/semana</span>
+          <span>🏋️ {gruposAtivos.length} grupos musculares</span>
+          <span>👤 {coaches.length} coach{coaches.length !== 1 ? 'es' : ''} nesta unidade</span>
         </div>
       </div>
 
       <div className="max-w-3xl mx-auto px-6 py-5">
 
+        {/* Aviso se unidade for do tipo CT */}
+        {unidadeAtiva.tipo === 'ct' && (
+          <div className="mb-4 bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 text-sm text-orange-700 flex items-start gap-2">
+            <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+            <span>
+              Você está na unidade <strong>{unidadeAtiva.nome}</strong> (Coach CT individual).
+              As aulas coletivas são das unidades <strong>JustClub</strong>.
+              Troque a unidade no seletor acima.
+            </span>
+          </div>
+        )}
+
         {/* Mensagem de feedback */}
         {msg && (
           <div className={`mb-4 px-4 py-2.5 rounded-xl text-sm font-medium ${
-            msg.startsWith('Erro') ? 'bg-red-50 text-red-700 border border-red-100' : 'bg-green-50 text-green-800 border border-green-100'
+            msg.startsWith('Erro')
+              ? 'bg-red-50 text-red-700 border border-red-100'
+              : 'bg-green-50 text-green-800 border border-green-100'
           }`}>
             {msg}
           </div>
@@ -271,43 +370,50 @@ export default function JustClubAdminPage() {
 
         {/* ── Tabs + botão nova aula ── */}
         <div className="flex items-center gap-2 mb-5 flex-wrap">
-          <button
-            onClick={() => setAbaAtiva('lista')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-              abaAtiva === 'lista'
-                ? 'bg-primary-600 text-white'
-                : 'bg-white border border-gray-200 text-gray-600 hover:border-primary-300'
-            }`}
-          >
-            <List size={14} /> Lista
-            {aulas.length > 0 && (
-              <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${abaAtiva === 'lista' ? 'bg-white text-primary-600' : 'bg-primary-100 text-primary-700'}`}>
-                {aulas.filter(a => a.ativo).length}
-              </span>
-            )}
-          </button>
+          {(['lista', 'grade', 'grupos'] as const).map(aba => {
+            const labels: Record<string, string> = { lista: 'Lista', grade: 'Grade semanal', grupos: 'Grupos musculares' }
+            const icons: Record<string, React.ReactNode> = {
+              lista: <List size={14} />,
+              grade: <Calendar size={14} />,
+              grupos: <Tag size={14} />,
+            }
+            return (
+              <button
+                key={aba}
+                onClick={() => setAbaAtiva(aba)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                  abaAtiva === aba
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-white border border-gray-200 text-gray-600 hover:border-primary-300'
+                }`}
+              >
+                {icons[aba]} {labels[aba]}
+                {aba === 'lista' && aulas.length > 0 && (
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${abaAtiva === 'lista' ? 'bg-white text-primary-600' : 'bg-primary-100 text-primary-700'}`}>
+                    {aulas.filter(a => a.ativo).length}
+                  </span>
+                )}
+                {aba === 'grupos' && grupos.length > 0 && (
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${abaAtiva === 'grupos' ? 'bg-white text-primary-600' : 'bg-primary-100 text-primary-700'}`}>
+                    {gruposAtivos.length}
+                  </span>
+                )}
+              </button>
+            )
+          })}
 
-          <button
-            onClick={() => setAbaAtiva('grade')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-              abaAtiva === 'grade'
-                ? 'bg-primary-600 text-white'
-                : 'bg-white border border-gray-200 text-gray-600 hover:border-primary-300'
-            }`}
-          >
-            <Calendar size={14} /> Grade semanal
-          </button>
-
-          <button
-            onClick={abrirNovaAula}
-            className="ml-auto flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-primary-600 text-white hover:bg-primary-700 transition-all"
-          >
-            <Plus size={14} /> Nova aula
-          </button>
+          {abaAtiva !== 'grupos' && (
+            <button
+              onClick={abrirNovaAula}
+              className="ml-auto flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-primary-600 text-white hover:bg-primary-700 transition-all"
+            >
+              <Plus size={14} /> Nova aula
+            </button>
+          )}
         </div>
 
         {/* ── Loading ── */}
-        {loadingData ? (
+        {loadingData && abaAtiva !== 'grupos' ? (
           <div className="flex items-center justify-center py-16">
             <div className="w-8 h-8 border-4 border-primary-400 border-t-transparent rounded-full animate-spin" />
           </div>
@@ -320,7 +426,10 @@ export default function JustClubAdminPage() {
                   <div className="card text-center py-14">
                     <Calendar size={32} className="text-gray-300 mx-auto mb-3" />
                     <p className="text-gray-400 text-sm">Nenhuma aula cadastrada para esta unidade.</p>
-                    <button onClick={abrirNovaAula} className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-primary-600 text-white hover:bg-primary-700 transition-all">
+                    <button
+                      onClick={abrirNovaAula}
+                      className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-primary-600 text-white hover:bg-primary-700 transition-all"
+                    >
                       <Plus size={14} /> Criar primeira aula
                     </button>
                   </div>
@@ -331,12 +440,9 @@ export default function JustClubAdminPage() {
                       className={`card transition-opacity ${!aula.ativo ? 'opacity-50 border-dashed' : ''}`}
                     >
                       <div className="flex items-start gap-3">
-                        {/* Ícone do dia */}
                         <div className="w-10 h-10 rounded-xl bg-primary-50 text-primary-700 text-xs font-bold flex flex-col items-center justify-center flex-shrink-0 border border-primary-100">
                           <span>{DIAS_ABREV[aula.dia_semana]}</span>
                         </div>
-
-                        {/* Conteúdo */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${tipoColor(aula.tipo)}`}>
@@ -348,29 +454,22 @@ export default function JustClubAdminPage() {
                               </span>
                             )}
                             {!aula.ativo && (
-                              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
-                                Inativa
-                              </span>
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">Inativa</span>
                             )}
                           </div>
-
                           <div className="mt-1.5 flex items-center gap-3 flex-wrap">
                             <span className="font-semibold text-gray-900 text-sm">{DIAS_FULL[aula.dia_semana]}</span>
                             <span className="flex items-center gap-1 font-mono text-sm font-bold text-primary-700">
-                              <Clock size={12} />
-                              {(aula.horario || '').slice(0, 5)}
+                              <Clock size={12} /> {(aula.horario || '').slice(0, 5)}
                             </span>
                             <span className="text-xs text-gray-400">{aula.duracao_min}min</span>
                           </div>
-
                           <div className="mt-1 flex items-center gap-3 text-xs text-gray-500 flex-wrap">
                             <span>🏋️ {aula.grupos_musculares?.nome || '—'}</span>
                             <span>👤 {aula.coaches?.nome?.split(' ')[0] || '—'}</span>
                             <span className="flex items-center gap-1"><Users size={10} /> {aula.capacidade} vagas</span>
                           </div>
                         </div>
-
-                        {/* Ações */}
                         <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
                           <button
                             onClick={() => abrirEdicao(aula)}
@@ -380,11 +479,7 @@ export default function JustClubAdminPage() {
                           </button>
                           <button
                             onClick={() => toggleAtivo(aula)}
-                            className={`btn btn-sm gap-1 ${
-                              aula.ativo
-                                ? 'text-red-500 hover:bg-red-50'
-                                : 'text-green-600 hover:bg-green-50'
-                            }`}
+                            className={`btn btn-sm gap-1 ${aula.ativo ? 'text-red-500 hover:bg-red-50' : 'text-green-600 hover:bg-green-50'}`}
                           >
                             <Power size={12} /> {aula.ativo ? 'Desativar' : 'Ativar'}
                           </button>
@@ -402,17 +497,15 @@ export default function JustClubAdminPage() {
                 {aulasAtivas.length === 0 ? (
                   <div className="card text-center py-14">
                     <Calendar size={32} className="text-gray-300 mx-auto mb-3" />
-                    <p className="text-gray-400 text-sm">Nenhuma aula ativa cadastrada para montar a grade.</p>
+                    <p className="text-gray-400 text-sm">Nenhuma aula ativa para montar a grade.</p>
                   </div>
                 ) : (
                   DIAS_FULL.map((dia, idx) => {
                     const aulasNoDia = porDia[idx]
                     if (aulasNoDia.length === 0) return null
                     const expandido = diasExpandidos.has(idx)
-
                     return (
                       <div key={idx} className="card overflow-hidden">
-                        {/* Cabeçalho do dia */}
                         <button
                           onClick={() => toggleDia(idx)}
                           className="w-full flex items-center gap-3 text-left"
@@ -428,17 +521,12 @@ export default function JustClubAdminPage() {
                           </div>
                           {expandido ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
                         </button>
-
-                        {/* Lista de aulas do dia */}
                         {expandido && (
                           <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
                             {aulasNoDia
                               .sort((a, b) => a.horario.localeCompare(b.horario))
                               .map(aula => (
-                                <div
-                                  key={aula.id}
-                                  className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5"
-                                >
+                                <div key={aula.id} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5">
                                   <span className="font-mono text-sm font-bold text-gray-900 w-12 flex-shrink-0">
                                     {(aula.horario || '').slice(0, 5)}
                                   </span>
@@ -470,6 +558,113 @@ export default function JustClubAdminPage() {
                 )}
               </div>
             )}
+
+            {/* ══════════ ABA: GRUPOS MUSCULARES ══════════ */}
+            {abaAtiva === 'grupos' && (
+              <div className="space-y-4">
+
+                {/* Formulário para novo grupo */}
+                <div className="card">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Novo grupo muscular</h3>
+                  <div className="flex gap-2">
+                    <input
+                      className="input flex-1"
+                      placeholder="Ex: Inferiores, Full Body, HIIT & ABS..."
+                      value={novoGrupo}
+                      onChange={e => setNovoGrupo(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && criarGrupo()}
+                    />
+                    <button
+                      onClick={criarGrupo}
+                      disabled={salvandoGrupo || !novoGrupo.trim()}
+                      className="btn bg-primary-600 text-white hover:bg-primary-700 gap-1 disabled:opacity-50 flex-shrink-0"
+                    >
+                      <Plus size={14} /> {salvandoGrupo ? 'Criando...' : 'Criar'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Lista de grupos */}
+                <div className="card">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-3">
+                    Grupos cadastrados
+                    <span className="ml-2 text-xs font-normal text-gray-400">{grupos.length} total</span>
+                  </h3>
+
+                  {grupos.length === 0 ? (
+                    <div className="text-center py-8 text-gray-400 text-sm">
+                      <Tag size={24} className="mx-auto mb-2 text-gray-300" />
+                      Nenhum grupo cadastrado ainda.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {grupos.map(grupo => (
+                        <div
+                          key={grupo.id}
+                          className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border ${
+                            grupo.ativo === false
+                              ? 'bg-gray-50 border-gray-100 opacity-60'
+                              : 'bg-white border-gray-100'
+                          }`}
+                        >
+                          {editandoGrupo?.id === grupo.id ? (
+                            <>
+                              <input
+                                className="input flex-1 py-1 text-sm"
+                                value={nomeGrupoEdit}
+                                onChange={e => setNomeGrupoEdit(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && salvarEdicaoGrupo()}
+                                autoFocus
+                              />
+                              <button
+                                onClick={salvarEdicaoGrupo}
+                                className="btn btn-sm bg-primary-600 text-white gap-1"
+                              >
+                                <Save size={12} /> Salvar
+                              </button>
+                              <button
+                                onClick={() => setEditandoGrupo(null)}
+                                className="btn btn-sm text-gray-500"
+                              >
+                                <X size={12} />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <span className="flex-1 text-sm font-medium text-gray-800">{grupo.nome}</span>
+                              {grupo.ativo === false && (
+                                <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">Inativo</span>
+                              )}
+                              <button
+                                onClick={() => { setEditandoGrupo(grupo); setNomeGrupoEdit(grupo.nome) }}
+                                className="btn btn-sm gap-1 text-gray-500 hover:text-primary-600"
+                              >
+                                <Pencil size={12} />
+                              </button>
+                              <button
+                                onClick={() => toggleGrupo(grupo)}
+                                className={`btn btn-sm gap-1 ${
+                                  grupo.ativo === false
+                                    ? 'text-green-600 hover:bg-green-50'
+                                    : 'text-red-400 hover:bg-red-50'
+                                }`}
+                                title={grupo.ativo === false ? 'Ativar' : 'Desativar'}
+                              >
+                                <Power size={12} />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-xs text-blue-700">
+                  💡 Grupos inativos não aparecem no cadastro de novas aulas, mas são preservados nas aulas já criadas.
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -479,12 +674,9 @@ export default function JustClubAdminPage() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md max-h-[92vh] flex flex-col shadow-xl">
 
-            {/* Header modal */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
               <div>
-                <h2 className="font-semibold text-gray-900">
-                  {editando ? 'Editar aula' : 'Nova aula'}
-                </h2>
+                <h2 className="font-semibold text-gray-900">{editando ? 'Editar aula' : 'Nova aula'}</h2>
                 <p className="text-xs text-gray-400 mt-0.5">{unidadeAtiva.nome}</p>
               </div>
               <button onClick={fecharModal} className="text-gray-400 hover:text-gray-600 p-1">
@@ -492,10 +684,9 @@ export default function JustClubAdminPage() {
               </button>
             </div>
 
-            {/* Corpo do modal (scrollável) */}
             <div className="px-6 py-4 space-y-5 overflow-y-auto flex-1">
 
-              {/* Tipo de aula */}
+              {/* Tipo */}
               <div>
                 <label className="label">Tipo de aula *</label>
                 <div className="grid grid-cols-3 gap-2">
@@ -529,31 +720,45 @@ export default function JustClubAdminPage() {
               {/* Grupo muscular */}
               <div>
                 <label className="label">Grupo muscular *</label>
-                <select
-                  className="input"
-                  value={form.grupo_muscular_id}
-                  onChange={e => setForm(f => ({ ...f, grupo_muscular_id: e.target.value }))}
-                >
-                  <option value="">Selecione...</option>
-                  {grupos.map(g => (
-                    <option key={g.id} value={g.id}>{g.nome}</option>
-                  ))}
-                </select>
+                {gruposAtivos.length === 0 ? (
+                  <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5 text-xs text-orange-700 flex items-center gap-2">
+                    <AlertCircle size={14} />
+                    Nenhum grupo muscular ativo. Cadastre na aba "Grupos musculares".
+                  </div>
+                ) : (
+                  <select
+                    className="input"
+                    value={form.grupo_muscular_id}
+                    onChange={e => setForm(f => ({ ...f, grupo_muscular_id: e.target.value }))}
+                  >
+                    <option value="">Selecione...</option>
+                    {gruposAtivos.map(g => (
+                      <option key={g.id} value={g.id}>{g.nome}</option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               {/* Coach */}
               <div>
                 <label className="label">Coach responsável *</label>
-                <select
-                  className="input"
-                  value={form.coach_id}
-                  onChange={e => setForm(f => ({ ...f, coach_id: e.target.value }))}
-                >
-                  <option value="">Selecione...</option>
-                  {coaches.map(c => (
-                    <option key={c.id} value={c.id}>{c.nome}</option>
-                  ))}
-                </select>
+                {coaches.length === 0 ? (
+                  <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5 text-xs text-orange-700 flex items-center gap-2">
+                    <AlertCircle size={14} />
+                    Nenhum coach encontrado para esta unidade. Verifique a Escala.
+                  </div>
+                ) : (
+                  <select
+                    className="input"
+                    value={form.coach_id}
+                    onChange={e => setForm(f => ({ ...f, coach_id: e.target.value }))}
+                  >
+                    <option value="">Selecione...</option>
+                    {coaches.map(c => (
+                      <option key={c.id} value={c.id}>{c.nome}</option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               {/* Dia da semana */}
@@ -615,12 +820,12 @@ export default function JustClubAdminPage() {
                     onChange={e => setForm(f => ({ ...f, capacidade: +e.target.value }))}
                   />
                   <p className="text-xs text-gray-400 mt-1">
-                    {form.tipo === 'running_funcional' ? 'Padrão: 26–30 conforme unidade' : 'Padrão: 24'}
+                    {form.tipo === 'running_funcional' ? 'Padrão: 26–30 por unidade' : 'Padrão: 24'}
                   </p>
                 </div>
               </div>
 
-              {/* Toggle só mulheres (apenas se não for lift_for_girls) */}
+              {/* Toggle só mulheres */}
               {form.tipo !== 'lift_for_girls' && (
                 <div className="flex items-center gap-3">
                   <button
@@ -639,7 +844,6 @@ export default function JustClubAdminPage() {
               )}
             </div>
 
-            {/* Rodapé modal */}
             <div className="px-6 py-4 border-t border-gray-100 flex gap-2 flex-shrink-0">
               <button onClick={fecharModal} className="btn flex-1 text-gray-500 border border-gray-200">
                 Cancelar
