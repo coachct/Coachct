@@ -92,14 +92,21 @@ export default function CoachesPage() {
   async function toggleCoachUnidade(coachId: string, unidadeId: string) {
     setSalvandoUnidade(unidadeId)
     const set = new Set(coachUnidades[coachId] || [])
-    if (set.has(unidadeId)) {
-      await supabase.from('coach_unidades').delete().eq('coach_id', coachId).eq('unidade_id', unidadeId)
+    const removendo = set.has(unidadeId)
+
+    if (removendo) {
+      const { error } = await supabase.from('coach_unidades')
+        .delete().eq('coach_id', coachId).eq('unidade_id', unidadeId)
+      if (error) { setMsg('Erro ao salvar: ' + error.message); setSalvandoUnidade(null); return }
       set.delete(unidadeId)
     } else {
-      await supabase.from('coach_unidades').upsert({ coach_id: coachId, unidade_id: unidadeId, ativo: true }, { onConflict: 'coach_id,unidade_id' })
+      const { error } = await supabase.from('coach_unidades')
+        .upsert({ coach_id: coachId, unidade_id: unidadeId, ativo: true }, { onConflict: 'coach_id,unidade_id' })
+      if (error) { setMsg('Erro ao salvar: ' + error.message); setSalvandoUnidade(null); return }
       set.add(unidadeId)
     }
-    setCoachUnidades(prev => ({ ...prev, [coachId]: set }))
+
+    setCoachUnidades(prev => ({ ...prev, [coachId]: new Set(set) }))
     setSalvandoUnidade(null)
   }
 
