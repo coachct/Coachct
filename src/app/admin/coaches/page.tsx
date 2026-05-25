@@ -20,7 +20,8 @@ export default function CoachesPage() {
   const [editForm, setEditForm] = useState<Partial<Coach> | null>(null)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [expandedUnidades, setExpandedUnidades] = useState<string | null>(null)
+  const [expandedGrade,    setExpandedGrade]    = useState<string | null>(null)
   const [horarios, setHorarios] = useState<Record<string, Set<string>>>({})
 
   // Unidades por coach
@@ -272,7 +273,6 @@ export default function CoachesPage() {
       <div className="space-y-3">
         {coaches.length === 0 && <EmptyState message="Nenhum coach cadastrado ainda." />}
         {coaches.map(coach => {
-          const expanded   = expandedId === coach.id
           const slots      = horarios[coach.id]?.size || 0
           const mUnit      = coach.valor_cliente_aula - coach.adicional_por_aula
           const beC        = mUnit > 0 ? Math.ceil(coach.salario_fixo / mUnit) : null
@@ -305,11 +305,18 @@ export default function CoachesPage() {
                       <button onClick={() => { setSenhaModal(coach); setNovaSenha(''); setMsgSenha('') }} className="btn btn-sm gap-1"><KeyRound size={12}/> Senha</button>
                       <button onClick={() => { setEditForm(coach); setShowForm(false); window.scrollTo(0,0) }} className="btn btn-sm">Editar</button>
                       <button onClick={() => {
-                        const abrindo = expandedId !== coach.id
-                        setExpandedId(abrindo ? coach.id : null)
-                        if (abrindo) { loadHorarios(coach.id); loadCoachUnidades(coach.id) }
-                      }} className="btn btn-sm gap-1">
-                        Expandir {expanded?<ChevronUp size={12}/>:<ChevronDown size={12}/>}
+                        const abrindo = expandedUnidades !== coach.id
+                        setExpandedUnidades(abrindo ? coach.id : null)
+                        if (abrindo) loadCoachUnidades(coach.id)
+                      }} className={`btn btn-sm gap-1 ${expandedUnidades===coach.id?'bg-cyan-50 text-cyan-700 border border-cyan-200':''}`}>
+                        <Building2 size={12}/> Unidades {expandedUnidades===coach.id?<ChevronUp size={12}/>:<ChevronDown size={12}/>}
+                      </button>
+                      <button onClick={() => {
+                        const abrindo = expandedGrade !== coach.id
+                        setExpandedGrade(abrindo ? coach.id : null)
+                        if (abrindo) loadHorarios(coach.id)
+                      }} className={`btn btn-sm gap-1 ${expandedGrade===coach.id?'bg-primary-50 text-primary-700 border border-primary-200':''}`}>
+                        Grade {expandedGrade===coach.id?<ChevronUp size={12}/>:<ChevronDown size={12}/>}
                       </button>
                       <button onClick={() => excluirCoach(coach)} disabled={excluindoCoach===coach.id} className="btn btn-sm text-red-500 hover:bg-red-50 disabled:opacity-50">
                         {excluindoCoach===coach.id?<div className="w-3 h-3 border-2 border-red-400 border-t-transparent rounded-full animate-spin"/>:<Trash2 size={12}/>}
@@ -319,84 +326,81 @@ export default function CoachesPage() {
                 </div>
               </div>
 
-              {expanded && !inativo && (
-                <div className="mt-4 pt-4 border-t border-gray-100 space-y-6">
-
-                  {/* ── Unidades ── */}
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <Building2 size={14} className="text-cyan-600"/>
-                      <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Unidades atendidas</span>
-                      <span className="text-xs text-gray-400 font-normal">— salvo automaticamente</span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {unidades.map(u => {
-                        const ativo      = coachUnidades[coach.id]?.has(u.id) || false
-                        const carregando = salvandoUnidade === u.id
-                        return (
-                          <button key={u.id} onClick={() => toggleCoachUnidade(coach.id, u.id)} disabled={carregando}
-                            className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all disabled:opacity-60 ${
-                              ativo ? 'bg-cyan-50 border-cyan-300' : 'bg-gray-50 border-gray-200 hover:border-gray-300'
-                            }`}>
-                            {carregando ? (
-                              <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin flex-shrink-0"/>
-                            ) : (
-                              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${ativo?'bg-cyan-500 border-cyan-500':'border-gray-300'}`}>
-                                {ativo && <div className="w-2 h-2 rounded-full bg-white"/>}
-                              </div>
-                            )}
-                            <div className="flex-1 min-w-0">
-                              <span className={`text-sm font-medium ${ativo?'text-cyan-800':'text-gray-600'}`}>{u.nome}</span>
-                            </div>
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${tipoUnidadeBadge(u.tipo)}`}>
-                              {tipoUnidadeLabel(u.tipo)}
-                            </span>
-                          </button>
-                        )
-                      })}
-                    </div>
+              {/* ── Seção Unidades ── */}
+              {expandedUnidades === coach.id && !inativo && (
+                <div className="mt-4 pt-4 border-t border-cyan-100">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Building2 size={14} className="text-cyan-600"/>
+                    <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Unidades atendidas</span>
+                    <span className="text-xs text-gray-400 font-normal">— salvo automaticamente</span>
                   </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {unidades.map(u => {
+                      const ativo      = coachUnidades[coach.id]?.has(u.id) || false
+                      const carregando = salvandoUnidade === u.id
+                      return (
+                        <button key={u.id} onClick={() => toggleCoachUnidade(coach.id, u.id)} disabled={carregando}
+                          className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all disabled:opacity-60 ${
+                            ativo ? 'bg-cyan-50 border-cyan-300' : 'bg-gray-50 border-gray-200 hover:border-gray-300'
+                          }`}>
+                          {carregando ? (
+                            <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin flex-shrink-0"/>
+                          ) : (
+                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${ativo?'bg-cyan-500 border-cyan-500':'border-gray-300'}`}>
+                              {ativo && <div className="w-2 h-2 rounded-full bg-white"/>}
+                            </div>
+                          )}
+                          <span className={`text-sm font-medium flex-1 ${ativo?'text-cyan-800':'text-gray-600'}`}>{u.nome}</span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${tipoUnidadeBadge(u.tipo)}`}>
+                            {tipoUnidadeLabel(u.tipo)}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
 
-                  {/* ── Grade de horários ── */}
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Grade de horários — Coach CT</span>
-                      <span className="text-xs text-gray-400">{slots} slots/semana selecionados</span>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="text-xs w-full">
-                        <thead>
-                          <tr>
-                            <th className="text-gray-400 font-normal w-14 text-left pb-2 pr-2">Hora</th>
-                            {DIAS_SEMANA.map(d => <th key={d} className="text-gray-400 font-normal text-center pb-2 px-0.5 min-w-[32px]">{d}</th>)}
+              {/* ── Seção Grade ── */}
+              {expandedGrade === coach.id && !inativo && (
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Grade de horários — Coach CT</span>
+                    <span className="text-xs text-gray-400">{slots} slots/semana selecionados</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="text-xs w-full">
+                      <thead>
+                        <tr>
+                          <th className="text-gray-400 font-normal w-14 text-left pb-2 pr-2">Hora</th>
+                          {DIAS_SEMANA.map(d => <th key={d} className="text-gray-400 font-normal text-center pb-2 px-0.5 min-w-[32px]">{d}</th>)}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {HORARIOS.map(hora => (
+                          <tr key={hora}>
+                            <td className="text-gray-400 py-0.5 pr-2 whitespace-nowrap">{hora}</td>
+                            {[0,1,2,3,4,5,6].map(dia => {
+                              const key = `${dia}-${hora}`
+                              const on  = horarios[coach.id]?.has(key)
+                              return (
+                                <td key={dia} className="px-0.5 py-0.5">
+                                  <button onClick={() => toggleHorario(coach.id, key)}
+                                    className={`w-full h-6 rounded text-xs transition-colors ${on?'bg-primary-100 text-primary-800 border border-primary-300':'bg-gray-50 border border-gray-100 hover:bg-gray-100'}`}>
+                                    {on?'✓':''}
+                                  </button>
+                                </td>
+                              )
+                            })}
                           </tr>
-                        </thead>
-                        <tbody>
-                          {HORARIOS.map(hora => (
-                            <tr key={hora}>
-                              <td className="text-gray-400 py-0.5 pr-2 whitespace-nowrap">{hora}</td>
-                              {[0,1,2,3,4,5,6].map(dia => {
-                                const key = `${dia}-${hora}`
-                                const on  = horarios[coach.id]?.has(key)
-                                return (
-                                  <td key={dia} className="px-0.5 py-0.5">
-                                    <button onClick={() => toggleHorario(coach.id, key)}
-                                      className={`w-full h-6 rounded text-xs transition-colors ${on?'bg-primary-100 text-primary-800 border border-primary-300':'bg-gray-50 border border-gray-100 hover:bg-gray-100'}`}>
-                                      {on?'✓':''}
-                                    </button>
-                                  </td>
-                                )
-                              })}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    <div className="flex gap-2 mt-3 flex-wrap">
-                      <button onClick={() => saveHorarios(coach.id)} className="btn btn-primary btn-sm gap-1"><Save size={12}/>Salvar grade</button>
-                      <button onClick={() => { const all = new Set<string>(); HORARIOS.forEach(h => [0,1,2,3,4,5,6].forEach(d => all.add(`${d}-${h}`))); setHorarios(prev=>({...prev,[coach.id]:all})) }} className="btn btn-sm">Marcar todos</button>
-                      <button onClick={() => setHorarios(prev=>({...prev,[coach.id]:new Set()}))} className="btn btn-sm">Limpar</button>
-                    </div>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex gap-2 mt-3 flex-wrap">
+                    <button onClick={() => saveHorarios(coach.id)} className="btn btn-primary btn-sm gap-1"><Save size={12}/>Salvar grade</button>
+                    <button onClick={() => { const all = new Set<string>(); HORARIOS.forEach(h => [0,1,2,3,4,5,6].forEach(d => all.add(`${d}-${h}`))); setHorarios(prev=>({...prev,[coach.id]:all})) }} className="btn btn-sm">Marcar todos</button>
+                    <button onClick={() => setHorarios(prev=>({...prev,[coach.id]:new Set()}))} className="btn btn-sm">Limpar</button>
                   </div>
                 </div>
               )}
