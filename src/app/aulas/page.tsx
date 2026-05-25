@@ -198,8 +198,9 @@ function AulasPageInner() {
   }
 
   function tentarReservar(oc: any) {
-    if (!user) { router.push(`/login?redirect=${encodeURIComponent('/aulas?unidade='+unidadeId)}`); return }
-    if (oc.club_aulas?.so_mulheres && cliente?.sexo !== 'F') { setModalGenero(true); return }
+    if (!user) { router.push(`/login?redirect=${encodeURIComponent("/aulas?unidade="+unidadeId)}`); return }
+    if (oc.club_aulas?.so_mulheres && cliente?.sexo !== "F") { setModalGenero(true); return }
+    if (oc.club_aulas?.tipo === "running_funcional") { router.push(`/mapa?ocorrencia=${oc.id}&unidade=${unidadeId}`); return }
     abrirModalReserva(oc)
   }
   function tentarFila(oc: any) {
