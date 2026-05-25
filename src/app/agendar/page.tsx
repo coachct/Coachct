@@ -1,652 +1,887 @@
 'use client'
-import { Suspense, useEffect, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import { useUnidade } from '@/hooks/useUnidade'
 import { createClient } from '@/lib/supabase'
+import { dashboardDoRole } from '@/lib/auth-redirect'
 import SiteHeader from '@/components/SiteHeader'
 
 const ACCENT  = '#ff2d9b'
 const CYAN    = '#00e5ff'
 const AMARELO = '#ffaa00'
+const VERMELHO = '#ff4444'
 
-const DIAS_ABREV = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB']
-const MESES_ABREV = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ']
+const DIAS_SEMANA  = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+const HORARIOS_FDS = ['08:00', '09:00', '10:00', '11:00', '12:00']
+const JANELA_DIAS  = 14
 
-function dataLocalStr(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+function dentroDaJanelaProximoMes(): boolean {
+  const hoje = new Date()
+  const ultimoDiaMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).getDate()
+  return ultimoDiaMes - hoje.getDate() <= 7
 }
+
+const CONTRATO = `CONTRATO DE ADESÃO — COACH CT / JUST CT
+
+1. OBJETO
+O presente contrato regula as condições de uso do serviço Coach CT, que consiste no agendamento de sessões de treinamento personalizado com coaches da unidade Just CT.
+
+2. REGRAS DE AGENDAMENTO
+2.1. Wellhub Diamond: até 8 sessões Coach CT por mês-calendário.
+2.2. TotalPass TP6: até 10 sessões Coach CT por mês-calendário.
+2.3. Plano Avulso Coach CT: crédito válido por 30 dias a partir da compra.
+2.4. Coach CT Pro: pacote completo de sessões com janela estendida de 14 dias.
+2.5. Os créditos dos planos Wellhub e TotalPass não são acumulativos e renovam-se todo dia 1º de cada mês.
+2.6. Agendamentos liberados em janela rolante: 7 dias para Wellhub/TotalPass/Avulso · 14 dias para Coach CT Pro.
+
+3. CANCELAMENTO
+3.1. Cancelamentos até 12h antes resultam na devolução do crédito.
+3.2. Entre 12h e 3h antes: cancelamento só permitido se houver cliente na fila de espera.
+3.3. Menos de 3h antes: não é possível cancelar.
+
+4. POLÍTICA DE FALTAS
+4.1. Falta sem cancelamento gera bloqueio de novos agendamentos.
+4.2. Para reativação: regularização na recepção do Just CT.
+4.3. Agendamentos futuros são cancelados automaticamente.
+
+5. FILA DE ESPERA
+5.1. Ao entrar na fila de espera, o cliente aceita automaticamente as regras.
+5.2. Quando uma vaga abrir, o agendamento é confirmado automaticamente.
+5.3. As mesmas regras de cancelamento e falta se aplicam — inclusive multa por no-show.
+5.4. A confirmação automática pode ocorrer a qualquer momento até 3h antes do treino.
+
+6. ACEITE
+Ao concluir o cadastro, o cliente declara ter lido e concordado com todos os termos acima.`
 
 function parsePlanoKey(key: string): { label: string; icon: string } {
-  const lower = (key||'').toLowerCase()
-  if (lower.startsWith('wellhub'))    return { label: 'Wellhub',    icon: '💜' }
-  if (lower.startsWith('totalpass')) return { label: 'TotalPass',  icon: '🔵' }
-  if (lower.startsWith('avulso') || lower.startsWith('credito')) return { label: 'Crédito Avulso', icon: '🎟️' }
-  return { label: key, icon: '🏋️' }
+  const lower = key.toLowerCase()
+  let tipo = ''
+  let icon = '🏋️'
+  if (lower.startsWith('coach_ct_pro')) { tipo = 'Coach CT Pro'; icon = '🏆' }
+  else if (lower.startsWith('wellhub')) { tipo = 'Wellhub'; icon = '💜' }
+  else if (lower.startsWith('totalpass')) { tipo = 'TotalPass'; icon = '🔵' }
+  else if (lower.startsWith('avulso') || lower.startsWith('credito')) { tipo = 'Crédito Avulso'; icon = '🎟️' }
+  else { tipo = key }
+  let slugUnidade = lower.startsWith('coach_ct_pro') ? key.substring('coach_ct_pro_'.length) : key.split('_').slice(1).join('_')
+  const nomeUnidade: Record<string, string> = { just_ct: 'Just CT', just_club_vila_olimpia: 'Vila Olímpia', just_club_pinheiros: 'Pinheiros' }
+  return { label: `${tipo} — ${nomeUnidade[slugUnidade] || slugUnidade.replace(/_/g, ' ')}`, icon }
 }
 
-function tipoLabel(t: string) {
-  if (t === 'lift')             return 'Lift'
-  if (t === 'lift_for_girls')  return 'Lift for Girls'
-  if (t === 'running_funcional') return 'Running + Funcional'
-  return t
+function HalterSVG({ estado, onClick }: { estado: 'livre' | 'ocupado' | 'meu' | 'fila' | 'bloqueado', onClick?: () => void }) {
+  const cor = estado === 'ocupado' ? '#333' : estado === 'meu' ? CYAN : estado === 'fila' ? AMARELO : estado === 'bloqueado' ? '#ff4444' : ACCENT
+  const opacity = estado === 'ocupado' ? 0.3 : estado === 'bloqueado' ? 0.4 : 1
+  return (
+    <svg width="36" height="36" viewBox="0 0 48 28" style={{ opacity, flexShrink: 0, cursor: estado === 'livre' ? 'pointer' : 'default' }} onClick={estado === 'livre' ? onClick : undefined}>
+      <rect x="15" y="11.5" width="18" height="5" rx="2" fill={cor} />
+      <rect x="2" y="5" width="5" height="18" rx="3" fill={cor} />
+      <rect x="8" y="7.5" width="4" height="13" rx="2" fill={cor} />
+      <rect x="36" y="7.5" width="4" height="13" rx="2" fill={cor} />
+      <rect x="41" y="5" width="5" height="18" rx="3" fill={cor} />
+    </svg>
+  )
 }
 
-function tipoColor(t: string) {
-  if (t === 'lift')             return { bg: '#1a2a3a', border: '#00e5ff33', text: CYAN, badge: '#00e5ff22' }
-  if (t === 'lift_for_girls')  return { bg: '#1a0a1a', border: '#ff2d9b33', text: ACCENT, badge: '#ff2d9b22' }
-  return { bg: '#0a1a1a', border: '#00e5ff22', text: '#2ddd8b', badge: '#2ddd8b22' }
+// ─── Card de seleção de unidade ───────────────────────────────────────────────
+function CardUnidade({ unidade, onClick }: { unidade: any; onClick: () => void }) {
+  const [hover, setHover] = useState(false)
+  const isClub = unidade.tipo === 'club'
+  const cor = isClub ? CYAN : ACCENT
+
+  return (
+    <div
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        border: `1.5px solid ${hover ? cor : '#2a2a2a'}`,
+        background: hover ? `${cor}10` : '#111',
+        borderRadius: 16,
+        padding: '1.5rem',
+        cursor: 'pointer',
+        transition: 'all .2s',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '1.25rem',
+      }}
+    >
+      {/* Ícone */}
+      <div style={{
+        width: 56, height: 56, borderRadius: 14, flexShrink: 0,
+        background: `${cor}18`, border: `1px solid ${cor}33`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 28,
+      }}>
+        {isClub ? '⚡' : '🏋️'}
+      </div>
+
+      {/* Texto */}
+      <div style={{ flex: 1 }}>
+        <div style={{
+          fontFamily: "'Bebas Neue', sans-serif",
+          fontSize: 22, letterSpacing: 1,
+          color: hover ? cor : '#fff',
+          transition: 'color .2s',
+        }}>
+          {unidade.nome}
+        </div>
+        <div style={{ fontSize: 13, color: '#555', marginTop: 2 }}>
+          {isClub ? 'Aulas coletivas · Lift · Running + Funcional' : 'Personal training · Treino individual com coach'}
+        </div>
+      </div>
+
+      {/* Seta */}
+      <div style={{
+        width: 36, height: 36, borderRadius: '50%',
+        border: `1.5px solid ${hover ? cor : '#333'}`,
+        color: hover ? cor : '#444',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 18, transition: 'all .2s', flexShrink: 0,
+      }}>›</div>
+    </div>
+  )
 }
 
-// ─────────────────────────────────────────────
-// Inner page (needs Suspense for useSearchParams)
-// ─────────────────────────────────────────────
-
-function AulasPageInner() {
+export default function AgendarPage() {
+  const { user, perfil, loading } = useAuth()
+  const { unidadeAtiva, setUnidadeAtiva, unidadesPermitidas, loading: loadingUnidade } = useUnidade()
   const router = useRouter()
-  const params = useSearchParams()
-  const unidadeId = params.get('unidade') || ''
-  const { user, perfil, loading: loadingAuth } = useAuth()
   const supabase = createClient()
 
-  const [unidade,       setUnidade]       = useState<any>(null)
-  const [cliente,       setCliente]       = useState<any>(null)
-  const [saldo,         setSaldo]         = useState<Record<string, any>>({})
-  const [ocorrencias,   setOcorrencias]   = useState<any[]>([])
-  const [reservasCont,  setReservasCont]  = useState<Record<string, number>>({})
-  const [minhasReservas,setMinhasReservas]= useState<Record<string, any>>({})
-  const [filaCliente,   setFilaCliente]   = useState<Record<string, any>>({})
-  const [posicoes,      setPosicoes]      = useState<any[]>([])
-  const [posicoesTomadas,setPosicoesTomadas]= useState<string[]>([])
+  // ── Estado local para controlar se o usuário já escolheu a unidade ──
+  // Começa false: mostra os cards de seleção. Vira true após clicar.
+  const [unidadeConfirmada, setUnidadeConfirmada] = useState(false)
 
-  const [loadingOcs,    setLoadingOcs]    = useState(false)
-  const [semanaOffset,  setSemanaOffset]  = useState(0)
-  const [diaSel,        setDiaSel]        = useState(0)
-  const [periodo,       setPeriodo]       = useState<'todos'|'manha'|'tarde'|'noite'>('todos')
+  const [diaSel, setDiaSel] = useState(0)
+  const [semanaOffset, setSemanaOffset] = useState(0)
+  const [periodo, setPeriodo] = useState<'todos' | 'manha' | 'tarde' | 'noite'>('todos')
+  const [horarios, setHorarios] = useState<any[]>([])
+  const [cliente, setCliente] = useState<any>(null)
+  const [loadingHorarios, setLoadingHorarios] = useState(false)
+  const [tipoDia, setTipoDia] = useState<'util' | 'fds' | 'feriado'>('util')
+  const [feriadoDescricao, setFeriadoDescricao] = useState<string>('')
+  const [saldoMesAtual, setSaldoMesAtual] = useState<Record<string, any>>({})
+  const [saldoMesProximo, setSaldoMesProximo] = useState<Record<string, any>>({})
+  const [agendamentosNoDia, setAgendamentosNoDia] = useState<any[]>([])
+  const [filasDoCliente, setFilasDoCliente] = useState<any[]>([])
+  const [filaGeral, setFilaGeral] = useState<any[]>([])
+  const [modalSlot, setModalSlot] = useState<{ data: string; hora: string; vagas: number } | null>(null)
+  const [tipoCredito, setTipoCredito] = useState<string>('')
+  const [coachEscolhido, setCoachEscolhido] = useState<string>('')
+  const [coachesDisponiveis, setCoachesDisponiveis] = useState<{ id: string; nome: string }[]>([])
+  const [confirmando, setConfirmando] = useState(false)
+  const [erroModal, setErroModal] = useState('')
+  const [modalFila, setModalFila] = useState<{ data: string; hora: string } | null>(null)
+  const [tipoFilaCredito, setTipoFilaCredito] = useState<string>('')
+  const [entrandoFila, setEntrandoFila] = useState(false)
+  const [erroFila, setErroFila] = useState('')
+  const [filaAceite, setFilaAceite] = useState(false)
+  const [notifFila, setNotifFila] = useState<'whatsapp' | 'email' | 'nenhuma'>('whatsapp')
+  const [mostrarContrato, setMostrarContrato] = useState(false)
+  const [contratoAssinado, setContratoAssinado] = useState(false)
+  const [aceiteCheck, setAceiteCheck] = useState(false)
+  const [modalSemPlano, setModalSemPlano] = useState(false)
+  const [modalSemCartao, setModalSemCartao] = useState(false)
+  const [cobrancasPendentes, setCobrancasPendentes] = useState<any[]>([])
 
-  // Modais
-  const [modalReserva,  setModalReserva]  = useState<any>(null) // ocorrencia
-  const [modalFila,     setModalFila]     = useState<any>(null)
-  const [tipoCredito,   setTipoCredito]   = useState('')
-  const [posicaoSel,    setPosicaoSel]    = useState('')
-  const [confirmando,   setConfirmando]   = useState(false)
-  const [entrandoFila,  setEntrandoFila]  = useState(false)
-  const [erroModal,     setErroModal]     = useState('')
-  const [filaAceite,    setFilaAceite]    = useState(false)
-  const [modalGenero,   setModalGenero]   = useState(false) // alert lift for girls
+  const janelaProximoMesAberta = dentroDaJanelaProximoMes()
+  const temCoachCtProAtivo = Object.entries(saldoMesAtual).some(([c, i]: [string, any]) => c.startsWith('coach_ct_pro_') && i?.disponivel > 0)
+  const tipoVisualizacao: 'visitante' | 'coach_ct_pro' | 'padrao' = !user ? 'visitante' : temCoachCtProAtivo ? 'coach_ct_pro' : 'padrao'
 
-  // Dias da semana atual
+  const temPlanoParceiroAtivo = Object.entries(saldoMesAtual).some(([k, v]: [string, any]) =>
+    (k.startsWith('wellhub_') || k.startsWith('totalpass_')) && v?.disponivel > 0
+  )
+  const precisaCartao = !!cliente && temPlanoParceiroAtivo && !cliente?.pagarme_card_id
+  const clienteBloqueado = !!cliente?.bloqueado
+  const temCobrancaPendente = cobrancasPendentes.length > 0
+
   const diasSemana = Array.from({ length: 7 }, (_, i) => {
     const d = new Date()
     d.setDate(d.getDate() + semanaOffset * 7 + i)
     return d
   })
 
-  const dataSel = diasSemana[diaSel]
-  const dataSelStr = dataLocalStr(dataSel)
-
-  // ─── Load inicial ───
+  // Se só tem uma unidade, confirma automaticamente
   useEffect(() => {
-    if (unidadeId) carregarUnidade()
-  }, [unidadeId])
-
-  useEffect(() => {
-    if (perfil) carregarCliente()
-  }, [perfil])
+    if (!loadingUnidade && unidadesPermitidas.length === 1) {
+      setUnidadeConfirmada(true)
+    }
+  }, [loadingUnidade, unidadesPermitidas.length])
 
   useEffect(() => {
-    if (unidadeId) carregarOcorrencias(dataSelStr)
-  }, [dataSelStr, unidadeId])
+    if (loading) return
+    if (perfil && perfil.role && perfil.role !== 'cliente') router.push(dashboardDoRole(perfil.role))
+  }, [perfil, loading])
+
+  useEffect(() => { if (perfil) loadCliente() }, [perfil])
 
   useEffect(() => {
-    if (cliente && unidadeId) carregarSaldo()
-  }, [cliente?.id, unidadeId])
+    if (perfil && cliente && unidadeAtiva) {
+      carregarSaldos(cliente.id, unidadeAtiva.id)
+      carregarCobrancasPendentes(cliente.id)
+    }
+  }, [unidadeAtiva?.id, cliente?.id])
 
-  // ─── Carregamentos ───
-  async function carregarUnidade() {
-    const { data } = await supabase.from('unidades').select('id, nome, tipo').eq('id', unidadeId).maybeSingle()
-    setUnidade(data)
-  }
+  useEffect(() => {
+    if (unidadeAtiva && !clienteBloqueado && unidadeConfirmada) loadHorarios()
+  }, [diaSel, semanaOffset, perfil, cliente, unidadeAtiva?.id, clienteBloqueado, unidadeConfirmada])
 
-  async function carregarCliente() {
+  async function loadCliente() {
     if (!perfil) return
     const { data } = await supabase.from('clientes').select('*').eq('user_id', perfil.id).maybeSingle()
     setCliente(data)
+    if (data) {
+      const { count } = await supabase.from('agendamentos').select('*', { count: 'exact', head: true }).eq('cliente_id', data.id)
+      setContratoAssinado((count || 0) > 0)
+      setNotifFila(data.notificacao_preferida || 'whatsapp')
+    }
   }
 
-  async function carregarSaldo() {
-    if (!cliente || !unidadeId) return
+  async function carregarCobrancasPendentes(clienteId: string) {
+    const { data } = await supabase.from('cobrancas_pendentes').select('*').eq('cliente_id', clienteId).eq('status', 'pendente').order('cobrado_em', { ascending: false })
+    setCobrancasPendentes(data || [])
+  }
+
+  async function carregarSaldos(clienteId: string, unidadeId: string) {
     const agora = new Date()
-    const { data } = await supabase.rpc('saldo_creditos_cliente', {
-      p_cliente_id: cliente.id,
-      p_mes: agora.getMonth() + 1,
-      p_ano: agora.getFullYear(),
-      p_unidade_id: unidadeId,
-    })
-    setSaldo(data || {})
+    const mesAtual = agora.getMonth() + 1
+    const anoAtual = agora.getFullYear()
+    const mesProximo = mesAtual === 12 ? 1 : mesAtual + 1
+    const anoProximo = mesAtual === 12 ? anoAtual + 1 : anoAtual
+    const { data: atual } = await supabase.rpc('saldo_creditos_cliente', { p_cliente_id: clienteId, p_mes: mesAtual, p_ano: anoAtual, p_unidade_id: unidadeId })
+    setSaldoMesAtual(atual || {})
+    if (janelaProximoMesAberta) {
+      const { data: proximo } = await supabase.rpc('saldo_creditos_cliente', { p_cliente_id: clienteId, p_mes: mesProximo, p_ano: anoProximo, p_unidade_id: unidadeId })
+      setSaldoMesProximo(proximo || {})
+    } else {
+      setSaldoMesProximo({})
+    }
   }
 
-  async function carregarOcorrencias(data: string) {
-    if (!unidadeId) return
-    setLoadingOcs(true)
-
-    // Busca aulas ativas desta unidade
-    const { data: aulasIds } = await supabase
-      .from('club_aulas').select('id').eq('unidade_id', unidadeId).eq('ativo', true)
-    const ids = (aulasIds || []).map((a: any) => a.id)
-
-    if (!ids.length) { setOcorrencias([]); setLoadingOcs(false); return }
-
-    // Busca ocorrências do dia
-    const { data: ocs } = await supabase
-      .from('club_ocorrencias')
-      .select('*, club_aulas(id, tipo, horario, capacidade, so_mulheres, coaches(nome), grupos_musculares(nome))')
-      .in('aula_id', ids)
-      .eq('data', data)
-      .eq('status', 'ativa')
-
-    const ocsList = (ocs || []).sort((a: any, b: any) =>
-      (a.club_aulas?.horario || '').localeCompare(b.club_aulas?.horario || '')
-    )
-    setOcorrencias(ocsList)
-
-    if (!ocsList.length) { setLoadingOcs(false); return }
-
-    const ocIds = ocsList.map((o: any) => o.id)
-
-    // Conta reservas por ocorrência
-    const { data: reservas } = await supabase
-      .from('club_reservas')
-      .select('ocorrencia_id, status, posicao')
-      .in('ocorrencia_id', ocIds)
-      .in('status', ['reservado', 'presente'])
-
-    const cont: Record<string, number> = {}
-    for (const r of (reservas || [])) cont[r.ocorrencia_id] = (cont[r.ocorrencia_id] || 0) + 1
-    setReservasCont(cont)
-
-    // Minhas reservas e filas
-    if (cliente) {
-      const [{ data: minhas }, { data: filas }] = await Promise.all([
-        supabase.from('club_reservas').select('*').in('ocorrencia_id', ocIds).eq('cliente_id', cliente.id).neq('status', 'cancelado'),
-        supabase.from('fila_espera').select('*').in('ocorrencia_id', ocIds).eq('cliente_id', cliente.id).eq('status', 'aguardando'),
+  async function loadHorarios() {
+    if (!unidadeAtiva) return
+    setLoadingHorarios(true)
+    try {
+      const dataSel = diasSemana[diaSel]
+      if (!dataSel) { setHorarios([]); setLoadingHorarios(false); return }
+      const diaSem = dataSel.getDay()
+      const dataStr = dataSel.toISOString().split('T')[0]
+      const hoje = new Date().toISOString().split('T')[0]
+      const agora = new Date()
+      const horaAtual = `${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}`
+      const isDiaDe = dataStr === hoje
+      const { data: feriadoData } = await supabase.from('feriados').select('*').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr).eq('ativo', true).maybeSingle()
+      const ehFeriado = !!feriadoData
+      const ehFds = diaSem === 0 || diaSem === 6
+      const usaEscalaFds = ehFeriado || ehFds
+      if (ehFeriado) { setTipoDia('feriado'); setFeriadoDescricao(feriadoData.descricao || '') }
+      else if (ehFds) { setTipoDia('fds'); setFeriadoDescricao('') }
+      else { setTipoDia('util'); setFeriadoDescricao('') }
+      let porHora: Record<string, number> = {}
+      if (usaEscalaFds) {
+        const { data: escala } = await supabase.from('escala_fds').select('coach_id').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr)
+        const qtd = (escala || []).length
+        if (qtd > 0) for (const hora of HORARIOS_FDS) { if (isDiaDe && hora <= horaAtual) continue; porHora[hora] = qtd }
+      } else {
+        const { data: hors } = await supabase.from('coach_horarios').select('hora').eq('dia_semana', diaSem).eq('ativo', true).eq('unidade_id', unidadeAtiva.id)
+        for (const h of (hors || [])) { const hora = (h.hora || '').slice(0, 5); if (isDiaDe && hora <= horaAtual) continue; porHora[hora] = (porHora[hora] || 0) + 1 }
+      }
+      const [agsRes, filaGeralRes, bloqueadasRes, agClienteRes, filasRes] = await Promise.allSettled([
+        supabase.from('agendamentos').select('horario, status').eq('data', dataStr).eq('unidade_id', unidadeAtiva.id).neq('status', 'cancelado'),
+        supabase.from('fila_espera').select('horario').eq('data', dataStr).eq('status', 'aguardando').eq('unidade_id', unidadeAtiva.id),
+        supabase.from('vagas_bloqueadas').select('horario, quantidade').eq('data', dataStr).eq('ativo', true).eq('unidade_id', unidadeAtiva.id),
+        cliente ? supabase.from('agendamentos').select('horario, tipo_credito, status').eq('data', dataStr).eq('cliente_id', cliente.id).eq('unidade_id', unidadeAtiva.id) : Promise.resolve({ data: [] as any[] }),
+        cliente ? supabase.from('fila_espera').select('horario').eq('data', dataStr).eq('cliente_id', cliente.id).eq('unidade_id', unidadeAtiva.id) : Promise.resolve({ data: [] as any[] }),
       ])
-      const minhasMap: Record<string, any> = {}
-      for (const r of (minhas || [])) minhasMap[r.ocorrencia_id] = r
-      setMinhasReservas(minhasMap)
-
-      const filaMap: Record<string, any> = {}
-      for (const f of (filas || [])) if (f.ocorrencia_id) filaMap[f.ocorrencia_id] = f
-      setFilaCliente(filaMap)
-    }
-
-    setLoadingOcs(false)
-  }
-
-  async function carregarPosicoes(ocorrenciaId: string) {
-    const [{ data: pos }, { data: tomadas }] = await Promise.all([
-      supabase.from('club_posicoes').select('*').eq('unidade_id', unidadeId).eq('ativo', true).order('tipo').order('numero'),
-      supabase.from('club_reservas').select('posicao').eq('ocorrencia_id', ocorrenciaId).in('status', ['reservado', 'presente']),
-    ])
-    setPosicoes(pos || [])
-    setPosicoesTomadas((tomadas || []).map((t: any) => t.posicao).filter(Boolean))
-  }
-
-  // ─── Ações ───
-
-  function tentarReservar(oc: any) {
-    if (!user) {
-      router.push(`/login?redirect=${encodeURIComponent(`/aulas?unidade=${unidadeId}`)}`)
-      return
-    }
-    // Verifica restrição de gênero
-    if (oc.club_aulas?.so_mulheres && cliente?.sexo !== 'F') {
-      setModalGenero(true)
-      return
-    }
-    abrirModalReserva(oc)
-  }
-
-  function tentarFila(oc: any) {
-    if (!user) {
-      router.push(`/login?redirect=${encodeURIComponent(`/aulas?unidade=${unidadeId}`)}`)
-      return
-    }
-    setModalFila(oc)
-    setTipoCredito('')
-    setFilaAceite(false)
-    setErroModal('')
-  }
-
-  async function abrirModalReserva(oc: any) {
-    setModalReserva(oc)
-    setTipoCredito('')
-    setPosicaoSel('')
-    setErroModal('')
-    // Para Running, carrega posições
-    if (oc.club_aulas?.tipo === 'running_funcional') {
-      await carregarPosicoes(oc.id)
+      const ags = agsRes.status === 'fulfilled' ? (agsRes.value as any).data : []
+      const filaGeralData = filaGeralRes.status === 'fulfilled' ? (filaGeralRes.value as any).data : []
+      const bloqueadas = bloqueadasRes.status === 'fulfilled' ? (bloqueadasRes.value as any).data : []
+      const agCliente = agClienteRes.status === 'fulfilled' ? (agClienteRes.value as any).data : []
+      const filas = filasRes.status === 'fulfilled' ? (filasRes.value as any).data : []
+      const ocupados: Record<string, number> = {}
+      for (const a of (ags || [])) { const hora = (a.horario || '').slice(0, 5); ocupados[hora] = (ocupados[hora] || 0) + 1 }
+      const bloqueadasMap: Record<string, number> = {}
+      for (const b of (bloqueadas || [])) { const hora = (b.horario || '').slice(0, 5); bloqueadasMap[hora] = (bloqueadasMap[hora] || 0) + (b.quantidade || 1) }
+      const resultado = Object.entries(porHora).map(([hora, total]) => {
+        const bloq = bloqueadasMap[hora] || 0
+        const ocup = ocupados[hora] || 0
+        return { hora, total, ocupados: ocup, bloqueadas: bloq, livres: Math.max(0, total - ocup - bloq) }
+      }).sort((a, b) => a.hora.localeCompare(b.hora))
+      setHorarios(resultado)
+      setAgendamentosNoDia(agCliente || [])
+      setFilasDoCliente(filas || [])
+      setFilaGeral(filaGeralData || [])
+    } catch (err) {
+      console.error('Erro:', err)
+      setHorarios([])
+    } finally {
+      setLoadingHorarios(false)
     }
   }
 
-  async function confirmarReserva() {
-    if (!tipoCredito) { setErroModal('Selecione o plano para usar.'); return }
-    if (modalReserva?.club_aulas?.tipo === 'running_funcional' && !posicaoSel) {
-      setErroModal('Selecione sua posição no mapa.'); return
+  async function carregarCoachesDisponiveis(dataStr: string, horaStr: string) {
+    if (!unidadeAtiva) return
+    const diaSem = new Date(dataStr + 'T12:00:00').getDay()
+    const { data: feriadoData } = await supabase.from('feriados').select('*').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr).eq('ativo', true).maybeSingle()
+    const usaEscalaFds = !!feriadoData || diaSem === 0 || diaSem === 6
+    let coachIds: string[] = []
+    if (usaEscalaFds) {
+      const { data: escala } = await supabase.from('escala_fds').select('coach_id').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr)
+      coachIds = (escala || []).map((e: any) => e.coach_id).filter(Boolean)
+    } else {
+      const { data: hors } = await supabase.from('coach_horarios').select('coach_id').eq('dia_semana', diaSem).eq('hora', horaStr).eq('ativo', true).eq('unidade_id', unidadeAtiva.id)
+      coachIds = (hors || []).map((h: any) => h.coach_id).filter(Boolean)
     }
-    if (!cliente || !modalReserva) return
-
-    setConfirmando(true); setErroModal('')
-
-    const payload: any = {
-      ocorrencia_id: modalReserva.id,
-      cliente_id: cliente.id,
-      tipo_credito: tipoCredito,
-      status: 'reservado',
-    }
-    if (posicaoSel) payload.posicao = posicaoSel
-
-    const { error } = await supabase.from('club_reservas').insert(payload)
-    if (error) { setErroModal('Erro ao reservar: ' + error.message); setConfirmando(false); return }
-
-    setConfirmando(false)
-    setModalReserva(null)
-    await Promise.all([carregarOcorrencias(dataSelStr), carregarSaldo()])
+    if (coachIds.length === 0) { setCoachesDisponiveis([]); return }
+    const { data: ocupados } = await supabase.from('agendamentos').select('coach_id').eq('data', dataStr).eq('horario', horaStr + ':00').eq('unidade_id', unidadeAtiva.id).neq('status', 'cancelado').not('coach_id', 'is', null)
+    const idsOcupados = new Set((ocupados || []).map((a: any) => a.coach_id))
+    const idsDisp = coachIds.filter(id => !idsOcupados.has(id))
+    if (idsDisp.length === 0) { setCoachesDisponiveis([]); return }
+    const { data: coachesData } = await supabase.from('coaches').select('id, nome').in('id', idsDisp).eq('ativo', true).order('nome')
+    setCoachesDisponiveis(coachesData || [])
   }
 
-  async function confirmarFila() {
-    if (!tipoCredito) { setErroModal('Selecione o plano para usar.'); return }
-    if (!filaAceite) { setErroModal('Confirme que entendeu as regras da fila.'); return }
-    if (!cliente || !modalFila) return
+  const hojeRef = new Date(); hojeRef.setHours(0, 0, 0, 0)
+  const dataMaxima = new Date(hojeRef); dataMaxima.setDate(dataMaxima.getDate() + JANELA_DIAS)
+  const semanasMaximas = Math.floor(JANELA_DIAS / 7)
 
-    setEntrandoFila(true); setErroModal('')
-
-    const { error } = await supabase.from('fila_espera').insert({
-      ocorrencia_id: modalFila.id,
-      cliente_id: cliente.id,
-      tipo_credito: tipoCredito,
-      status: 'aguardando',
-      data: dataSelStr,
-      horario: modalFila.club_aulas?.horario,
-      unidade_id: unidadeId,
-    })
-
-    if (error) { setErroModal('Erro ao entrar na fila: ' + error.message); setEntrandoFila(false); return }
-
-    setEntrandoFila(false)
-    setModalFila(null)
-    await carregarOcorrencias(dataSelStr)
-  }
-
-  // ─── Filtros ───
-  const ocsFiltradas = ocorrencias.filter(oc => {
-    const hora = parseInt((oc.club_aulas?.horario || '').slice(0, 2))
-    if (periodo === 'manha') return hora < 12
-    if (periodo === 'tarde') return hora >= 12 && hora < 18
-    if (periodo === 'noite') return hora >= 18
+  const horariosFiltrados = horarios.filter(h => {
+    const hr = parseInt(h.hora)
+    if (periodo === 'manha') return hr < 12
+    if (periodo === 'tarde') return hr >= 12 && hr < 18
+    if (periodo === 'noite') return hr >= 18
     return true
   })
 
-  const planosDisponiveis = Object.entries(saldo).filter(([, v]: [string, any]) => v?.disponivel > 0).map(([k]) => k)
+  const dataSelecionada = diasSemana[diaSel]
+  const dataSelAposLimite = dataSelecionada > dataMaxima
+  const diasDesdHoje = Math.floor((dataSelecionada.getTime() - hojeRef.getTime()) / (1000 * 60 * 60 * 24))
+  const isDiaExclusivoPro = diasDesdHoje >= 7 && tipoVisualizacao !== 'coach_ct_pro'
 
-  // ─── UI helpers ───
-  function vagasInfo(oc: any) {
-    const cap = oc.club_aulas?.capacidade || 0
-    const usadas = reservasCont[oc.id] || 0
-    const livres = Math.max(0, cap - usadas)
-    return { cap, usadas, livres, lotado: livres <= 0 }
+  function jaAgendouNoDia(plano: string) { return agendamentosNoDia.some(a => a.tipo_credito === plano && ['agendado', 'confirmado', 'realizado'].includes(a.status)) }
+  function naFila(hora: string) { return filasDoCliente.some(f => (f.horario || '').slice(0, 5) === hora) }
+  function temFilaNoHorario(hora: string) { return filaGeral.some(f => (f.horario || '').slice(0, 5) === hora) }
+
+  function saldoParaData(): Record<string, any> {
+    const dataSel = diasSemana[diaSel]
+    const agora = new Date()
+    const mesmoMes = dataSel.getMonth() === agora.getMonth() && dataSel.getFullYear() === agora.getFullYear()
+    if (mesmoMes) return saldoMesAtual
+    const saldoMisto: Record<string, any> = { ...saldoMesProximo }
+    for (const [chave, info] of Object.entries(saldoMesAtual)) {
+      if (chave.startsWith('coach_ct_pro_')) saldoMisto[chave] = info
+    }
+    return saldoMisto
   }
 
-  if (!unidadeId) return (
+  function planosDisponiveisParaDia() {
+    const saldo = saldoParaData()
+    return Object.keys(saldo).filter(p => saldo[p].disponivel > 0 && !jaAgendouNoDia(p))
+  }
+
+  const notifOpcoes = [
+    { key: 'whatsapp', label: 'WhatsApp', icon: '💬' },
+    { key: 'email', label: 'Email', icon: '📧' },
+    { key: 'nenhuma', label: 'Sem aviso', icon: '🔕' },
+  ]
+
+  const semPlanoAtivo = !loadingHorarios && cliente && Object.keys(saldoMesAtual).length === 0 && Object.keys(saldoMesProximo).length === 0
+
+  function tentarAgendar(hora: string, vagas: number) {
+    if (!user) { router.push('/login'); return }
+    if (clienteBloqueado) return
+    if (semPlanoAtivo) { setModalSemPlano(true); return }
+    if (precisaCartao) { setModalSemCartao(true); return }
+    abrirModalReserva(hora, vagas)
+  }
+
+  function tentarFila(hora: string) {
+    if (!user) { router.push('/login'); return }
+    if (clienteBloqueado) return
+    if (semPlanoAtivo) { setModalSemPlano(true); return }
+    if (precisaCartao) { setModalSemCartao(true); return }
+    abrirModalFila(hora)
+  }
+
+  function abrirModalReserva(hora: string, vagas: number) {
+    const dataStr = diasSemana[diaSel].toISOString().split('T')[0]
+    setModalSlot({ data: dataStr, hora, vagas })
+    setTipoCredito(''); setCoachEscolhido(''); setCoachesDisponiveis([]); setErroModal('')
+    if (!contratoAssinado) setMostrarContrato(true)
+  }
+
+  function abrirModalFila(hora: string) {
+    const dataStr = diasSemana[diaSel].toISOString().split('T')[0]
+    setModalFila({ data: dataStr, hora })
+    setTipoFilaCredito(''); setErroFila(''); setFilaAceite(false)
+    setNotifFila(cliente?.notificacao_preferida || 'whatsapp')
+    if (!contratoAssinado) setMostrarContrato(true)
+  }
+
+  useEffect(() => {
+    if (!modalSlot || !tipoCredito) { setCoachesDisponiveis([]); setCoachEscolhido(''); return }
+    if (tipoCredito.startsWith('coach_ct_pro_')) carregarCoachesDisponiveis(modalSlot.data, modalSlot.hora)
+    else { setCoachesDisponiveis([]); setCoachEscolhido('') }
+  }, [tipoCredito, modalSlot?.hora, modalSlot?.data])
+
+  async function confirmarAgendamento() {
+    if (!tipoCredito) { setErroModal('Selecione como vai usar esta sessão.'); return }
+    if (!modalSlot || !cliente || !unidadeAtiva) return
+    if (clienteBloqueado) { setErroModal('Sua conta está bloqueada.'); return }
+    if (jaAgendouNoDia(tipoCredito)) { const { label } = parsePlanoKey(tipoCredito); setErroModal(`Você já tem um agendamento com ${label} neste dia.`); return }
+    const agora = new Date()
+    const dataSel = diasSemana[diaSel]
+    const mesmoMes = dataSel.getMonth() === agora.getMonth() && dataSel.getFullYear() === agora.getFullYear()
+    const mesRef = mesmoMes ? agora.getMonth() + 1 : (agora.getMonth() === 11 ? 1 : agora.getMonth() + 2)
+    const anoRef = mesmoMes ? agora.getFullYear() : (agora.getMonth() === 11 ? agora.getFullYear() + 1 : agora.getFullYear())
+    const { data: saldoAtualizado } = await supabase.rpc('saldo_creditos_cliente', { p_cliente_id: cliente.id, p_mes: mesRef, p_ano: anoRef, p_unidade_id: unidadeAtiva.id })
+    if (!saldoAtualizado || !saldoAtualizado[tipoCredito] || saldoAtualizado[tipoCredito].disponivel <= 0) {
+      setErroModal('Saldo insuficiente.'); await carregarSaldos(cliente.id, unidadeAtiva.id); return
+    }
+    setConfirmando(true); setErroModal('')
+    const payload: any = { cliente_id: cliente.id, data: modalSlot.data, horario: modalSlot.hora + ':00', status: 'agendado', tipo_credito: tipoCredito, unidade_id: unidadeAtiva.id }
+    if (tipoCredito.startsWith('coach_ct_pro_') && coachEscolhido) { payload.coach_id = coachEscolhido; payload.alocado_por = perfil?.id || null; payload.alocado_em = new Date().toISOString() }
+    const { error } = await supabase.from('agendamentos').insert(payload)
+    if (error) { setErroModal('Erro ao agendar. Tente novamente.'); setConfirmando(false); return }
+    await Promise.all([carregarSaldos(cliente.id, unidadeAtiva.id), loadHorarios()])
+    setContratoAssinado(true); setModalSlot(null); setConfirmando(false)
+    router.push('/minha-conta')
+  }
+
+  async function confirmarFila() {
+    if (!tipoFilaCredito) { setErroFila('Selecione como vai usar esta sessão.'); return }
+    if (!filaAceite) { setErroFila('Confirme que entendeu as regras da fila.'); return }
+    if (!modalFila || !cliente || !unidadeAtiva) return
+    if (clienteBloqueado) { setErroFila('Sua conta está bloqueada.'); return }
+    setEntrandoFila(true); setErroFila('')
+    if (notifFila !== cliente.notificacao_preferida) {
+      await supabase.from('clientes').update({ notificacao_preferida: notifFila }).eq('id', cliente.id)
+      setCliente({ ...cliente, notificacao_preferida: notifFila })
+    }
+    const { error } = await supabase.from('fila_espera').insert({ cliente_id: cliente.id, data: modalFila.data, horario: modalFila.hora + ':00', tipo_credito: tipoFilaCredito, status: 'aguardando', unidade_id: unidadeAtiva.id })
+    if (error) { setErroFila('Erro ao entrar na fila.'); setEntrandoFila(false); return }
+    await Promise.all([carregarSaldos(cliente.id, unidadeAtiva.id), loadHorarios()])
+    setContratoAssinado(true); setModalFila(null); setEntrandoFila(false)
+    router.push('/minha-conta')
+  }
+
+  const dataFormatada = (dataStr: string) => new Date(dataStr + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
+
+  if (loading || loadingUnidade) return (
     <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ textAlign: 'center', color: '#555', fontSize: 14 }}>Unidade não especificada.<br/>
-        <span onClick={() => router.push('/agendar')} style={{ color: ACCENT, cursor: 'pointer' }}>Voltar</span>
-      </div>
+      <div style={{ width: 32, height: 32, border: `4px solid ${ACCENT}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
     </div>
   )
+
+  const planosDisp = planosDisponiveisParaDia()
+  const saldoExibir = saldoParaData()
+  const todosSemSaldo = cliente && Object.keys(saldoExibir).length > 0 && planosDisp.length === 0
+  const temFila = modalSlot ? temFilaNoHorario(modalSlot.hora) : false
+  const dataSelEhProximoMes = diasSemana[diaSel].getMonth() !== new Date().getMonth() || diasSemana[diaSel].getFullYear() !== new Date().getFullYear()
+  const isCredPro = tipoCredito.startsWith('coach_ct_pro_')
+
+  // ── Mostra hero de seleção quando há múltiplas unidades e ainda não escolheu ──
+  const mostrarHero = !clienteBloqueado && unidadesPermitidas.length > 1 && !unidadeConfirmada
 
   return (
     <div style={{ minHeight: '100vh', background: '#080808', fontFamily: "'DM Sans', sans-serif", color: '#f0f0f0' }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        .dia-tab:hover { color: #fff !important; }
-        .aula-card:hover { border-color: #333 !important; }
-        .pos-btn:hover:not(:disabled) { opacity: 0.8; }
+        .dia-btn-h { transition: all .2s; cursor: pointer; flex: 1; min-width: 0; }
+        .dia-btn-h:hover { border-color: ${ACCENT} !important; }
+        .dia-btn-disabled { opacity: 0.25; cursor: not-allowed !important; }
+        .slot-row-h { transition: all .2s; }
+        .slot-row-h:hover { border-color: ${ACCENT} !important; background: #ff2d9b08 !important; }
+        .nav-semana-btn:hover:not(:disabled) { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
+        .mini-card-pro:hover { border-color: ${ACCENT} !important; }
+        .btn-cobranca:hover { opacity: 0.85; }
       `}</style>
 
       <SiteHeader />
 
-      <div style={{ maxWidth: 700, margin: '0 auto', padding: '6rem 1.5rem 4rem' }}>
+      <div style={{ maxWidth: 700, margin: '0 auto', padding: '6rem 1.5rem 2rem' }}>
 
-        {/* Cabeçalho */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
-          <button onClick={() => router.push('/agendar')}
-            style={{ background: 'transparent', border: '1px solid #333', borderRadius: '50%', width: 36, height: 36, color: '#888', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>
-            ‹
-          </button>
+        {/* ══ HERO: Seleção de unidade ══ */}
+        {mostrarHero ? (
           <div>
-            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: '#fff', letterSpacing: 1 }}>
-              {unidade?.nome || 'Aulas coletivas'}
-            </div>
-            <div style={{ fontSize: 13, color: '#444', marginTop: 2 }}>Lift · Running + Funcional</div>
-          </div>
-        </div>
-
-        {/* Banner visitante */}
-        {!user && (
-          <div style={{ background: '#0a0014', border: `1px solid ${ACCENT}33`, borderRadius: 12, padding: '0.85rem 1.25rem', marginBottom: '1.5rem', fontSize: 13, color: '#aaa' }}>
-            👋 Navegando como visitante.{' '}
-            <span onClick={() => router.push(`/login?redirect=${encodeURIComponent(`/aulas?unidade=${unidadeId}`)}`)}
-              style={{ color: ACCENT, cursor: 'pointer', fontWeight: 600 }}>Faça login</span>{' '}
-            para reservar aulas.
-          </div>
-        )}
-
-        {/* Navegação de semana */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 0 }}>
-          <button onClick={() => { setSemanaOffset(o => Math.max(0, o - 1)); setDiaSel(0) }}
-            disabled={semanaOffset === 0}
-            style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid #333', background: 'transparent', color: semanaOffset === 0 ? '#333' : '#888', fontSize: 16, cursor: semanaOffset === 0 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            ‹
-          </button>
-
-          {/* Tabs de dias estilo 1Rebel */}
-          <div style={{ flex: 1, display: 'flex', borderBottom: '1px solid #1a1a1a', overflowX: 'auto' }}>
-            {diasSemana.map((d, i) => {
-              const sel = i === diaSel
-              const isHoje = semanaOffset === 0 && i === 0
-              return (
-                <button key={i} className="dia-tab" onClick={() => setDiaSel(i)}
-                  style={{
-                    flex: 1, minWidth: 0, padding: '0.75rem 0.25rem', background: 'transparent', border: 'none',
-                    borderBottom: `2px solid ${sel ? ACCENT : 'transparent'}`,
-                    cursor: 'pointer', textAlign: 'center', transition: 'all .15s',
-                    color: sel ? '#fff' : '#555',
-                  }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, marginBottom: 4, color: sel ? ACCENT : '#444' }}>
-                    {isHoje ? 'HOJE' : DIAS_ABREV[d.getDay()]}
-                  </div>
-                  <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, lineHeight: 1, color: sel ? '#fff' : '#666' }}>
-                    {d.getDate()}
-                  </div>
-                  <div style={{ fontSize: 9, color: sel ? ACCENT : '#333', textTransform: 'uppercase', marginTop: 2 }}>
-                    {MESES_ABREV[d.getMonth()]}
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-
-          <button onClick={() => { setSemanaOffset(o => Math.min(3, o + 1)); setDiaSel(0) }}
-            disabled={semanaOffset >= 3}
-            style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid #333', background: 'transparent', color: semanaOffset >= 3 ? '#333' : '#888', fontSize: 16, cursor: semanaOffset >= 3 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            ›
-          </button>
-        </div>
-
-        {/* Filtro período */}
-        <div style={{ display: 'flex', gap: 8, marginTop: '1.25rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-          {[
-            { key: 'todos', label: 'Todos' },
-            { key: 'manha', label: '🌅 Manhã' },
-            { key: 'tarde', label: '☀️ Tarde' },
-            { key: 'noite', label: '🌙 Noite' },
-          ].map(p => (
-            <button key={p.key} onClick={() => setPeriodo(p.key as any)}
-              style={{ padding: '0.35rem 1rem', borderRadius: 20, border: `1px solid ${periodo === p.key ? ACCENT : '#2a2a2a'}`, background: periodo === p.key ? `${ACCENT}20` : 'transparent', color: periodo === p.key ? ACCENT : '#555', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-              {p.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Lista de aulas */}
-        {loadingOcs ? (
-          <div style={{ textAlign: 'center', padding: '3rem', color: '#555' }}>Carregando aulas...</div>
-        ) : ocsFiltradas.length === 0 ? (
-          <div style={{ background: '#111', border: '1px solid #1a1a1a', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#555' }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>📅</div>
-            <div style={{ fontSize: 14 }}>Nenhuma aula disponível neste dia.</div>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {ocsFiltradas.map(oc => {
-              const aula = oc.club_aulas
-              const { livres, lotado } = vagasInfo(oc)
-              const minhaRes = minhasReservas[oc.id]
-              const naFila = filaCliente[oc.id]
-              const cores = tipoColor(aula?.tipo || '')
-              const isRunning = aula?.tipo === 'running_funcional'
-              const isGirls = aula?.so_mulheres
-
-              return (
-                <div key={oc.id} className="aula-card"
-                  style={{ background: cores.bg, border: `1px solid ${minhaRes ? CYAN + '44' : naFila ? AMARELO + '44' : cores.border}`, borderRadius: 16, padding: '1.25rem 1.5rem', transition: 'border-color .2s' }}>
-
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
-                    {/* Horário */}
-                    <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 22, fontWeight: 500, color: '#fff', width: 56, flexShrink: 0, lineHeight: 1 }}>
-                      {(aula?.horario || '').slice(0, 5)}
-                    </div>
-
-                    {/* Info */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
-                        <span style={{ background: cores.badge, color: cores.text, fontSize: 11, fontWeight: 700, padding: '2px 10px', borderRadius: 20, letterSpacing: 0.5 }}>
-                          {tipoLabel(aula?.tipo)}
-                        </span>
-                        {isGirls && (
-                          <span style={{ background: '#ff2d9b22', color: ACCENT, fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 20 }}>
-                            👩 Só mulheres
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: 14, color: '#ddd', fontWeight: 600, marginBottom: 3 }}>
-                        {aula?.grupos_musculares?.nome || '—'}
-                      </div>
-                      <div style={{ fontSize: 12, color: '#555' }}>
-                        👤 {aula?.coaches?.nome?.split(' ')[0] || '—'} · {aula?.duracao_min || 50}min
-                      </div>
-                    </div>
-
-                    {/* Status / Vagas / Botão */}
-                    <div style={{ flexShrink: 0, textAlign: 'right', minWidth: 100 }}>
-                      {minhaRes ? (
-                        <div style={{ fontSize: 12, color: CYAN, fontWeight: 700 }}>RESERVADO ✓</div>
-                      ) : naFila ? (
-                        <div style={{ fontSize: 12, color: AMARELO, fontWeight: 700 }}>NA FILA ⏳</div>
-                      ) : (
-                        <>
-                          {/* Vagas — sempre para Running, só quando ≤3 para Lift */}
-                          {(isRunning || livres <= 3) && livres > 0 && (
-                            <div style={{
-                              fontSize: 11,
-                              fontFamily: "'DM Mono', monospace",
-                              fontWeight: 700,
-                              color: livres === 1 ? '#ff4444' : livres <= 3 ? AMARELO : '#888',
-                              marginBottom: 8,
-                            }}>
-                              {livres === 1 ? 'ÚLTIMA VAGA' : `${livres} VAGAS`}
-                            </div>
-                          )}
-                          {lotado ? (
-                            <button onClick={() => tentarFila(oc)}
-                              style={{ background: 'transparent', color: AMARELO, border: `1px solid ${AMARELO}`, borderRadius: 8, padding: '0.4rem 0.85rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' }}>
-                              Fila ⏳
-                            </button>
-                          ) : (
-                            <button onClick={() => tentarReservar(oc)}
-                              style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 8, padding: '0.4rem 0.85rem', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' }}>
-                              Reservar
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Barra de capacidade para Running */}
-                  {isRunning && !minhaRes && !naFila && (
-                    <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: `1px solid ${cores.border}` }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#444', marginBottom: 4 }}>
-                        <span>Capacidade</span>
-                        <span>{reservasCont[oc.id] || 0}/{oc.club_aulas?.capacidade} ocupadas</span>
-                      </div>
-                      <div style={{ height: 4, background: '#1a1a1a', borderRadius: 2, overflow: 'hidden' }}>
-                        <div style={{
-                          height: '100%', borderRadius: 2, transition: 'width .3s',
-                          background: lotado ? '#ff4444' : livres <= 3 ? AMARELO : '#2ddd8b',
-                          width: `${Math.min(100, ((reservasCont[oc.id] || 0) / (oc.club_aulas?.capacidade || 1)) * 100)}%`,
-                        }} />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* ══ MODAL RESERVA ══ */}
-      {modalReserva && (
-        <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: '1rem' }}>
-          <div style={{ background: '#111', border: '1px solid #2a2a2a', borderRadius: '20px 20px 16px 16px', width: '100%', maxWidth: 500, maxHeight: '90vh', overflowY: 'auto' }}>
-
-            {/* Header */}
-            <div style={{ padding: '1.5rem 1.5rem 1rem', borderBottom: '1px solid #1a1a1a' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', letterSpacing: 1 }}>
-                    CONFIRMAR RESERVA
-                  </div>
-                  <div style={{ fontSize: 13, color: '#555', marginTop: 3 }}>
-                    {tipoLabel(modalReserva.club_aulas?.tipo)} · {(modalReserva.club_aulas?.horario||'').slice(0,5)} · {unidade?.nome}
-                  </div>
-                </div>
-                <button onClick={() => setModalReserva(null)}
-                  style={{ background: 'transparent', border: 'none', color: '#555', fontSize: 20, cursor: 'pointer', padding: '4px 8px' }}>✕</button>
+            <div style={{ marginBottom: '2.5rem' }}>
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 36, color: '#fff', letterSpacing: 1 }}>
+                ONDE VOCÊ QUER TREINAR?
+              </div>
+              <div style={{ fontSize: 14, color: '#444', marginTop: 6 }}>
+                Escolha a unidade para ver os horários disponíveis.
               </div>
             </div>
 
-            <div style={{ padding: '1.25rem 1.5rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {unidadesPermitidas.map(u => (
+                <CardUnidade
+                  key={u.id}
+                  unidade={u}
+                  onClick={() => {
+                    if (u.tipo === 'club') {
+                      router.push(`/aulas?unidade=${u.id}`)
+                    } else {
+                      setUnidadeAtiva(u)
+                      setUnidadeConfirmada(true)
+                      setHorarios([])
+                      setDiaSel(0)
+                      setSemanaOffset(0)
+                    }
+                  }}
+                />
+              ))}
+            </div>
 
-              {/* Plano */}
-              <div style={{ marginBottom: '1.5rem' }}>
-                <div style={{ fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Usar crédito de qual plano?</div>
-                {planosDisponiveis.length === 0 ? (
-                  <div style={{ background: '#1a1000', border: '1px solid #ff660033', borderRadius: 10, padding: '1rem', fontSize: 13, color: AMARELO }}>
-                    ⚠️ Você não tem créditos disponíveis para esta unidade.
-                  </div>
-                ) : planosDisponiveis.map(p => {
-                  const { label, icon } = parsePlanoKey(p)
-                  const info = saldo[p]
+            {!user && (
+              <div style={{ marginTop: '2rem', background: '#0a0014', border: `1px solid ${ACCENT}22`, borderRadius: 12, padding: '1rem 1.25rem', fontSize: 13, color: '#666', textAlign: 'center' }}>
+                👋 Visitante · <span onClick={() => router.push('/login')} style={{ color: ACCENT, cursor: 'pointer', fontWeight: 600 }}>Faça login</span> para reservar treinos.
+              </div>
+            )}
+          </div>
+
+        ) : (
+          /* ══ CONTEÚDO NORMAL (CT booking) ══ */
+          <>
+            <div style={{ marginBottom: '1.5rem' }}>
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: '#fff' }}>AGENDAR TREINO</div>
+              <div style={{ fontSize: 14, color: '#555', marginTop: 4 }}>
+                {clienteBloqueado ? 'Conta com pendência — veja os detalhes abaixo' : 'Cada halter = uma vaga disponível'}
+              </div>
+            </div>
+
+            {/* Tab compacto de unidade (quando há múltiplas e já escolheu) */}
+            {unidadesPermitidas.length > 1 && (
+              <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontSize: 11, color: '#444', textTransform: 'uppercase', letterSpacing: 1 }}>Unidade:</span>
+                {unidadesPermitidas.map(u => {
+                  const ativa = unidadeAtiva?.id === u.id
+                  const cor = u.tipo === 'club' ? CYAN : ACCENT
                   return (
-                    <div key={p} onClick={() => setTipoCredito(p)}
-                      style={{ border: `1.5px solid ${tipoCredito === p ? ACCENT : '#2a2a2a'}`, background: tipoCredito === p ? `${ACCENT}12` : 'transparent', borderRadius: 10, padding: '0.85rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: 8, transition: 'all .15s' }}>
-                      <span style={{ fontSize: 20 }}>{icon}</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: tipoCredito === p ? '#fff' : '#888' }}>{label}</div>
-                        {info && <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>{info.disponivel} créditos restantes este mês</div>}
+                    <button
+                      key={u.id}
+                      onClick={() => {
+                        if (u.tipo === 'club') {
+                          router.push(`/aulas?unidade=${u.id}`)
+                        } else {
+                          setUnidadeAtiva(u); setHorarios([]); setDiaSel(0); setSemanaOffset(0)
+                        }
+                      }}
+                      style={{
+                        padding: '0.35rem 1rem', borderRadius: 20,
+                        border: `1.5px solid ${ativa ? cor : '#333'}`,
+                        background: ativa ? `${cor}18` : 'transparent',
+                        color: ativa ? cor : '#555',
+                        fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                        fontFamily: "'DM Sans', sans-serif", transition: 'all .2s',
+                      }}>
+                      {u.nome}
+                    </button>
+                  )
+                })}
+                <button
+                  onClick={() => setUnidadeConfirmada(false)}
+                  style={{ marginLeft: 'auto', padding: '0.3rem 0.75rem', borderRadius: 20, border: '1px solid #222', background: 'transparent', color: '#444', fontSize: 11, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                  ← Voltar
+                </button>
+              </div>
+            )}
+
+            {/* Badge unidade única */}
+            {unidadesPermitidas.length === 1 && unidadeAtiva && (
+              <div style={{ marginBottom: '1.5rem' }}>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: `${ACCENT}15`, border: `1px solid ${ACCENT}44`, borderRadius: 8, padding: '0.35rem 0.85rem' }}>
+                  <span style={{ fontSize: 12, color: ACCENT, fontWeight: 600 }}>{unidadeAtiva.nome}</span>
+                </div>
+              </div>
+            )}
+
+            {/* ── Bloqueio por cobrança ── */}
+            {clienteBloqueado && temCobrancaPendente && (
+              <div style={{ background: '#1a0000', border: `2px solid ${VERMELHO}`, borderRadius: 16, padding: '1.5rem', marginBottom: '1.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: '1rem' }}>
+                  <div style={{ fontSize: 32 }}>🚫</div>
+                  <div>
+                    <div style={{ fontSize: 18, color: VERMELHO, fontWeight: 700, fontFamily: "'Bebas Neue', sans-serif", letterSpacing: 1 }}>CARTÃO RECUSADO</div>
+                    <div style={{ fontSize: 13, color: '#ccc' }}>Não conseguimos cobrar a multa no seu cartão</div>
+                  </div>
+                </div>
+                <div style={{ background: '#0a0000', border: `1px solid ${VERMELHO}33`, borderRadius: 10, padding: '1rem', marginBottom: '1rem' }}>
+                  <div style={{ fontSize: 13, color: '#fff', fontWeight: 600, marginBottom: 8 }}>Multas pendentes:</div>
+                  {cobrancasPendentes.map((c, i) => (
+                    <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: i < cobrancasPendentes.length - 1 ? '1px solid #220000' : 'none' }}>
+                      <div>
+                        <div style={{ fontSize: 13, color: '#ddd' }}>{c.motivo}</div>
+                        <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>Tentativa em {new Date(c.cobrado_em).toLocaleDateString('pt-BR')}</div>
                       </div>
-                      <div style={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${tipoCredito === p ? ACCENT : '#444'}`, background: tipoCredito === p ? ACCENT : 'transparent', flexShrink: 0 }} />
+                      <div style={{ fontSize: 16, color: VERMELHO, fontWeight: 700, fontFamily: "'DM Mono', monospace" }}>R$ {Number(c.valor).toFixed(2).replace('.', ',')}</div>
+                    </div>
+                  ))}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, paddingTop: 8, borderTop: `1px solid ${VERMELHO}33` }}>
+                    <div style={{ fontSize: 14, color: '#fff', fontWeight: 700 }}>TOTAL</div>
+                    <div style={{ fontSize: 18, color: VERMELHO, fontWeight: 700, fontFamily: "'DM Mono', monospace" }}>R$ {cobrancasPendentes.reduce((s, c) => s + Number(c.valor), 0).toFixed(2).replace('.', ',')}</div>
+                  </div>
+                </div>
+                <button onClick={() => router.push('/cadastrar-cartao')} className="btn-cobranca"
+                  style={{ width: '100%', background: VERMELHO, color: '#fff', border: 'none', borderRadius: 10, padding: '0.85rem 1.25rem', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                  💳 Atualizar cartão e regularizar
+                </button>
+              </div>
+            )}
+
+            {clienteBloqueado && !temCobrancaPendente && (
+              <div style={{ background: '#1a1000', border: `2px solid ${AMARELO}`, borderRadius: 16, padding: '1.5rem', marginBottom: '1.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: '0.75rem' }}>
+                  <div style={{ fontSize: 32 }}>⏳</div>
+                  <div>
+                    <div style={{ fontSize: 18, color: AMARELO, fontWeight: 700, fontFamily: "'Bebas Neue', sans-serif", letterSpacing: 1 }}>AGUARDANDO REGULARIZAÇÃO</div>
+                    <div style={{ fontSize: 13, color: '#ccc' }}>Conta temporariamente bloqueada</div>
+                  </div>
+                </div>
+                <div style={{ fontSize: 14, color: '#ddd', lineHeight: 1.7, marginBottom: '0.75rem' }}>
+                  {cliente?.motivo_bloqueio || 'Você teve uma falta sem cancelamento prévio.'}
+                </div>
+                <div style={{ background: '#0a0500', border: `1px solid ${AMARELO}33`, borderRadius: 10, padding: '0.85rem 1rem', fontSize: 13, color: '#aaa', lineHeight: 1.6 }}>
+                  ⏳ <strong style={{ color: '#fff' }}>Aguarde a regularização da cobrança</strong> para fazer novos agendamentos.
+                </div>
+              </div>
+            )}
+
+            {!clienteBloqueado && tipoVisualizacao === 'visitante' && (
+              <div style={{ background: '#0a0014', border: `1px solid ${ACCENT}33`, borderRadius: 12, padding: '0.85rem 1.25rem', marginBottom: '1.5rem', fontSize: 13, color: '#ccc', lineHeight: 1.6 }}>
+                👋 Você está navegando como visitante. Faça login para reservar treinos.
+              </div>
+            )}
+
+            {!clienteBloqueado && semPlanoAtivo && (
+              <div style={{ background: '#110008', border: `1.5px solid ${ACCENT}55`, borderRadius: 16, padding: '1.25rem 1.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontSize: 14, color: ACCENT, fontWeight: 700, marginBottom: 4 }}>⚡ Você não tem um plano ativo</div>
+                  <div style={{ fontSize: 13, color: '#888', lineHeight: 1.5 }}>Ative seu Wellhub, TotalPass ou compre sessões avulsas para começar a agendar.</div>
+                </div>
+                <button onClick={() => router.push('/meus-planos')} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.65rem 1.25rem', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' }}>Ative seu plano →</button>
+              </div>
+            )}
+
+            {!clienteBloqueado && !semPlanoAtivo && precisaCartao && (
+              <div style={{ background: '#1a1000', border: `1.5px solid ${AMARELO}55`, borderRadius: 16, padding: '1.25rem 1.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontSize: 14, color: AMARELO, fontWeight: 700, marginBottom: 4 }}>💳 Cadastre um cartão para liberar agendamentos</div>
+                  <div style={{ fontSize: 13, color: '#888', lineHeight: 1.5 }}>Como seu plano é Wellhub/TotalPass, precisamos de um cartão registrado. <strong style={{ color: '#fff' }}>Nada será cobrado agora.</strong></div>
+                </div>
+                <button onClick={() => router.push('/cadastrar-cartao')} style={{ background: AMARELO, color: '#000', border: 'none', borderRadius: 10, padding: '0.65rem 1.25rem', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' }}>Cadastrar cartão →</button>
+              </div>
+            )}
+
+            {!clienteBloqueado && janelaProximoMesAberta && cliente && (
+              <div style={{ background: '#0a0014', border: `1px solid ${ACCENT}33`, borderRadius: 12, padding: '0.85rem 1.25rem', marginBottom: '1.5rem', fontSize: 13, color: '#ccc', lineHeight: 1.6 }}>
+                ✨ Agendamentos para o próximo mês já estão liberados.
+              </div>
+            )}
+
+            {!clienteBloqueado && todosSemSaldo && !dataSelAposLimite && (
+              <div style={{ background: '#1a0a00', border: '1px solid #ff660033', borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1.5rem' }}>
+                <div style={{ fontSize: 14, color: AMARELO, fontWeight: 600, marginBottom: 4 }}>⚠️ Sem créditos disponíveis</div>
+                <div style={{ fontSize: 13, color: '#666', lineHeight: 1.6 }}>{dataSelEhProximoMes ? 'Você não tem créditos para o mês selecionado.' : 'Seus créditos renovam no dia 1º do próximo mês.'}</div>
+              </div>
+            )}
+
+            {!clienteBloqueado && cliente && Object.keys(saldoExibir).length > 0 && !dataSelAposLimite && (
+              <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                {dataSelEhProximoMes && <span style={{ fontSize: 11, color: AMARELO, fontWeight: 600, marginRight: 4 }}>Saldo do próximo mês:</span>}
+                {Object.entries(saldoExibir).map(([plano, info]: [string, any]) => {
+                  const restante = info.disponivel
+                  const { label } = parsePlanoKey(plano)
+                  return (
+                    <div key={plano} style={{ background: '#111', border: `1px solid ${restante === 0 ? '#333' : restante <= 2 ? '#ffaa0044' : '#ff2d9b33'}`, borderRadius: 10, padding: '0.5rem 1rem', fontSize: 12, color: restante === 0 ? '#444' : restante <= 2 ? AMARELO : ACCENT }}>
+                      <span style={{ fontWeight: 600 }}>{restante}</span>
+                      <span style={{ color: '#555', marginLeft: 4 }}>/ {info.total} {label}</span>
                     </div>
                   )
                 })}
               </div>
+            )}
 
-              {/* Mapa de posições — Running */}
-              {modalReserva.club_aulas?.tipo === 'running_funcional' && posicoes.length > 0 && (
-                <div style={{ marginBottom: '1.5rem' }}>
-                  <div style={{ fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>
-                    Escolha sua posição
-                  </div>
-
-                  {/* Seção R */}
-                  {posicoes.filter(p => p.tipo === 'R').length > 0 && (
-                    <div style={{ marginBottom: '1rem' }}>
-                      <div style={{ fontSize: 11, color: '#444', marginBottom: 8 }}>🏃 Esteiras (R)</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                        {posicoes.filter(p => p.tipo === 'R').map(pos => {
-                          const label = `R${String(pos.numero).padStart(2,'0')}`
-                          const tomado = posicoesTomadas.includes(label)
-                          const selecionado = posicaoSel === label
-                          return (
-                            <button key={pos.id} className="pos-btn"
-                              disabled={tomado}
-                              onClick={() => setPosicaoSel(selecionado ? '' : label)}
-                              style={{
-                                width: 44, height: 44, borderRadius: 10, border: `1.5px solid ${selecionado ? ACCENT : tomado ? '#1a1a1a' : '#2a2a2a'}`,
-                                background: selecionado ? `${ACCENT}30` : tomado ? '#111' : '#0a0a0a',
-                                color: selecionado ? ACCENT : tomado ? '#333' : '#888',
-                                fontSize: 10, fontWeight: 700, cursor: tomado ? 'not-allowed' : 'pointer',
-                                fontFamily: "'DM Mono', monospace",
-                                transition: 'all .15s',
-                              }}>
-                              {label}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Seção F */}
-                  {posicoes.filter(p => p.tipo === 'F').length > 0 && (
-                    <div>
-                      <div style={{ fontSize: 11, color: '#444', marginBottom: 8 }}>⚡ Funcional (F)</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                        {posicoes.filter(p => p.tipo === 'F').map(pos => {
-                          const label = `F${String(pos.numero).padStart(2,'0')}`
-                          const tomado = posicoesTomadas.includes(label)
-                          const selecionado = posicaoSel === label
-                          return (
-                            <button key={pos.id} className="pos-btn"
-                              disabled={tomado}
-                              onClick={() => setPosicaoSel(selecionado ? '' : label)}
-                              style={{
-                                width: 44, height: 44, borderRadius: 10, border: `1.5px solid ${selecionado ? '#2ddd8b' : tomado ? '#1a1a1a' : '#2a2a2a'}`,
-                                background: selecionado ? '#2ddd8b22' : tomado ? '#111' : '#0a0a0a',
-                                color: selecionado ? '#2ddd8b' : tomado ? '#333' : '#888',
-                                fontSize: 10, fontWeight: 700, cursor: tomado ? 'not-allowed' : 'pointer',
-                                fontFamily: "'DM Mono', monospace",
-                                transition: 'all .15s',
-                              }}>
-                              {label}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Legenda */}
-                  <div style={{ display: 'flex', gap: '1rem', marginTop: 12, fontSize: 10, color: '#444' }}>
-                    <span>⬜ Disponível</span>
-                    <span style={{ color: '#222' }}>⬛ Ocupado</span>
-                    <span style={{ color: ACCENT }}>🟥 Selecionado</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Regras */}
-              <div style={{ background: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: 10, padding: '0.75rem 1rem', marginBottom: '1.25rem', fontSize: 12, color: '#555', lineHeight: 1.7 }}>
-                ⚠️ Cancelamento gratuito <strong style={{ color: '#888' }}>até 12h antes</strong>. Se houver fila de espera, prazo reduz para 3h. Falta sem aviso gera multa de R$49,90.
+            {!clienteBloqueado && isDiaExclusivoPro && !dataSelAposLimite && (
+              <div style={{ background: `linear-gradient(90deg, ${ACCENT}22 0%, #08080800 100%)`, border: `1px solid ${ACCENT}55`, borderRadius: 10, padding: '0.75rem 1rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 12, color: ACCENT, fontWeight: 700, fontFamily: "'DM Mono', monospace", letterSpacing: 0.5 }}>🏆 AGENDAMENTOS EXCLUSIVOS COACH CT PRO</div>
+                <button onClick={() => router.push('/comprar')} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 8, padding: '0.4rem 0.85rem', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>CONHECER PLANO →</button>
               </div>
+            )}
 
-              {erroModal && (
-                <div style={{ background: '#ff2d9b15', border: '1px solid #ff2d9b44', borderRadius: 8, padding: '0.6rem 1rem', fontSize: 13, color: ACCENT, marginBottom: '1rem' }}>
-                  {erroModal}
+            {!clienteBloqueado && !isDiaExclusivoPro && tipoVisualizacao === 'visitante' && semanaOffset === 0 && (
+              <div style={{ background: 'linear-gradient(90deg, #0a1a14 0%, #08080800 100%)', border: `1px solid #2ddd8b33`, borderRadius: 10, padding: '0.6rem 1rem', marginBottom: '0.75rem', fontSize: 12, color: '#2ddd8b', fontWeight: 600, fontFamily: "'DM Mono', monospace", letterSpacing: 0.5 }}>
+                📅 AGENDAMENTO LIVRE · próximos 7 dias
+              </div>
+            )}
+
+            {!clienteBloqueado && (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                  <button className="nav-semana-btn" onClick={() => { setSemanaOffset(o => Math.max(0, o - 1)); setDiaSel(0) }} disabled={semanaOffset === 0}
+                    style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #333', background: 'transparent', color: semanaOffset === 0 ? '#333' : '#fff', fontSize: 18, cursor: semanaOffset === 0 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .2s' }}>‹</button>
+                  <div style={{ display: 'flex', gap: 6, flex: 1 }}>
+                    {diasSemana.map((d, i) => {
+                      const isHoje = semanaOffset === 0 && i === 0
+                      const isSel = i === diaSel
+                      const diaForaLimite = d > dataMaxima
+                      return (
+                        <div key={i} className={`dia-btn-h ${diaForaLimite ? 'dia-btn-disabled' : ''}`} onClick={() => !diaForaLimite && setDiaSel(i)}
+                          style={{ padding: '0.6rem 0.25rem', borderRadius: 10, border: `1.5px solid ${isSel ? ACCENT : '#222'}`, background: isSel ? `${ACCENT}15` : 'transparent', textAlign: 'center' }}>
+                          <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, color: isSel ? ACCENT : '#555', fontWeight: 600, marginBottom: 2 }}>{isHoje ? 'HOJE' : DIAS_SEMANA[d.getDay()]}</div>
+                          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 20, color: isSel ? '#fff' : '#888', lineHeight: 1 }}>{d.getDate()}</div>
+                          <div style={{ fontSize: 9, color: isSel ? ACCENT : '#444', textTransform: 'uppercase' }}>{d.toLocaleDateString('pt-BR', { month: 'short' })}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <button className="nav-semana-btn" onClick={() => { setSemanaOffset(o => Math.min(semanasMaximas, o + 1)); setDiaSel(0) }} disabled={semanaOffset >= semanasMaximas}
+                    style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #333', background: 'transparent', color: semanaOffset >= semanasMaximas ? '#333' : '#fff', fontSize: 18, cursor: semanaOffset >= semanasMaximas ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .2s' }}>›</button>
                 </div>
-              )}
 
+                {tipoDia === 'feriado' && (
+                  <div style={{ background: '#1a1000', border: `1px solid ${AMARELO}44`, borderRadius: 12, padding: '0.85rem 1.25rem', marginBottom: '1rem', fontSize: 13, color: '#ddd', lineHeight: 1.6 }}>
+                    ⭐ <strong style={{ color: AMARELO }}>{feriadoDescricao}</strong> — funcionando com escala especial e horários de fim de semana.
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+                  {[{ key: 'todos', label: 'Todos' }, { key: 'manha', label: '🌅 Manhã' }, { key: 'tarde', label: '☀️ Tarde' }, { key: 'noite', label: '🌙 Noite' }].map(p => (
+                    <button key={p.key} onClick={() => setPeriodo(p.key as any)}
+                      style={{ padding: '0.35rem 1rem', borderRadius: 20, border: `1px solid ${periodo === p.key ? ACCENT : '#333'}`, background: periodo === p.key ? `${ACCENT}20` : 'transparent', color: periodo === p.key ? ACCENT : '#555', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+
+                {dataSelAposLimite ? (
+                  <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#666' }}>
+                    <div style={{ fontSize: 14, marginBottom: 8 }}>📅 Data ainda não liberada</div>
+                    <div style={{ fontSize: 12, color: '#555' }}>Agendamentos liberados em janela de 14 dias.</div>
+                  </div>
+                ) : !unidadeAtiva ? (
+                  <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#444' }}>Selecione uma unidade para ver os horários.</div>
+                ) : loadingHorarios ? (
+                  <div style={{ textAlign: 'center', padding: '3rem', color: '#555' }}>Carregando horários...</div>
+                ) : horariosFiltrados.length === 0 ? (
+                  <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#666', lineHeight: 1.7 }}>
+                    {tipoDia === 'fds' ? <><div style={{ fontSize: 32, marginBottom: 8 }}>📅</div><div style={{ fontSize: 14, color: '#888' }}>Não há coaches escalados neste dia ainda.</div></>
+                      : tipoDia === 'feriado' ? <><div style={{ fontSize: 32, marginBottom: 8 }}>⭐</div><div style={{ fontSize: 14, color: '#888' }}>Feriado sem coaches escalados.</div></>
+                      : semanaOffset === 0 && diaSel === 0 ? 'Não há mais horários disponíveis para hoje.' : 'Nenhum horário disponível neste dia.'}
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {horariosFiltrados.map((h, i) => {
+                      const lotado = h.livres <= 0
+                      const clienteNaFila = naFila(h.hora)
+                      const jaAgendado = agendamentosNoDia.some(a => (a.horario || '').slice(0, 5) === h.hora && ['agendado', 'confirmado'].includes(a.status))
+                      const temFilaEsperaAqui = temFilaNoHorario(h.hora)
+                      return (
+                        <div key={i} className="slot-row-h"
+                          style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', padding: '1rem 1.25rem', borderRadius: 12, border: `1px solid ${jaAgendado ? CYAN + '44' : clienteNaFila ? AMARELO + '44' : '#222'}`, background: jaAgendado ? '#00e5ff08' : clienteNaFila ? '#ffaa0008' : '#111' }}>
+                          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, fontWeight: 500, color: '#fff', width: 58, flexShrink: 0 }}>{h.hora}</div>
+                          <div style={{ display: 'flex', gap: 6, flex: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+                            {Array.from({ length: h.total }).map((_, vi) => {
+                              let estado: 'livre' | 'ocupado' | 'meu' | 'fila' | 'bloqueado' = 'livre'
+                              if (jaAgendado && vi === 0) estado = 'meu'
+                              else if (clienteNaFila && vi === 0) estado = 'fila'
+                              else if (vi < h.ocupados) estado = 'ocupado'
+                              else if (vi < h.ocupados + h.bloqueadas) estado = 'bloqueado'
+                              return <HalterSVG key={vi} estado={estado} onClick={!isDiaExclusivoPro ? () => !lotado && !jaAgendado && tentarAgendar(h.hora, h.livres) : undefined} />
+                            })}
+                          </div>
+                          <div style={{ flexShrink: 0, minWidth: 110, textAlign: 'right' }}>
+                            {jaAgendado ? (
+                              <div style={{ fontSize: 11, color: CYAN, fontWeight: 600 }}>RESERVADO ✓</div>
+                            ) : clienteNaFila ? (
+                              <div style={{ fontSize: 11, color: AMARELO, fontWeight: 600 }}>NA FILA ⏳</div>
+                            ) : isDiaExclusivoPro ? (
+                              <div className="mini-card-pro" onClick={() => router.push('/comprar')}
+                                style={{ background: '#0d0010', border: `1px solid ${ACCENT}55`, borderRadius: 10, padding: '0.6rem 0.75rem', cursor: 'pointer', textAlign: 'left', transition: 'border-color .2s' }}>
+                                <div style={{ fontSize: 10, color: ACCENT, fontWeight: 700, letterSpacing: 0.5, marginBottom: 4, fontFamily: "'DM Mono', monospace" }}>🏆 Exclusivo Pro</div>
+                                <div style={{ fontSize: 11, color: '#aaa', textDecoration: 'underline' }}>Conhecer planos →</div>
+                              </div>
+                            ) : (
+                              <>
+                                <div style={{ fontSize: 11, fontFamily: "'DM Mono', monospace", color: lotado ? '#ff4444' : h.livres <= 2 ? AMARELO : ACCENT, fontWeight: 600, marginBottom: 4 }}>
+                                  {lotado ? 'LOTADO' : h.livres === 1 ? '1 VAGA' : `${h.livres} VAGAS`}
+                                </div>
+                                {h.bloqueadas > 0 && !lotado && <div style={{ fontSize: 9, color: '#ff4444', marginBottom: 4 }}>{h.bloqueadas} bloq.</div>}
+                                {temFilaEsperaAqui && !lotado && <div style={{ fontSize: 9, color: AMARELO, marginBottom: 4 }}>⏳ há fila</div>}
+                                {!lotado && <button onClick={() => tentarAgendar(h.hora, h.livres)} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Reservar</button>}
+                                {lotado && <button onClick={() => tentarFila(h.hora)} style={{ background: 'transparent', color: AMARELO, border: `1px solid ${AMARELO}`, borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Entrar na fila</button>}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* ══ MODAIS ══ */}
+      {modalSemPlano && (
+        <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#111', border: `1.5px solid ${ACCENT}55`, borderRadius: 20, width: '100%', maxWidth: 400, padding: '1.5rem' }}>
+            <div style={{ fontSize: 36, marginBottom: '1rem', textAlign: 'center' }}>⚡</div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: 8, textAlign: 'center' }}>PLANO NECESSÁRIO</div>
+            <div style={{ fontSize: 14, color: '#aaa', lineHeight: 1.7, marginBottom: '1.5rem', textAlign: 'center' }}>
+              Para agendar você precisa de um plano ativo. Ative seu <strong style={{ color: '#fff' }}>Wellhub</strong>, <strong style={{ color: '#fff' }}>TotalPass</strong> ou compre sessões avulsas.
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setModalSemPlano(false)} style={{ flex: 1, background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.85rem', color: '#888', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Fechar</button>
+              <button onClick={() => router.push('/meus-planos')} style={{ flex: 2, background: ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Ative seu plano →</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalSemCartao && (
+        <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#111', border: `1.5px solid ${AMARELO}55`, borderRadius: 20, width: '100%', maxWidth: 420, padding: '1.5rem' }}>
+            <div style={{ fontSize: 36, marginBottom: '1rem', textAlign: 'center' }}>💳</div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: 8, textAlign: 'center' }}>CARTÃO NECESSÁRIO</div>
+            <div style={{ fontSize: 14, color: '#aaa', lineHeight: 1.7, marginBottom: '1rem', textAlign: 'center' }}>
+              Como seu plano é <strong style={{ color: '#fff' }}>Wellhub/TotalPass</strong>, precisamos de um cartão cadastrado pra cobrir possíveis multas por faltas.
+            </div>
+            <div style={{ background: '#0a0a0a', border: `1px solid ${AMARELO}33`, borderRadius: 10, padding: '0.75rem 1rem', marginBottom: '1.5rem', fontSize: 13, color: AMARELO, textAlign: 'center', fontWeight: 600 }}>
+              🔒 Nada será cobrado agora
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setModalSemCartao(false)} style={{ flex: 1, background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.85rem', color: '#888', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Fechar</button>
+              <button onClick={() => router.push('/cadastrar-cartao')} style={{ flex: 2, background: AMARELO, color: '#000', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Cadastrar cartão →</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mostrarContrato && (
+        <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#111', border: '1px solid #333', borderRadius: 20, width: '100%', maxWidth: 500, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '1.5rem 1.5rem 1rem', borderBottom: '1px solid #222' }}>
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', letterSpacing: 1 }}>CONTRATO COACH CT</div>
+              <div style={{ fontSize: 13, color: '#888', marginTop: 4 }}>Leia antes de fazer sua primeira reserva</div>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.5rem' }}>
+              <pre style={{ fontSize: 13, color: '#aaa', lineHeight: 1.8, whiteSpace: 'pre-wrap', fontFamily: "'DM Sans', sans-serif" }}>{CONTRATO}</pre>
+            </div>
+            <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid #222' }}>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer', marginBottom: '1rem' }}>
+                <input type="checkbox" checked={aceiteCheck} onChange={e => setAceiteCheck(e.target.checked)} style={{ marginTop: 2, accentColor: ACCENT, width: 16, height: 16, flexShrink: 0 }} />
+                <span style={{ fontSize: 13, color: '#aaa', lineHeight: 1.5 }}>Li e aceito o contrato e as regras de agendamento, cancelamento e falta.</span>
+              </label>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={() => setModalReserva(null)}
-                  style={{ flex: 1, background: 'transparent', border: '1px solid #2a2a2a', borderRadius: 10, padding: '0.85rem', color: '#666', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                  Cancelar
-                </button>
-                <button onClick={confirmarReserva} disabled={confirmando || planosDisponiveis.length === 0}
-                  style={{ flex: 2, background: planosDisponiveis.length === 0 ? '#222' : ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 600, fontSize: 15, cursor: confirmando || planosDisponiveis.length === 0 ? 'default' : 'pointer', fontFamily: "'DM Sans', sans-serif", opacity: confirmando ? 0.7 : 1 }}>
-                  {confirmando ? 'Confirmando...' : 'Confirmar reserva ✓'}
+                <button onClick={() => { setMostrarContrato(false); setModalSlot(null); setModalFila(null) }} style={{ flex: 1, background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.75rem', color: '#888', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Cancelar</button>
+                <button onClick={() => { if (aceiteCheck) { setContratoAssinado(true); setMostrarContrato(false) } }} disabled={!aceiteCheck}
+                  style={{ flex: 2, background: aceiteCheck ? ACCENT : '#333', color: '#fff', border: 'none', borderRadius: 10, padding: '0.75rem', fontWeight: 600, fontSize: 14, cursor: aceiteCheck ? 'pointer' : 'default', fontFamily: "'DM Sans', sans-serif" }}>
+                  Aceitar e continuar →
                 </button>
               </div>
             </div>
@@ -654,56 +889,110 @@ function AulasPageInner() {
         </div>
       )}
 
-      {/* ══ MODAL FILA ══ */}
-      {modalFila && (
-        <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: '1rem' }}>
-          <div style={{ background: '#111', border: `1px solid ${AMARELO}33`, borderRadius: '20px 20px 16px 16px', width: '100%', maxWidth: 500, padding: '1.5rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-              <div>
-                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: AMARELO, letterSpacing: 1 }}>FILA DE ESPERA</div>
-                <div style={{ fontSize: 13, color: '#555', marginTop: 2 }}>{tipoLabel(modalFila.club_aulas?.tipo)} · {(modalFila.club_aulas?.horario||'').slice(0,5)}</div>
-              </div>
-              <button onClick={() => setModalFila(null)} style={{ background: 'transparent', border: 'none', color: '#555', fontSize: 20, cursor: 'pointer' }}>✕</button>
-            </div>
-
-            <div style={{ background: '#1a1000', border: `1px solid ${AMARELO}33`, borderRadius: 10, padding: '1rem', marginBottom: '1.25rem', fontSize: 13, color: '#aaa', lineHeight: 1.7 }}>
-              <div style={{ color: AMARELO, fontWeight: 600, marginBottom: 6 }}>⚠️ Atenção</div>
-              <ul style={{ paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 5 }}>
-                <li>Se alguém cancelar, <strong style={{ color: '#fff' }}>você será confirmado automaticamente</strong>.</li>
-                <li>Após confirmado, cancelamento <strong style={{ color: '#fff' }}>até 3h antes</strong>.</li>
-                <li>Falta sem aviso gera multa de R$49,90.</li>
-              </ul>
-            </div>
-
-            {/* Plano */}
-            <div style={{ marginBottom: '1.25rem' }}>
-              <div style={{ fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Usar crédito de qual plano?</div>
-              {planosDisponiveis.map(p => {
+      {modalSlot && !mostrarContrato && (
+        <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#111', border: '1px solid #333', borderRadius: 20, width: '100%', maxWidth: 440, padding: '1.5rem', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: 4 }}>CONFIRMAR RESERVA</div>
+            <div style={{ fontSize: 13, color: '#555', marginBottom: 2, textTransform: 'capitalize' }}>{dataFormatada(modalSlot.data)} · {modalSlot.hora}</div>
+            {unidadeAtiva && <div style={{ fontSize: 12, color: ACCENT, marginBottom: '1.5rem', fontWeight: 600 }}>📍 {unidadeAtiva.nome}</div>}
+            <div style={{ marginBottom: '1.5rem' }}>
+              <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Como vai usar esta sessão?</div>
+              {planosDisp.length === 0 ? (
+                <div style={{ background: '#1a0a00', border: '1px solid #ff660033', borderRadius: 10, padding: '1rem', fontSize: 13, color: AMARELO }}>⚠️ Você não tem créditos disponíveis.</div>
+              ) : planosDisp.map(p => {
                 const { label, icon } = parsePlanoKey(p)
                 return (
                   <div key={p} onClick={() => setTipoCredito(p)}
-                    style={{ border: `1.5px solid ${tipoCredito === p ? AMARELO : '#2a2a2a'}`, background: tipoCredito === p ? `${AMARELO}12` : 'transparent', borderRadius: 10, padding: '0.75rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: 8, transition: 'all .15s' }}>
+                    style={{ border: `1.5px solid ${tipoCredito === p ? ACCENT : '#333'}`, background: tipoCredito === p ? `${ACCENT}12` : 'transparent', borderRadius: 10, padding: '0.75rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: 8, transition: 'all .15s' }}>
                     <span style={{ fontSize: 18 }}>{icon}</span>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 14, fontWeight: 600, color: tipoCredito === p ? '#fff' : '#888' }}>{label}</div>
+                      {saldoExibir[p] && <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>{saldoExibir[p].disponivel} sessões restantes {p.startsWith('coach_ct_pro_') ? 'no plano' : dataSelEhProximoMes ? 'no próximo mês' : 'este mês'}</div>}
                     </div>
-                    <div style={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${tipoCredito === p ? AMARELO : '#444'}`, background: tipoCredito === p ? AMARELO : 'transparent', flexShrink: 0 }} />
+                    <div style={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${tipoCredito === p ? ACCENT : '#444'}`, background: tipoCredito === p ? ACCENT : 'transparent', flexShrink: 0 }} />
                   </div>
                 )
               })}
             </div>
-
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer', marginBottom: '1.25rem' }}>
-              <input type="checkbox" checked={filaAceite} onChange={e => setFilaAceite(e.target.checked)} style={{ marginTop: 2, accentColor: AMARELO, width: 16, height: 16, flexShrink: 0 }} />
-              <span style={{ fontSize: 13, color: '#888', lineHeight: 1.5 }}>Entendi as regras e aceito o agendamento automático se uma vaga abrir.</span>
-            </label>
-
-            {erroModal && (
-              <div style={{ background: '#ffaa0015', border: '1px solid #ffaa0044', borderRadius: 8, padding: '0.6rem 1rem', fontSize: 13, color: AMARELO, marginBottom: '1rem' }}>{erroModal}</div>
+            {isCredPro && (
+              <div style={{ marginBottom: '1.5rem' }}>
+                <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Deseja escolher seu coach?</div>
+                <select value={coachEscolhido} onChange={e => setCoachEscolhido(e.target.value)}
+                  style={{ width: '100%', background: '#0a0a0a', border: `1.5px solid ${coachEscolhido ? ACCENT : '#333'}`, borderRadius: 10, padding: '0.75rem 1rem', color: '#fff', fontSize: 14, fontFamily: "'DM Sans', sans-serif", cursor: 'pointer' }}>
+                  <option value="">Qualquer coach disponível</option>
+                  {coachesDisponiveis.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                </select>
+                {coachesDisponiveis.length === 0 && <div style={{ fontSize: 11, color: '#666', marginTop: 6 }}>Sem coaches disponíveis pra escolha neste horário.</div>}
+              </div>
             )}
-
+            <div style={{ background: temFila ? '#1a1000' : '#0a0a0a', border: `1px solid ${temFila ? AMARELO + '44' : '#1a1a1a'}`, borderRadius: 10, padding: '0.75rem 1rem', marginBottom: '1.5rem', fontSize: 12, lineHeight: 1.7 }}>
+              {temFila
+                ? <><div style={{ color: AMARELO, fontWeight: 600, marginBottom: 4 }}>⏳ Há fila de espera para este horário</div><div style={{ color: '#888' }}>Cancelamento gratuito <strong style={{ color: '#fff' }}>até 3h antes</strong>. Abaixo de 3h: <strong style={{ color: '#ff4444' }}>bloqueado</strong>.</div></>
+                : <div style={{ color: '#555' }}>⚠️ Cancelamento gratuito <strong style={{ color: '#888' }}>{isCredPro ? 'até 3h antes' : 'até 12h antes'}</strong>. Falta sem aviso gera bloqueio.</div>
+              }
+            </div>
+            {erroModal && <div style={{ background: '#ff2d9b15', border: '1px solid #ff2d9b44', borderRadius: 8, padding: '0.6rem 1rem', fontSize: 13, color: ACCENT, marginBottom: '1rem' }}>{erroModal}</div>}
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => setModalFila(null)} style={{ flex: 1, background: 'transparent', border: '1px solid #2a2a2a', borderRadius: 10, padding: '0.85rem', color: '#666', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Cancelar</button>
+              <button onClick={() => setModalSlot(null)} style={{ flex: 1, background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.85rem', color: '#888', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Cancelar</button>
+              <button onClick={confirmarAgendamento} disabled={confirmando || planosDisp.length === 0}
+                style={{ flex: 2, background: planosDisp.length === 0 ? '#222' : ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 600, fontSize: 15, cursor: confirmando || planosDisp.length === 0 ? 'default' : 'pointer', fontFamily: "'DM Sans', sans-serif", opacity: confirmando ? 0.7 : 1 }}>
+                {confirmando ? 'Confirmando...' : 'Confirmar reserva ✓'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalFila && !mostrarContrato && (
+        <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#111', border: `1px solid ${AMARELO}33`, borderRadius: 20, width: '100%', maxWidth: 440, padding: '1.5rem', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: AMARELO, marginBottom: 4 }}>FILA DE ESPERA</div>
+            <div style={{ fontSize: 13, color: '#555', marginBottom: 2, textTransform: 'capitalize' }}>{dataFormatada(modalFila.data)} · {modalFila.hora}</div>
+            {unidadeAtiva && <div style={{ fontSize: 12, color: AMARELO, marginBottom: '1.5rem', fontWeight: 600 }}>📍 {unidadeAtiva.nome}</div>}
+            <div style={{ background: '#1a1000', border: `1px solid ${AMARELO}33`, borderRadius: 10, padding: '1rem', marginBottom: '1.5rem', fontSize: 13, color: '#aaa', lineHeight: 1.7 }}>
+              <div style={{ color: AMARELO, fontWeight: 600, marginBottom: 6 }}>⚠️ Atenção antes de entrar na fila</div>
+              <ul style={{ paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <li>Se alguém cancelar, <strong style={{ color: '#fff' }}>você será automaticamente reservado</strong> — até 3h antes.</li>
+                <li>Após confirmado, cancelamento <strong style={{ color: '#fff' }}>até 3h antes</strong> — só com outra pessoa na fila.</li>
+                <li>Falta sem aviso gera multa.</li>
+              </ul>
+            </div>
+            <div style={{ marginBottom: '1.5rem' }}>
+              <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Usar crédito de qual plano?</div>
+              {planosDisp.map(p => {
+                const { label, icon } = parsePlanoKey(p)
+                return (
+                  <div key={p} onClick={() => setTipoFilaCredito(p)}
+                    style={{ border: `1.5px solid ${tipoFilaCredito === p ? AMARELO : '#333'}`, background: tipoFilaCredito === p ? `${AMARELO}12` : 'transparent', borderRadius: 10, padding: '0.75rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: 8, transition: 'all .15s' }}>
+                    <span style={{ fontSize: 18 }}>{icon}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: tipoFilaCredito === p ? '#fff' : '#888' }}>{label}</div>
+                      {saldoExibir[p] && <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>{saldoExibir[p].disponivel} sessões restantes</div>}
+                    </div>
+                    <div style={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${tipoFilaCredito === p ? AMARELO : '#444'}`, background: tipoFilaCredito === p ? AMARELO : 'transparent', flexShrink: 0 }} />
+                  </div>
+                )
+              })}
+            </div>
+            <div style={{ marginBottom: '1.5rem' }}>
+              <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Como quer ser avisado?</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {notifOpcoes.map(op => (
+                  <div key={op.key} onClick={() => setNotifFila(op.key as any)}
+                    style={{ flex: 1, border: `1.5px solid ${notifFila === op.key ? AMARELO : '#333'}`, background: notifFila === op.key ? `${AMARELO}12` : 'transparent', borderRadius: 10, padding: '0.6rem 0.5rem', cursor: 'pointer', textAlign: 'center', transition: 'all .15s' }}>
+                    <div style={{ fontSize: 20, marginBottom: 4 }}>{op.icon}</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: notifFila === op.key ? '#fff' : '#666' }}>{op.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer', marginBottom: '1.5rem' }}>
+              <input type="checkbox" checked={filaAceite} onChange={e => setFilaAceite(e.target.checked)} style={{ marginTop: 2, accentColor: AMARELO, width: 16, height: 16, flexShrink: 0 }} />
+              <span style={{ fontSize: 13, color: '#888', lineHeight: 1.5 }}>Entendi as regras. Se uma vaga abrir, aceito o agendamento automático.</span>
+            </label>
+            {erroFila && <div style={{ background: '#ffaa0015', border: '1px solid #ffaa0044', borderRadius: 8, padding: '0.6rem 1rem', fontSize: 13, color: AMARELO, marginBottom: '1rem' }}>{erroFila}</div>}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setModalFila(null)} style={{ flex: 1, background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.85rem', color: '#888', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Cancelar</button>
               <button onClick={confirmarFila} disabled={entrandoFila}
                 style={{ flex: 2, background: AMARELO, color: '#000', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 700, fontSize: 15, cursor: entrandoFila ? 'default' : 'pointer', fontFamily: "'DM Sans', sans-serif", opacity: entrandoFila ? 0.7 : 1 }}>
                 {entrandoFila ? 'Entrando...' : 'Entrar na fila ⏳'}
@@ -712,43 +1001,6 @@ function AulasPageInner() {
           </div>
         </div>
       )}
-
-      {/* ══ MODAL GÊNERO ══ */}
-      {modalGenero && (
-        <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
-          <div style={{ background: '#111', border: `1.5px solid ${ACCENT}55`, borderRadius: 20, width: '100%', maxWidth: 380, padding: '2rem', textAlign: 'center' }}>
-            <div style={{ fontSize: 48, marginBottom: '1rem' }}>👩</div>
-            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: 8 }}>AULA EXCLUSIVA</div>
-            <div style={{ fontSize: 14, color: '#aaa', lineHeight: 1.7, marginBottom: '1.5rem' }}>
-              O <strong style={{ color: '#fff' }}>Lift for Girls</strong> é uma aula exclusiva para mulheres.
-              {cliente?.sexo === null || cliente?.sexo === undefined
-                ? <><br/><br/>Seu perfil não tem o gênero cadastrado. Acesse <strong style={{ color: ACCENT }}>Minha conta</strong> e atualize para continuar.</>
-                : <><br/><br/>Esta aula não está disponível para o seu perfil.</>
-              }
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => setModalGenero(false)} style={{ flex: 1, background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.85rem', color: '#666', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Fechar</button>
-              {(!cliente?.sexo) && (
-                <button onClick={() => router.push('/minha-conta')} style={{ flex: 2, background: ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Atualizar perfil →</button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
-  )
-}
-
-// ─── Wrapper com Suspense (exigido pelo Next.js para useSearchParams) ───
-export default function AulasPage() {
-  return (
-    <Suspense fallback={
-      <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ width: 32, height: 32, border: '4px solid #ff2d9b', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
-      </div>
-    }>
-      <AulasPageInner />
-    </Suspense>
   )
 }
