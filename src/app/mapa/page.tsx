@@ -1,351 +1,817 @@
 'use client'
-import { Suspense, useEffect, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { useAuth } from '@/hooks/useAuth'
+import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
-import SiteHeader from '@/components/SiteHeader'
+import { useAuth } from '@/hooks/useAuth'
+import { useRouter } from 'next/navigation'
+import {
+  Plus, Save, X, Calendar, List, AlertCircle,
+  Pencil, Power, Users, Clock, ChevronDown, ChevronUp,
+  Tag, RefreshCw, CheckCircle, CalendarDays, Filter
+} from 'lucide-react'
 
-const ACCENT  = '#ff2d9b'
-const VERDE   = '#2ddd8b'
-const AMARELO = '#ffaa00'
+const DIAS_ABREV = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+const DIAS_FULL  = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado']
+const TIPOS = [
+  { value: 'lift',               label: 'Lift' },
+  { value: 'lift_for_girls',    label: 'Lift for Girls' },
+  { value: 'running_funcional', label: 'Running + Funcional' },
+]
+const HORARIOS_VILA_OLIMPIA = [
+  '06:00','07:00','08:00','09:00','10:00','10:15',
+  '11:00','11:15','12:00','12:15','18:30','19:30',
+]
+const HORARIOS_PINHEIROS = [
+  '06:20','07:20','09:00','10:00','10:15',
+  '11:00','11:15','12:00','12:15','18:30','19:30',
+]
+const HORARIOS_PADRAO = [
+  '05:30','06:00','06:30','07:00','07:30','08:00','08:30',
+  '09:00','09:30','10:00','10:15','10:30','11:00','11:15','11:30',
+  '12:00','12:15','12:30','13:00','14:00','15:00','16:00',
+  '17:00','18:00','18:30','19:00','19:30','20:00',
+]
 
-function parsePlanoKey(key: string): { label: string; icon: string } {
-  const lower = (key||'').toLowerCase()
-  if (lower.startsWith('wellhub'))   return { label: 'Wellhub',       icon: '💜' }
-  if (lower.startsWith('totalpass')) return { label: 'TotalPass',     icon: '🔵' }
-  return { label: key, icon: '🎟️' }
+function horariosParaUnidade(nomeUnidade: string): string[] {
+  const nome = (nomeUnidade || '').toLowerCase()
+  if (nome.includes('vila') || nome.includes('olímpia') || nome.includes('olimpia')) return HORARIOS_VILA_OLIMPIA
+  if (nome.includes('pinheiros')) return HORARIOS_PINHEIROS
+  return HORARIOS_PADRAO
+}
+const FORM_VAZIO = {
+  tipo: 'lift', grupo_muscular_id: '', coach_id: '',
+  dia_semana: 1, horario: '06:00', duracao_min: 50, capacidade: 24,
 }
 
-// ── SVG Esteira ──────────────────────────────────
-function IconEsteira({ color }: { color: string }) {
-  return (
-    <svg width="100%" viewBox="0 0 56 48" style={{ display:'block' }}>
-      {/* Belt */}
-      <rect x="3" y="38" width="40" height="6" rx="3" fill={color}/>
-      {/* Rollers */}
-      <circle cx="6.5" cy="41" r="3.5" fill={color}/>
-      <circle cx="39.5" cy="41" r="3.5" fill={color}/>
-      {/* Support column */}
-      <rect x="38" y="20" width="4" height="20" rx="2" fill={color}/>
-      {/* Display panel */}
-      <rect x="36" y="13" width="11" height="8" rx="2" fill={color}/>
-      {/* Head */}
-      <circle cx="19" cy="7" r="4.5" fill={color}/>
-      {/* Torso */}
-      <line x1="19" y1="11.5" x2="16" y2="24" stroke={color} strokeWidth="4" strokeLinecap="round"/>
-      {/* Arm back */}
-      <line x1="18" y1="15" x2="28" y2="19" stroke={color} strokeWidth="3.5" strokeLinecap="round"/>
-      {/* Arm forward */}
-      <line x1="18" y1="15" x2="9" y2="20" stroke={color} strokeWidth="3.5" strokeLinecap="round"/>
-      {/* Leg trailing */}
-      <line x1="16" y1="24" x2="9" y2="36" stroke={color} strokeWidth="4" strokeLinecap="round"/>
-      {/* Leg bent upper */}
-      <line x1="16" y1="24" x2="22" y2="31" stroke={color} strokeWidth="4" strokeLinecap="round"/>
-      {/* Leg bent lower */}
-      <line x1="22" y1="31" x2="16" y2="38" stroke={color} strokeWidth="3.5" strokeLinecap="round"/>
-    </svg>
-  )
+function tipoLabel(t: string) { return TIPOS.find(x => x.value === t)?.label ?? t }
+function tipoColor(t: string) {
+  if (t === 'lift')            return 'bg-blue-100 text-blue-700'
+  if (t === 'lift_for_girls') return 'bg-pink-100 text-pink-700'
+  return 'bg-cyan-100 text-cyan-700'
+}
+function capacidadePorUnidadeTipo(nomeUnidade: string, tipo: string): number {
+  const nome = (nomeUnidade || '').toLowerCase()
+  const isVila = nome.includes('vila') || nome.includes('olímpia') || nome.includes('olimpia')
+  const isPinheiros = nome.includes('pinheiros')
+  if (tipo === 'running_funcional') {
+    if (isVila)      return 26
+    if (isPinheiros) return 30
+    return 30
+  }
+  return 24
+}
+function dataLocalStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+function gerarDatas(diaSemana: number, dataInicio: string, dataFim: string): string[] {
+  const datas: string[] = []
+  const fim = new Date(dataFim + 'T12:00:00')
+  let cur = new Date(dataInicio + 'T12:00:00')
+  while (cur.getDay() !== diaSemana) cur.setDate(cur.getDate() + 1)
+  while (cur <= fim) { datas.push(dataLocalStr(cur)); cur.setDate(cur.getDate() + 7) }
+  return datas
+}
+function dataFimPorMeses(meses: number): string {
+  const d = new Date(); d.setMonth(d.getMonth() + meses); d.setDate(0)
+  return dataLocalStr(d)
 }
 
-// ── SVG Haltere ──────────────────────────────────
-function IconHaltere({ color }: { color: string }) {
-  return (
-    <svg width="100%" viewBox="0 0 44 28" style={{ display:'block' }}>
-      <rect x="0"  y="9"  width="8"  height="10" rx="2" fill={color}/>
-      <rect x="3"  y="6"  width="3"  height="16" rx="1.5" fill={color}/>
-      <rect x="11" y="12" width="22" height="4"  rx="2" fill={color}/>
-      <rect x="36" y="9"  width="8"  height="10" rx="2" fill={color}/>
-      <rect x="38" y="6"  width="3"  height="16" rx="1.5" fill={color}/>
-    </svg>
-  )
-}
-
-function MapaPageInner() {
+export default function JustClubAdminPage() {
+  const { perfil, loading } = useAuth()
   const router   = useRouter()
-  const params   = useSearchParams()
-  const ocId     = params.get('ocorrencia') || ''
-  const unidadeId = params.get('unidade') || ''
-  const { user, perfil } = useAuth()
   const supabase = createClient()
 
-  const [ocorrencia,      setOcorrencia]      = useState<any>(null)
-  const [posicoes,        setPosicoes]        = useState<any[]>([])
-  const [posicoesTomadas, setPosicoesTomadas] = useState<string[]>([])
-  const [posicaoSel,      setPosicaoSel]      = useState('')
-  const [cliente,         setCliente]         = useState<any>(null)
-  const [saldo,           setSaldo]           = useState<Record<string,any>>({})
-  const [loading,         setLoading]         = useState(true)
+  const [unidades,        setUnidades]        = useState<any[]>([])
+  const [unidadeAtiva,    setUnidadeAtiva]    = useState<any | null>(null)
+  const [loadingUnidades, setLoadingUnidades] = useState(true)
 
-  // Modal confirmação
-  const [modalAberto,   setModalAberto]   = useState(false)
-  const [tipoCredito,   setTipoCredito]   = useState('')
-  const [confirmando,   setConfirmando]   = useState(false)
-  const [erroModal,     setErroModal]     = useState('')
+  const [aulas,       setAulas]       = useState<any[]>([])
+  const [coaches,     setCoaches]     = useState<any[]>([])
+  const [grupos,      setGrupos]      = useState<any[]>([])
+  const [ocorrencias, setOcorrencias] = useState<any[]>([])
+  const [loadingData, setLoadingData] = useState(false)
+  const [loadingOcs,  setLoadingOcs]  = useState(false)
+  const [msg,         setMsg]         = useState('')
+
+  const [abaAtiva, setAbaAtiva] = useState<'lista' | 'grade' | 'calendario' | 'grupos'>('lista')
+  const [filtroTipo,  setFiltroTipo]  = useState('todos')
+  const [filtroCoach, setFiltroCoach] = useState('todos')
+  const [diasCalendario, setDiasCalendario] = useState<7|15|30>(7)
+  const [diasExpandidos, setDiasExpandidos] = useState<Set<number>>(new Set([1,2,3,4,5]))
+
+  const [modalAberto, setModalAberto] = useState(false)
+  const [editando,    setEditando]    = useState<any | null>(null)
+  const [form,        setForm]        = useState({ ...FORM_VAZIO })
+  const [salvando,    setSalvando]    = useState(false)
+
+  const [formReplicar, setFormReplicar] = useState(false)
+  const [formMeses,    setFormMeses]    = useState(1)
+  const [formInicio,   setFormInicio]   = useState(dataLocalStr(new Date()))
+
+  const [modalReplicar,    setModalReplicar]    = useState<any | null>(null)
+  const [replicarMeses,    setReplicarMeses]    = useState(1)
+  const [replicarInicio,   setReplicarInicio]   = useState(dataLocalStr(new Date()))
+  const [replicando,       setReplicando]        = useState(false)
+  const [resultReplicacao, setResultReplicacao] = useState<{ criadas: number; existentes: number } | null>(null)
+
+  const [novoGrupo,     setNovoGrupo]     = useState('')
+  const [salvandoGrupo, setSalvandoGrupo] = useState(false)
+  const [editandoGrupo, setEditandoGrupo] = useState<any | null>(null)
+  const [nomeGrupoEdit, setNomeGrupoEdit] = useState('')
 
   useEffect(() => {
-    if (!ocId || !unidadeId) { router.replace('/agendar'); return }
-    if (!user) { router.push(`/login?redirect=${encodeURIComponent(`/mapa?ocorrencia=${ocId}&unidade=${unidadeId}`)}`); return }
-    carregarTudo()
-  }, [ocId, unidadeId, user])
+    if (!loading && perfil && perfil.role !== 'admin' && perfil.role !== 'coordenadora') router.push('/')
+  }, [perfil, loading])
 
+  useEffect(() => { if (perfil) carregarUnidades() }, [perfil])
+  useEffect(() => { if (perfil) carregarGrupos() }, [perfil])
   useEffect(() => {
-    if (perfil) carregarCliente()
-  }, [perfil])
+    if (unidadeAtiva) { carregarAulas(); carregarCoachesDaUnidade() }
+  }, [unidadeAtiva?.id])
+  useEffect(() => {
+    if (unidadeAtiva && abaAtiva === 'calendario') carregarOcorrencias(diasCalendario)
+  }, [unidadeAtiva?.id, diasCalendario, abaAtiva])
 
-  async function carregarTudo() {
-    setLoading(true)
-    const [{ data: oc }, { data: pos }, { data: tomadas }] = await Promise.all([
-      supabase.from('club_ocorrencias')
-        .select('*, club_aulas(tipo, horario, capacidade, coaches(nome), grupos_musculares(nome))')
-        .eq('id', ocId).maybeSingle(),
-      supabase.from('club_posicoes').select('*').eq('unidade_id', unidadeId).eq('ativo', true).order('tipo').order('numero'),
-      supabase.from('club_reservas').select('posicao').eq('ocorrencia_id', ocId).in('status',['reservado','presente']),
-    ])
-    setOcorrencia(oc)
-    setPosicoes(pos || [])
-    setPosicoesTomadas((tomadas||[]).map((t:any) => t.posicao).filter(Boolean))
-    setLoading(false)
+  async function carregarUnidades() {
+    setLoadingUnidades(true)
+    const { data } = await supabase.from('unidades').select('id, nome, tipo').eq('tipo', 'club').eq('ativo', true).order('nome')
+    setUnidades(data || [])
+    setLoadingUnidades(false)
+  }
+  async function carregarGrupos() {
+    const { data } = await supabase.from('grupos_musculares').select('id, nome, ativo').order('nome')
+    setGrupos(data || [])
+  }
+  async function carregarCoachesDaUnidade() {
+    if (!unidadeAtiva) return
+    const { data: cu } = await supabase.from('coach_unidades').select('coach_id').eq('unidade_id', unidadeAtiva.id).eq('ativo', true)
+    const ids = (cu || []).map((u: any) => u.coach_id)
+    if (ids.length === 0) { setCoaches([]); return }
+    const { data: cs } = await supabase.from('coaches').select('id, nome').eq('ativo', true).in('id', ids).order('nome')
+    setCoaches(cs || [])
+  }
+  async function carregarAulas() {
+    if (!unidadeAtiva) return
+    setLoadingData(true)
+    const { data } = await supabase.from('club_aulas')
+      .select('*, coaches(id, nome), grupos_musculares(nome)')
+      .eq('unidade_id', unidadeAtiva.id).order('dia_semana').order('horario')
+    setAulas(data || [])
+    setLoadingData(false)
+  }
+  async function carregarOcorrencias(dias: 7|15|30) {
+    if (!unidadeAtiva) return
+    setLoadingOcs(true)
+    const hoje = dataLocalStr(new Date())
+    const fim  = dataLocalStr(new Date(Date.now() + dias * 86400000))
+    const { data: ids_data } = await supabase.from('club_aulas').select('id').eq('unidade_id', unidadeAtiva.id).eq('ativo', true)
+    const ids = (ids_data || []).map((a: any) => a.id)
+    if (!ids.length) { setOcorrencias([]); setLoadingOcs(false); return }
+    const { data } = await supabase.from('club_ocorrencias')
+      .select('*, club_aulas(id, tipo, horario, capacidade, coaches(id, nome), grupos_musculares(nome))')
+      .in('aula_id', ids).eq('status', 'ativa').gte('data', hoje).lte('data', fim).order('data')
+    setOcorrencias(data || [])
+    setLoadingOcs(false)
   }
 
-  async function carregarCliente() {
-    if (!perfil) return
-    const { data } = await supabase.from('clientes').select('*').eq('user_id', perfil.id).maybeSingle()
-    setCliente(data)
-    if (data && unidadeId) {
-      const agora = new Date()
-      const { data: s } = await supabase.rpc('saldo_creditos_cliente', {
-        p_cliente_id: data.id, p_mes: agora.getMonth()+1, p_ano: agora.getFullYear(), p_unidade_id: unidadeId,
-      })
-      setSaldo(s || {})
-    }
-  }
-
-  async function confirmarReserva() {
-    if (!tipoCredito) { setErroModal('Selecione o plano.'); return }
-    if (!posicaoSel || !cliente) return
-    setConfirmando(true); setErroModal('')
-    const { error } = await supabase.from('club_reservas').insert({
-      ocorrencia_id: ocId, cliente_id: cliente.id, tipo_credito: tipoCredito,
-      posicao: posicaoSel, status: 'reservado',
+  function aplicarFiltros(lista: any[]): any[] {
+    return lista.filter(a => {
+      const matchTipo  = filtroTipo  === 'todos' || a.tipo === filtroTipo
+      const matchCoach = filtroCoach === 'todos' || (a.coaches?.id || a.coach_id) === filtroCoach
+      return matchTipo && matchCoach
     })
-    if (error) { setErroModal('Erro ao reservar: '+error.message); setConfirmando(false); return }
-    router.push('/minha-conta')
+  }
+  function aplicarFiltrosOcs(lista: any[]): any[] {
+    return lista.filter(oc => {
+      const a = oc.club_aulas
+      return (filtroTipo==='todos'||a?.tipo===filtroTipo) && (filtroCoach==='todos'||a?.coaches?.id===filtroCoach)
+    })
   }
 
-  const planosDisponiveis = Object.entries(saldo).filter(([,v]:any) => v?.disponivel > 0).map(([k]) => k)
+  function abrirNovaAula() {
+    setEditando(null)
+    const primeiroHorario = horariosParaUnidade(unidadeAtiva?.nome || '')[0] || '06:00'
+    const capInicial = capacidadePorUnidadeTipo(unidadeAtiva?.nome || '', 'lift')
+    setForm({ ...FORM_VAZIO, horario: primeiroHorario, capacidade: capInicial, grupo_muscular_id: gruposAtivos[0]?.id||'', coach_id: coaches[0]?.id||'' })
+    setFormReplicar(false); setFormMeses(1); setFormInicio(dataLocalStr(new Date()))
+    setModalAberto(true)
+  }
+  function abrirEdicao(aula: any) {
+    setEditando(aula)
+    setForm({ tipo: aula.tipo, grupo_muscular_id: aula.grupo_muscular_id, coach_id: aula.coach_id,
+      dia_semana: aula.dia_semana, horario: (aula.horario||'').slice(0,5),
+      duracao_min: aula.duracao_min, capacidade: aula.capacidade })
+    setModalAberto(true)
+  }
 
-  const aula     = ocorrencia?.club_aulas
-  const horario  = (aula?.horario||'').slice(0,5)
-  const coach    = aula?.coaches?.nome?.split(' ')[0] || '—'
-  const grupo    = aula?.grupos_musculares?.nome || '—'
-  const dataStr  = ocorrencia?.data || ''
-  const dataFmt  = dataStr ? new Date(dataStr+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short'}) : ''
-
-  const posR = posicoes.filter((p:any) => p.tipo==='R').sort((a:any,b:any) => b.numero-a.numero)
-  const posF_imp = posicoes.filter((p:any) => p.tipo==='F' && p.numero%2===1).sort((a:any,b:any) => b.numero-a.numero)
-  const posF_par = posicoes.filter((p:any) => p.tipo==='F' && p.numero%2===0).sort((a:any,b:any) => b.numero-a.numero)
-
-  function corBtn(label: string, tipo: 'R'|'F') {
-    const tomado    = posicoesTomadas.includes(label)
-    const selecionado = posicaoSel === label
-    const cor = ACCENT
-    return {
-      tomado, selecionado, cor,
-      borderColor: tomado ? '#111' : selecionado ? '#333' : cor,
-      bg:          tomado ? '#0a0a0a' : selecionado ? '#1a1a1a' : `${cor}18`,
-      iconColor:   tomado ? '#1a1a1a' : selecionado ? '#333' : cor,
-      labelColor:  tomado ? '#1a1a1a' : selecionado ? '#444' : cor,
+  async function salvar() {
+    if (!unidadeAtiva) return
+    if (!form.grupo_muscular_id) { showMsg('Selecione o grupo muscular.'); return }
+    if (!form.coach_id)          { showMsg('Selecione o coach.');          return }
+    setSalvando(true)
+    const payload = {
+      unidade_id: unidadeAtiva.id, tipo: form.tipo,
+      grupo_muscular_id: form.grupo_muscular_id, coach_id: form.coach_id,
+      dia_semana: form.dia_semana, horario: form.horario+':00',
+      duracao_min: form.duracao_min, capacidade: form.capacidade,
+      // so_mulheres é automático pelo tipo
+      so_mulheres: form.tipo === 'lift_for_girls',
+      ativo: true,
     }
+    let aulaId = editando?.id
+    if (editando) {
+      const { error } = await supabase.from('club_aulas').update(payload).eq('id', editando.id)
+      if (error) { showMsg('Erro: '+error.message); setSalvando(false); return }
+    } else {
+      const { data: nova, error } = await supabase.from('club_aulas').insert(payload).select('id').maybeSingle()
+      if (error) { showMsg('Erro: '+error.message); setSalvando(false); return }
+      aulaId = nova?.id
+    }
+    if (!editando && formReplicar && aulaId) {
+      const datas = gerarDatas(form.dia_semana, formInicio, dataFimPorMeses(formMeses))
+      if (datas.length > 0) await supabase.from('club_ocorrencias').insert(datas.map(data => ({ aula_id: aulaId, data, status: 'ativa' })))
+      showMsg(`Aula criada e ${datas.length} ocorrência${datas.length!==1?'s':''} gerada${datas.length!==1?'s':''}!`)
+    } else { showMsg(editando?'Aula atualizada!':'Aula criada!') }
+    setSalvando(false); setModalAberto(false); setEditando(null)
+    await carregarAulas()
+    if (abaAtiva==='calendario') carregarOcorrencias(diasCalendario)
   }
 
-  if (loading) return (
-    <div style={{ minHeight:'100vh', background:'#080808', display:'flex', alignItems:'center', justifyContent:'center' }}>
-      <div style={{ width:32, height:32, border:`4px solid ${ACCENT}`, borderTopColor:'transparent', borderRadius:'50%', animation:'spin 0.8s linear infinite' }}/>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+  async function toggleAtivo(aula: any) {
+    await supabase.from('club_aulas').update({ ativo: !aula.ativo }).eq('id', aula.id)
+    await carregarAulas()
+  }
+  function abrirReplicar(aula: any) {
+    setModalReplicar(aula); setReplicarMeses(1)
+    setReplicarInicio(dataLocalStr(new Date())); setResultReplicacao(null)
+  }
+  async function executarReplicacao() {
+    if (!modalReplicar) return
+    setReplicando(true)
+    const datas = gerarDatas(modalReplicar.dia_semana, replicarInicio, dataFimPorMeses(replicarMeses))
+    if (!datas.length) { showMsg('Nenhuma data no período.'); setReplicando(false); return }
+    const { data: exist } = await supabase.from('club_ocorrencias').select('data').eq('aula_id', modalReplicar.id).in('data', datas)
+    const existSet = new Set((exist||[]).map((e:any)=>e.data))
+    const novas = datas.filter(d=>!existSet.has(d))
+    if (novas.length > 0) {
+      const { error } = await supabase.from('club_ocorrencias').insert(novas.map(data=>({ aula_id: modalReplicar.id, data, status: 'ativa' })))
+      if (error) { showMsg('Erro: '+error.message); setReplicando(false); return }
+    }
+    setResultReplicacao({ criadas: novas.length, existentes: existSet.size })
+    setReplicando(false)
+    if (abaAtiva==='calendario') carregarOcorrencias(diasCalendario)
+  }
+
+  async function criarGrupo() {
+    if (!novoGrupo.trim()) return
+    setSalvandoGrupo(true)
+    const { error } = await supabase.from('grupos_musculares').insert({ nome: novoGrupo.trim(), ativo: true })
+    setSalvandoGrupo(false)
+    if (error) { showMsg('Erro: '+error.message); return }
+    setNovoGrupo(''); await carregarGrupos(); showMsg('Grupo criado!')
+  }
+  async function salvarEdicaoGrupo() {
+    if (!editandoGrupo||!nomeGrupoEdit.trim()) return
+    await supabase.from('grupos_musculares').update({ nome: nomeGrupoEdit.trim() }).eq('id', editandoGrupo.id)
+    setEditandoGrupo(null); setNomeGrupoEdit(''); await carregarGrupos(); showMsg('Grupo atualizado!')
+  }
+  async function toggleGrupo(grupo: any) {
+    await supabase.from('grupos_musculares').update({ ativo: grupo.ativo===false?true:false }).eq('id', grupo.id)
+    await carregarGrupos()
+  }
+
+  function showMsg(texto: string) { setMsg(texto); setTimeout(()=>setMsg(''), 4000) }
+  function toggleDia(idx: number) {
+    setDiasExpandidos(prev=>{ const n=new Set(prev); n.has(idx)?n.delete(idx):n.add(idx); return n })
+  }
+
+  const todasAulas   = aplicarFiltros(aulas)
+  const aulasAtivas  = aplicarFiltros(aulas.filter(a=>a.ativo))
+  const porDia       = DIAS_ABREV.map((_,i)=>aulasAtivas.filter(a=>a.dia_semana===i))
+  const gruposAtivos = grupos.filter(g=>g.ativo!==false)
+  const ocsFiltered  = aplicarFiltrosOcs(ocorrencias)
+  const ocsPorData: Record<string,any[]> = {}
+  for (const oc of ocsFiltered) { if (!ocsPorData[oc.data]) ocsPorData[oc.data]=[]; ocsPorData[oc.data].push(oc) }
+  const temFiltros = filtroTipo!=='todos'||filtroCoach!=='todos'
+  const datasPreview = modalReplicar ? gerarDatas(modalReplicar.dia_semana, replicarInicio, dataFimPorMeses(replicarMeses)) : []
+
+  if (loading || loadingUnidades) return (
+    <div className="flex items-center justify-center h-screen">
+      <div className="w-8 h-8 border-4 border-primary-400 border-t-transparent rounded-full animate-spin"/>
     </div>
   )
 
   return (
-    <div style={{ minHeight:'100vh', background:'#080808', fontFamily:"'DM Sans', sans-serif", color:'#f0f0f0' }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
-        *{box-sizing:border-box;margin:0;padding:0;}
-        .pos-btn{transition:all .15s;}
-        .pos-btn:hover:not(:disabled){opacity:0.8;}
-      `}</style>
+    <div className="min-h-screen bg-gray-50">
 
-      <SiteHeader/>
-
-      <div style={{ maxWidth:700, margin:'0 auto', padding:'5.5rem 1rem 6rem' }}>
-
-        {/* Cabeçalho */}
-        <div style={{ display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'1.25rem' }}>
-          <button onClick={() => router.back()}
-            style={{ background:'transparent', border:'1px solid #2a2a2a', borderRadius:'50%', width:36, height:36, color:'#666', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>‹</button>
-          <div>
-            <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:22, color:'#fff', letterSpacing:1 }}>
-              RUNNING + FUNCIONAL
-            </div>
-            <div style={{ fontSize:12, color:'#555', marginTop:1 }}>
-              {dataFmt} · {horario} · {coach} · {grupo}
-            </div>
-          </div>
-        </div>
-
-        <div style={{ fontSize:12, color:'#444', marginBottom:'1.5rem', textAlign:'center', lineHeight:1.5 }}>
-          Escolha a posição por onde deseja iniciar o treino.
-        </div>
-
-        {/* ── MAPA ── */}
-        <div style={{ background:'#0d0d0d', border:'1px solid #1a1a1a', borderRadius:16, padding:'1.25rem 0.75rem' }}>
-
-          {/* ESTEIRAS — linha única, botões preenchem a largura */}
-          <div style={{ marginBottom:'1.5rem' }}>
-            <div style={{ fontSize:10, color:'#444', letterSpacing:2, textAlign:'center', marginBottom:10 }}>ESTEIRAS</div>
-            <div style={{ display:'grid', gridTemplateColumns:`repeat(${posR.length}, 1fr)`, gap:3 }}>
-              {posR.map((pos:any) => {
-                const label = `R${String(pos.numero).padStart(2,'0')}`
-                const s = corBtn(label,'R')
-                return (
-                  <button key={pos.id} className="pos-btn" disabled={s.tomado}
-                    onClick={() => { if (!s.tomado) { setPosicaoSel(label); setModalAberto(true) } }}
-                    style={{ border:`1.5px solid ${s.borderColor}`, background:s.bg, borderRadius:8, cursor:s.tomado?'not-allowed':'pointer', padding:'6px 0', display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
-                    <div style={{ width:'70%', maxWidth:36 }}>
-                      <IconEsteira color={s.iconColor}/>
-                    </div>
-                    <span style={{ fontSize:8, fontFamily:"'DM Mono', monospace", fontWeight:700, color:s.labelColor, lineHeight:1 }}>{label}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          <div style={{ height:1, background:'#1a1a1a', marginBottom:'1.5rem', marginLeft:'-0.75rem', marginRight:'-0.75rem' }}/>
-
-          {/* FUNCIONAL — duas linhas escalonadas */}
-          <div>
-            <div style={{ fontSize:10, color:'#444', letterSpacing:2, textAlign:'center', marginBottom:10 }}>FUNCIONAL</div>
-
-            {/* Linha ímpares: F13, F11, ..., F01 */}
-            <div style={{ display:'grid', gridTemplateColumns:`repeat(${posF_imp.length}, 1fr)`, gap:3, marginBottom:3 }}>
-              {posF_imp.map((pos:any) => {
-                const label = `F${String(pos.numero).padStart(2,'0')}`
-                const s = corBtn(label,'F')
-                return (
-                  <button key={pos.id} className="pos-btn" disabled={s.tomado}
-                    onClick={() => { if (!s.tomado) { setPosicaoSel(label); setModalAberto(true) } }}
-                    style={{ border:`1.5px solid ${s.borderColor}`, background:s.bg, borderRadius:8, cursor:s.tomado?'not-allowed':'pointer', padding:'6px 0', display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
-                    <div style={{ width:'70%', maxWidth:36 }}>
-                      <IconHaltere color={s.iconColor}/>
-                    </div>
-                    <span style={{ fontSize:8, fontFamily:"'DM Mono', monospace", fontWeight:700, color:s.labelColor, lineHeight:1 }}>{label}</span>
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* Linha pares: F12, F10, ..., F02 — deslocada meia célula */}
-            <div style={{ paddingLeft:`calc(100% / ${posF_imp.length * 2})` }}>
-              <div style={{ display:'grid', gridTemplateColumns:`repeat(${posF_par.length}, 1fr)`, gap:3 }}>
-                {posF_par.map((pos:any) => {
-                  const label = `F${String(pos.numero).padStart(2,'0')}`
-                  const s = corBtn(label,'F')
-                  return (
-                    <button key={pos.id} className="pos-btn" disabled={s.tomado}
-                      onClick={() => { if (!s.tomado) { setPosicaoSel(label); setModalAberto(true) } }}
-                      style={{ border:`1.5px solid ${s.borderColor}`, background:s.bg, borderRadius:8, cursor:s.tomado?'not-allowed':'pointer', padding:'6px 0', display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
-                      <div style={{ width:'70%', maxWidth:36 }}>
-                        <IconHaltere color={s.iconColor}/>
-                      </div>
-                      <span style={{ fontSize:8, fontFamily:"'DM Mono', monospace", fontWeight:700, color:s.labelColor, lineHeight:1 }}>{label}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Legenda */}
-          <div style={{ display:'flex', gap:'1.25rem', marginTop:16, paddingTop:12, borderTop:'1px solid #1a1a1a', justifyContent:'center', flexWrap:'wrap' }}>
-            {[['#2a2a2a','#555','Disponível'],['#0a0a0a','#222','Ocupado'],[`${ACCENT}25`,ACCENT,'R selecionado'],[`${VERDE}25`,VERDE,'F selecionado']].map(([bg,cor,txt]) => (
-              <span key={txt} style={{ fontSize:10, color:cor==='#222'?'#333':cor, display:'flex', alignItems:'center', gap:5 }}>
-                <span style={{ width:12, height:12, background:bg, border:`1.5px solid ${cor}`, borderRadius:3, display:'inline-block', flexShrink:0 }}/>
-                {txt}
-              </span>
-            ))}
+      {/* Header com abas de unidade */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="px-6 pt-4 pb-0">
+          <h1 className="text-lg font-semibold text-gray-900 mb-4">JustClub — Aulas coletivas</h1>
+          <div className="flex gap-0">
+            {unidades.map(u => {
+              const ativa = unidadeAtiva?.id === u.id
+              return (
+                <button key={u.id} onClick={() => setUnidadeAtiva(u)}
+                  className={`px-6 py-2.5 text-sm font-medium border-b-2 transition-all relative ${ativa?'border-primary-600 text-primary-700 bg-primary-50/50':'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
+                  {u.nome}
+                  {ativa && unidadeAtiva && <span className="ml-2 text-xs text-primary-500 font-normal">{aulas.filter(a=>a.ativo).length} aulas</span>}
+                </button>
+              )
+            })}
           </div>
         </div>
       </div>
 
-      {/* ══ MODAL CONFIRMAÇÃO ══ */}
-      {modalAberto && posicaoSel && (
-        <div style={{ position:'fixed', inset:0, background:'#000000dd', zIndex:100, display:'flex', alignItems:'flex-end', justifyContent:'center', padding:'1rem' }}>
-          <div style={{ background:'#111', border:'1px solid #2a2a2a', borderRadius:'20px 20px 16px 16px', width:'100%', maxWidth:480, padding:'1.5rem' }}>
+      {!unidadeAtiva ? (
+        <div className="max-w-3xl mx-auto px-6 py-16 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-5">
+            <CalendarDays size={30} className="text-gray-400"/>
+          </div>
+          <h3 className="font-semibold text-gray-700 text-lg mb-2">Selecione uma unidade</h3>
+          <p className="text-sm text-gray-400 mb-6">Clique em uma das abas acima para gerenciar as aulas coletivas.</p>
+          <div className="flex gap-3 justify-center">
+            {unidades.map(u => (
+              <button key={u.id} onClick={() => setUnidadeAtiva(u)}
+                className="px-6 py-3 rounded-xl text-sm font-medium bg-primary-600 text-white hover:bg-primary-700 transition-all">
+                {u.nome}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="max-w-3xl mx-auto px-6 py-5">
 
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1.25rem' }}>
+          {msg && (
+            <div className={`mb-4 px-4 py-2.5 rounded-xl text-sm font-medium ${msg.startsWith('Erro')?'bg-red-50 text-red-700 border border-red-100':'bg-green-50 text-green-800 border border-green-100'}`}>{msg}</div>
+          )}
+
+          {/* Abas de conteúdo */}
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            {(['lista','grade','calendario','grupos'] as const).map(aba => {
+              const cfg = {
+                lista:      { label: 'Lista',         icon: <List size={14}/> },
+                grade:      { label: 'Grade semanal', icon: <Calendar size={14}/> },
+                calendario: { label: 'Calendário',    icon: <CalendarDays size={14}/> },
+                grupos:     { label: 'Grupos',        icon: <Tag size={14}/> },
+              }
+              const count = aba==='lista'?aulas.filter(a=>a.ativo).length:aba==='grupos'?gruposAtivos.length:aba==='calendario'?ocsFiltered.length:0
+              return (
+                <button key={aba}
+                  onClick={() => { setAbaAtiva(aba); if (aba==='calendario') carregarOcorrencias(diasCalendario) }}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${abaAtiva===aba?'bg-primary-600 text-white':'bg-white border border-gray-200 text-gray-600 hover:border-primary-300'}`}>
+                  {cfg[aba].icon} {cfg[aba].label}
+                  {count > 0 && <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${abaAtiva===aba?'bg-white text-primary-600':'bg-primary-100 text-primary-700'}`}>{count}</span>}
+                </button>
+              )
+            })}
+            {abaAtiva!=='grupos' && (
+              <button onClick={abrirNovaAula}
+                className="ml-auto flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-primary-600 text-white hover:bg-primary-700 transition-all">
+                <Plus size={14}/> Nova aula
+              </button>
+            )}
+          </div>
+
+          {/* Filtros */}
+          {abaAtiva!=='grupos' && (
+            <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 mb-4 flex items-center gap-3 flex-wrap">
+              <Filter size={13} className="text-gray-400 flex-shrink-0"/>
+              <div className="flex gap-1.5 flex-wrap">
+                <button onClick={()=>setFiltroTipo('todos')}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all border ${filtroTipo==='todos'?'bg-gray-800 text-white border-gray-800':'bg-white text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                  Todos
+                </button>
+                {TIPOS.map(t => (
+                  <button key={t.value} onClick={()=>setFiltroTipo(filtroTipo===t.value?'todos':t.value)}
+                    className={`px-3 py-1 rounded-lg text-xs font-medium transition-all border ${filtroTipo===t.value?tipoColor(t.value)+' border-transparent':'bg-white text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              <div className="w-px h-5 bg-gray-200 flex-shrink-0"/>
+              <select value={filtroCoach} onChange={e=>setFiltroCoach(e.target.value)}
+                className="text-xs border border-gray-200 rounded-lg px-2 py-1 text-gray-600 bg-white focus:outline-none focus:border-primary-400">
+                <option value="todos">Todos os coaches</option>
+                {coaches.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}
+              </select>
+              {temFiltros && (
+                <button onClick={()=>{ setFiltroTipo('todos'); setFiltroCoach('todos') }}
+                  className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1 ml-auto">
+                  <X size={11}/> Limpar
+                </button>
+              )}
+            </div>
+          )}
+
+          {loadingData && (abaAtiva==='lista'||abaAtiva==='grade') ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="w-8 h-8 border-4 border-primary-400 border-t-transparent rounded-full animate-spin"/>
+            </div>
+          ) : (
+            <>
+              {/* LISTA */}
+              {abaAtiva==='lista' && (
+                <div className="space-y-3">
+                  {todasAulas.length===0 ? (
+                    <div className="card text-center py-14">
+                      <Calendar size={32} className="text-gray-300 mx-auto mb-3"/>
+                      <p className="text-gray-400 text-sm">{temFiltros?'Nenhuma aula com os filtros selecionados.':`Nenhuma aula cadastrada para ${unidadeAtiva.nome}.`}</p>
+                      {!temFiltros && <button onClick={abrirNovaAula} className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-primary-600 text-white hover:bg-primary-700"><Plus size={14}/> Criar primeira aula</button>}
+                    </div>
+                  ) : todasAulas.map(aula => (
+                    <div key={aula.id} className={`card transition-opacity ${!aula.ativo?'opacity-50 border-dashed':''}`}>
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-primary-50 text-primary-700 text-xs font-bold flex items-center justify-center flex-shrink-0 border border-primary-100">
+                          {DIAS_ABREV[aula.dia_semana]}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${tipoColor(aula.tipo)}`}>{tipoLabel(aula.tipo)}</span>
+                            {!aula.ativo && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">Inativa</span>}
+                          </div>
+                          <div className="mt-1.5 flex items-center gap-3 flex-wrap">
+                            <span className="font-semibold text-gray-900 text-sm">{DIAS_FULL[aula.dia_semana]}</span>
+                            <span className="flex items-center gap-1 font-mono text-sm font-bold text-primary-700"><Clock size={12}/> {(aula.horario||'').slice(0,5)}</span>
+                            <span className="text-xs text-gray-400">{aula.duracao_min}min</span>
+                          </div>
+                          <div className="mt-1 flex items-center gap-3 text-xs text-gray-500 flex-wrap">
+                            <span>🏋️ {aula.grupos_musculares?.nome||'—'}</span>
+                            <span>👤 {aula.coaches?.nome?.split(' ')[0]||'—'}</span>
+                            <span className="flex items-center gap-1"><Users size={10}/> {aula.capacidade} vagas</span>
+                          </div>
+                        </div>
+                        <div className="flex flex-col gap-1.5 flex-shrink-0">
+                          <div className="flex gap-1.5">
+                            <button onClick={()=>abrirEdicao(aula)} className="btn btn-sm gap-1 text-gray-600 hover:bg-gray-100"><Pencil size={12}/> Editar</button>
+                            <button onClick={()=>toggleAtivo(aula)} className={`btn btn-sm gap-1 ${aula.ativo?'text-red-500 hover:bg-red-50':'text-green-600 hover:bg-green-50'}`}>
+                              <Power size={12}/> {aula.ativo?'Desativar':'Ativar'}
+                            </button>
+                          </div>
+                          {aula.ativo && (
+                            <button onClick={()=>abrirReplicar(aula)} className="btn btn-sm gap-1 text-cyan-700 bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 w-full justify-center">
+                              <RefreshCw size={12}/> Replicar grade
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* GRADE */}
+              {abaAtiva==='grade' && (
+                <div className="space-y-3">
+                  {aulasAtivas.length===0 ? (
+                    <div className="card text-center py-14"><Calendar size={32} className="text-gray-300 mx-auto mb-3"/><p className="text-gray-400 text-sm">{temFiltros?'Nenhuma aula com os filtros.':'Nenhuma aula ativa.'}</p></div>
+                  ) : DIAS_FULL.map((dia,idx) => {
+                    const aulasNoDia = porDia[idx]
+                    if (!aulasNoDia.length) return null
+                    const expandido = diasExpandidos.has(idx)
+                    return (
+                      <div key={idx} className="card">
+                        <button onClick={()=>toggleDia(idx)} className="w-full flex items-center gap-3 text-left">
+                          <div className="w-9 h-9 rounded-xl bg-primary-100 text-primary-700 text-xs font-bold flex items-center justify-center flex-shrink-0">{DIAS_ABREV[idx]}</div>
+                          <div className="flex-1"><span className="font-semibold text-gray-900 text-sm">{dia}</span><span className="text-xs text-gray-400 ml-2">{aulasNoDia.length} aula{aulasNoDia.length!==1?'s':''}</span></div>
+                          {expandido?<ChevronUp size={16} className="text-gray-400"/>:<ChevronDown size={16} className="text-gray-400"/>}
+                        </button>
+                        {expandido && (
+                          <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                            {aulasNoDia.sort((a,b)=>a.horario.localeCompare(b.horario)).map(aula => (
+                              <div key={aula.id} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5">
+                                <span className="font-mono text-sm font-bold text-gray-900 w-12 flex-shrink-0">{(aula.horario||'').slice(0,5)}</span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${tipoColor(aula.tipo)}`}>{tipoLabel(aula.tipo)}</span>
+                                <span className="text-xs text-gray-600 flex-1 truncate">{aula.grupos_musculares?.nome||'—'}</span>
+                                <span className="text-xs text-gray-400 flex-shrink-0">👤 {aula.coaches?.nome?.split(' ')[0]||'—'}</span>
+                                <span className="text-xs text-gray-400 flex-shrink-0 flex items-center gap-1"><Users size={10}/> {aula.capacidade}</span>
+                                <button onClick={()=>abrirEdicao(aula)} className="text-gray-400 hover:text-primary-600 flex-shrink-0"><Pencil size={13}/></button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* CALENDÁRIO */}
+              {abaAtiva==='calendario' && (
+                <div>
+                  <div className="flex items-center gap-2 mb-4 flex-wrap">
+                    {([7,15,30] as const).map(d => (
+                      <button key={d} onClick={()=>setDiasCalendario(d)}
+                        className={`px-4 py-2 rounded-xl text-sm font-medium transition-all border ${diasCalendario===d?'bg-primary-600 text-white border-primary-600':'bg-white text-gray-600 border-gray-200 hover:border-primary-300'}`}>
+                        Próximos {d} dias
+                      </button>
+                    ))}
+                    {!loadingOcs && <span className="text-xs text-gray-400 ml-auto">{ocsFiltered.length} ocorrência{ocsFiltered.length!==1?'s':''}{temFiltros?' (filtrado)':''}</span>}
+                  </div>
+                  {loadingOcs ? (
+                    <div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-4 border-primary-400 border-t-transparent rounded-full animate-spin"/></div>
+                  ) : ocsFiltered.length===0 ? (
+                    <div className="card text-center py-14">
+                      <CalendarDays size={32} className="text-gray-300 mx-auto mb-3"/>
+                      <p className="text-gray-400 text-sm">{temFiltros?'Nenhuma aula com os filtros.':'Nenhuma aula nos próximos '+diasCalendario+' dias.'}</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {Object.entries(ocsPorData).sort().map(([data, ocs]) => {
+                        const d = new Date(data+'T12:00:00')
+                        const hoje  = dataLocalStr(new Date())
+                        const amanha = dataLocalStr(new Date(Date.now()+86400000))
+                        const ehHoje   = data===hoje
+                        const ehAmanha = data===amanha
+                        return (
+                          <div key={data} className="card">
+                            <div className="flex items-center gap-2 mb-3">
+                              <div className={`w-9 h-9 rounded-xl text-xs font-bold flex items-center justify-center flex-shrink-0 ${ehHoje?'bg-primary-600 text-white':ehAmanha?'bg-primary-100 text-primary-700':'bg-gray-100 text-gray-600'}`}>
+                                {DIAS_ABREV[d.getDay()]}
+                              </div>
+                              <div className="flex-1">
+                                <span className="font-semibold text-gray-900 text-sm">{d.toLocaleDateString('pt-BR',{day:'2-digit',month:'long'})}</span>
+                                {ehHoje   && <span className="ml-2 text-xs text-primary-600 font-semibold">Hoje</span>}
+                                {ehAmanha && <span className="ml-2 text-xs text-primary-400 font-medium">Amanhã</span>}
+                              </div>
+                              <span className="text-xs text-gray-400">{(ocs as any[]).length} aula{(ocs as any[]).length!==1?'s':''}</span>
+                            </div>
+                            <div className="space-y-1.5">
+                              {(ocs as any[]).sort((a,b)=>(a.club_aulas?.horario||'').localeCompare(b.club_aulas?.horario||'')).map(oc => (
+                                <div key={oc.id} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-100">
+                                  <span className="font-mono text-sm font-bold text-gray-900 w-12 flex-shrink-0">{(oc.club_aulas?.horario||'').slice(0,5)}</span>
+                                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${tipoColor(oc.club_aulas?.tipo||'')}`}>{tipoLabel(oc.club_aulas?.tipo||'')}</span>
+                                  <span className="text-xs text-gray-600 flex-1 truncate">{oc.club_aulas?.grupos_musculares?.nome||'—'}</span>
+                                  <span className="text-xs text-gray-400 flex-shrink-0">👤 {oc.club_aulas?.coaches?.nome?.split(' ')[0]||'—'}</span>
+                                  <span className="text-xs text-gray-400 flex-shrink-0 flex items-center gap-1"><Users size={10}/> {oc.club_aulas?.capacidade||'—'}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* GRUPOS */}
+              {abaAtiva==='grupos' && (
+                <div className="space-y-4">
+                  <div className="card">
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Novo grupo muscular</h3>
+                    <div className="flex gap-2">
+                      <input className="input flex-1" placeholder="Ex: Inferiores, Full Body, HIIT & ABS..."
+                        value={novoGrupo} onChange={e=>setNovoGrupo(e.target.value)} onKeyDown={e=>e.key==='Enter'&&criarGrupo()}/>
+                      <button onClick={criarGrupo} disabled={salvandoGrupo||!novoGrupo.trim()} className="btn bg-primary-600 text-white hover:bg-primary-700 gap-1 disabled:opacity-50 flex-shrink-0">
+                        <Plus size={14}/> {salvandoGrupo?'Criando...':'Criar'}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="card">
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Grupos cadastrados <span className="ml-1 text-xs font-normal text-gray-400">{grupos.length} total</span></h3>
+                    {grupos.length===0 ? (
+                      <div className="text-center py-8 text-gray-400 text-sm"><Tag size={24} className="mx-auto mb-2 text-gray-300"/> Nenhum grupo.</div>
+                    ) : (
+                      <div className="space-y-2">
+                        {grupos.map(grupo => (
+                          <div key={grupo.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border ${grupo.ativo===false?'bg-gray-50 border-gray-100 opacity-60':'bg-white border-gray-100'}`}>
+                            {editandoGrupo?.id===grupo.id ? (
+                              <>
+                                <input className="input flex-1 py-1 text-sm" value={nomeGrupoEdit} onChange={e=>setNomeGrupoEdit(e.target.value)} onKeyDown={e=>e.key==='Enter'&&salvarEdicaoGrupo()} autoFocus/>
+                                <button onClick={salvarEdicaoGrupo} className="btn btn-sm bg-primary-600 text-white gap-1"><Save size={12}/> Salvar</button>
+                                <button onClick={()=>setEditandoGrupo(null)} className="btn btn-sm text-gray-500"><X size={12}/></button>
+                              </>
+                            ) : (
+                              <>
+                                <span className="flex-1 text-sm font-medium text-gray-800">{grupo.nome}</span>
+                                {grupo.ativo===false && <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">Inativo</span>}
+                                <button onClick={()=>{setEditandoGrupo(grupo);setNomeGrupoEdit(grupo.nome)}} className="btn btn-sm text-gray-500 hover:text-primary-600"><Pencil size={12}/></button>
+                                <button onClick={()=>toggleGrupo(grupo)} className={`btn btn-sm ${grupo.ativo===false?'text-green-600 hover:bg-green-50':'text-red-400 hover:bg-red-50'}`}><Power size={12}/></button>
+                              </>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-xs text-blue-700">
+                    💡 Grupos inativos não aparecem no cadastro de novas aulas, mas são preservados nas aulas já criadas.
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* MODAL CADASTRO / EDIÇÃO */}
+      {modalAberto && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[92vh] flex flex-col shadow-xl">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
+              <div><h2 className="font-semibold text-gray-900">{editando?'Editar aula':'Nova aula'}</h2><p className="text-xs text-gray-400 mt-0.5">{unidadeAtiva?.nome}</p></div>
+              <button onClick={()=>{setModalAberto(false);setEditando(null)}} className="text-gray-400 hover:text-gray-600 p-1"><X size={18}/></button>
+            </div>
+            <div className="px-6 py-4 space-y-5 overflow-y-auto flex-1">
+
+              {/* Tipo */}
               <div>
-                <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:20, color:'#fff', letterSpacing:1 }}>CONFIRMAR RESERVA</div>
-                <div style={{ fontSize:13, color:'#555', marginTop:2 }}>
-                  Posição <strong style={{ color: posicaoSel.startsWith('R') ? ACCENT : VERDE, fontFamily:"'DM Mono', monospace" }}>{posicaoSel}</strong> · {horario} · {dataFmt}
+                <label className="label">Tipo de aula *</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {TIPOS.map(t => (
+                    <button key={t.value} type="button"
+                      onClick={()=>setForm(f=>({...f, tipo:t.value, capacidade:capacidadePorUnidadeTipo(unidadeAtiva?.nome||'',t.value)}))}
+                      className={`py-2.5 px-2 rounded-xl text-xs font-medium text-center transition-all border ${form.tipo===t.value?'border-primary-400 bg-primary-50 text-primary-700':'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+                {form.tipo==='lift_for_girls' && (
+                  <div className="mt-2 bg-pink-50 border border-pink-100 rounded-xl px-3 py-2 text-xs text-pink-700">
+                    👩 Lift for Girls é automaticamente restrita a mulheres.
+                  </div>
+                )}
+              </div>
+
+              {/* Grupo muscular */}
+              <div>
+                <label className="label">Grupo muscular *</label>
+                {gruposAtivos.length===0 ? (
+                  <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5 text-xs text-orange-700 flex items-center gap-2"><AlertCircle size={14}/> Nenhum grupo ativo. Cadastre na aba "Grupos".</div>
+                ) : (
+                  <select className="input" value={form.grupo_muscular_id} onChange={e=>setForm(f=>({...f,grupo_muscular_id:e.target.value}))}>
+                    <option value="">Selecione...</option>
+                    {gruposAtivos.map(g=><option key={g.id} value={g.id}>{g.nome}</option>)}
+                  </select>
+                )}
+              </div>
+
+              {/* Coach */}
+              <div>
+                <label className="label">Coach responsável *</label>
+                {coaches.length===0 ? (
+                  <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5 text-xs text-orange-700 flex items-center gap-2"><AlertCircle size={14}/> Nenhum coach para esta unidade. Configure em Coaches.</div>
+                ) : (
+                  <select className="input" value={form.coach_id} onChange={e=>setForm(f=>({...f,coach_id:e.target.value}))}>
+                    <option value="">Selecione...</option>
+                    {coaches.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}
+                  </select>
+                )}
+              </div>
+
+              {/* Dia da semana */}
+              <div>
+                <label className="label">Dia da semana *</label>
+                <div className="grid grid-cols-7 gap-1">
+                  {DIAS_ABREV.map((d,i)=>(
+                    <button key={i} type="button" onClick={()=>setForm(f=>({...f,dia_semana:i}))}
+                      className={`py-2 rounded-xl text-xs font-medium transition-all ${form.dia_semana===i?'bg-primary-600 text-white':'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                      {d}
+                    </button>
+                  ))}
                 </div>
               </div>
-              <button onClick={() => { setModalAberto(false); setPosicaoSel('') }}
-                style={{ background:'transparent', border:'none', color:'#555', fontSize:20, cursor:'pointer' }}>✕</button>
-            </div>
 
-            {/* Plano */}
-            <div style={{ marginBottom:'1.25rem' }}>
-              <div style={{ fontSize:11, color:'#555', textTransform:'uppercase', letterSpacing:1, marginBottom:10 }}>Usar crédito de qual plano?</div>
-              {planosDisponiveis.length===0 ? (
-                <div style={{ background:'#1a1000', border:'1px solid #ff660033', borderRadius:10, padding:'0.85rem', fontSize:13, color:AMARELO }}>
-                  ⚠️ Sem créditos disponíveis para esta unidade.
-                </div>
-              ) : planosDisponiveis.map(p => {
-                const {label,icon}=parsePlanoKey(p); const info=saldo[p]
-                return (
-                  <div key={p} onClick={() => setTipoCredito(p)}
-                    style={{ border:`1.5px solid ${tipoCredito===p?ACCENT:'#2a2a2a'}`, background:tipoCredito===p?`${ACCENT}12`:'transparent', borderRadius:10, padding:'0.75rem 1rem', cursor:'pointer', display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:8, transition:'all .15s' }}>
-                    <span style={{ fontSize:20 }}>{icon}</span>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontSize:14, fontWeight:600, color:tipoCredito===p?'#fff':'#888' }}>{label}</div>
-                      {info && <div style={{ fontSize:11, color:'#555', marginTop:2 }}>{info.disponivel} crédito{info.disponivel!==1?'s':''} restante{info.disponivel!==1?'s':''}</div>}
+              {/* Horário */}
+              <div>
+                <label className="label">Horário *</label>
+                {(() => {
+                  const lista = horariosParaUnidade(unidadeAtiva?.nome || '')
+                  const isCustom = form.horario !== '' && !lista.includes(form.horario)
+                  return (
+                    <div className="space-y-2">
+                      <select className="input" value={isCustom ? '__custom__' : form.horario}
+                        onChange={e => {
+                          if (e.target.value === '__custom__') setForm(f => ({ ...f, horario: '' }))
+                          else setForm(f => ({ ...f, horario: e.target.value }))
+                        }}>
+                        {lista.map(h => <option key={h} value={h}>{h}</option>)}
+                        <option value="__custom__">Outro horário...</option>
+                      </select>
+                      {(isCustom || form.horario === '') && (
+                        <input type="time" className="input" value={form.horario}
+                          onChange={e => setForm(f => ({ ...f, horario: e.target.value }))}/>
+                      )}
                     </div>
-                    <div style={{ width:16, height:16, borderRadius:'50%', border:`2px solid ${tipoCredito===p?ACCENT:'#444'}`, background:tipoCredito===p?ACCENT:'transparent', flexShrink:0 }}/>
+                  )
+                })()}
+              </div>
+
+              {/* Duração e Capacidade */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Duração (min)</label>
+                  <input className="input" type="number" min={10} max={180} value={form.duracao_min} onChange={e=>setForm(f=>({...f,duracao_min:+e.target.value}))}/>
+                </div>
+                <div>
+                  <label className="label">Capacidade (vagas)</label>
+                  <div className="input bg-gray-50 text-gray-700 font-semibold flex items-center justify-between">
+                    <span>{form.capacidade} vagas</span>
+                    <span className="text-xs text-gray-400 font-normal">fixo</span>
                   </div>
-                )
-              })}
+                  <p className="text-xs text-gray-400 mt-1">
+                    {form.tipo==='running_funcional'
+                      ? `Running: ${capacidadePorUnidadeTipo(unidadeAtiva?.nome||'','running_funcional')} vagas nesta unidade`
+                      : 'Lift: 24 vagas'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Replicar (só no cadastro) */}
+              {!editando && (
+                <div className="border border-gray-200 rounded-xl overflow-hidden">
+                  <button type="button" onClick={()=>setFormReplicar(r=>!r)}
+                    className={`w-full flex items-center gap-3 px-4 py-3 transition-colors ${formReplicar?'bg-cyan-50':'bg-gray-50 hover:bg-gray-100'}`}>
+                    <div className={`w-10 h-6 rounded-full transition-colors flex-shrink-0 relative ${formReplicar?'bg-cyan-500':'bg-gray-300'}`}>
+                      <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${formReplicar?'translate-x-4':''}`}/>
+                    </div>
+                    <div className="flex-1 text-left">
+                      <span className="text-sm font-medium text-gray-800">Gerar recorrências agora</span>
+                      <p className="text-xs text-gray-400 mt-0.5">Cria as datas automaticamente ao salvar</p>
+                    </div>
+                    <RefreshCw size={14} className={formReplicar?'text-cyan-600':'text-gray-400'}/>
+                  </button>
+                  {formReplicar && (
+                    <div className="px-4 py-4 space-y-3 border-t border-gray-100 bg-white">
+                      <div><label className="label">A partir de</label><input type="date" className="input" value={formInicio} onChange={e=>setFormInicio(e.target.value)}/></div>
+                      <div>
+                        <label className="label">Por quantos meses?</label>
+                        <div className="grid grid-cols-4 gap-2">
+                          {[1,2,3,6].map(m=>(
+                            <button key={m} type="button" onClick={()=>setFormMeses(m)}
+                              className={`py-2 rounded-xl text-sm font-semibold transition-all border ${formMeses===m?'border-cyan-400 bg-cyan-50 text-cyan-700':'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                              {m}m
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="bg-cyan-50 rounded-xl px-3 py-2 text-xs text-cyan-700">
+                        📅 {gerarDatas(form.dia_semana, formInicio, dataFimPorMeses(formMeses)).length} ocorrências serão criadas · até {dataFimPorMeses(formMeses)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-
-            <div style={{ background:'#0a0a0a', border:'1px solid #1a1a1a', borderRadius:10, padding:'0.65rem 1rem', marginBottom:'1rem', fontSize:12, color:'#444', lineHeight:1.6 }}>
-              ⚠️ Cancelamento gratuito <strong style={{ color:'#666' }}>até 12h antes</strong>. Falta sem aviso gera multa de R$49,90.
-            </div>
-
-            {erroModal && <div style={{ background:'#ff2d9b15', border:'1px solid #ff2d9b44', borderRadius:8, padding:'0.6rem 1rem', fontSize:13, color:ACCENT, marginBottom:'1rem' }}>{erroModal}</div>}
-
-            <div style={{ display:'flex', gap:8 }}>
-              <button onClick={() => { setModalAberto(false); setPosicaoSel('') }}
-                style={{ flex:1, background:'transparent', border:'1px solid #2a2a2a', borderRadius:10, padding:'0.85rem', color:'#555', fontSize:14, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>Cancelar</button>
-              <button onClick={confirmarReserva} disabled={confirmando||planosDisponiveis.length===0}
-                style={{ flex:2, background:planosDisponiveis.length===0?'#1a1a1a':ACCENT, color:planosDisponiveis.length===0?'#444':'#fff', border:'none', borderRadius:10, padding:'0.85rem', fontWeight:600, fontSize:15, cursor:confirmando||planosDisponiveis.length===0?'default':'pointer', fontFamily:"'DM Sans', sans-serif", opacity:confirmando?0.7:1 }}>
-                {confirmando?'Confirmando...':'Confirmar reserva ✓'}
+            <div className="px-6 py-4 border-t border-gray-100 flex gap-2 flex-shrink-0">
+              <button onClick={()=>{setModalAberto(false);setEditando(null)}} className="btn flex-1 text-gray-500 border border-gray-200">Cancelar</button>
+              <button onClick={salvar} disabled={salvando} className="btn flex-1 bg-primary-600 text-white hover:bg-primary-700 gap-1 disabled:opacity-60">
+                <Save size={13}/> {salvando?'Salvando...':editando?'Atualizar aula':'Criar aula'}
               </button>
             </div>
           </div>
         </div>
       )}
-    </div>
-  )
-}
 
-export default function MapaPage() {
-  return (
-    <Suspense fallback={
-      <div style={{ minHeight:'100vh', background:'#080808', display:'flex', alignItems:'center', justifyContent:'center' }}>
-        <div style={{ width:32, height:32, border:'4px solid #ff2d9b', borderTopColor:'transparent', borderRadius:'50%', animation:'spin 0.8s linear infinite' }}/>
-        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-      </div>
-    }>
-      <MapaPageInner/>
-    </Suspense>
+      {/* MODAL REPLICAÇÃO */}
+      {modalReplicar && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <div>
+                <h2 className="font-semibold text-gray-900 flex items-center gap-2"><RefreshCw size={16} className="text-cyan-600"/> Replicar grade</h2>
+                <p className="text-xs text-gray-400 mt-0.5">{tipoLabel(modalReplicar.tipo)} · {DIAS_FULL[modalReplicar.dia_semana]} às {(modalReplicar.horario||'').slice(0,5)}</p>
+              </div>
+              <button onClick={()=>{setModalReplicar(null);setResultReplicacao(null)}} className="text-gray-400 hover:text-gray-600 p-1"><X size={18}/></button>
+            </div>
+            <div className="px-6 py-4 space-y-4">
+              {resultReplicacao ? (
+                <div className="text-center py-4">
+                  <CheckCircle size={40} className="text-green-500 mx-auto mb-3"/>
+                  <p className="font-semibold text-gray-900 text-lg">{resultReplicacao.criadas} aula{resultReplicacao.criadas!==1?'s':''} criada{resultReplicacao.criadas!==1?'s':''}</p>
+                  {resultReplicacao.existentes>0 && <p className="text-xs text-gray-400 mt-1">{resultReplicacao.existentes} já existiam e foram mantidas</p>}
+                  <button onClick={()=>{setModalReplicar(null);setResultReplicacao(null)}} className="mt-4 btn bg-primary-600 text-white hover:bg-primary-700 w-full">Concluir</button>
+                </div>
+              ) : (
+                <>
+                  <div><label className="label">A partir de</label><input type="date" className="input" value={replicarInicio} onChange={e=>setReplicarInicio(e.target.value)}/></div>
+                  <div>
+                    <label className="label">Por quantos meses?</label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {[1,2,3,6].map(m=>(
+                        <button key={m} type="button" onClick={()=>setReplicarMeses(m)}
+                          className={`py-2.5 rounded-xl text-sm font-semibold transition-all border ${replicarMeses===m?'border-primary-400 bg-primary-50 text-primary-700':'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                          {m}m
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="bg-cyan-50 border border-cyan-100 rounded-xl px-4 py-3">
+                    <p className="text-xs text-cyan-800 font-medium">📅 {datasPreview.length} ocorrência{datasPreview.length!==1?'s':''} serão geradas</p>
+                    <p className="text-xs text-cyan-500 mt-0.5">Datas já cadastradas serão mantidas sem duplicar.</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={()=>{setModalReplicar(null);setResultReplicacao(null)}} className="btn flex-1 text-gray-500 border border-gray-200">Cancelar</button>
+                    <button onClick={executarReplicacao} disabled={replicando||!datasPreview.length} className="btn flex-1 bg-cyan-600 text-white hover:bg-cyan-700 gap-1 disabled:opacity-60">
+                      <RefreshCw size={13}/> {replicando?'Gerando...':'Replicar'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
