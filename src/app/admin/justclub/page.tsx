@@ -39,7 +39,7 @@ function horariosParaUnidade(nomeUnidade: string): string[] {
 }
 const FORM_VAZIO = {
   tipo: 'lift', grupo_muscular_id: '', coach_id: '',
-  dia_semana: 1, horario: '06:00', duracao_min: 50, capacidade: 24, so_mulheres: false,
+  dia_semana: 1, horario: '06:00', duracao_min: 50, capacidade: 24,
 }
 
 function tipoLabel(t: string) { return TIPOS.find(x => x.value === t)?.label ?? t }
@@ -57,7 +57,7 @@ function capacidadePorUnidadeTipo(nomeUnidade: string, tipo: string): number {
     if (isPinheiros) return 30
     return 30
   }
-  return 24 // lift e lift_for_girls são sempre 24
+  return 24
 }
 function dataLocalStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
@@ -137,12 +137,10 @@ export default function JustClubAdminPage() {
     setUnidades(data || [])
     setLoadingUnidades(false)
   }
-
   async function carregarGrupos() {
     const { data } = await supabase.from('grupos_musculares').select('id, nome, ativo').order('nome')
     setGrupos(data || [])
   }
-
   async function carregarCoachesDaUnidade() {
     if (!unidadeAtiva) return
     const { data: cu } = await supabase.from('coach_unidades').select('coach_id').eq('unidade_id', unidadeAtiva.id).eq('ativo', true)
@@ -151,7 +149,6 @@ export default function JustClubAdminPage() {
     const { data: cs } = await supabase.from('coaches').select('id, nome').eq('ativo', true).in('id', ids).order('nome')
     setCoaches(cs || [])
   }
-
   async function carregarAulas() {
     if (!unidadeAtiva) return
     setLoadingData(true)
@@ -161,7 +158,6 @@ export default function JustClubAdminPage() {
     setAulas(data || [])
     setLoadingData(false)
   }
-
   async function carregarOcorrencias(dias: 7|15|30) {
     if (!unidadeAtiva) return
     setLoadingOcs(true)
@@ -203,7 +199,7 @@ export default function JustClubAdminPage() {
     setEditando(aula)
     setForm({ tipo: aula.tipo, grupo_muscular_id: aula.grupo_muscular_id, coach_id: aula.coach_id,
       dia_semana: aula.dia_semana, horario: (aula.horario||'').slice(0,5),
-      duracao_min: aula.duracao_min, capacidade: aula.capacidade, so_mulheres: aula.so_mulheres })
+      duracao_min: aula.duracao_min, capacidade: aula.capacidade })
     setModalAberto(true)
   }
 
@@ -217,7 +213,9 @@ export default function JustClubAdminPage() {
       grupo_muscular_id: form.grupo_muscular_id, coach_id: form.coach_id,
       dia_semana: form.dia_semana, horario: form.horario+':00',
       duracao_min: form.duracao_min, capacidade: form.capacidade,
-      so_mulheres: form.tipo==='lift_for_girls'?true:form.so_mulheres, ativo: true,
+      // so_mulheres é automático pelo tipo
+      so_mulheres: form.tipo === 'lift_for_girls',
+      ativo: true,
     }
     let aulaId = editando?.id
     if (editando) {
@@ -242,7 +240,6 @@ export default function JustClubAdminPage() {
     await supabase.from('club_aulas').update({ ativo: !aula.ativo }).eq('id', aula.id)
     await carregarAulas()
   }
-
   function abrirReplicar(aula: any) {
     setModalReplicar(aula); setReplicarMeses(1)
     setReplicarInicio(dataLocalStr(new Date())); setResultReplicacao(null)
@@ -306,31 +303,18 @@ export default function JustClubAdminPage() {
   return (
     <div className="min-h-screen bg-gray-50">
 
-      {/* ── Header com abas de unidade ── */}
+      {/* Header com abas de unidade */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="px-6 pt-4 pb-0">
           <h1 className="text-lg font-semibold text-gray-900 mb-4">JustClub — Aulas coletivas</h1>
-
-          {/* Abas de unidade estilo tab */}
           <div className="flex gap-0">
             {unidades.map(u => {
               const ativa = unidadeAtiva?.id === u.id
               return (
-                <button
-                  key={u.id}
-                  onClick={() => setUnidadeAtiva(u)}
-                  className={`px-6 py-2.5 text-sm font-medium border-b-2 transition-all relative ${
-                    ativa
-                      ? 'border-primary-600 text-primary-700 bg-primary-50/50'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
+                <button key={u.id} onClick={() => setUnidadeAtiva(u)}
+                  className={`px-6 py-2.5 text-sm font-medium border-b-2 transition-all relative ${ativa?'border-primary-600 text-primary-700 bg-primary-50/50':'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
                   {u.nome}
-                  {ativa && unidadeAtiva && (
-                    <span className="ml-2 text-xs text-primary-500 font-normal">
-                      {aulas.filter(a=>a.ativo).length} aulas
-                    </span>
-                  )}
+                  {ativa && unidadeAtiva && <span className="ml-2 text-xs text-primary-500 font-normal">{aulas.filter(a=>a.ativo).length} aulas</span>}
                 </button>
               )
             })}
@@ -338,9 +322,7 @@ export default function JustClubAdminPage() {
         </div>
       </div>
 
-      {/* ── Conteúdo ── */}
       {!unidadeAtiva ? (
-        /* Tela inicial — nenhuma aba selecionada */
         <div className="max-w-3xl mx-auto px-6 py-16 text-center">
           <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-5">
             <CalendarDays size={30} className="text-gray-400"/>
@@ -360,9 +342,7 @@ export default function JustClubAdminPage() {
         <div className="max-w-3xl mx-auto px-6 py-5">
 
           {msg && (
-            <div className={`mb-4 px-4 py-2.5 rounded-xl text-sm font-medium ${
-              msg.startsWith('Erro')?'bg-red-50 text-red-700 border border-red-100':'bg-green-50 text-green-800 border border-green-100'
-            }`}>{msg}</div>
+            <div className={`mb-4 px-4 py-2.5 rounded-xl text-sm font-medium ${msg.startsWith('Erro')?'bg-red-50 text-red-700 border border-red-100':'bg-green-50 text-green-800 border border-green-100'}`}>{msg}</div>
           )}
 
           {/* Abas de conteúdo */}
@@ -378,15 +358,9 @@ export default function JustClubAdminPage() {
               return (
                 <button key={aba}
                   onClick={() => { setAbaAtiva(aba); if (aba==='calendario') carregarOcorrencias(diasCalendario) }}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                    abaAtiva===aba?'bg-primary-600 text-white':'bg-white border border-gray-200 text-gray-600 hover:border-primary-300'
-                  }`}>
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${abaAtiva===aba?'bg-primary-600 text-white':'bg-white border border-gray-200 text-gray-600 hover:border-primary-300'}`}>
                   {cfg[aba].icon} {cfg[aba].label}
-                  {count > 0 && (
-                    <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${abaAtiva===aba?'bg-white text-primary-600':'bg-primary-100 text-primary-700'}`}>
-                      {count}
-                    </span>
-                  )}
+                  {count > 0 && <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${abaAtiva===aba?'bg-white text-primary-600':'bg-primary-100 text-primary-700'}`}>{count}</span>}
                 </button>
               )
             })}
@@ -398,7 +372,7 @@ export default function JustClubAdminPage() {
             )}
           </div>
 
-          {/* Barra de filtros */}
+          {/* Filtros */}
           {abaAtiva!=='grupos' && (
             <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 mb-4 flex items-center gap-3 flex-wrap">
               <Filter size={13} className="text-gray-400 flex-shrink-0"/>
@@ -453,7 +427,6 @@ export default function JustClubAdminPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${tipoColor(aula.tipo)}`}>{tipoLabel(aula.tipo)}</span>
-                            {aula.so_mulheres && <span className="text-xs px-2 py-0.5 rounded-full bg-pink-50 text-pink-600 border border-pink-100">👩 Só mulheres</span>}
                             {!aula.ativo && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">Inativa</span>}
                           </div>
                           <div className="mt-1.5 flex items-center gap-3 flex-wrap">
@@ -640,18 +613,27 @@ export default function JustClubAdminPage() {
               <button onClick={()=>{setModalAberto(false);setEditando(null)}} className="text-gray-400 hover:text-gray-600 p-1"><X size={18}/></button>
             </div>
             <div className="px-6 py-4 space-y-5 overflow-y-auto flex-1">
+
+              {/* Tipo */}
               <div>
                 <label className="label">Tipo de aula *</label>
                 <div className="grid grid-cols-3 gap-2">
                   {TIPOS.map(t => (
-                    <button key={t.value} type="button" onClick={()=>setForm(f=>({...f,tipo:t.value,so_mulheres:t.value==='lift_for_girls',capacidade:capacidadePorUnidadeTipo(unidadeAtiva?.nome||'',t.value)}))}
+                    <button key={t.value} type="button"
+                      onClick={()=>setForm(f=>({...f, tipo:t.value, capacidade:capacidadePorUnidadeTipo(unidadeAtiva?.nome||'',t.value)}))}
                       className={`py-2.5 px-2 rounded-xl text-xs font-medium text-center transition-all border ${form.tipo===t.value?'border-primary-400 bg-primary-50 text-primary-700':'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
                       {t.label}
                     </button>
                   ))}
                 </div>
-                {form.tipo==='lift_for_girls' && <div className="mt-2 bg-pink-50 border border-pink-100 rounded-xl px-3 py-2 text-xs text-pink-700">👩 Lift for Girls é automaticamente restrita a mulheres.</div>}
+                {form.tipo==='lift_for_girls' && (
+                  <div className="mt-2 bg-pink-50 border border-pink-100 rounded-xl px-3 py-2 text-xs text-pink-700">
+                    👩 Lift for Girls é automaticamente restrita a mulheres.
+                  </div>
+                )}
               </div>
+
+              {/* Grupo muscular */}
               <div>
                 <label className="label">Grupo muscular *</label>
                 {gruposAtivos.length===0 ? (
@@ -663,6 +645,8 @@ export default function JustClubAdminPage() {
                   </select>
                 )}
               </div>
+
+              {/* Coach */}
               <div>
                 <label className="label">Coach responsável *</label>
                 {coaches.length===0 ? (
@@ -674,6 +658,8 @@ export default function JustClubAdminPage() {
                   </select>
                 )}
               </div>
+
+              {/* Dia da semana */}
               <div>
                 <label className="label">Dia da semana *</label>
                 <div className="grid grid-cols-7 gap-1">
@@ -685,6 +671,8 @@ export default function JustClubAdminPage() {
                   ))}
                 </div>
               </div>
+
+              {/* Horário */}
               <div>
                 <label className="label">Horário *</label>
                 {(() => {
@@ -702,15 +690,19 @@ export default function JustClubAdminPage() {
                       </select>
                       {(isCustom || form.horario === '') && (
                         <input type="time" className="input" value={form.horario}
-                          onChange={e => setForm(f => ({ ...f, horario: e.target.value }))}
-                          placeholder="HH:MM"/>
+                          onChange={e => setForm(f => ({ ...f, horario: e.target.value }))}/>
                       )}
                     </div>
                   )
                 })()}
               </div>
+
+              {/* Duração e Capacidade */}
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="label">Duração (min)</label><input className="input" type="number" min={10} max={180} value={form.duracao_min} onChange={e=>setForm(f=>({...f,duracao_min:+e.target.value}))}/></div>
+                <div>
+                  <label className="label">Duração (min)</label>
+                  <input className="input" type="number" min={10} max={180} value={form.duracao_min} onChange={e=>setForm(f=>({...f,duracao_min:+e.target.value}))}/>
+                </div>
                 <div>
                   <label className="label">Capacidade (vagas)</label>
                   <div className="input bg-gray-50 text-gray-700 font-semibold flex items-center justify-between">
@@ -724,15 +716,8 @@ export default function JustClubAdminPage() {
                   </p>
                 </div>
               </div>
-              {form.tipo!=='lift_for_girls' && (
-                <div className="flex items-center gap-3">
-                  <button type="button" onClick={()=>setForm(f=>({...f,so_mulheres:!f.so_mulheres}))}
-                    className={`w-11 h-6 rounded-full transition-colors flex-shrink-0 relative ${form.so_mulheres?'bg-pink-500':'bg-gray-200'}`}>
-                    <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.so_mulheres?'translate-x-5':''}`}/>
-                  </button>
-                  <span className="text-sm text-gray-700">Somente mulheres</span>
-                </div>
-              )}
+
+              {/* Replicar (só no cadastro) */}
               {!editando && (
                 <div className="border border-gray-200 rounded-xl overflow-hidden">
                   <button type="button" onClick={()=>setFormReplicar(r=>!r)}
