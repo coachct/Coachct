@@ -443,20 +443,22 @@ function AulasPageInner() {
                   ) : (
                     <div style={{ background:'#080808', border:'1px solid #1a1a1a', borderRadius:16, padding:'1.25rem 1rem' }}>
 
-                      {/* Esteiras (R) — linha única, R13→R01 */}
+                      {/* Esteiras (R) — linha única sem quebra, R13→R01 */}
                       <div style={{ marginBottom:'1.25rem' }}>
                         <div style={{ fontSize:10, color:'#444', letterSpacing:2, marginBottom:10, textAlign:'center' }}>ESTEIRAS</div>
-                        <div style={{ display:'flex', gap:5, justifyContent:'center', flexWrap:'wrap' }}>
-                          {posicoes.filter((p:any) => p.tipo==='R').sort((a:any,b:any) => b.numero-a.numero).map((pos:any) => {
-                            const label = `R${String(pos.numero).padStart(2,'0')}`
-                            return (
-                              <PosicaoBtn key={pos.id} label={label}
-                                tomado={posicoesTomadas.includes(label)}
-                                selecionado={posicaoSel===label}
-                                cor={ACCENT}
-                                onClick={() => setPosicaoSel(posicaoSel===label?'':label)}/>
-                            )
-                          })}
+                        <div style={{ overflowX:'auto', paddingBottom:4 }}>
+                          <div style={{ display:'flex', gap:4, flexWrap:'nowrap', minWidth:'max-content', margin:'0 auto', width:'fit-content' }}>
+                            {posicoes.filter((p:any) => p.tipo==='R').sort((a:any,b:any) => b.numero-a.numero).map((pos:any) => {
+                              const label = `R${String(pos.numero).padStart(2,'0')}`
+                              return (
+                                <PosicaoBtn key={pos.id} label={label}
+                                  tomado={posicoesTomadas.includes(label)}
+                                  selecionado={posicaoSel===label}
+                                  cor={ACCENT}
+                                  onClick={() => setPosicaoSel(posicaoSel===label?'':label)}/>
+                              )
+                            })}
+                          </div>
                         </div>
                       </div>
 
