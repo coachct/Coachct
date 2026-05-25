@@ -191,7 +191,7 @@ export default function JustClubAdminPage() {
       const { error } = await supabase.from('club_aulas').update(payload).eq('id', editando.id)
       if (error) { showMsg('Erro: ' + error.message); setSalvando(false); return }
     } else {
-      const { data: novaAula, error } = await supabase.from('club_aulas').insert(payload).select('id').single()
+      const { data: novaAula, error } = await supabase.from('club_aulas').insert(payload).select('id').maybeSingle()
       if (error) { showMsg('Erro: ' + error.message); setSalvando(false); return }
       aulaId = novaAula?.id
     }
