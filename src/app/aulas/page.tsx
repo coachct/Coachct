@@ -220,8 +220,9 @@ function AulasPageInner() {
     if (posicaoSel) payload.posicao = posicaoSel
     const { error } = await supabase.from('club_reservas').insert(payload)
     if (error) { setErroModal('Erro ao reservar: '+error.message); setConfirmando(false); return }
-    setConfirmando(false); setModalReserva(null)
-    await Promise.all([carregarOcorrencias(dataSelStr), carregarSaldo()])
+    setConfirmando(false)
+    setModalReserva(null)
+    router.push('/minha-conta')
   }
   async function confirmarFila() {
     if (!tipoCredito) { setErroModal('Selecione o plano para usar.'); return }
