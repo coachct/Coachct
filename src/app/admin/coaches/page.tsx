@@ -74,13 +74,40 @@ export default function CoachesPage() {
 
   async function saveHorarios(coachId: string) {
     const set = horarios[coachId] || new Set()
-    await supabase.from('coach_horarios').delete().eq('coach_id', coachId)
-    const rows = Array.from(set).map(key => {
-      const idx = key.indexOf('-')
-      return { coach_id: coachId, dia_semana: parseInt(key.substring(0, idx)), hora: key.substring(idx + 1), ativo: true }
-    })
-    if (rows.length > 0) await supabase.from('coach_horarios').insert(rows)
-    setMsg('Grade salva!'); setTimeout(() => setMsg(''), 2000)
+
+    const { error: delError } = await supabase
+      .from('coach_horarios').delete().eq('coach_id', coachId)
+
+    if (delError) { setMsg('Erro ao salvar: ' + delError.message); return }
+
+    if (set.size > 0) {
+      // Busca unidades do coach para associar corretamente
+      const unidsDoCoach = coachUnidades[coachId]
+        ? Array.from(coachUnidades[coachId])
+        : []
+
+      // Usa a primeira unidade CT do coach, ou null se não tiver
+      const { data: unidsCT } = await supabase
+        .from('unidades').select('id').eq('tipo', 'ct').eq('ativo', true).limit(1)
+      const unidadeId = unidsCT?.[0]?.id || null
+
+      const rows = Array.from(set).map(key => {
+        const idx = key.indexOf('-')
+        return {
+          coach_id:   coachId,
+          dia_semana: parseInt(key.substring(0, idx)),
+          hora:       key.substring(idx + 1),
+          unidade_id: unidadeId,
+          ativo:      true,
+        }
+      })
+
+      const { error: insError } = await supabase.from('coach_horarios').insert(rows)
+      if (insError) { setMsg('Erro ao salvar: ' + insError.message); return }
+    }
+
+    setMsg('Grade salva!')
+    setTimeout(() => setMsg(''), 2000)
   }
 
   // ─── Unidades do coach ───
