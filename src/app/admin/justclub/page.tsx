@@ -5,7 +5,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import {
   Plus, Save, X, Calendar, List, AlertCircle,
-  Pencil, Power, Users, Clock, ChevronDown, ChevronUp, Tag, RefreshCw, CheckCircle
+  Pencil, Power, Users, Clock, ChevronDown, ChevronUp, Tag, RefreshCw, CheckCircle, CalendarDays
 } from 'lucide-react'
 
 const DIAS_ABREV = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
@@ -94,6 +94,12 @@ export default function JustClubAdminPage() {
   const [editandoGrupo, setEditandoGrupo] = useState<any | null>(null)
   const [nomeGrupoEdit, setNomeGrupoEdit] = useState('')
 
+  // Modal calendário de ocorrências
+  const [modalCalendario,    setModalCalendario]    = useState(false)
+  const [diasCalendario,     setDiasCalendario]     = useState<7|15|30>(7)
+  const [ocorrencias,        setOcorrencias]        = useState<any[]>([])
+  const [loadingOcorrencias, setLoadingOcorrencias] = useState(false)
+
   // Recorrência no modal de criação
   const [formReplicar,   setFormReplicar]   = useState(false)
   const [formMeses,      setFormMeses]      = useState(1)
@@ -139,6 +145,37 @@ export default function JustClubAdminPage() {
     const q = supabase.from('coaches').select('id, nome').eq('ativo', true).order('nome')
     const { data: cs } = ids.length > 0 ? await q.in('id', ids) : await q
     setCoaches(cs || [])
+  }
+
+  async function carregarOcorrencias(dias: 7|15|30) {
+    if (!unidadeAtiva) return
+    setLoadingOcorrencias(true)
+    const hoje = dataLocalStr(new Date())
+    const fim  = dataLocalStr(new Date(Date.now() + dias * 86400000))
+
+    // Busca aula_ids desta unidade primeiro
+    const { data: aulasIds } = await supabase
+      .from('club_aulas')
+      .select('id')
+      .eq('unidade_id', unidadeAtiva.id)
+      .eq('ativo', true)
+
+    const ids = (aulasIds || []).map((a: any) => a.id)
+
+    if (ids.length === 0) { setOcorrencias([]); setLoadingOcorrencias(false); return }
+
+    const { data } = await supabase
+      .from('club_ocorrencias')
+      .select('*, club_aulas(tipo, horario, capacidade, coaches(nome), grupos_musculares(nome))')
+      .in('aula_id', ids)
+      .eq('status', 'ativa')
+      .gte('data', hoje)
+      .lte('data', fim)
+      .order('data')
+      .order('club_aulas(horario)')
+
+    setOcorrencias(data || [])
+    setLoadingOcorrencias(false)
   }
 
   async function carregarAulas() {
@@ -382,6 +419,12 @@ export default function JustClubAdminPage() {
               <Plus size={14}/> Nova aula
             </button>
           )}
+          <button
+            onClick={() => { setModalCalendario(true); setDiasCalendario(7); carregarOcorrencias(7) }}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-white border border-gray-200 text-gray-600 hover:border-primary-300 hover:text-primary-700 transition-all"
+          >
+            <CalendarDays size={14}/> Calendário
+          </button>
         </div>
 
         {loadingData && abaAtiva !== 'grupos' ? (
@@ -685,6 +728,116 @@ export default function JustClubAdminPage() {
               <button onClick={salvar} disabled={salvando} className="btn flex-1 bg-primary-600 text-white hover:bg-primary-700 gap-1 disabled:opacity-60">
                 <Save size={13}/> {salvando?'Salvando...':editando?'Atualizar aula':'Criar aula'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODAL CALENDÁRIO ══ */}
+      {modalCalendario && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-xl">
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
+              <div>
+                <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                  <CalendarDays size={17} className="text-primary-600"/> Próximas aulas
+                </h2>
+                <p className="text-xs text-gray-400 mt-0.5">{unidadeAtiva?.nome}</p>
+              </div>
+              <button onClick={() => setModalCalendario(false)} className="text-gray-400 hover:text-gray-600 p-1">
+                <X size={18}/>
+              </button>
+            </div>
+
+            {/* Filtros rápidos */}
+            <div className="px-6 py-3 border-b border-gray-100 flex gap-2 flex-shrink-0">
+              {([7, 15, 30] as const).map(d => (
+                <button key={d} onClick={() => { setDiasCalendario(d); carregarOcorrencias(d) }}
+                  className={`px-4 py-1.5 rounded-xl text-sm font-medium transition-all border ${
+                    diasCalendario === d
+                      ? 'bg-primary-600 text-white border-primary-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'
+                  }`}>
+                  {d} dias
+                </button>
+              ))}
+              <span className="text-xs text-gray-400 self-center ml-2">
+                {!loadingOcorrencias && `${ocorrencias.length} ocorrência${ocorrencias.length !== 1 ? 's' : ''}`}
+              </span>
+            </div>
+
+            {/* Lista */}
+            <div className="overflow-y-auto flex-1 px-6 py-4">
+              {loadingOcorrencias ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="w-7 h-7 border-4 border-primary-400 border-t-transparent rounded-full animate-spin"/>
+                </div>
+              ) : ocorrencias.length === 0 ? (
+                <div className="text-center py-12">
+                  <CalendarDays size={32} className="text-gray-200 mx-auto mb-3"/>
+                  <p className="text-gray-400 text-sm">Nenhuma aula nos próximos {diasCalendario} dias.</p>
+                  <p className="text-xs text-gray-300 mt-1">Verifique se há aulas ativas com recorrências geradas.</p>
+                </div>
+              ) : (() => {
+                // Agrupa por data
+                const porData: Record<string, any[]> = {}
+                for (const oc of ocorrencias) {
+                  if (!porData[oc.data]) porData[oc.data] = []
+                  porData[oc.data].push(oc)
+                }
+                return Object.entries(porData).map(([data, ocs]) => {
+                  const d = new Date(data + 'T12:00:00')
+                  const hoje = dataLocalStr(new Date())
+                  const ehHoje = data === hoje
+                  const diaSem = DIAS_ABREV[d.getDay()]
+                  const dataFmt = d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
+
+                  return (
+                    <div key={data} className="mb-4">
+                      {/* Cabeçalho do dia */}
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className={`px-2.5 py-1 rounded-lg text-xs font-bold ${ehHoje ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                          {diaSem}
+                        </div>
+                        <span className="text-sm font-semibold text-gray-800">{dataFmt}</span>
+                        {ehHoje && <span className="text-xs text-primary-600 font-medium">Hoje</span>}
+                        <span className="text-xs text-gray-400">{ocs.length} aula{ocs.length !== 1 ? 's' : ''}</span>
+                      </div>
+
+                      {/* Aulas do dia */}
+                      <div className="space-y-1.5 ml-1">
+                        {ocs
+                          .sort((a, b) => (a.club_aulas?.horario||'').localeCompare(b.club_aulas?.horario||''))
+                          .map(oc => (
+                            <div key={oc.id} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-100">
+                              <span className="font-mono text-sm font-bold text-gray-900 w-12 flex-shrink-0">
+                                {(oc.club_aulas?.horario||'').slice(0,5)}
+                              </span>
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${tipoColor(oc.club_aulas?.tipo||'')}`}>
+                                {tipoLabel(oc.club_aulas?.tipo||'')}
+                              </span>
+                              <span className="text-xs text-gray-600 flex-1 truncate">
+                                {oc.club_aulas?.grupos_musculares?.nome||'—'}
+                              </span>
+                              <span className="text-xs text-gray-400 flex-shrink-0">
+                                👤 {oc.club_aulas?.coaches?.nome?.split(' ')[0]||'—'}
+                              </span>
+                              <span className="text-xs text-gray-400 flex-shrink-0 flex items-center gap-1">
+                                <Users size={10}/> {oc.club_aulas?.capacidade||'—'}
+                              </span>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )
+                })
+              })()}
+            </div>
+
+            <div className="px-6 py-3 border-t border-gray-100 flex-shrink-0">
+              <button onClick={() => setModalCalendario(false)} className="btn w-full text-gray-500 border border-gray-200">Fechar</button>
             </div>
           </div>
         </div>
