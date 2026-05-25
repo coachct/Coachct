@@ -1,13 +1,13 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
 import { dashboardDoRole } from '@/lib/auth-redirect'
 
 const ACCENT = '#ff2d9b'
 
-export default function LoginPage() {
+function LoginPageInner() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -17,11 +17,14 @@ export default function LoginPage() {
   const [resetLoading, setResetLoading] = useState(false)
   const { signIn, perfil } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const redirectUrl = searchParams.get('redirect')
   const supabase = createClient()
 
   useEffect(() => {
     if (perfil && perfil.role) {
-      router.push(dashboardDoRole(perfil.role))
+      // Se veio com ?redirect=, volta pra lá. Senão, vai pro dashboard do role.
+      router.push(redirectUrl || dashboardDoRole(perfil.role))
     }
   }, [perfil])
 
@@ -157,5 +160,18 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: 32, height: 32, border: '4px solid #ff2d9b', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+      </div>
+    }>
+      <LoginPageInner />
+    </Suspense>
   )
 }
