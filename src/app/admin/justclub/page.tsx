@@ -48,7 +48,17 @@ function tipoColor(t: string) {
   if (t === 'lift_for_girls') return 'bg-pink-100 text-pink-700'
   return 'bg-cyan-100 text-cyan-700'
 }
-function capacidadePadrao(tipo: string) { return tipo === 'running_funcional' ? 30 : 24 }
+function capacidadePorUnidadeTipo(nomeUnidade: string, tipo: string): number {
+  const nome = (nomeUnidade || '').toLowerCase()
+  const isVila = nome.includes('vila') || nome.includes('olímpia') || nome.includes('olimpia')
+  const isPinheiros = nome.includes('pinheiros')
+  if (tipo === 'running_funcional') {
+    if (isVila)      return 26
+    if (isPinheiros) return 30
+    return 30
+  }
+  return 24 // lift e lift_for_girls são sempre 24
+}
 function dataLocalStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
@@ -184,7 +194,8 @@ export default function JustClubAdminPage() {
   function abrirNovaAula() {
     setEditando(null)
     const primeiroHorario = horariosParaUnidade(unidadeAtiva?.nome || '')[0] || '06:00'
-    setForm({ ...FORM_VAZIO, horario: primeiroHorario, grupo_muscular_id: gruposAtivos[0]?.id||'', coach_id: coaches[0]?.id||'' })
+    const capInicial = capacidadePorUnidadeTipo(unidadeAtiva?.nome || '', 'lift')
+    setForm({ ...FORM_VAZIO, horario: primeiroHorario, capacidade: capInicial, grupo_muscular_id: gruposAtivos[0]?.id||'', coach_id: coaches[0]?.id||'' })
     setFormReplicar(false); setFormMeses(1); setFormInicio(dataLocalStr(new Date()))
     setModalAberto(true)
   }
@@ -633,7 +644,7 @@ export default function JustClubAdminPage() {
                 <label className="label">Tipo de aula *</label>
                 <div className="grid grid-cols-3 gap-2">
                   {TIPOS.map(t => (
-                    <button key={t.value} type="button" onClick={()=>setForm(f=>({...f,tipo:t.value,so_mulheres:t.value==='lift_for_girls',capacidade:capacidadePadrao(t.value)}))}
+                    <button key={t.value} type="button" onClick={()=>setForm(f=>({...f,tipo:t.value,so_mulheres:t.value==='lift_for_girls',capacidade:capacidadePorUnidadeTipo(unidadeAtiva?.nome||'',t.value)}))}
                       className={`py-2.5 px-2 rounded-xl text-xs font-medium text-center transition-all border ${form.tipo===t.value?'border-primary-400 bg-primary-50 text-primary-700':'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
                       {t.label}
                     </button>
@@ -702,8 +713,15 @@ export default function JustClubAdminPage() {
                 <div><label className="label">Duração (min)</label><input className="input" type="number" min={10} max={180} value={form.duracao_min} onChange={e=>setForm(f=>({...f,duracao_min:+e.target.value}))}/></div>
                 <div>
                   <label className="label">Capacidade (vagas)</label>
-                  <input className="input" type="number" min={1} max={100} value={form.capacidade} onChange={e=>setForm(f=>({...f,capacidade:+e.target.value}))}/>
-                  <p className="text-xs text-gray-400 mt-1">{form.tipo==='running_funcional'?'Padrão: 26–30':'Padrão: 24'}</p>
+                  <div className="input bg-gray-50 text-gray-700 font-semibold flex items-center justify-between">
+                    <span>{form.capacidade} vagas</span>
+                    <span className="text-xs text-gray-400 font-normal">fixo</span>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {form.tipo==='running_funcional'
+                      ? `Running: ${capacidadePorUnidadeTipo(unidadeAtiva?.nome||'','running_funcional')} vagas nesta unidade`
+                      : 'Lift: 24 vagas'}
+                  </p>
                 </div>
               </div>
               {form.tipo!=='lift_for_girls' && (
