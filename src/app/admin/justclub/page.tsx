@@ -16,13 +16,27 @@ const TIPOS = [
   { value: 'lift_for_girls',    label: 'Lift for Girls' },
   { value: 'running_funcional', label: 'Running + Funcional' },
 ]
-const HORARIOS = [
-  '05:30','06:00','06:30','07:00','07:30','08:00','08:30',
-  '09:00','09:30','10:00','10:30','11:00','11:30','12:00',
-  '12:30','13:00','13:30','14:00','14:30','15:00','15:30',
-  '16:00','16:30','17:00','17:30','18:00','18:30','19:00',
-  '19:30','20:00',
+const HORARIOS_VILA_OLIMPIA = [
+  '06:00','07:00','08:00','09:00','10:00','10:15',
+  '11:00','11:15','12:00','12:15','18:30','19:30',
 ]
+const HORARIOS_PINHEIROS = [
+  '06:20','07:20','09:00','10:00','10:15',
+  '11:00','11:15','12:00','12:15','18:30','19:30',
+]
+const HORARIOS_PADRAO = [
+  '05:30','06:00','06:30','07:00','07:30','08:00','08:30',
+  '09:00','09:30','10:00','10:15','10:30','11:00','11:15','11:30',
+  '12:00','12:15','12:30','13:00','14:00','15:00','16:00',
+  '17:00','18:00','18:30','19:00','19:30','20:00',
+]
+
+function horariosParaUnidade(nomeUnidade: string): string[] {
+  const nome = (nomeUnidade || '').toLowerCase()
+  if (nome.includes('vila') || nome.includes('olímpia') || nome.includes('olimpia')) return HORARIOS_VILA_OLIMPIA
+  if (nome.includes('pinheiros')) return HORARIOS_PINHEIROS
+  return HORARIOS_PADRAO
+}
 const FORM_VAZIO = {
   tipo: 'lift', grupo_muscular_id: '', coach_id: '',
   dia_semana: 1, horario: '06:00', duracao_min: 50, capacidade: 24, so_mulheres: false,
@@ -169,7 +183,8 @@ export default function JustClubAdminPage() {
 
   function abrirNovaAula() {
     setEditando(null)
-    setForm({ ...FORM_VAZIO, grupo_muscular_id: gruposAtivos[0]?.id||'', coach_id: coaches[0]?.id||'' })
+    const primeiroHorario = horariosParaUnidade(unidadeAtiva?.nome || '')[0] || '06:00'
+    setForm({ ...FORM_VAZIO, horario: primeiroHorario, grupo_muscular_id: gruposAtivos[0]?.id||'', coach_id: coaches[0]?.id||'' })
     setFormReplicar(false); setFormMeses(1); setFormInicio(dataLocalStr(new Date()))
     setModalAberto(true)
   }
@@ -661,9 +676,27 @@ export default function JustClubAdminPage() {
               </div>
               <div>
                 <label className="label">Horário *</label>
-                <select className="input" value={form.horario} onChange={e=>setForm(f=>({...f,horario:e.target.value}))}>
-                  {HORARIOS.map(h=><option key={h} value={h}>{h}</option>)}
-                </select>
+                {(() => {
+                  const lista = horariosParaUnidade(unidadeAtiva?.nome || '')
+                  const isCustom = form.horario !== '' && !lista.includes(form.horario)
+                  return (
+                    <div className="space-y-2">
+                      <select className="input" value={isCustom ? '__custom__' : form.horario}
+                        onChange={e => {
+                          if (e.target.value === '__custom__') setForm(f => ({ ...f, horario: '' }))
+                          else setForm(f => ({ ...f, horario: e.target.value }))
+                        }}>
+                        {lista.map(h => <option key={h} value={h}>{h}</option>)}
+                        <option value="__custom__">Outro horário...</option>
+                      </select>
+                      {(isCustom || form.horario === '') && (
+                        <input type="time" className="input" value={form.horario}
+                          onChange={e => setForm(f => ({ ...f, horario: e.target.value }))}
+                          placeholder="HH:MM"/>
+                      )}
+                    </div>
+                  )
+                })()}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="label">Duração (min)</label><input className="input" type="number" min={10} max={180} value={form.duracao_min} onChange={e=>setForm(f=>({...f,duracao_min:+e.target.value}))}/></div>
