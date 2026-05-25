@@ -148,10 +148,9 @@ function MapaPageInner() {
   function corBtn(label: string, tipo: 'R'|'F') {
     const tomado    = posicoesTomadas.includes(label)
     const selecionado = posicaoSel === label
-    const cor = tipo==='R' ? ACCENT : VERDE
+    const cor = ACCENT
     return {
       tomado, selecionado, cor,
-      // Disponível = cor viva | Selecionado = apagado com borda | Ocupado = escuro
       borderColor: tomado ? '#111' : selecionado ? '#333' : cor,
       bg:          tomado ? '#0a0a0a' : selecionado ? '#1a1a1a' : `${cor}18`,
       iconColor:   tomado ? '#1a1a1a' : selecionado ? '#333' : cor,
