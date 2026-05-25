@@ -151,10 +151,11 @@ function MapaPageInner() {
     const cor = tipo==='R' ? ACCENT : VERDE
     return {
       tomado, selecionado, cor,
-      borderColor: selecionado ? cor : tomado ? '#111' : '#2a2a2a',
-      bg: selecionado ? `${cor}25` : tomado ? '#0a0a0a' : '#111',
-      iconColor: selecionado ? cor : tomado ? '#1a1a1a' : '#3a3a3a',
-      labelColor: selecionado ? cor : tomado ? '#1a1a1a' : '#555',
+      // Disponível = cor viva | Selecionado = apagado com borda | Ocupado = escuro
+      borderColor: tomado ? '#111' : selecionado ? '#333' : cor,
+      bg:          tomado ? '#0a0a0a' : selecionado ? '#1a1a1a' : `${cor}18`,
+      iconColor:   tomado ? '#1a1a1a' : selecionado ? '#333' : cor,
+      labelColor:  tomado ? '#1a1a1a' : selecionado ? '#444' : cor,
     }
   }
 
