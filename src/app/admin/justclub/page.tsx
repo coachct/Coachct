@@ -167,11 +167,20 @@ export default function JustClubAdminPage() {
 
   async function carregarCoachesDaUnidade() {
     if (!unidadeAtiva) return
-    const { data: horarios } = await supabase.from('coach_horarios').select('coach_id').eq('unidade_id', unidadeAtiva.id).eq('ativo', true)
-    const ids = [...new Set((horarios || []).map((h: any) => h.coach_id))]
-    const q = supabase.from('coaches').select('id, nome').eq('ativo', true).order('nome')
-    const { data: cs } = ids.length > 0 ? await q.in('id', ids) : await q
-    setCoaches(cs || [])
+    const { data: cu } = await supabase
+      .from('coach_unidades')
+      .select('coach_id')
+      .eq('unidade_id', unidadeAtiva.id)
+      .eq('ativo', true)
+    const ids = (cu || []).map((u: any) => u.coach_id)
+    if (ids.length > 0) {
+      const { data: cs } = await supabase.from('coaches').select('id, nome').eq('ativo', true).in('id', ids).order('nome')
+      setCoaches(cs || [])
+    } else {
+      // fallback: mostra todos se ainda não houver associações
+      const { data: cs } = await supabase.from('coaches').select('id, nome').eq('ativo', true).order('nome')
+      setCoaches(cs || [])
+    }
   }
 
   async function carregarAulas() {
