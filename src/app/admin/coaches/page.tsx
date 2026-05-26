@@ -8,8 +8,18 @@ import { Plus, ChevronDown, ChevronUp, Save, Trash2, X, ClipboardList, KeyRound,
 
 const EMPTY = {
   nome: '', cpf: '', email: '', senha: '',
-  contrato: 'CLT' as 'CLT' | 'PJ' | 'Autônomo',
-  salario_fixo: 0, adicional_por_aula: 0, valor_cliente_aula: 0
+  salario_fixo: 0,
+}
+
+const TIPOS_CT    = [{ key: 'ct', label: 'Coach CT' }]
+const TIPOS_CLUB  = [
+  { key: 'lift',              label: 'Lift' },
+  { key: 'lift_for_girls',   label: 'Lift for Girls' },
+  { key: 'running_funcional', label: 'Running + Funcional' },
+]
+
+function tiposParaUnidade(u: any) {
+  return u.tipo === 'ct' ? TIPOS_CT : TIPOS_CLUB
 }
 
 export default function CoachesPage() {
@@ -24,10 +34,13 @@ export default function CoachesPage() {
   const [expandedGrade,    setExpandedGrade]    = useState<string | null>(null)
   const [horarios, setHorarios] = useState<Record<string, Set<string>>>({})
 
-  // Unidades por coach
   const [unidades,        setUnidades]        = useState<any[]>([])
   const [coachUnidades,   setCoachUnidades]   = useState<Record<string, Set<string>>>({})
   const [salvandoUnidade, setSalvandoUnidade] = useState<string | null>(null)
+
+  // Valores por tipo/unidade: chave = `${coachId}-${unidadeId}-${tipoAula}`
+  const [valoresLocais,  setValoresLocais]  = useState<Record<string, number>>({})
+  const [salvandoValor,  setSalvandoValor]  = useState<string | null>(null)
 
   const [aulaModal, setAulaModal] = useState<{ coach: Coach; aulas: any[] } | null>(null)
   const [loadingAulas, setLoadingAulas] = useState(false)
@@ -74,68 +87,71 @@ export default function CoachesPage() {
 
   async function saveHorarios(coachId: string) {
     const set = horarios[coachId] || new Set()
-
-    const { error: delError } = await supabase
-      .from('coach_horarios').delete().eq('coach_id', coachId)
-
+    const { error: delError } = await supabase.from('coach_horarios').delete().eq('coach_id', coachId)
     if (delError) { setMsg('Erro ao salvar: ' + delError.message); return }
-
     if (set.size > 0) {
-      // Busca unidades do coach para associar corretamente
-      const unidsDoCoach = coachUnidades[coachId]
-        ? Array.from(coachUnidades[coachId])
-        : []
-
-      // Usa a primeira unidade CT do coach, ou null se não tiver
-      const { data: unidsCT } = await supabase
-        .from('unidades').select('id').eq('tipo', 'ct').eq('ativo', true).limit(1)
+      const { data: unidsCT } = await supabase.from('unidades').select('id').eq('tipo', 'ct').eq('ativo', true).limit(1)
       const unidadeId = unidsCT?.[0]?.id || null
-
       const rows = Array.from(set).map(key => {
         const idx = key.indexOf('-')
-        return {
-          coach_id:   coachId,
-          dia_semana: parseInt(key.substring(0, idx)),
-          hora:       key.substring(idx + 1),
-          unidade_id: unidadeId,
-          ativo:      true,
-        }
+        return { coach_id: coachId, dia_semana: parseInt(key.substring(0, idx)), hora: key.substring(idx + 1), unidade_id: unidadeId, ativo: true }
       })
-
       const { error: insError } = await supabase.from('coach_horarios').insert(rows)
       if (insError) { setMsg('Erro ao salvar: ' + insError.message); return }
     }
-
     setMsg('Grade salva!')
     setTimeout(() => setMsg(''), 2000)
   }
 
-  // ─── Unidades do coach ───
+  // ─── Unidades + valores ───
   async function loadCoachUnidades(coachId: string) {
-    const { data } = await supabase.from('coach_unidades').select('unidade_id').eq('coach_id', coachId).eq('ativo', true)
-    const set = new Set((data || []).map((u: any) => u.unidade_id))
+    const [{ data: us }, { data: vs }] = await Promise.all([
+      supabase.from('coach_unidades').select('unidade_id').eq('coach_id', coachId).eq('ativo', true),
+      supabase.from('coach_valores').select('*').eq('coach_id', coachId),
+    ])
+    const set = new Set((us || []).map((u: any) => u.unidade_id))
     setCoachUnidades(prev => ({ ...prev, [coachId]: set }))
+
+    const novoLocais: Record<string, number> = { ...valoresLocais }
+    for (const v of (vs || [])) {
+      novoLocais[`${coachId}-${v.unidade_id}-${v.tipo_aula}`] = Number(v.valor_por_aula)
+    }
+    setValoresLocais(novoLocais)
   }
 
   async function toggleCoachUnidade(coachId: string, unidadeId: string) {
     setSalvandoUnidade(unidadeId)
     const set = new Set(coachUnidades[coachId] || [])
     const removendo = set.has(unidadeId)
-
     if (removendo) {
-      const { error } = await supabase.from('coach_unidades')
-        .delete().eq('coach_id', coachId).eq('unidade_id', unidadeId)
-      if (error) { setMsg('Erro ao salvar: ' + error.message); setSalvandoUnidade(null); return }
+      const { error } = await supabase.from('coach_unidades').delete().eq('coach_id', coachId).eq('unidade_id', unidadeId)
+      if (error) { setMsg('Erro: ' + error.message); setSalvandoUnidade(null); return }
       set.delete(unidadeId)
     } else {
-      const { error } = await supabase.from('coach_unidades')
-        .upsert({ coach_id: coachId, unidade_id: unidadeId, ativo: true }, { onConflict: 'coach_id,unidade_id' })
-      if (error) { setMsg('Erro ao salvar: ' + error.message); setSalvandoUnidade(null); return }
+      const { error } = await supabase.from('coach_unidades').upsert({ coach_id: coachId, unidade_id: unidadeId, ativo: true }, { onConflict: 'coach_id,unidade_id' })
+      if (error) { setMsg('Erro: ' + error.message); setSalvandoUnidade(null); return }
       set.add(unidadeId)
     }
-
     setCoachUnidades(prev => ({ ...prev, [coachId]: new Set(set) }))
     setSalvandoUnidade(null)
+  }
+
+  function getValorLocal(coachId: string, unidadeId: string, tipoAula: string): number {
+    return valoresLocais[`${coachId}-${unidadeId}-${tipoAula}`] ?? 0
+  }
+
+  function setValorLocal(coachId: string, unidadeId: string, tipoAula: string, valor: number) {
+    setValoresLocais(prev => ({ ...prev, [`${coachId}-${unidadeId}-${tipoAula}`]: valor }))
+  }
+
+  async function saveValor(coachId: string, unidadeId: string, tipoAula: string) {
+    const key = `${coachId}-${unidadeId}-${tipoAula}`
+    setSalvandoValor(key)
+    const valor = valoresLocais[key] ?? 0
+    await supabase.from('coach_valores').upsert({
+      coach_id: coachId, unidade_id: unidadeId, tipo_aula: tipoAula, valor_por_aula: valor,
+    }, { onConflict: 'coach_id,unidade_id,tipo_aula' })
+    setSalvandoValor(null)
   }
 
   // ─── Aulas ───
@@ -192,7 +208,7 @@ export default function CoachesPage() {
     if (!form.nome || !form.email || !form.senha) { setMsg('Preencha nome, email e senha.'); return }
     setSaving(true); setMsg('')
     try {
-      const res = await fetch('/api/criar-coach', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
+      const res = await fetch('/api/criar-coach', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, contrato: 'PJ', adicional_por_aula: 0, valor_cliente_aula: 0 }) })
       const data = await res.json()
       if (!res.ok) { setMsg('Erro: ' + data.error); setSaving(false); return }
       setMsg('Coach criado!'); setForm(EMPTY); setShowForm(false); loadCoaches()
@@ -204,17 +220,13 @@ export default function CoachesPage() {
     if (!editForm?.id) return
     setSaving(true)
     const { error } = await supabase.from('coaches').update({
-      nome: editForm.nome, cpf: editForm.cpf, contrato: editForm.contrato || 'CLT',
-      salario_fixo: editForm.salario_fixo || 0, adicional_por_aula: editForm.adicional_por_aula || 0, valor_cliente_aula: editForm.valor_cliente_aula || 0,
+      nome: editForm.nome, cpf: editForm.cpf,
+      salario_fixo: editForm.salario_fixo || 0,
     }).eq('id', editForm.id)
     if (error) setMsg('Erro: ' + error.message)
     else { setMsg('Coach atualizado!'); setEditForm(null); loadCoaches() }
     setSaving(false); setTimeout(() => setMsg(''), 2000)
   }
-
-  const fixo = form.salario_fixo || 0, vaula = form.adicional_por_aula || 0, cliente = form.valor_cliente_aula || 0
-  const mrgUnit = cliente - vaula, custoReal = vaula + (fixo / 30), mrgReal = cliente - custoReal
-  const be = mrgUnit > 0 ? Math.ceil(fixo / mrgUnit) : null
 
   function tipoUnidadeBadge(tipo: string) {
     return tipo === 'ct' ? 'bg-primary-100 text-primary-700' : tipo === 'club' ? 'bg-cyan-100 text-cyan-700' : 'bg-gray-100 text-gray-600'
@@ -227,7 +239,7 @@ export default function CoachesPage() {
 
   return (
     <div>
-      <PageHeader title="Coaches" subtitle="Cadastro, unidades, custos e grade de horários" />
+      <PageHeader title="Coaches" subtitle="Cadastro, unidades, valores por tipo de aula e grade de horários" />
 
       {msg && <div className={`px-4 py-2 rounded-lg text-sm mb-4 ${msg.startsWith('Erro') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-800'}`}>{msg}</div>}
 
@@ -235,6 +247,7 @@ export default function CoachesPage() {
         <Plus size={14} /> Novo coach
       </button>
 
+      {/* ── Formulário novo coach ── */}
       {showForm && (
         <div className="card border-primary-200 mb-6">
           <h2 className="text-sm font-semibold text-gray-900 mb-4">Novo coach</h2>
@@ -243,27 +256,15 @@ export default function CoachesPage() {
             <div><label className="label">CPF</label><input className="input" value={form.cpf} onChange={e => setForm(f=>({...f,cpf:e.target.value}))} placeholder="000.000.000-00 (opcional)" /></div>
             <div><label className="label">Email de acesso *</label><input className="input" type="email" value={form.email} onChange={e => setForm(f=>({...f,email:e.target.value}))} /></div>
             <div><label className="label">Senha inicial *</label><input className="input" type="password" value={form.senha} onChange={e => setForm(f=>({...f,senha:e.target.value}))} placeholder="Mínimo 6 caracteres" /></div>
-            <div><label className="label">Tipo de contrato</label>
-              <select className="input" value={form.contrato} onChange={e => setForm(f=>({...f,contrato:e.target.value as any}))}>
-                <option>CLT</option><option>PJ</option><option>Autônomo</option>
-              </select>
-            </div>
           </div>
           <div className="bg-gray-50 rounded-xl p-4 mb-4">
-            <div className="text-xs font-semibold text-gray-700 mb-3 uppercase tracking-wide">Estrutura de custo</div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div><label className="label">Salário fixo/mês (R$)</label><input className="input" type="number" value={form.salario_fixo} onChange={e => setForm(f=>({...f,salario_fixo:+e.target.value}))} /><p className="text-xs text-gray-400 mt-1">Pago todo mês</p></div>
-              <div><label className="label">Adicional por aula (R$)</label><input className="input" type="number" value={form.adicional_por_aula} onChange={e => setForm(f=>({...f,adicional_por_aula:+e.target.value}))} /><p className="text-xs text-gray-400 mt-1">Por aula dada</p></div>
-              <div><label className="label">Valor cobrado do cliente (R$)</label><input className="input" type="number" value={form.valor_cliente_aula} onChange={e => setForm(f=>({...f,valor_cliente_aula:+e.target.value}))} /><p className="text-xs text-gray-400 mt-1">Receita por aula</p></div>
+            <div className="text-xs font-semibold text-gray-700 mb-1 uppercase tracking-wide">Salário fixo</div>
+            <p className="text-xs text-gray-400 mb-3">Opcional — deixe 0 para coaches que recebem apenas por aulas</p>
+            <div className="max-w-xs">
+              <label className="label">Salário fixo/mês (R$)</label>
+              <input className="input" type="number" value={form.salario_fixo} onChange={e => setForm(f=>({...f,salario_fixo:+e.target.value}))} placeholder="0" />
             </div>
-            {(fixo > 0 || vaula > 0 || cliente > 0) && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 pt-3 border-t border-gray-200">
-                <div className="bg-white rounded-lg p-3 text-center"><div className="text-xs text-gray-400">Margem/aula</div><div className={`text-sm font-semibold ${mrgUnit>=0?'text-green-700':'text-red-600'}`}>{mrgUnit>=0?'+':''}R${mrgUnit.toFixed(0)}</div></div>
-                <div className="bg-white rounded-lg p-3 text-center"><div className="text-xs text-gray-400">Custo real/aula</div><div className="text-sm font-semibold text-gray-800">R${custoReal.toFixed(2)}</div><div className="text-xs text-gray-400">c/ fixo diluído</div></div>
-                <div className="bg-white rounded-lg p-3 text-center"><div className="text-xs text-gray-400">Margem real/aula</div><div className={`text-sm font-semibold ${mrgReal>=0?'text-green-700':'text-red-600'}`}>{mrgReal>=0?'+':''}R${mrgReal.toFixed(2)}</div></div>
-                <div className="bg-white rounded-lg p-3 text-center"><div className="text-xs text-gray-400">Ponto de equilíbrio</div><div className="text-sm font-semibold text-yellow-700">{be!==null?`${be} aulas`:'—'}</div></div>
-              </div>
-            )}
+            <p className="text-xs text-gray-400 mt-2">💡 Os valores por tipo de aula são configurados na seção <strong>Unidades</strong> de cada coach após o cadastro.</p>
           </div>
           <div className="flex gap-2">
             <button onClick={handleCreate} disabled={saving} className="btn btn-primary gap-2"><Save size={14}/>{saving?'Criando...':'Criar coach'}</button>
@@ -272,23 +273,19 @@ export default function CoachesPage() {
         </div>
       )}
 
+      {/* ── Formulário edição ── */}
       {editForm && (
         <div className="card mb-6" style={{borderColor:'#EF9F27'}}>
           <h2 className="text-sm font-semibold text-gray-900 mb-4">Editar — {editForm.nome}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
             <div><label className="label">Nome</label><input className="input" value={editForm.nome} onChange={e => setEditForm(f=>({...f!,nome:e.target.value}))} /></div>
             <div><label className="label">CPF</label><input className="input" value={editForm.cpf||''} onChange={e => setEditForm(f=>({...f!,cpf:e.target.value}))} /></div>
-            <div><label className="label">Contrato</label>
-              <select className="input" value={editForm.contrato} onChange={e => setEditForm(f=>({...f!,contrato:e.target.value as any}))}>
-                <option>CLT</option><option>PJ</option><option>Autônomo</option>
-              </select>
-            </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-            <div><label className="label">Salário fixo/mês (R$)</label><input className="input" type="number" value={editForm.salario_fixo} onChange={e => setEditForm(f=>({...f!,salario_fixo:+e.target.value}))} /></div>
-            <div><label className="label">Adicional por aula (R$)</label><input className="input" type="number" value={editForm.adicional_por_aula} onChange={e => setEditForm(f=>({...f!,adicional_por_aula:+e.target.value}))} /></div>
-            <div><label className="label">Valor cliente/aula (R$)</label><input className="input" type="number" value={editForm.valor_cliente_aula} onChange={e => setEditForm(f=>({...f!,valor_cliente_aula:+e.target.value}))} /></div>
+          <div className="max-w-xs mb-4">
+            <label className="label">Salário fixo/mês (R$) <span className="text-gray-400 font-normal">— opcional</span></label>
+            <input className="input" type="number" value={editForm.salario_fixo||0} onChange={e => setEditForm(f=>({...f!,salario_fixo:+e.target.value}))} placeholder="0" />
           </div>
+          <p className="text-xs text-gray-400 mb-4">💡 Para alterar valores por tipo de aula, use a seção <strong>Unidades</strong> do coach.</p>
           <div className="flex gap-2">
             <button onClick={handleEdit} disabled={saving} className="btn btn-primary gap-2"><Save size={12}/>{saving?'Salvando...':'Salvar'}</button>
             <button onClick={() => setEditForm(null)} className="btn">Cancelar</button>
@@ -300,11 +297,8 @@ export default function CoachesPage() {
       <div className="space-y-3">
         {coaches.length === 0 && <EmptyState message="Nenhum coach cadastrado ainda." />}
         {coaches.map(coach => {
-          const slots      = horarios[coach.id]?.size || 0
-          const mUnit      = coach.valor_cliente_aula - coach.adicional_por_aula
-          const beC        = mUnit > 0 ? Math.ceil(coach.salario_fixo / mUnit) : null
-          const inativo    = !coach.ativo
-          const qtdUnids   = coachUnidades[coach.id]?.size || 0
+          const inativo  = !coach.ativo
+          const qtdUnids = coachUnidades[coach.id]?.size || 0
 
           return (
             <div key={coach.id} className={`card ${inativo?'opacity-60 border-dashed':''}`}>
@@ -322,8 +316,10 @@ export default function CoachesPage() {
                       </span>
                     )}
                   </div>
-                  <div className="text-xs text-gray-400">{coach.contrato} · Fixo {fmt(coach.salario_fixo)} + R${coach.adicional_por_aula}/aula · Cliente R${coach.valor_cliente_aula}/aula</div>
-                  {beC && <div className="text-xs text-gray-400">Equilíbrio: {beC} aulas/mês</div>}
+                  <div className="text-xs text-gray-400">
+                    {Number(coach.salario_fixo) > 0 ? `Fixo ${fmt(coach.salario_fixo)}/mês` : 'Sem fixo'}
+                    {' · valores por aula configurados nas unidades'}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
                   <button onClick={() => abrirAulas(coach)} className="btn btn-sm gap-1"><ClipboardList size={12}/> Aulas</button>
@@ -353,35 +349,73 @@ export default function CoachesPage() {
                 </div>
               </div>
 
-              {/* ── Seção Unidades ── */}
+              {/* ── Seção Unidades + Valores ── */}
               {expandedUnidades === coach.id && !inativo && (
                 <div className="mt-4 pt-4 border-t border-cyan-100">
                   <div className="flex items-center gap-2 mb-3">
                     <Building2 size={14} className="text-cyan-600"/>
-                    <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Unidades atendidas</span>
-                    <span className="text-xs text-gray-400 font-normal">— salvo automaticamente</span>
+                    <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Unidades e valores por tipo de aula</span>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div className="space-y-3">
                     {unidades.map(u => {
                       const ativo      = coachUnidades[coach.id]?.has(u.id) || false
                       const carregando = salvandoUnidade === u.id
+                      const tipos      = tiposParaUnidade(u)
                       return (
-                        <button key={u.id} onClick={() => toggleCoachUnidade(coach.id, u.id)} disabled={carregando}
-                          className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all disabled:opacity-60 ${
-                            ativo ? 'bg-cyan-50 border-cyan-300' : 'bg-gray-50 border-gray-200 hover:border-gray-300'
-                          }`}>
-                          {carregando ? (
-                            <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin flex-shrink-0"/>
-                          ) : (
-                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${ativo?'bg-cyan-500 border-cyan-500':'border-gray-300'}`}>
-                              {ativo && <div className="w-2 h-2 rounded-full bg-white"/>}
+                        <div key={u.id} className={`rounded-xl border transition-all ${ativo?'bg-cyan-50 border-cyan-200':'bg-gray-50 border-gray-200'}`}>
+                          {/* Toggle da unidade */}
+                          <button onClick={() => toggleCoachUnidade(coach.id, u.id)} disabled={carregando}
+                            className="w-full flex items-center gap-3 px-4 py-3 text-left disabled:opacity-60">
+                            {carregando ? (
+                              <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin flex-shrink-0"/>
+                            ) : (
+                              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${ativo?'bg-cyan-500 border-cyan-500':'border-gray-300'}`}>
+                                {ativo && <div className="w-2 h-2 rounded-full bg-white"/>}
+                              </div>
+                            )}
+                            <span className={`text-sm font-medium flex-1 ${ativo?'text-cyan-800':'text-gray-600'}`}>{u.nome}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${tipoUnidadeBadge(u.tipo)}`}>
+                              {tipoUnidadeLabel(u.tipo)}
+                            </span>
+                          </button>
+
+                          {/* Valores por tipo — só aparece quando unidade está ativa */}
+                          {ativo && (
+                            <div className="px-4 pb-3 border-t border-cyan-200">
+                              <div className="text-xs text-cyan-700 font-semibold mt-2 mb-2 uppercase tracking-wide">
+                                Valor por aula (R$)
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                {tipos.map(tipo => {
+                                  const vkey = `${coach.id}-${u.id}-${tipo.key}`
+                                  const salvando = salvandoValor === vkey
+                                  return (
+                                    <div key={tipo.key} className="bg-white rounded-lg border border-cyan-100 px-3 py-2">
+                                      <div className="text-xs text-gray-500 mb-1">{tipo.label}</div>
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs text-gray-400">R$</span>
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          step="0.01"
+                                          className="input py-1 text-sm flex-1 min-w-0"
+                                          value={getValorLocal(coach.id, u.id, tipo.key) || ''}
+                                          placeholder="0,00"
+                                          onChange={e => setValorLocal(coach.id, u.id, tipo.key, parseFloat(e.target.value) || 0)}
+                                          onBlur={() => saveValor(coach.id, u.id, tipo.key)}
+                                        />
+                                        {salvando && (
+                                          <div className="w-3 h-3 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin flex-shrink-0"/>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                              <p className="text-xs text-gray-400 mt-2">Salvo automaticamente ao sair do campo.</p>
                             </div>
                           )}
-                          <span className={`text-sm font-medium flex-1 ${ativo?'text-cyan-800':'text-gray-600'}`}>{u.nome}</span>
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${tipoUnidadeBadge(u.tipo)}`}>
-                            {tipoUnidadeLabel(u.tipo)}
-                          </span>
-                        </button>
+                        </div>
                       )
                     })}
                   </div>
@@ -393,7 +427,7 @@ export default function CoachesPage() {
                 <div className="mt-4 pt-4 border-t border-gray-100">
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Grade de horários — Coach CT</span>
-                    <span className="text-xs text-gray-400">{slots} slots/semana selecionados</span>
+                    <span className="text-xs text-gray-400">{horarios[coach.id]?.size || 0} slots/semana</span>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="text-xs w-full">
