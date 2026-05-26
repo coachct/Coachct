@@ -38,7 +38,6 @@ function tipoColor(t: string) {
   return                               { bg: '#0a150a', border: '#2ddd8b22', text: VERDE,  badge: '#2ddd8b18' }
 }
 
-// ── SVG Esteira ──
 function IconEsteira({ color }: { color: string }) {
   return (
     <svg width="26" height="22" viewBox="0 0 26 22">
@@ -53,7 +52,6 @@ function IconEsteira({ color }: { color: string }) {
   )
 }
 
-// ── SVG Haltere ──
 function IconHaltere({ color }: { color: string }) {
   return (
     <svg width="28" height="18" viewBox="0 0 28 18">
@@ -66,7 +64,6 @@ function IconHaltere({ color }: { color: string }) {
   )
 }
 
-// ── Botão de posição ──
 function PosicaoBtn({ label, tomado, selecionado, cor, onClick }: {
   label: string; tomado: boolean; selecionado: boolean; cor: string; onClick: () => void
 }) {
@@ -92,7 +89,6 @@ function PosicaoBtn({ label, tomado, selecionado, cor, onClick }: {
   )
 }
 
-// ─────────────────────────────────────────────
 function AulasPageInner() {
   const router    = useRouter()
   const params    = useSearchParams()
@@ -116,15 +112,16 @@ function AulasPageInner() {
   const [diaSel,          setDiaSel]          = useState(0)
   const [periodo,         setPeriodo]         = useState<'todos'|'manha'|'tarde'|'noite'>('todos')
 
-  const [modalReserva,  setModalReserva]  = useState<any>(null)
-  const [modalFila,     setModalFila]     = useState<any>(null)
-  const [tipoCredito,   setTipoCredito]   = useState('')
-  const [posicaoSel,    setPosicaoSel]    = useState('')
-  const [confirmando,   setConfirmando]   = useState(false)
-  const [entrandoFila,  setEntrandoFila]  = useState(false)
-  const [erroModal,     setErroModal]     = useState('')
-  const [filaAceite,    setFilaAceite]    = useState(false)
-  const [modalGenero,   setModalGenero]   = useState(false)
+  const [modalReserva,   setModalReserva]   = useState<any>(null)
+  const [modalFila,      setModalFila]      = useState<any>(null)
+  const [modalSemCartao, setModalSemCartao] = useState(false)
+  const [tipoCredito,    setTipoCredito]    = useState('')
+  const [posicaoSel,     setPosicaoSel]     = useState('')
+  const [confirmando,    setConfirmando]    = useState(false)
+  const [entrandoFila,   setEntrandoFila]   = useState(false)
+  const [erroModal,      setErroModal]      = useState('')
+  const [filaAceite,     setFilaAceite]     = useState(false)
+  const [modalGenero,    setModalGenero]    = useState(false)
 
   const diasSemana = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(); d.setDate(d.getDate() + semanaOffset * 7 + i); return d
@@ -135,13 +132,16 @@ function AulasPageInner() {
   const horaAtual  = `${String(agora.getHours()).padStart(2,'0')}:${String(agora.getMinutes()).padStart(2,'0')}`
   const isHoje     = dataSelStr === dataLocalStr(agora)
 
-  // Detecta se a data selecionada é do mês seguinte
   const dataSelEhProximoMes = dataSel.getMonth() !== agora.getMonth() || dataSel.getFullYear() !== agora.getFullYear()
   const mesProximo   = agora.getMonth() === 11 ? 1 : agora.getMonth() + 2
   const anoProximo   = agora.getMonth() === 11 ? agora.getFullYear() + 1 : agora.getFullYear()
   const nomeMesProximo = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'][mesProximo - 1]
 
-  // Retorna o saldo correto para a data selecionada
+  // ── Idêntico ao CT: precisa de cartão se tem plano parceiro e não tem cartão cadastrado ──
+  const temPlanoParceiroAtivo = Object.entries(saldo).some(([, v]: any) => v?.disponivel > 0) ||
+    Object.entries(saldoProximo).some(([, v]: any) => v?.disponivel > 0)
+  const precisaCartao = !!cliente && temPlanoParceiroAtivo && !cliente?.pagarme_card_id
+
   function saldoParaData() { return dataSelEhProximoMes ? saldoProximo : saldo }
 
   useEffect(() => { if (!unidadeId) router.replace('/agendar') }, [unidadeId])
@@ -218,9 +218,11 @@ function AulasPageInner() {
     setPosicoesTomadas((tomadas||[]).map((t: any) => t.posicao).filter(Boolean))
   }
 
+  // ── Idêntico ao CT: checa cartão ANTES de abrir qualquer modal de reserva ──
   function tentarReservar(oc: any) {
     if (!user) { router.push(`/login?redirect=${encodeURIComponent("/aulas?unidade="+unidadeId)}`); return }
     if (cliente?.bloqueado) return
+    if (precisaCartao) { setModalSemCartao(true); return }
     if (oc.club_aulas?.so_mulheres && cliente?.sexo !== "F") { setModalGenero(true); return }
     if (oc.club_aulas?.tipo === "running_funcional") { router.push(`/mapa?ocorrencia=${oc.id}&unidade=${unidadeId}`); return }
     abrirModalReserva(oc)
@@ -228,6 +230,7 @@ function AulasPageInner() {
   function tentarFila(oc: any) {
     if (!user) { router.push(`/login?redirect=${encodeURIComponent('/aulas?unidade='+unidadeId)}`); return }
     if (cliente?.bloqueado) return
+    if (precisaCartao) { setModalSemCartao(true); return }
     setModalFila(oc); setTipoCredito(''); setFilaAceite(false); setErroModal('')
   }
   async function abrirModalReserva(oc: any) {
@@ -243,8 +246,7 @@ function AulasPageInner() {
     if (posicaoSel) payload.posicao = posicaoSel
     const { error } = await supabase.from('club_reservas').insert(payload)
     if (error) { setErroModal('Erro ao reservar: '+error.message); setConfirmando(false); return }
-    setConfirmando(false)
-    setModalReserva(null)
+    setConfirmando(false); setModalReserva(null)
     router.push('/minha-conta')
   }
   async function confirmarFila() {
@@ -303,7 +305,7 @@ function AulasPageInner() {
           </div>
         </div>
 
-        {/* Banner bloqueio */}
+        {/* Banner bloqueio — cartão recusado */}
         {user && cliente?.bloqueado && cobrancasPend.length > 0 && (
           <div style={{ background:'#1a0000', border:'2px solid #ff4444', borderRadius:16, padding:'1.5rem', marginBottom:'1.5rem' }}>
             <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:'1rem' }}>
@@ -329,6 +331,7 @@ function AulasPageInner() {
           </div>
         )}
 
+        {/* Banner bloqueio — aguardando regularização */}
         {user && cliente?.bloqueado && cobrancasPend.length === 0 && (
           <div style={{ background:'#1a1000', border:`2px solid ${AMARELO}`, borderRadius:16, padding:'1.5rem', marginBottom:'1.5rem' }}>
             <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:'0.75rem' }}>
@@ -347,6 +350,20 @@ function AulasPageInner() {
           </div>
         )}
 
+        {/* Banner cartão necessário — IDÊNTICO AO CT */}
+        {user && cliente && !cliente.bloqueado && precisaCartao && (
+          <div style={{ background:'#1a1000', border:`1.5px solid ${AMARELO}55`, borderRadius:16, padding:'1.25rem 1.5rem', marginBottom:'1.5rem', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'1rem', flexWrap:'wrap' }}>
+            <div>
+              <div style={{ fontSize:14, color:AMARELO, fontWeight:700, marginBottom:4 }}>💳 Cadastre um cartão para liberar reservas</div>
+              <div style={{ fontSize:13, color:'#888', lineHeight:1.5 }}>Para reservar aulas no JustClub, precisamos de um cartão registrado. <strong style={{ color:'#fff' }}>Nada será cobrado agora.</strong></div>
+            </div>
+            <button onClick={() => router.push('/cadastrar-cartao')}
+              style={{ background:AMARELO, color:'#000', border:'none', borderRadius:10, padding:'0.65rem 1.25rem', fontWeight:700, fontSize:13, cursor:'pointer', fontFamily:"'DM Sans', sans-serif", whiteSpace:'nowrap' }}>
+              Cadastrar cartão →
+            </button>
+          </div>
+        )}
+
         {/* Banner visitante */}
         {!user && (
           <div style={{ background:'#0a0014', border:`1px solid ${ACCENT}33`, borderRadius:12, padding:'0.85rem 1.25rem', marginBottom:'1.5rem', fontSize:13, color:'#aaa' }}>
@@ -360,7 +377,7 @@ function AulasPageInner() {
         {user && dataSelEhProximoMes && (
           <div style={{ background:'#1a1000', border:`1px solid ${AMARELO}44`, borderRadius:12, padding:'0.85rem 1.25rem', marginBottom:'1.5rem', fontSize:13, color:'#ddd', lineHeight:1.6 }}>
             📅 <strong style={{ color:AMARELO }}>Você está vendo aulas de {nomeMesProximo}.</strong>{' '}
-            As reservas feitas aqui consumirão seus créditos de <strong style={{ color:'#fff' }}>{nomeMesProximo}</strong>, não os de maio.
+            As reservas feitas aqui consumirão seus créditos de <strong style={{ color:'#fff' }}>{nomeMesProximo}</strong>.
           </div>
         )}
 
@@ -454,14 +471,13 @@ function AulasPageInner() {
                       )}
                     </div>
                   </div>
-                  {/* Barra de capacidade — só Lift */}
                   {isLift && !minhaRes && !naFila && (
                     <div style={{ marginTop:'0.75rem', paddingTop:'0.75rem', borderTop:`1px solid ${cores.border}` }}>
                       <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:'#333', marginBottom:4 }}>
                         <span>Ocupação</span>
                         <span style={{ color:lotado?'#ff4444':livres<=3?AMARELO:'#555' }}>{reservasCont[oc.id]||0}/{aula?.capacidade} vagas</span>
                       </div>
-                      <div style={{ height:3, background:'#1a1a1a', borderRadius:2, overflow:'hidden' }}>
+                      <div style={{ height:3, background:'1a1a1a', borderRadius:2, overflow:'hidden' }}>
                         <div style={{ height:'100%', borderRadius:2, transition:'width .3s', background:lotado?'#ff4444':livres<=3?AMARELO:CYAN, width:`${Math.min(100,((reservasCont[oc.id]||0)/(aula?.capacidade||1))*100)}%` }}/>
                       </div>
                     </div>
@@ -472,6 +488,32 @@ function AulasPageInner() {
           </div>
         )}
       </div>
+
+      {/* ══ MODAL SEM CARTÃO — IDÊNTICO AO CT ══ */}
+      {modalSemCartao && (
+        <div style={{ position:'fixed', inset:0, background:'#000000cc', zIndex:100, display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}>
+          <div style={{ background:'#111', border:`1.5px solid ${AMARELO}55`, borderRadius:20, width:'100%', maxWidth:420, padding:'1.5rem' }}>
+            <div style={{ fontSize:36, marginBottom:'1rem', textAlign:'center' }}>💳</div>
+            <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:22, color:'#fff', marginBottom:8, textAlign:'center' }}>CARTÃO NECESSÁRIO</div>
+            <div style={{ fontSize:14, color:'#aaa', lineHeight:1.7, marginBottom:'1rem', textAlign:'center' }}>
+              Para reservar aulas no <strong style={{ color:'#fff' }}>JustClub</strong>, precisamos de um cartão cadastrado pra cobrir possíveis multas por faltas.
+            </div>
+            <div style={{ background:'#0a0a0a', border:`1px solid ${AMARELO}33`, borderRadius:10, padding:'0.75rem 1rem', marginBottom:'1.5rem', fontSize:13, color:AMARELO, textAlign:'center', fontWeight:600 }}>
+              🔒 Nada será cobrado agora
+            </div>
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={() => setModalSemCartao(false)}
+                style={{ flex:1, background:'transparent', border:'1px solid #333', borderRadius:10, padding:'0.85rem', color:'#888', fontSize:14, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
+                Fechar
+              </button>
+              <button onClick={() => router.push('/cadastrar-cartao')}
+                style={{ flex:2, background:AMARELO, color:'#000', border:'none', borderRadius:10, padding:'0.85rem', fontWeight:700, fontSize:15, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
+                Cadastrar cartão →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ══ MODAL RESERVA ══ */}
       {modalReserva && (
@@ -487,8 +529,6 @@ function AulasPageInner() {
               </div>
             </div>
             <div style={{ padding:'1.25rem 1.5rem' }}>
-
-              {/* Plano */}
               <div style={{ marginBottom:'1.5rem' }}>
                 <div style={{ fontSize:11, color:'#555', textTransform:'uppercase', letterSpacing:1, marginBottom:10 }}>Usar crédito de qual plano?</div>
                 {dataSelEhProximoMes && (
@@ -524,60 +564,33 @@ function AulasPageInner() {
                     <div style={{ fontSize:13, color:'#444', textAlign:'center', padding:'1.5rem' }}>Carregando posições...</div>
                   ) : (
                     <div style={{ background:'#080808', border:'1px solid #1a1a1a', borderRadius:16, padding:'1.25rem 1rem' }}>
-
-                      {/* Esteiras (R) — linha única sem quebra, R13→R01 */}
                       <div style={{ marginBottom:'1.25rem' }}>
                         <div style={{ fontSize:10, color:'#444', letterSpacing:2, marginBottom:10, textAlign:'center' }}>ESTEIRAS</div>
                         <div style={{ overflowX:'auto', paddingBottom:4 }}>
                           <div style={{ display:'flex', gap:4, flexWrap:'nowrap', minWidth:'max-content', margin:'0 auto', width:'fit-content' }}>
                             {posicoes.filter((p:any) => p.tipo==='R').sort((a:any,b:any) => b.numero-a.numero).map((pos:any) => {
                               const label = `R${String(pos.numero).padStart(2,'0')}`
-                              return (
-                                <PosicaoBtn key={pos.id} label={label}
-                                  tomado={posicoesTomadas.includes(label)}
-                                  selecionado={posicaoSel===label}
-                                  cor={ACCENT}
-                                  onClick={() => setPosicaoSel(posicaoSel===label?'':label)}/>
-                              )
+                              return <PosicaoBtn key={pos.id} label={label} tomado={posicoesTomadas.includes(label)} selecionado={posicaoSel===label} cor={ACCENT} onClick={() => setPosicaoSel(posicaoSel===label?'':label)}/>
                             })}
                           </div>
                         </div>
                       </div>
-
                       <div style={{ height:1, background:'#1a1a1a', marginBottom:'1.25rem' }}/>
-
-                      {/* Funcional (F) — duas linhas escalonadas */}
                       <div>
                         <div style={{ fontSize:10, color:'#444', letterSpacing:2, marginBottom:10, textAlign:'center' }}>FUNCIONAL</div>
-                        {/* Ímpares: F13, F11, ..., F01 */}
                         <div style={{ display:'flex', gap:5, justifyContent:'center', marginBottom:5 }}>
                           {posicoes.filter((p:any) => p.tipo==='F' && p.numero%2===1).sort((a:any,b:any) => b.numero-a.numero).map((pos:any) => {
                             const label = `F${String(pos.numero).padStart(2,'0')}`
-                            return (
-                              <PosicaoBtn key={pos.id} label={label}
-                                tomado={posicoesTomadas.includes(label)}
-                                selecionado={posicaoSel===label}
-                                cor={VERDE}
-                                onClick={() => setPosicaoSel(posicaoSel===label?'':label)}/>
-                            )
+                            return <PosicaoBtn key={pos.id} label={label} tomado={posicoesTomadas.includes(label)} selecionado={posicaoSel===label} cor={VERDE} onClick={() => setPosicaoSel(posicaoSel===label?'':label)}/>
                           })}
                         </div>
-                        {/* Pares: F12, F10, ..., F02 — deslocados */}
                         <div style={{ display:'flex', gap:5, justifyContent:'center', paddingLeft:27 }}>
                           {posicoes.filter((p:any) => p.tipo==='F' && p.numero%2===0).sort((a:any,b:any) => b.numero-a.numero).map((pos:any) => {
                             const label = `F${String(pos.numero).padStart(2,'0')}`
-                            return (
-                              <PosicaoBtn key={pos.id} label={label}
-                                tomado={posicoesTomadas.includes(label)}
-                                selecionado={posicaoSel===label}
-                                cor={VERDE}
-                                onClick={() => setPosicaoSel(posicaoSel===label?'':label)}/>
-                            )
+                            return <PosicaoBtn key={pos.id} label={label} tomado={posicoesTomadas.includes(label)} selecionado={posicaoSel===label} cor={VERDE} onClick={() => setPosicaoSel(posicaoSel===label?'':label)}/>
                           })}
                         </div>
                       </div>
-
-                      {/* Legenda */}
                       <div style={{ display:'flex', gap:'1rem', marginTop:14, paddingTop:12, borderTop:'1px solid #1a1a1a', justifyContent:'center', flexWrap:'wrap' }}>
                         {[['#252525','#444','Disponível'],['#0a0a0a','#222','Ocupado'],[`${ACCENT}20`,ACCENT,'R selecionado'],[`${VERDE}20`,VERDE,'F selecionado']].map(([bg,cor,txt]) => (
                           <span key={txt} style={{ fontSize:10, color:cor==='#222'?'#333':cor, display:'flex', alignItems:'center', gap:5 }}>
@@ -591,9 +604,8 @@ function AulasPageInner() {
                 </div>
               )}
 
-              {/* Regras */}
               <div style={{ background:'#0a0a0a', border:'1px solid #1a1a1a', borderRadius:10, padding:'0.75rem 1rem', marginBottom:'1.25rem', fontSize:12, color:'#444', lineHeight:1.7 }}>
-                ⚠️ Cancelamento gratuito <strong style={{ color:'#666' }}>até 12h antes</strong>. Com fila de espera, prazo reduz para 3h. Falta sem aviso gera multa de R$49,90.
+                ⚠️ Cancelamento gratuito <strong style={{ color:'#666' }}>até 12h antes</strong>. Com fila de espera, prazo reduz para 3h. Falta sem aviso gera multa de <strong style={{ color:'#666' }}>R$49,90</strong>.
               </div>
               {erroModal && <div style={{ background:'#ff2d9b15', border:'1px solid #ff2d9b44', borderRadius:8, padding:'0.6rem 1rem', fontSize:13, color:ACCENT, marginBottom:'1rem' }}>{erroModal}</div>}
               <div style={{ display:'flex', gap:8 }}>
