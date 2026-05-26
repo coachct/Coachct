@@ -14,9 +14,9 @@ export default function SidebarRecepcao() {
   const supabase = createClient()
   const { perfil } = useAuth()
 
-  const [temCT,    setTemCT]    = useState(false)
-  const [temClub,  setTemClub]  = useState(false)
-  const [loading,  setLoading]  = useState(true)
+  const [temCT,   setTemCT]   = useState(false)
+  const [temClub, setTemClub] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (perfil) carregarAcessos()
@@ -58,17 +58,9 @@ export default function SidebarRecepcao() {
     )
   }
 
-  function SectionLabel({ label }: { label: string }) {
-    return (
-      <div style={{ fontSize:9, color:'#ffffff22', letterSpacing:2, fontWeight:700,
-        padding:'0 14px', marginBottom:4, marginTop:4 }}>
-        {label}
-      </div>
-    )
+  function Divider() {
+    return <div style={{ height:1, background:'#ffffff08', margin:'8px 8px' }} />
   }
-
-  // Só mostra divisor de seções se o usuário tiver acesso aos dois lados
-  const ambos = temCT && temClub
 
   return (
     <div style={{ width:200, background:'#0f0f1a', display:'flex', flexDirection:'column',
@@ -92,25 +84,21 @@ export default function SidebarRecepcao() {
           </div>
         ) : (
           <>
-            {/* Seção CT — só aparece se tiver acesso */}
+            {/* Agenda CT — só se tiver acesso ao CT */}
             {temCT && (
-              <>
-                {ambos && <SectionLabel label="JUST CT" />}
-                <NavItem href="/recepcao/agenda"   label="Agenda CT" icon={Calendar} cor={ACCENT} />
-                <NavItem href="/recepcao/clientes" label="Clientes"  icon={Users}    cor={ACCENT} />
-              </>
+              <NavItem href="/recepcao/agenda" label="Agenda CT" icon={Calendar} cor={ACCENT} />
             )}
 
-            {/* Divisor — só se tiver os dois */}
-            {ambos && <div style={{ height:1, background:'#ffffff08', margin:'12px 8px' }} />}
-
-            {/* Seção Club — só aparece se tiver acesso */}
+            {/* Aulas Club — só se tiver acesso às clubs */}
             {temClub && (
-              <>
-                {ambos && <SectionLabel label="JUSTCLUB" />}
-                <NavItem href="/recepcao/club" label="Aulas Club" icon={Zap} cor={CYAN} />
-              </>
+              <NavItem href="/recepcao/club" label="Aulas Club" icon={Zap} cor={CYAN} />
             )}
+
+            {/* Divisor antes de Clientes */}
+            {(temCT || temClub) && <Divider />}
+
+            {/* Clientes — universal para qualquer recepcionista */}
+            <NavItem href="/recepcao/clientes" label="Clientes" icon={Users} cor={ACCENT} />
           </>
         )}
       </nav>
