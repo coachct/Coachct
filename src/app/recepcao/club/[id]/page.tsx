@@ -102,11 +102,18 @@ export default function RecepcaoClubDetalhe() {
 
     const { data: res } = await supabase
       .from('club_reservas')
-      .select('*, clientes(id, nome, email, telefone)')
+      .select('id, status, tipo_credito, posicao, clientes(id, nome, email, telefone)')
       .eq('ocorrencia_id', ocId)
       .neq('status', 'cancelado')
-    setReservas((res || []).sort((a: any, b: any) =>
-      (a.clientes?.nome || '').localeCompare(b.clientes?.nome || '', 'pt-BR')))
+    const sorted = (res || []).sort((a: any, b: any) =>
+      (a.clientes?.nome || '').localeCompare(b.clientes?.nome || '', 'pt-BR'))
+    setReservas(sorted)
+
+    // Atualiza posições tomadas sempre que recarregar — corrige o mapa
+    setPosicoesTomadas(
+      sorted.filter((r: any) => ['reservado','presente'].includes(r.status) && r.posicao)
+            .map((r: any) => r.posicao)
+    )
     setLoadingData(false)
   }
 
@@ -152,18 +159,13 @@ export default function RecepcaoClubDetalhe() {
     })
     setSaldoCliente(data || {})
 
-    // Running → carrega mapa e vai para etapa 'mapa'
+    // Running → carrega layout do mapa e vai para etapa 'mapa'
+    // posicoesTomadas já está atualizado pelo carregarDados
     if (ocorrencia.club_aulas?.tipo === 'running_funcional') {
-      const [{ data: pos }, { data: tomadas }] = await Promise.all([
-        supabase.from('club_posicoes').select('*')
-          .eq('unidade_id', ocorrencia.club_aulas.unidade_id)
-          .eq('ativo', true).order('tipo').order('numero'),
-        supabase.from('club_reservas').select('posicao')
-          .eq('ocorrencia_id', ocId)
-          .in('status', ['reservado','presente']),
-      ])
+      const { data: pos } = await supabase.from('club_posicoes').select('*')
+        .eq('unidade_id', ocorrencia.club_aulas.unidade_id)
+        .eq('ativo', true).order('tipo').order('numero')
       setPosicoes(pos || [])
-      setPosicoesTomadas((tomadas || []).map((t: any) => t.posicao).filter(Boolean))
       setEtapa('mapa')
     } else {
       setEtapa('credito')
