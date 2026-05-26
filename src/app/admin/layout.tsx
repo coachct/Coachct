@@ -14,6 +14,7 @@ const nav = [
   { label: 'Coaches',                 href: '/admin/coaches' },
   { label: 'Escala',                  href: '/admin/escala' },
   { label: '─ JustClub',             href: '/admin/justclub' },
+  { label: 'Calendário Club',         href: '/admin/justclub/calendario' },
   { label: 'Analytics de Coaches',   href: '/admin/analytics' },
   { label: 'Custo × Retorno',        href: '/admin/relatorios/custo' },
   { label: 'Pagamentos',             href: '/admin/relatorios/pagamentos' },
