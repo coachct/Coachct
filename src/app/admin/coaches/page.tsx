@@ -144,13 +144,15 @@ export default function CoachesPage() {
     setValoresLocais(prev => ({ ...prev, [`${coachId}-${unidadeId}-${tipoAula}`]: valor }))
   }
 
-  async function saveValor(coachId: string, unidadeId: string, tipoAula: string) {
+  async function saveValor(coachId: string, unidadeId: string, tipoAula: string, valor: number) {
     const key = `${coachId}-${unidadeId}-${tipoAula}`
     setSalvandoValor(key)
-    const valor = valoresLocais[key] ?? 0
-    await supabase.from('coach_valores').upsert({
+    // Atualiza estado local também
+    setValoresLocais(prev => ({ ...prev, [key]: valor }))
+    const { error } = await supabase.from('coach_valores').upsert({
       coach_id: coachId, unidade_id: unidadeId, tipo_aula: tipoAula, valor_por_aula: valor,
     }, { onConflict: 'coach_id,unidade_id,tipo_aula' })
+    if (error) setMsg('Erro ao salvar valor: ' + error.message)
     setSalvandoValor(null)
   }
 
@@ -402,7 +404,7 @@ export default function CoachesPage() {
                                           value={getValorLocal(coach.id, u.id, tipo.key) || ''}
                                           placeholder="0,00"
                                           onChange={e => setValorLocal(coach.id, u.id, tipo.key, parseFloat(e.target.value) || 0)}
-                                          onBlur={() => saveValor(coach.id, u.id, tipo.key)}
+                                          onBlur={(e) => saveValor(coach.id, u.id, tipo.key, parseFloat(e.target.value) || 0)}
                                         />
                                         {salvando && (
                                           <div className="w-3 h-3 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin flex-shrink-0"/>
