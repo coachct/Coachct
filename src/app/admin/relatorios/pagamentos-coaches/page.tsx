@@ -8,8 +8,18 @@ import { DollarSign, CheckCircle } from 'lucide-react'
 function dataLocalStr(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
-function inicioDia(d: Date) { return dataLocalStr(d) }
-function fimDia(d: Date)    { return dataLocalStr(d) }
+
+function tipoLabelClub(t: string) {
+  if (t === 'lift')              return 'Lift'
+  if (t === 'lift_for_girls')   return 'Lift for Girls'
+  if (t === 'running_funcional') return 'Running + Funcional'
+  return t
+}
+
+function formatarData(d: string) {
+  if (!d) return ''
+  return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR')
+}
 
 export default function PagamentosCoachesPage() {
   const { perfil, loading } = useAuth()
@@ -25,6 +35,7 @@ export default function PagamentosCoachesPage() {
   const [fim,          setFim]          = useState('')
   const [aulas,        setAulas]        = useState<any[]>([])
   const [loadingAulas, setLoadingAulas] = useState(false)
+  const [incluirFixo,  setIncluirFixo]  = useState(false)
   const [lancando,     setLancando]     = useState(false)
   const [lancado,      setLancado]      = useState(false)
   const [msg,          setMsg]          = useState('')
@@ -51,7 +62,8 @@ export default function PagamentosCoachesPage() {
       .eq('unidade_id', unidadeSel.id).eq('ativo', true)
     const ids = (cu || []).map((c: any) => c.coach_id)
     if (!ids.length) { setCoaches([]); return }
-    const { data } = await supabase.from('coaches').select('id, nome, adicional_por_aula, salario_fixo')
+    const { data } = await supabase.from('coaches')
+      .select('id, nome, salario_fixo')
       .eq('ativo', true).in('id', ids).order('nome')
     setCoaches(data || [])
   }
@@ -72,10 +84,18 @@ export default function PagamentosCoachesPage() {
 
   async function carregarAulas() {
     if (!coachSel || !unidadeSel || !inicio || !fim) return
-    setLoadingAulas(true); setLancado(false)
+    setLoadingAulas(true); setLancado(false); setIncluirFixo(false)
+
+    // Busca valores do coach para esta unidade
+    const { data: valores } = await supabase.from('coach_valores')
+      .select('tipo_aula, valor_por_aula')
+      .eq('coach_id', coachSel.id)
+      .eq('unidade_id', unidadeSel.id)
+
+    const valorMap: Record<string, number> = {}
+    for (const v of (valores || [])) valorMap[v.tipo_aula] = Number(v.valor_por_aula)
 
     if (unidadeSel.tipo === 'ct') {
-      // CT: agendamentos realizados, agrupa por data+horario (sessão única)
       const { data } = await supabase.from('agendamentos')
         .select('id, data, horario, status')
         .eq('coach_id', coachSel.id)
@@ -84,18 +104,27 @@ export default function PagamentosCoachesPage() {
         .eq('status', 'realizado')
         .order('data').order('horario')
 
-      // Agrupa por data+horario para contar sessões únicas (não clientes)
+      // Agrupa por data+horario (sessão única)
       const sessoes: Record<string, any> = {}
       for (const ag of (data || [])) {
         const key = `${ag.data}-${ag.horario}`
-        if (!sessoes[key]) sessoes[key] = { data: ag.data, horario: ag.horario, tipo: 'CT', clientes: 0 }
+        if (!sessoes[key]) sessoes[key] = {
+          data: ag.data, horario: ag.horario,
+          tipo: 'Coach CT', tipo_key: 'ct',
+          valor: valorMap['ct'] || 0,
+          clientes: 0,
+        }
         sessoes[key].clientes++
       }
-      setAulas(Object.values(sessoes).sort((a, b) => a.data.localeCompare(b.data) || a.horario.localeCompare(b.horario)))
+      setAulas(Object.values(sessoes).sort((a, b) =>
+        a.data.localeCompare(b.data) || a.horario.localeCompare(b.horario)))
     } else {
       // Club: ocorrências ativas das aulas do coach nessa unidade
-      const { data: aulasIds } = await supabase.from('club_aulas').select('id, tipo, horario')
-        .eq('coach_id', coachSel.id).eq('unidade_id', unidadeSel.id).eq('ativo', true)
+      const { data: aulasIds } = await supabase.from('club_aulas')
+        .select('id, tipo, horario')
+        .eq('coach_id', coachSel.id)
+        .eq('unidade_id', unidadeSel.id)
+        .eq('ativo', true)
       const ids = (aulasIds || []).map((a: any) => a.id)
       if (!ids.length) { setAulas([]); setLoadingAulas(false); return }
 
@@ -107,26 +136,24 @@ export default function PagamentosCoachesPage() {
         .in('aula_id', ids).gte('data', inicio).lte('data', fim)
         .eq('status', 'ativa').order('data')
 
-      setAulas((ocs || []).map((oc: any) => ({
-        data:    oc.data,
-        horario: aulaMap[oc.aula_id]?.horario || '',
-        tipo:    tipoLabelClub(aulaMap[oc.aula_id]?.tipo || ''),
-        clientes: null,
-      })))
+      setAulas((ocs || []).map((oc: any) => {
+        const tipoKey = aulaMap[oc.aula_id]?.tipo || ''
+        return {
+          data:     oc.data,
+          horario:  aulaMap[oc.aula_id]?.horario || '',
+          tipo:     tipoLabelClub(tipoKey),
+          tipo_key: tipoKey,
+          valor:    valorMap[tipoKey] || 0,
+        }
+      }))
     }
     setLoadingAulas(false)
   }
 
-  function tipoLabelClub(t: string) {
-    if (t === 'lift')              return 'Lift'
-    if (t === 'lift_for_girls')   return 'Lift for Girls'
-    if (t === 'running_funcional') return 'Running + Funcional'
-    return t
-  }
-
-  const totalAulas    = aulas.length
-  const valorPorAula  = Number(coachSel?.adicional_por_aula || 0)
-  const totalBonus    = totalAulas * valorPorAula
+  const totalAulas   = aulas.length
+  const totalBonus   = aulas.reduce((sum, a) => sum + (a.valor || 0), 0)
+  const salarioFixo  = Number(coachSel?.salario_fixo || 0)
+  const totalFinal   = totalBonus + (incluirFixo ? salarioFixo : 0)
 
   async function lancarDespesa() {
     if (!coachSel || !unidadeSel || totalAulas === 0) return
@@ -137,20 +164,15 @@ export default function PagamentosCoachesPage() {
       periodo_inicio: inicio,
       periodo_fim:    fim,
       total_aulas:    totalAulas,
-      valor_por_aula: valorPorAula,
-      valor_total:    totalBonus,
+      valor_por_aula: totalBonus / totalAulas,
+      valor_total:    totalFinal,
       status:         'pendente',
-      observacao:     `${coachSel.nome} — ${totalAulas} aulas em ${unidadeSel.nome} (${formatarData(inicio)} a ${formatarData(fim)})`,
+      observacao:     `${coachSel.nome} — ${totalAulas} aulas em ${unidadeSel.nome} (${formatarData(inicio)} a ${formatarData(fim)})${incluirFixo ? ` + fixo R$ ${salarioFixo.toFixed(2).replace('.', ',')}` : ''}`,
     })
     setLancando(false)
     if (error) { showMsg('Erro: ' + error.message); return }
     setLancado(true)
-    showMsg(`✅ Despesa de R$ ${totalBonus.toFixed(2).replace('.', ',')} lançada com sucesso!`)
-  }
-
-  function formatarData(d: string) {
-    if (!d) return ''
-    return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR')
+    showMsg(`✅ Despesa de R$ ${totalFinal.toFixed(2).replace('.', ',')} lançada com sucesso!`)
   }
 
   function showMsg(texto: string) { setMsg(texto); setTimeout(() => setMsg(''), 5000) }
@@ -202,12 +224,13 @@ export default function PagamentosCoachesPage() {
             <label className="label">Período</label>
             <div className="flex gap-2 flex-wrap items-center">
               {([
-                { key: 'hoje',  label: 'Hoje' },
-                { key: '7dias', label: 'Últimos 7 dias' },
-                { key: 'mes',   label: 'Mês atual' },
-                { key: 'custom',label: 'Personalizado' },
+                { key: 'hoje',   label: 'Hoje' },
+                { key: '7dias',  label: 'Últimos 7 dias' },
+                { key: 'mes',    label: 'Mês atual' },
+                { key: 'custom', label: 'Personalizado' },
               ] as const).map(f => (
-                <button key={f.key} onClick={() => { setFiltro(f.key); if (f.key !== 'custom') aplicarFiltroRapido(f.key) }}
+                <button key={f.key}
+                  onClick={() => { setFiltro(f.key); if (f.key !== 'custom') aplicarFiltroRapido(f.key) }}
                   className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
                     filtro === f.key
                       ? 'bg-primary-600 text-white border-primary-600'
@@ -230,9 +253,7 @@ export default function PagamentosCoachesPage() {
               </div>
             )}
             {inicio && fim && (
-              <div className="text-xs text-gray-400 mt-2">
-                {formatarData(inicio)} → {formatarData(fim)}
-              </div>
+              <div className="text-xs text-gray-400 mt-2">{formatarData(inicio)} → {formatarData(fim)}</div>
             )}
           </div>
 
@@ -261,7 +282,7 @@ export default function PagamentosCoachesPage() {
         {/* Resultado */}
         {coachSel && inicio && fim && (
           <>
-            {/* Resumo financeiro */}
+            {/* Cards de resumo */}
             <div className="grid grid-cols-3 gap-4">
               <div className="card text-center">
                 <div className="text-3xl font-bold text-gray-900">{loadingAulas ? '—' : totalAulas}</div>
@@ -269,15 +290,15 @@ export default function PagamentosCoachesPage() {
               </div>
               <div className="card text-center">
                 <div className="text-3xl font-bold text-gray-900">
-                  R$ {valorPorAula.toFixed(2).replace('.', ',')}
+                  {loadingAulas ? '—' : `R$ ${totalBonus.toFixed(2).replace('.', ',')}`}
                 </div>
-                <div className="text-xs text-gray-400 mt-1 uppercase tracking-wide">Valor por aula</div>
+                <div className="text-xs text-gray-400 mt-1 uppercase tracking-wide">Total bonificação</div>
               </div>
               <div className="card text-center border-2 border-primary-200 bg-primary-50">
                 <div className="text-3xl font-bold text-primary-700">
-                  {loadingAulas ? '—' : `R$ ${totalBonus.toFixed(2).replace('.', ',')}`}
+                  {loadingAulas ? '—' : `R$ ${totalFinal.toFixed(2).replace('.', ',')}`}
                 </div>
-                <div className="text-xs text-primary-500 mt-1 uppercase tracking-wide font-semibold">Total bonificação</div>
+                <div className="text-xs text-primary-500 mt-1 uppercase tracking-wide font-semibold">Total a pagar</div>
               </div>
             </div>
 
@@ -300,7 +321,6 @@ export default function PagamentosCoachesPage() {
                 </div>
               ) : (
                 <div>
-                  {/* Header */}
                   <div className="grid grid-cols-4 gap-4 px-5 py-2.5 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                     <div>Data</div>
                     <div>Horário</div>
@@ -308,22 +328,54 @@ export default function PagamentosCoachesPage() {
                     <div className="text-right">Valor</div>
                   </div>
                   {aulas.map((a, i) => (
-                    <div key={i} className="grid grid-cols-4 gap-4 px-5 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                    <div key={i} className={`grid grid-cols-4 gap-4 px-5 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors ${a.valor === 0 ? 'bg-orange-50' : ''}`}>
                       <div className="text-sm font-medium text-gray-900">
                         {new Date(a.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday:'short', day:'numeric', month:'short' })}
                       </div>
                       <div className="text-sm font-mono text-gray-700">{(a.horario || '').slice(0, 5)}</div>
                       <div className="text-sm text-gray-600">{a.tipo}</div>
-                      <div className="text-sm font-semibold text-gray-900 text-right">
-                        R$ {valorPorAula.toFixed(2).replace('.', ',')}
+                      <div className={`text-sm font-semibold text-right ${a.valor === 0 ? 'text-orange-500' : 'text-gray-900'}`}>
+                        {a.valor === 0 ? '⚠️ sem valor' : `R$ ${Number(a.valor).toFixed(2).replace('.', ',')}`}
                       </div>
                     </div>
                   ))}
-                  {/* Total */}
-                  <div className="grid grid-cols-4 gap-4 px-5 py-3 bg-primary-50 border-t-2 border-primary-100">
-                    <div className="col-span-3 text-sm font-bold text-primary-800">Total</div>
-                    <div className="text-sm font-bold text-primary-700 text-right">
+
+                  {/* Linha de total bonificação */}
+                  <div className="grid grid-cols-4 gap-4 px-5 py-3 bg-gray-50 border-t border-gray-200">
+                    <div className="col-span-3 text-sm font-semibold text-gray-700">Subtotal bonificação</div>
+                    <div className="text-sm font-bold text-gray-900 text-right">
                       R$ {totalBonus.toFixed(2).replace('.', ',')}
+                    </div>
+                  </div>
+
+                  {/* Toggle salário fixo */}
+                  {salarioFixo > 0 && (
+                    <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between bg-amber-50">
+                      <div className="flex items-center gap-3">
+                        <button onClick={() => setIncluirFixo(v => !v)}
+                          className={`w-10 h-6 rounded-full transition-colors flex-shrink-0 relative ${incluirFixo ? 'bg-amber-500' : 'bg-gray-300'}`}>
+                          <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${incluirFixo ? 'translate-x-4' : ''}`}/>
+                        </button>
+                        <div>
+                          <div className="text-sm font-medium text-amber-900">Incluir salário fixo</div>
+                          <div className="text-xs text-amber-700">R$ {salarioFixo.toFixed(2).replace('.', ',')} / mês</div>
+                        </div>
+                      </div>
+                      {incluirFixo && (
+                        <div className="text-sm font-bold text-amber-800">
+                          + R$ {salarioFixo.toFixed(2).replace('.', ',')}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Total final */}
+                  <div className="grid grid-cols-4 gap-4 px-5 py-3 bg-primary-50 border-t-2 border-primary-100">
+                    <div className="col-span-3 text-sm font-bold text-primary-800">
+                      Total a pagar{incluirFixo ? ' (bônus + fixo)' : ''}
+                    </div>
+                    <div className="text-sm font-bold text-primary-700 text-right">
+                      R$ {totalFinal.toFixed(2).replace('.', ',')}
                     </div>
                   </div>
                 </div>
@@ -339,7 +391,7 @@ export default function PagamentosCoachesPage() {
                     <div>
                       <div className="font-semibold text-sm">Despesa lançada com sucesso!</div>
                       <div className="text-xs text-green-600 mt-0.5">
-                        R$ {totalBonus.toFixed(2).replace('.', ',')} · {coachSel.nome} · {formatarData(inicio)} a {formatarData(fim)}
+                        R$ {totalFinal.toFixed(2).replace('.', ',')} · {coachSel.nome} · {formatarData(inicio)} a {formatarData(fim)}
                       </div>
                     </div>
                   </div>
@@ -348,7 +400,7 @@ export default function PagamentosCoachesPage() {
                     <div>
                       <div className="text-sm font-semibold text-gray-900">Lançar como despesa</div>
                       <div className="text-xs text-gray-400 mt-0.5">
-                        Cria um registro de R$ {totalBonus.toFixed(2).replace('.', ',')} em contas a pagar para {coachSel.nome}
+                        Cria um registro de <strong>R$ {totalFinal.toFixed(2).replace('.', ',')}</strong> em contas a pagar para {coachSel.nome}
                       </div>
                     </div>
                     <button onClick={lancarDespesa} disabled={lancando}
@@ -358,6 +410,13 @@ export default function PagamentosCoachesPage() {
                     </button>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Aviso se há aulas sem valor configurado */}
+            {!loadingAulas && aulas.some(a => a.valor === 0) && (
+              <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 text-sm text-orange-700">
+                ⚠️ Algumas aulas estão sem valor configurado. Configure os valores na página de <strong>Coaches → Unidades</strong>.
               </div>
             )}
           </>
