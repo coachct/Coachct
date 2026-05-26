@@ -18,6 +18,7 @@ const nav = [
   { label: 'Analytics de Coaches',   href: '/admin/analytics' },
   { label: 'Custo × Retorno',        href: '/admin/relatorios/custo' },
   { label: 'Pagamentos',             href: '/admin/relatorios/pagamentos' },
+  { label: 'Pagto Coaches',          href: '/admin/relatorios/pagamentos-coaches' },
   { label: 'Horários populares',     href: '/admin/horarios' },
   { label: 'Frequência de alunos',   href: '/admin/relatorios/frequencia' },
   { label: 'Biblioteca de exercícios', href: '/ju/biblioteca' },
