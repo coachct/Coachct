@@ -2,7 +2,7 @@ import SidebarLayout from '@/components/layout/SidebarLayout'
 
 const nav = [
   { label: 'Dashboard',               href: '/admin/dashboard' },
-  { label: 'Agenda',                  href: '/admin/agenda' },
+  { label: 'Calendário Coach CT',     href: '/admin/agenda' },
   { label: 'Clientes',                href: '/admin/clientes' },
   { label: 'Cobrança No-Show',        href: '/admin/cobranca-noshow' },
   { label: 'Unidades',                href: '/admin/unidades' },
