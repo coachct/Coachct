@@ -59,8 +59,8 @@ export default function RecepcaoClubDetalhe() {
       .select('*, clientes(id, nome, email, telefone)')
       .eq('ocorrencia_id', ocId)
       .neq('status', 'cancelado')
-      .order('created_at')
-    setReservas(res || [])
+    setReservas((res || []).sort((a: any, b: any) =>
+      (a.clientes?.nome || '').localeCompare(b.clientes?.nome || '', 'pt-BR')))
     setLoadingData(false)
   }
 
@@ -132,6 +132,8 @@ export default function RecepcaoClubDetalhe() {
     await selecionarCliente(clienteSel)
     showMsg(`✅ Plano ${tipo === 'wellhub' ? 'Wellhub' : 'TotalPass'} ativado com 12 créditos!`)
   }
+
+  async function agendarWalkin() {
     if (!tipoCredito) { setErroAgendar('Selecione o plano.'); return }
     if (!clienteSel || !ocorrencia) return
     setAgendando(true); setErroAgendar('')
