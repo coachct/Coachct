@@ -112,6 +112,7 @@ export default function MinhaContaPage() {
   const [clientePlanos,     setClientePlanos]     = useState<any[]>([])
   const [compras,           setCompras]           = useState<any[]>([])
   const [planosDisponiveis, setPlanosDisponiveis] = useState<any[]>([])
+  const [cobrancasPendentes,setCobrancasPendentes] = useState<any[]>([])
   const [loadingData,       setLoadingData]       = useState(true)
 
   // Modais existentes
@@ -159,6 +160,7 @@ export default function MinhaContaPage() {
       { data: vendasData },
       { data: crData },
       { data: planosData },
+      { data: cobrancasData },
     ] = await Promise.all([
       supabase.from('agendamentos').select('*, unidades(nome)')
         .eq('cliente_id', cli.id).gte('data', hoje)
@@ -179,6 +181,10 @@ export default function MinhaContaPage() {
         .in('tipo', ['wellhub', 'totalpass'])
         .eq('ativo', true)
         .order('tipo').order('unidade_id'),
+      supabase.from('cobrancas_pendentes')
+        .select('*')
+        .eq('cliente_id', cli.id)
+        .eq('status', 'pendente'),
     ])
 
     setAgendamentos(ags||[])
@@ -186,6 +192,7 @@ export default function MinhaContaPage() {
     setClientePlanos(cliPlanos||[])
     setCompras(vendasData||[])
     setPlanosDisponiveis(planosData||[])
+    setCobrancasPendentes(cobrancasData||[])
 
     const crFuturas = (crData||[]).filter((cr:any) => (cr.club_ocorrencias?.data||'') >= hoje)
     setClubReservas(crFuturas)
@@ -321,6 +328,8 @@ export default function MinhaContaPage() {
   )
 
   const temPlanoAtivo     = clientePlanos.length>0
+  const estaBloqueado     = !!cliente?.bloqueado
+  const temCobrancaPendente = cobrancasPendentes.length > 0
   const todoSaldoEsgotado = temPlanoAtivo&&Object.keys(saldoAtual).length>0&&Object.values(saldoAtual).every((s:any)=>s.disponivel===0)
   const temSaldoProximo   = Object.values(saldoProximo).some((s:any)=>s.disponivel>0)
   const planosProxLabel   = Object.entries(saldoProximo).filter(([,s]:any)=>s.disponivel>0).map(([p,s]:any)=>`${s.disponivel} ${parsePlanoKey(p).label}`).join(', ')
@@ -350,6 +359,7 @@ export default function MinhaContaPage() {
         .contrato-scroll::-webkit-scrollbar-track{background:#1a1a1a}
         .contrato-scroll::-webkit-scrollbar-thumb{background:#444;border-radius:2px}
         @keyframes fadeIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
       `}</style>
       <SiteHeader/>
       <div style={{maxWidth:700,margin:'0 auto',padding:'6rem 1.5rem 2rem'}}>
@@ -360,8 +370,85 @@ export default function MinhaContaPage() {
           <div style={{fontSize:14,color:'#aaa',marginTop:4}}>Bem-vindo à sua área do aluno</div>
         </div>
 
-        {/* Botões de ação (só se tiver plano) */}
-        {temPlanoAtivo && (
+        {/* ── BANNER DE BLOQUEIO ──────────────────────────────────────────── */}
+        {estaBloqueado && (
+          temCobrancaPendente ? (
+            /* Banner VERMELHO — cartão recusado / cobrança pendente */
+            <div style={{
+              background:'#1a0000',
+              border:'1.5px solid #ff444466',
+              borderRadius:14,
+              padding:'1.25rem',
+              marginBottom:'1.25rem',
+              animation:'fadeIn .2s ease',
+            }}>
+              <div style={{display:'flex',alignItems:'flex-start',gap:12}}>
+                <span style={{fontSize:24,flexShrink:0}}>🔒</span>
+                <div style={{flex:1}}>
+                  <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:20,color:'#ff6b6b',letterSpacing:1,marginBottom:4}}>
+                    CONTA BLOQUEADA — PAGAMENTO PENDENTE
+                  </div>
+                  <div style={{fontSize:13,color:'#ffaaaa',lineHeight:1.6,marginBottom:'1rem'}}>
+                    {cliente.motivo_bloqueio || 'Há uma cobrança pendente em sua conta. Novos agendamentos estão suspensos até a regularização.'}
+                  </div>
+                  {/* Lista de cobranças */}
+                  <div style={{display:'flex',flexDirection:'column',gap:6,marginBottom:'1rem'}}>
+                    {cobrancasPendentes.map((c:any) => (
+                      <div key={c.id} style={{background:'#110000',border:'1px solid #ff444433',borderRadius:8,padding:'0.65rem 1rem',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                        <div>
+                          <div style={{fontSize:12,color:'#ff9999',fontWeight:600}}>{c.motivo||'Multa pendente'}</div>
+                          {c.observacao && <div style={{fontSize:11,color:'#ff666666',marginTop:2}}>{c.observacao}</div>}
+                        </div>
+                        <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:18,color:'#ff6b6b',flexShrink:0,marginLeft:12}}>
+                          R$ {Number(c.valor).toFixed(2).replace('.',',')}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => router.push('/cadastrar-cartao')}
+                    style={{
+                      width:'100%',background:'linear-gradient(135deg,#cc0000,#ff4444)',
+                      color:'#fff',border:'none',borderRadius:10,
+                      padding:'0.75rem',fontWeight:700,fontSize:14,
+                      cursor:'pointer',fontFamily:"'DM Sans', sans-serif",
+                    }}
+                  >
+                    💳 Atualizar cartão e regularizar →
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Banner AMARELO — bloqueio sem cobrança (falta sem multa) */
+            <div style={{
+              background:'#1a1000',
+              border:'1.5px solid #ffaa0066',
+              borderRadius:14,
+              padding:'1.25rem',
+              marginBottom:'1.25rem',
+              animation:'fadeIn .2s ease',
+            }}>
+              <div style={{display:'flex',alignItems:'flex-start',gap:12}}>
+                <span style={{fontSize:24,flexShrink:0,animation:'pulse 2s ease infinite'}}>⚠️</span>
+                <div style={{flex:1}}>
+                  <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:20,color:AMARELO,letterSpacing:1,marginBottom:4}}>
+                    CONTA BLOQUEADA
+                  </div>
+                  <div style={{fontSize:13,color:'#ffddaa',lineHeight:1.6,marginBottom:'0.75rem'}}>
+                    {cliente.motivo_bloqueio || 'Sua conta está temporariamente bloqueada. Novos agendamentos estão suspensos.'}
+                  </div>
+                  <div style={{background:'#110a00',border:'1px solid #ffaa0033',borderRadius:8,padding:'0.65rem 1rem',fontSize:12,color:'#ffcc88',lineHeight:1.6}}>
+                    Para regularizar, compareça à recepção da sua unidade.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        )}
+
+        {/* Botões de ação (só se tiver plano E não estiver bloqueado) */}
+        {temPlanoAtivo && !estaBloqueado && (
           <>
             <div style={{display:'grid',gridTemplateColumns:'2fr 1fr',gap:10,marginBottom:'1.5rem'}}>
               <button className="btn-acao" onClick={()=>router.push('/agendar')} style={{background:ACCENT,color:'#fff',border:'none',borderRadius:12,padding:'0.95rem',fontWeight:600,fontSize:15,cursor:'pointer',fontFamily:"'DM Sans', sans-serif",transition:'transform .15s'}}>+ Agendar Treino</button>
@@ -802,7 +889,6 @@ export default function MinhaContaPage() {
 
               {/* Botões de ação */}
               <div style={{display:'flex',flexDirection:'column',gap:8}}>
-                {/* Botão principal — cadastrar cartão (se não tem) ou ir para grade (se já tem) */}
                 {!temCartao ? (
                   <button
                     onClick={() => { setModalSucesso(null); router.push('/cadastrar-cartao') }}
@@ -819,7 +905,6 @@ export default function MinhaContaPage() {
                   </button>
                 )}
 
-                {/* Botão secundário — ver grade sem cartão */}
                 {!temCartao && (
                   <button
                     onClick={() => { setModalSucesso(null); router.push(rotaGrade) }}
@@ -889,7 +974,6 @@ export default function MinhaContaPage() {
 
             {/* Footer modal */}
             <div style={{padding:'1rem 1.5rem 1.25rem',borderTop:'1px solid #222',flexShrink:0,background:'#0d0d0d'}}>
-              {/* Checkbox aceite */}
               <label style={{display:'flex',alignItems:'flex-start',gap:10,cursor:'pointer',marginBottom:'1rem'}}>
                 <div
                   onClick={()=>setContratoAceito(!contratoAceito)}
