@@ -101,7 +101,37 @@ export default function RecepcaoClubDetalhe() {
     setSaldoCliente(data || {})
   }
 
-  async function agendarWalkin() {
+  async function ativarPlanoRapido(tipo: string) {
+    if (!clienteSel || !ocorrencia?.club_aulas?.unidade_id) return
+    const unidadeId = ocorrencia.club_aulas.unidade_id
+    const dataOc = new Date(ocorrencia.data + 'T12:00:00')
+    const mes = dataOc.getMonth() + 1
+    const ano = dataOc.getFullYear()
+
+    // Busca o plano disponível para esta unidade e tipo
+    const { data: plano } = await supabase
+      .from('planos_disponiveis')
+      .select('id')
+      .eq('tipo', tipo)
+      .eq('unidade_id', unidadeId)
+      .maybeSingle()
+
+    if (!plano) { showMsg('❌ Plano não encontrado para esta unidade.'); return }
+
+    // Ativa o plano
+    await supabase.from('cliente_planos').upsert({
+      cliente_id: clienteSel.id, plano_id: plano.id, ativo: true, inicio: dataOc.toISOString().split('T')[0],
+    }, { onConflict: 'cliente_id,plano_id' })
+
+    // Cria créditos do mês
+    await supabase.from('cliente_creditos').upsert({
+      cliente_id: clienteSel.id, unidade_id: unidadeId, tipo, total: 12, mes, ano,
+    }, { onConflict: 'cliente_id,unidade_id,tipo,mes,ano' })
+
+    // Recarrega saldo
+    await selecionarCliente(clienteSel)
+    showMsg(`✅ Plano ${tipo === 'wellhub' ? 'Wellhub' : 'TotalPass'} ativado com 12 créditos!`)
+  }
     if (!tipoCredito) { setErroAgendar('Selecione o plano.'); return }
     if (!clienteSel || !ocorrencia) return
     setAgendando(true); setErroAgendar('')
@@ -321,9 +351,30 @@ export default function RecepcaoClubDetalhe() {
 
               {/* Planos disponíveis */}
               {planosDisp.length === 0 ? (
-                <div style={{ background:'#fff8f0', border:'1px solid #fed7aa', borderRadius:8, padding:'0.75rem 1rem',
-                  fontSize:13, color:'#9a3412', marginBottom:'1rem' }}>
-                  ⚠️ Cliente sem créditos disponíveis para esta unidade neste mês.
+                <div>
+                  <div style={{ background:'#fff8f0', border:'1px solid #fed7aa', borderRadius:8, padding:'0.75rem 1rem',
+                    fontSize:13, color:'#9a3412', marginBottom:'1rem' }}>
+                    ⚠️ Cliente sem créditos para esta unidade neste mês.
+                  </div>
+                  {/* Ativação rápida de plano */}
+                  <div style={{ background:'#f0f9ff', border:'1px solid #bae6fd', borderRadius:10, padding:'1rem', marginBottom:'1rem' }}>
+                    <div style={{ fontSize:12, fontWeight:600, color:'#0369a1', marginBottom:10 }}>
+                      ⚡ Ativar plano agora
+                    </div>
+                    <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                      {['wellhub','totalpass'].map(tipo => (
+                        <button key={tipo} onClick={() => ativarPlanoRapido(tipo)}
+                          style={{ padding:'0.5rem 1rem', borderRadius:8, border:'1.5px solid #bae6fd',
+                            background:'#fff', cursor:'pointer', fontSize:13, fontWeight:600,
+                            color:'#0369a1', fontFamily:"'DM Sans', sans-serif" }}>
+                          {tipo === 'wellhub' ? '💜 Wellhub' : '🔵 TotalPass'}
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ fontSize:11, color:'#0369a1', marginTop:8, opacity:0.7 }}>
+                      Ativa 12 créditos para o mês atual nesta unidade
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div style={{ marginBottom:'1rem' }}>
