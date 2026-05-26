@@ -102,6 +102,7 @@ function AulasPageInner() {
 
   const [unidade,         setUnidade]         = useState<any>(null)
   const [cliente,         setCliente]         = useState<any>(null)
+  const [cobrancasPend,   setCobrancasPend]   = useState<any[]>([])
   const [saldo,           setSaldo]           = useState<Record<string, any>>({})
   const [saldoProximo,    setSaldoProximo]    = useState<Record<string, any>>({})
   const [ocorrencias,     setOcorrencias]     = useState<any[]>([])
@@ -157,6 +158,10 @@ function AulasPageInner() {
     if (!perfil) return
     const { data } = await supabase.from('clientes').select('*').eq('user_id', perfil.id).maybeSingle()
     setCliente(data)
+    if (data) {
+      const { data: cobs } = await supabase.from('cobrancas_pendentes').select('*').eq('cliente_id', data.id).eq('status', 'pendente')
+      setCobrancasPend(cobs || [])
+    }
   }
   async function carregarSaldo() {
     if (!cliente || !unidadeId) return
@@ -215,12 +220,14 @@ function AulasPageInner() {
 
   function tentarReservar(oc: any) {
     if (!user) { router.push(`/login?redirect=${encodeURIComponent("/aulas?unidade="+unidadeId)}`); return }
+    if (cliente?.bloqueado) return
     if (oc.club_aulas?.so_mulheres && cliente?.sexo !== "F") { setModalGenero(true); return }
     if (oc.club_aulas?.tipo === "running_funcional") { router.push(`/mapa?ocorrencia=${oc.id}&unidade=${unidadeId}`); return }
     abrirModalReserva(oc)
   }
   function tentarFila(oc: any) {
     if (!user) { router.push(`/login?redirect=${encodeURIComponent('/aulas?unidade='+unidadeId)}`); return }
+    if (cliente?.bloqueado) return
     setModalFila(oc); setTipoCredito(''); setFilaAceite(false); setErroModal('')
   }
   async function abrirModalReserva(oc: any) {
@@ -295,6 +302,50 @@ function AulasPageInner() {
             <div style={{ fontSize:13, color:'#444', marginTop:2 }}>Lift · Lift for Girls · Running + Funcional</div>
           </div>
         </div>
+
+        {/* Banner bloqueio */}
+        {user && cliente?.bloqueado && cobrancasPend.length > 0 && (
+          <div style={{ background:'#1a0000', border:'2px solid #ff4444', borderRadius:16, padding:'1.5rem', marginBottom:'1.5rem' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:'1rem' }}>
+              <div style={{ fontSize:32 }}>🚫</div>
+              <div>
+                <div style={{ fontSize:18, color:'#ff4444', fontWeight:700, fontFamily:"'Bebas Neue', sans-serif", letterSpacing:1 }}>CARTÃO RECUSADO</div>
+                <div style={{ fontSize:13, color:'#ccc' }}>Não conseguimos cobrar a multa no seu cartão</div>
+              </div>
+            </div>
+            <div style={{ background:'#0a0000', border:'1px solid #ff444433', borderRadius:10, padding:'1rem', marginBottom:'1rem' }}>
+              <div style={{ fontSize:13, color:'#fff', fontWeight:600, marginBottom:8 }}>Multas pendentes:</div>
+              {cobrancasPend.map((c:any, i:number) => (
+                <div key={c.id} style={{ display:'flex', justifyContent:'space-between', padding:'0.5rem 0', borderBottom: i < cobrancasPend.length-1 ? '1px solid #220000' : 'none' }}>
+                  <div style={{ fontSize:13, color:'#ddd' }}>{c.motivo}</div>
+                  <div style={{ fontSize:14, color:'#ff4444', fontWeight:700, fontFamily:"'DM Mono', monospace" }}>R$ {Number(c.valor).toFixed(2).replace('.',',')}</div>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => router.push('/cadastrar-cartao')}
+              style={{ width:'100%', background:'#ff4444', color:'#fff', border:'none', borderRadius:10, padding:'0.85rem', fontWeight:700, fontSize:14, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
+              💳 Atualizar cartão e regularizar
+            </button>
+          </div>
+        )}
+
+        {user && cliente?.bloqueado && cobrancasPend.length === 0 && (
+          <div style={{ background:'#1a1000', border:`2px solid ${AMARELO}`, borderRadius:16, padding:'1.5rem', marginBottom:'1.5rem' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:'0.75rem' }}>
+              <div style={{ fontSize:32 }}>⏳</div>
+              <div>
+                <div style={{ fontSize:18, color:AMARELO, fontWeight:700, fontFamily:"'Bebas Neue', sans-serif", letterSpacing:1 }}>AGUARDANDO REGULARIZAÇÃO</div>
+                <div style={{ fontSize:13, color:'#ccc' }}>Conta temporariamente bloqueada</div>
+              </div>
+            </div>
+            <div style={{ fontSize:14, color:'#ddd', lineHeight:1.7, marginBottom:'0.75rem' }}>
+              {cliente?.motivo_bloqueio || 'Você teve uma falta sem cancelamento prévio.'}
+            </div>
+            <div style={{ background:'#0a0500', border:`1px solid ${AMARELO}33`, borderRadius:10, padding:'0.85rem 1rem', fontSize:13, color:'#aaa' }}>
+              ⏳ <strong style={{ color:'#fff' }}>Aguarde a regularização da cobrança</strong> para fazer novas reservas.
+            </div>
+          </div>
+        )}
 
         {/* Banner visitante */}
         {!user && (
