@@ -7,7 +7,7 @@ import { Calendar, Users, LogOut } from 'lucide-react'
 const ACCENT = '#ff2d9b'
 const CYAN   = '#00e5ff'
 
-export default function SidebarRecepcao({ perfil }: { perfil: any }) {
+export default function SidebarRecepcao() {
   const router   = useRouter()
   const pathname = usePathname()
   const supabase = createClient()
@@ -16,17 +16,22 @@ export default function SidebarRecepcao({ perfil }: { perfil: any }) {
   const [temClub, setTemClub] = useState(false)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    if (perfil?.id) carregarAcessos()
-  }, [perfil?.id])
+  useEffect(() => { carregarAcessos() }, [])
 
   async function carregarAcessos() {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setLoading(false); return }
+
+    const { data: p } = await supabase
+      .from('perfis').select('id').eq('user_id', user.id).maybeSingle()
+    if (!p) { setLoading(false); return }
+
     const { data: pu } = await supabase
       .from('perfil_unidades')
       .select('unidade_id, unidades(tipo)')
-      .eq('perfil_id', perfil.id)
+      .eq('perfil_id', p.id)
 
-    const tipos = (pu || []).map((p: any) => p.unidades?.tipo).filter(Boolean)
+    const tipos = (pu || []).map((x: any) => x.unidades?.tipo).filter(Boolean)
     setTemCT(tipos.includes('ct'))
     setTemClub(tipos.some((t: string) => t === 'club'))
     setLoading(false)
@@ -56,10 +61,6 @@ export default function SidebarRecepcao({ perfil }: { perfil: any }) {
     )
   }
 
-  function Divider() {
-    return <div style={{ height:1, background:'#ffffff08', margin:'8px 8px' }} />
-  }
-
   return (
     <div style={{ width:200, background:'#0f0f1a', display:'flex', flexDirection:'column',
       position:'fixed', top:0, left:0, bottom:0, zIndex:50 }}>
@@ -82,7 +83,7 @@ export default function SidebarRecepcao({ perfil }: { perfil: any }) {
           <>
             {temCT   && <NavItem href="/recepcao/agenda"   label="Agenda CT"   icon={Calendar} cor={ACCENT} />}
             {temClub && <NavItem href="/recepcao/club"     label="Calendário"  icon={Calendar} cor={CYAN} />}
-            {(temCT || temClub) && <Divider />}
+            {(temCT || temClub) && <div style={{ height:1, background:'#ffffff08', margin:'8px 8px' }} />}
             <NavItem   href="/recepcao/clientes" label="Clientes" icon={Users} cor={ACCENT} />
           </>
         )}
