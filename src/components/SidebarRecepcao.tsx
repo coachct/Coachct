@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
-import { Calendar, Users, LogOut, Zap } from 'lucide-react'
+import { Calendar, Users, LogOut } from 'lucide-react'
 
 const ACCENT = '#ff2d9b'
 const CYAN   = '#00e5ff'
@@ -91,7 +91,7 @@ export default function SidebarRecepcao() {
 
             {/* Aulas Club — só se tiver acesso às clubs */}
             {temClub && (
-              <NavItem href="/recepcao/club" label="Aulas Club" icon={Zap} cor={CYAN} />
+              <NavItem href="/recepcao/club" label="Aulas Club" icon={Calendar} cor={CYAN} />
             )}
 
             {/* Divisor antes de Clientes */}
