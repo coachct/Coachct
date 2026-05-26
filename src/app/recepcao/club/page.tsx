@@ -13,8 +13,8 @@ function dataLocalStr(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
 function tipoLabel(t: string) {
-  if (t==='lift')             return 'Lift'
-  if (t==='lift_for_girls')  return 'Lift for Girls'
+  if (t==='lift')              return 'Lift'
+  if (t==='lift_for_girls')   return 'Lift for Girls'
   if (t==='running_funcional') return 'Running + Funcional'
   return t
 }
@@ -26,15 +26,16 @@ function tipoColor(t: string) {
 
 export default function RecepcaoClubPage() {
   const { perfil, loading } = useAuth()
-  const router  = useRouter()
+  const router   = useRouter()
   const supabase = createClient()
 
-  const [unidades,    setUnidades]    = useState<any[]>([])
-  const [unidadeSel,  setUnidadeSel]  = useState<any>(null)
-  const [ocorrencias, setOcorrencias] = useState<any[]>([])
-  const [contagens,   setContagens]   = useState<Record<string, { total: number; presente: number; falta: number; reservado: number }>>({})
-  const [loadingOcs,  setLoadingOcs]  = useState(false)
-  const [dataSel,     setDataSel]     = useState(dataLocalStr(new Date()))
+  const [unidades,       setUnidades]       = useState<any[]>([])
+  const [unidadeSel,     setUnidadeSel]     = useState<any>(null)
+  const [ocorrencias,    setOcorrencias]    = useState<any[]>([])
+  const [contagens,      setContagens]      = useState<Record<string, any>>({})
+  const [loadingOcs,     setLoadingOcs]     = useState(false)
+  const [loadingUnidades,setLoadingUnidades]= useState(true)
+  const [dataSel,        setDataSel]        = useState(dataLocalStr(new Date()))
 
   useEffect(() => {
     if (perfil) carregarUnidades()
@@ -56,6 +57,7 @@ export default function RecepcaoClubPage() {
 
     setUnidades(clubUnidades)
     if (clubUnidades.length > 0) setUnidadeSel(clubUnidades[0])
+    setLoadingUnidades(false)
   }
 
   async function carregarOcorrencias() {
@@ -71,9 +73,7 @@ export default function RecepcaoClubPage() {
     const { data: ocs } = await supabase
       .from('club_ocorrencias')
       .select('*, club_aulas(tipo, horario, capacidade, coaches(nome), grupos_musculares(nome))')
-      .in('aula_id', ids)
-      .eq('data', dataSel)
-      .eq('status', 'ativa')
+      .in('aula_id', ids).eq('data', dataSel).eq('status', 'ativa')
 
     const ocsList = (ocs || []).sort((a: any, b: any) =>
       (a.club_aulas?.horario||'').localeCompare(b.club_aulas?.horario||''))
@@ -81,8 +81,7 @@ export default function RecepcaoClubPage() {
 
     if (ocsList.length > 0) {
       const { data: reservas } = await supabase
-        .from('club_reservas')
-        .select('ocorrencia_id, status')
+        .from('club_reservas').select('ocorrencia_id, status')
         .in('ocorrencia_id', ocsList.map((o: any) => o.id))
 
       const cont: Record<string, any> = {}
@@ -100,9 +99,9 @@ export default function RecepcaoClubPage() {
     setLoadingOcs(false)
   }
 
-  const hoje      = dataLocalStr(new Date())
-  const amanha    = dataLocalStr(new Date(Date.now() + 86400000))
-  const ontem     = dataLocalStr(new Date(Date.now() - 86400000))
+  const hoje   = dataLocalStr(new Date())
+  const amanha = dataLocalStr(new Date(Date.now() + 86400000))
+  const ontem  = dataLocalStr(new Date(Date.now() - 86400000))
 
   function labelData(d: string) {
     if (d === hoje)   return 'Hoje'
@@ -111,9 +110,10 @@ export default function RecepcaoClubPage() {
     return new Date(d+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short'})
   }
 
-  if (loading) return (
+  if (loading || loadingUnidades) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh' }}>
-      <div style={{ width:32, height:32, border:`4px solid ${ACCENT}`, borderTopColor:'transparent', borderRadius:'50%', animation:'spin 0.8s linear infinite' }}/>
+      <div style={{ width:32, height:32, border:`4px solid ${ACCENT}`, borderTopColor:'transparent',
+        borderRadius:'50%', animation:'spin 0.8s linear infinite' }}/>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   )
@@ -122,7 +122,6 @@ export default function RecepcaoClubPage() {
     <div style={{ padding:'2rem', fontFamily:"'DM Sans', sans-serif", maxWidth:900 }}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');`}</style>
 
-      {/* Header */}
       <div style={{ marginBottom:'1.5rem' }}>
         <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:28, color:'#111', letterSpacing:1 }}>
           Aulas Coletivas
@@ -138,14 +137,14 @@ export default function RecepcaoClubPage() {
         </div>
       ) : (
         <>
-          {/* Seletor de unidade (se tiver mais de uma) */}
           {unidades.length > 1 && (
             <div style={{ display:'flex', gap:8, marginBottom:'1.5rem' }}>
               {unidades.map((u: any) => (
                 <button key={u.id} onClick={() => setUnidadeSel(u)}
-                  style={{ padding:'0.5rem 1.25rem', borderRadius:10, border:`1.5px solid ${unidadeSel?.id===u.id?CYAN:'#e5e7eb'}`,
-                    background: unidadeSel?.id===u.id ? `${CYAN}15` : '#fff',
-                    color: unidadeSel?.id===u.id ? CYAN : '#555',
+                  style={{ padding:'0.5rem 1.25rem', borderRadius:10,
+                    border:`1.5px solid ${unidadeSel?.id===u.id?CYAN:'#e5e7eb'}`,
+                    background: unidadeSel?.id===u.id?`${CYAN}15`:'#fff',
+                    color: unidadeSel?.id===u.id?CYAN:'#555',
                     fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
                   {u.nome}
                 </button>
@@ -153,88 +152,86 @@ export default function RecepcaoClubPage() {
             </div>
           )}
 
-      {/* Seletor de data */}
-      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:'1.5rem', flexWrap:'wrap' }}>
-        {[ontem, hoje, amanha].map(d => (
-          <button key={d} onClick={() => setDataSel(d)}
-            style={{ padding:'0.4rem 1rem', borderRadius:8, border:`1.5px solid ${dataSel===d?ACCENT:'#e5e7eb'}`,
-              background: dataSel===d?`${ACCENT}10`:'#fff', color: dataSel===d?ACCENT:'#555',
-              fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
-            {labelData(d)}
-          </button>
-        ))}
-        <input type="date" value={dataSel} onChange={e => setDataSel(e.target.value)}
-          style={{ padding:'0.4rem 0.75rem', borderRadius:8, border:'1.5px solid #e5e7eb', fontSize:12,
-            color:'#555', background:'#fff', cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}/>
-      </div>
+          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:'1.5rem', flexWrap:'wrap' }}>
+            {[ontem, hoje, amanha].map(d => (
+              <button key={d} onClick={() => setDataSel(d)}
+                style={{ padding:'0.4rem 1rem', borderRadius:8,
+                  border:`1.5px solid ${dataSel===d?ACCENT:'#e5e7eb'}`,
+                  background: dataSel===d?`${ACCENT}10`:'#fff',
+                  color: dataSel===d?ACCENT:'#555',
+                  fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
+                {labelData(d)}
+              </button>
+            ))}
+            <input type="date" value={dataSel} onChange={e => setDataSel(e.target.value)}
+              style={{ padding:'0.4rem 0.75rem', borderRadius:8, border:'1.5px solid #e5e7eb',
+                fontSize:12, color:'#555', background:'#fff', cursor:'pointer',
+                fontFamily:"'DM Sans', sans-serif" }}/>
+          </div>
 
-      {/* Lista de aulas */}
-      {loadingOcs ? (
-        <div style={{ textAlign:'center', padding:'3rem', color:'#aaa' }}>Carregando aulas...</div>
-      ) : ocorrencias.length === 0 ? (
-        <div style={{ background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:16, padding:'3rem', textAlign:'center', color:'#aaa' }}>
-          <div style={{ fontSize:32, marginBottom:8 }}>📅</div>
-          <div style={{ fontSize:14 }}>Nenhuma aula em {labelData(dataSel)} para {unidadeSel?.nome}.</div>
-        </div>
-      ) : (
-        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-          {ocorrencias.map(oc => {
-            const aula  = oc.club_aulas
-            const cont  = contagens[oc.id] || { total:0, reservado:0, presente:0, falta:0 }
-            const check = cont.presente
-            const total = cont.reservado + cont.presente + cont.falta
-            const cor   = tipoColor(aula?.tipo)
+          {loadingOcs ? (
+            <div style={{ textAlign:'center', padding:'3rem', color:'#aaa' }}>Carregando aulas...</div>
+          ) : ocorrencias.length === 0 ? (
+            <div style={{ background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:16,
+              padding:'3rem', textAlign:'center', color:'#aaa' }}>
+              <div style={{ fontSize:32, marginBottom:8 }}>📅</div>
+              <div style={{ fontSize:14 }}>Nenhuma aula em {labelData(dataSel)} para {unidadeSel?.nome}.</div>
+            </div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              {ocorrencias.map(oc => {
+                const aula = oc.club_aulas
+                const cont = contagens[oc.id] || { total:0, reservado:0, presente:0, falta:0 }
+                const check = cont.presente
+                const total = cont.reservado + cont.presente + cont.falta
+                const cor   = tipoColor(aula?.tipo)
 
-            return (
-              <div key={oc.id}
-                onClick={() => router.push(`/recepcao/club/${oc.id}`)}
-                style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:16, padding:'1.25rem 1.5rem',
-                  cursor:'pointer', transition:'all .15s', display:'flex', alignItems:'center', gap:'1.5rem' }}
-                onMouseEnter={e => (e.currentTarget.style.borderColor = cor)}
-                onMouseLeave={e => (e.currentTarget.style.borderColor = '#e5e7eb')}>
-
-                {/* Horário */}
-                <div style={{ fontFamily:"'DM Mono', monospace", fontSize:24, fontWeight:700, color:'#111', width:60, flexShrink:0 }}>
-                  {(aula?.horario||'').slice(0,5)}
-                </div>
-
-                {/* Info */}
-                <div style={{ flex:1 }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
-                    <span style={{ fontSize:11, fontWeight:700, color: cor, background:`${cor}18`,
-                      padding:'2px 10px', borderRadius:20 }}>{tipoLabel(aula?.tipo)}</span>
-                  </div>
-                  <div style={{ fontSize:14, fontWeight:600, color:'#111', marginBottom:2 }}>
-                    {aula?.grupos_musculares?.nome || '—'}
-                  </div>
-                  <div style={{ fontSize:12, color:'#888' }}>
-                    👤 {aula?.coaches?.nome?.split(' ')[0] || '—'} · {aula?.duracao_min || 50}min
-                  </div>
-                </div>
-
-                {/* Stats */}
-                <div style={{ display:'flex', gap:'1.5rem', flexShrink:0, alignItems:'center' }}>
-                  <div style={{ textAlign:'center' }}>
-                    <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:28, color:'#111', lineHeight:1 }}>{total}</div>
-                    <div style={{ fontSize:10, color:'#aaa', textTransform:'uppercase', letterSpacing:0.5 }}>reservas</div>
-                  </div>
-                  <div style={{ textAlign:'center' }}>
-                    <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:28, color:VERDE, lineHeight:1 }}>{check}</div>
-                    <div style={{ fontSize:10, color:'#aaa', textTransform:'uppercase', letterSpacing:0.5 }}>presentes</div>
-                  </div>
-                  <div style={{ textAlign:'center' }}>
-                    <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:28, color:'#111', lineHeight:1 }}>
-                      {cont.total - total}
+                return (
+                  <div key={oc.id}
+                    onClick={() => router.push(`/recepcao/club/${oc.id}`)}
+                    style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:16,
+                      padding:'1.25rem 1.5rem', cursor:'pointer', transition:'all .15s',
+                      display:'flex', alignItems:'center', gap:'1.5rem' }}
+                    onMouseEnter={e => (e.currentTarget.style.borderColor = cor)}
+                    onMouseLeave={e => (e.currentTarget.style.borderColor = '#e5e7eb')}>
+                    <div style={{ fontFamily:"'DM Mono', monospace", fontSize:24, fontWeight:700,
+                      color:'#111', width:60, flexShrink:0 }}>
+                      {(aula?.horario||'').slice(0,5)}
                     </div>
-                    <div style={{ fontSize:10, color:'#aaa', textTransform:'uppercase', letterSpacing:0.5 }}>vagas</div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                        <span style={{ fontSize:11, fontWeight:700, color:cor, background:`${cor}18`,
+                          padding:'2px 10px', borderRadius:20 }}>{tipoLabel(aula?.tipo)}</span>
+                      </div>
+                      <div style={{ fontSize:14, fontWeight:600, color:'#111', marginBottom:2 }}>
+                        {aula?.grupos_musculares?.nome || '—'}
+                      </div>
+                      <div style={{ fontSize:12, color:'#888' }}>
+                        👤 {aula?.coaches?.nome?.split(' ')[0] || '—'} · {aula?.duracao_min || 50}min
+                      </div>
+                    </div>
+                    <div style={{ display:'flex', gap:'1.5rem', flexShrink:0, alignItems:'center' }}>
+                      <div style={{ textAlign:'center' }}>
+                        <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:28, color:'#111', lineHeight:1 }}>{total}</div>
+                        <div style={{ fontSize:10, color:'#aaa', textTransform:'uppercase', letterSpacing:0.5 }}>reservas</div>
+                      </div>
+                      <div style={{ textAlign:'center' }}>
+                        <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:28, color:VERDE, lineHeight:1 }}>{check}</div>
+                        <div style={{ fontSize:10, color:'#aaa', textTransform:'uppercase', letterSpacing:0.5 }}>presentes</div>
+                      </div>
+                      <div style={{ textAlign:'center' }}>
+                        <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:28, color:'#111', lineHeight:1 }}>
+                          {cont.total - total}
+                        </div>
+                        <div style={{ fontSize:10, color:'#aaa', textTransform:'uppercase', letterSpacing:0.5 }}>vagas</div>
+                      </div>
+                      <div style={{ fontSize:18, color:'#ccc' }}>›</div>
+                    </div>
                   </div>
-                  <div style={{ fontSize:18, color:'#ccc' }}>›</div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+                )
+              })}
+            </div>
+          )}
         </>
       )}
     </div>
