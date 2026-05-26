@@ -4,14 +4,18 @@ import { useRouter, useParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
 
-const ACCENT  = '#ff2d9b'
-const VERDE   = '#2ddd8b'
-const AMARELO = '#ffaa00'
+const ACCENT   = '#ff2d9b'
+const VERDE    = '#2ddd8b'
+const AMARELO  = '#ffaa00'
 const VERMELHO = '#ff4444'
+const CYAN     = '#00e5ff'
 
+function dataLocalStr(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
 function tipoLabel(t: string) {
-  if (t==='lift')             return 'Lift'
-  if (t==='lift_for_girls')  return 'Lift for Girls'
+  if (t==='lift')              return 'Lift'
+  if (t==='lift_for_girls')   return 'Lift for Girls'
   if (t==='running_funcional') return 'Running + Funcional'
   return t
 }
@@ -28,21 +32,21 @@ export default function RecepcaoClubDetalhe() {
   const router   = useRouter()
   const supabase = createClient()
 
-  const [ocorrencia, setOcorrencia] = useState<any>(null)
-  const [reservas,   setReservas]   = useState<any[]>([])
-  const [loadingData, setLoadingData] = useState(true)
-  const [atualizando, setAtualizando] = useState<string | null>(null)
-  const [msg,         setMsg]         = useState('')
+  const [ocorrencia,   setOcorrencia]   = useState<any>(null)
+  const [reservas,     setReservas]     = useState<any[]>([])
+  const [loadingData,  setLoadingData]  = useState(true)
+  const [atualizando,  setAtualizando]  = useState<string | null>(null)
+  const [msg,          setMsg]          = useState('')
 
-  // Walk-in: agendar cliente direto
-  const [buscaTexto,  setBuscaTexto]  = useState('')
-  const [resultados,  setResultados]  = useState<any[]>([])
-  const [buscando,    setBuscando]    = useState(false)
-  const [clienteSel,  setClienteSel]  = useState<any>(null)
-  const [saldoCliente,setSaldoCliente]= useState<Record<string,any>>({})
-  const [tipoCredito, setTipoCredito] = useState('')
-  const [agendando,   setAgendando]   = useState(false)
-  const [erroAgendar, setErroAgendar] = useState('')
+  // Walk-in / agendamento
+  const [buscaTexto,   setBuscaTexto]   = useState('')
+  const [resultados,   setResultados]   = useState<any[]>([])
+  const [buscando,     setBuscando]     = useState(false)
+  const [clienteSel,   setClienteSel]   = useState<any>(null)
+  const [saldoCliente, setSaldoCliente] = useState<Record<string,any>>({})
+  const [tipoCredito,  setTipoCredito]  = useState('')
+  const [agendando,    setAgendando]    = useState(false)
+  const [erroAgendar,  setErroAgendar]  = useState('')
 
   useEffect(() => { if (ocId) carregarDados() }, [ocId])
 
@@ -63,6 +67,13 @@ export default function RecepcaoClubDetalhe() {
       (a.clientes?.nome || '').localeCompare(b.clientes?.nome || '', 'pt-BR')))
     setLoadingData(false)
   }
+
+  // Determina se a aula é hoje, passada ou futura
+  const hoje = dataLocalStr(new Date())
+  const dataAula = ocorrencia?.data || ''
+  const isHoje   = dataAula === hoje
+  const isFuturo = dataAula > hoje
+  const isPassado = dataAula < hoje
 
   async function marcarStatus(reservaId: string, status: 'presente' | 'falta') {
     setAtualizando(reservaId)
@@ -90,7 +101,6 @@ export default function RecepcaoClubDetalhe() {
     setErroAgendar('')
 
     if (!ocorrencia?.club_aulas?.unidade_id) return
-    const agora = new Date()
     const dataOc = new Date(ocorrencia.data + 'T12:00:00')
     const mes = dataOc.getMonth() + 1
     const ano = dataOc.getFullYear()
@@ -108,7 +118,6 @@ export default function RecepcaoClubDetalhe() {
     const mes = dataOc.getMonth() + 1
     const ano = dataOc.getFullYear()
 
-    // Busca o plano disponível para esta unidade e tipo
     const { data: plano } = await supabase
       .from('planos_disponiveis')
       .select('id')
@@ -118,31 +127,33 @@ export default function RecepcaoClubDetalhe() {
 
     if (!plano) { showMsg('❌ Plano não encontrado para esta unidade.'); return }
 
-    // Ativa o plano
     await supabase.from('cliente_planos').upsert({
-      cliente_id: clienteSel.id, plano_id: plano.id, ativo: true, inicio: dataOc.toISOString().split('T')[0],
+      cliente_id: clienteSel.id, plano_id: plano.id, ativo: true,
+      inicio: dataOc.toISOString().split('T')[0],
     }, { onConflict: 'cliente_id,plano_id' })
 
-    // Cria créditos do mês
     await supabase.from('cliente_creditos').upsert({
       cliente_id: clienteSel.id, unidade_id: unidadeId, tipo, total: 12, mes, ano,
     }, { onConflict: 'cliente_id,unidade_id,tipo,mes,ano' })
 
-    // Recarrega saldo
     await selecionarCliente(clienteSel)
     showMsg(`✅ Plano ${tipo === 'wellhub' ? 'Wellhub' : 'TotalPass'} ativado com 12 créditos!`)
   }
 
-  async function agendarWalkin() {
+  async function agendarOuWalkin() {
     if (!tipoCredito) { setErroAgendar('Selecione o plano.'); return }
     if (!clienteSel || !ocorrencia) return
     setAgendando(true); setErroAgendar('')
+
+    // Se é hoje → walk-in → já marca presente
+    // Se é futuro → agendamento → marca como reservado
+    const statusInicial = isFuturo ? 'reservado' : 'presente'
 
     const { error } = await supabase.from('club_reservas').insert({
       ocorrencia_id: ocId,
       cliente_id:    clienteSel.id,
       tipo_credito:  tipoCredito,
-      status:        'presente', // walk-in já marca presente direto
+      status:        statusInicial,
     })
     if (error) { setErroAgendar('Erro: ' + error.message); setAgendando(false); return }
 
@@ -151,16 +162,24 @@ export default function RecepcaoClubDetalhe() {
     setTipoCredito('')
     setSaldoCliente({})
     await carregarDados()
-    showMsg('✅ Cliente adicionado e marcado como presente!')
+    showMsg(isFuturo ? '✅ Reserva criada com sucesso!' : '✅ Cliente adicionado e marcado como presente!')
   }
 
-  function showMsg(texto: string) { setMsg(texto); setTimeout(() => setMsg(''), 3000) }
+  function showMsg(texto: string) { setMsg(texto); setTimeout(() => setMsg(''), 3500) }
 
-  const aula     = ocorrencia?.club_aulas
-  const presentes = reservas.filter(r => r.status === 'presente').length
-  const faltas    = reservas.filter(r => r.status === 'falta').length
+  const aula       = ocorrencia?.club_aulas
+  const presentes  = reservas.filter(r => r.status === 'presente').length
+  const faltas     = reservas.filter(r => r.status === 'falta').length
   const aguardando = reservas.filter(r => r.status === 'reservado').length
   const planosDisp = Object.entries(saldoCliente).filter(([,v]:any) => v?.disponivel > 0).map(([k]) => k)
+
+  // Badge de data
+  function badgeData() {
+    if (isHoje)   return { label: 'Hoje', cor: VERDE }
+    if (isFuturo) return { label: 'Agendamento futuro', cor: CYAN }
+    return { label: 'Aula encerrada', cor: '#aaa' }
+  }
+  const badge = badgeData()
 
   if (loading || loadingData) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh' }}>
@@ -180,11 +199,17 @@ export default function RecepcaoClubDetalhe() {
             cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, color:'#555', flexShrink:0 }}>
           ‹
         </button>
-        <div>
-          <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:24, color:'#111', letterSpacing:1 }}>
-            {tipoLabel(aula?.tipo)} — {(aula?.horario||'').slice(0,5)}
+        <div style={{ flex:1 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:4 }}>
+            <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:24, color:'#111', letterSpacing:1 }}>
+              {tipoLabel(aula?.tipo)} — {(aula?.horario||'').slice(0,5)}
+            </div>
+            <span style={{ fontSize:10, fontWeight:700, color: badge.cor, background:`${badge.cor}18`,
+              padding:'3px 10px', borderRadius:20, textTransform:'uppercase', letterSpacing:0.5 }}>
+              {badge.label}
+            </span>
           </div>
-          <div style={{ fontSize:13, color:'#888', marginTop:2 }}>
+          <div style={{ fontSize:13, color:'#888' }}>
             {aula?.grupos_musculares?.nome} · {aula?.coaches?.nome?.split(' ')[0]} ·{' '}
             {ocorrencia?.data ? new Date(ocorrencia.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'}) : ''}
           </div>
@@ -200,10 +225,10 @@ export default function RecepcaoClubDetalhe() {
       {/* Stats */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:'1.5rem' }}>
         {[
-          { label:'Reservas', value: reservas.length, cor:'#111' },
-          { label:'Presentes', value: presentes, cor: VERDE },
-          { label:'Aguardando', value: aguardando, cor: AMARELO },
-          { label:'Faltas', value: faltas, cor: VERMELHO },
+          { label:'Reservas',   value: reservas.length, cor:'#111' },
+          { label:'Presentes',  value: presentes,       cor: VERDE },
+          { label:'Aguardando', value: aguardando,      cor: AMARELO },
+          { label:'Faltas',     value: faltas,          cor: VERMELHO },
         ].map(s => (
           <div key={s.label} style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:12, padding:'1rem', textAlign:'center' }}>
             <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:36, color: s.cor, lineHeight:1 }}>{s.value}</div>
@@ -220,11 +245,13 @@ export default function RecepcaoClubDetalhe() {
         </div>
 
         {reservas.length === 0 ? (
-          <div style={{ padding:'2rem', textAlign:'center', color:'#aaa', fontSize:14 }}>Nenhuma reserva para esta aula.</div>
+          <div style={{ padding:'2rem', textAlign:'center', color:'#aaa', fontSize:14 }}>
+            {isFuturo ? 'Nenhuma reserva ainda para esta aula.' : 'Nenhuma reserva para esta aula.'}
+          </div>
         ) : (
           <div>
             {reservas.map((r, i) => {
-              const cli  = r.clientes
+              const cli        = r.clientes
               const { label, icon } = parsePlanoKey(r.tipo_credito || '')
               const isPresente  = r.status === 'presente'
               const isFalta     = r.status === 'falta'
@@ -235,13 +262,11 @@ export default function RecepcaoClubDetalhe() {
                   borderBottom: i < reservas.length - 1 ? '1px solid #f3f4f6' : 'none',
                   background: isPresente ? '#f0fdf4' : isFalta ? '#fff5f5' : '#fff' }}>
 
-                  {/* Número */}
                   <div style={{ width:28, height:28, borderRadius:'50%', background:'#f3f4f6',
                     display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, color:'#888', flexShrink:0 }}>
                     {i+1}
                   </div>
 
-                  {/* Info */}
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:14, fontWeight:600, color:'#111', marginBottom:2 }}>{cli?.nome || '—'}</div>
                     <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
@@ -255,30 +280,47 @@ export default function RecepcaoClubDetalhe() {
                     </div>
                   </div>
 
-                  {/* Status badge */}
                   <div style={{ flexShrink:0, marginRight:8 }}>
-                    {isPresente && <span style={{ fontSize:11, fontWeight:700, color:VERDE }}>✓ PRESENTE</span>}
-                    {isFalta    && <span style={{ fontSize:11, fontWeight:700, color:VERMELHO }}>✗ FALTA</span>}
-                    {isReservado && <span style={{ fontSize:11, color:'#aaa' }}>Aguardando</span>}
+                    {isPresente  && <span style={{ fontSize:11, fontWeight:700, color:VERDE }}>✓ PRESENTE</span>}
+                    {isFalta     && <span style={{ fontSize:11, fontWeight:700, color:VERMELHO }}>✗ FALTA</span>}
+                    {isReservado && <span style={{ fontSize:11, color: isFuturo ? CYAN : '#aaa' }}>
+                      {isFuturo ? '📅 AGENDADO' : 'Aguardando'}
+                    </span>}
                   </div>
 
-                  {/* Botões */}
-                  <div style={{ display:'flex', gap:6, flexShrink:0 }}>
-                    <button onClick={() => marcarStatus(r.id, 'presente')} disabled={isPresente || atualizando === r.id}
-                      style={{ padding:'0.35rem 0.85rem', borderRadius:8, border:`1.5px solid ${isPresente?VERDE:'#e5e7eb'}`,
-                        background: isPresente ? VERDE : '#fff', color: isPresente ? '#fff' : '#555',
-                        fontSize:12, fontWeight:600, cursor: isPresente ? 'default' : 'pointer',
-                        opacity: atualizando === r.id ? 0.5 : 1, fontFamily:"'DM Sans', sans-serif" }}>
-                      ✓ Presente
+                  {/* Botões de presença — só mostrar se for hoje ou passado */}
+                  {!isFuturo && (
+                    <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                      <button onClick={() => marcarStatus(r.id, 'presente')} disabled={isPresente || atualizando === r.id}
+                        style={{ padding:'0.35rem 0.85rem', borderRadius:8, border:`1.5px solid ${isPresente?VERDE:'#e5e7eb'}`,
+                          background: isPresente ? VERDE : '#fff', color: isPresente ? '#fff' : '#555',
+                          fontSize:12, fontWeight:600, cursor: isPresente ? 'default' : 'pointer',
+                          opacity: atualizando === r.id ? 0.5 : 1, fontFamily:"'DM Sans', sans-serif" }}>
+                        ✓ Presente
+                      </button>
+                      <button onClick={() => marcarStatus(r.id, 'falta')} disabled={isFalta || atualizando === r.id}
+                        style={{ padding:'0.35rem 0.85rem', borderRadius:8, border:`1.5px solid ${isFalta?VERMELHO:'#e5e7eb'}`,
+                          background: isFalta ? VERMELHO : '#fff', color: isFalta ? '#fff' : '#888',
+                          fontSize:12, fontWeight:600, cursor: isFalta ? 'default' : 'pointer',
+                          opacity: atualizando === r.id ? 0.5 : 1, fontFamily:"'DM Sans', sans-serif" }}>
+                        ✗ Falta
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Para aulas futuras: botão de cancelar reserva */}
+                  {isFuturo && (
+                    <button onClick={async () => {
+                      await supabase.from('club_reservas').update({ status:'cancelado' }).eq('id', r.id)
+                      await carregarDados()
+                      showMsg('🗑️ Reserva cancelada.')
+                    }}
+                      style={{ padding:'0.35rem 0.85rem', borderRadius:8, border:'1.5px solid #fecaca',
+                        background:'#fff5f5', color: VERMELHO, fontSize:12, fontWeight:600,
+                        cursor:'pointer', flexShrink:0, fontFamily:"'DM Sans', sans-serif" }}>
+                      Cancelar
                     </button>
-                    <button onClick={() => marcarStatus(r.id, 'falta')} disabled={isFalta || atualizando === r.id}
-                      style={{ padding:'0.35rem 0.85rem', borderRadius:8, border:`1.5px solid ${isFalta?VERMELHO:'#e5e7eb'}`,
-                        background: isFalta ? VERMELHO : '#fff', color: isFalta ? '#fff' : '#888',
-                        fontSize:12, fontWeight:600, cursor: isFalta ? 'default' : 'pointer',
-                        opacity: atualizando === r.id ? 0.5 : 1, fontFamily:"'DM Sans', sans-serif" }}>
-                      ✗ Falta
-                    </button>
-                  </div>
+                  )}
                 </div>
               )
             })}
@@ -286,142 +328,161 @@ export default function RecepcaoClubDetalhe() {
         )}
       </div>
 
-      {/* Walk-in: adicionar cliente */}
-      <div style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:16, overflow:'hidden' }}>
-        <div style={{ padding:'1rem 1.5rem', borderBottom:'1px solid #f3f4f6' }}>
-          <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>➕ Adicionar cliente (walk-in)</div>
-          <div style={{ fontSize:12, color:'#aaa', marginTop:2 }}>Cliente chegou direto na unidade sem reserva prévia</div>
-        </div>
-        <div style={{ padding:'1.25rem 1.5rem' }}>
-
-          {!clienteSel ? (
-            <>
-              <div style={{ display:'flex', gap:8, marginBottom:8 }}>
-                <input
-                  value={buscaTexto}
-                  onChange={e => setBuscaTexto(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && buscarCliente()}
-                  placeholder="Buscar por nome, email ou telefone..."
-                  style={{ flex:1, border:'1px solid #e5e7eb', borderRadius:8, padding:'0.65rem 1rem',
-                    fontSize:13, color:'#111', fontFamily:"'DM Sans', sans-serif", outline:'none' }}/>
-                <button onClick={buscarCliente} disabled={buscando}
-                  style={{ background: ACCENT, color:'#fff', border:'none', borderRadius:8,
-                    padding:'0.65rem 1.25rem', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
-                  {buscando ? '...' : 'Buscar'}
-                </button>
-              </div>
-
-              {resultados.length > 0 && (
-                <div style={{ border:'1px solid #e5e7eb', borderRadius:8, overflow:'hidden' }}>
-                  {resultados.map((cli, i) => (
-                    <button key={cli.id} onClick={() => selecionarCliente(cli)}
-                      style={{ display:'flex', alignItems:'center', gap:'0.75rem', width:'100%',
-                        padding:'0.75rem 1rem', background:'#fff', border:'none',
-                        borderBottom: i < resultados.length - 1 ? '1px solid #f3f4f6' : 'none',
-                        cursor:'pointer', textAlign:'left' }}
-                      onMouseEnter={e => (e.currentTarget.style.background='#f9fafb')}
-                      onMouseLeave={e => (e.currentTarget.style.background='#fff')}>
-                      <div style={{ width:32, height:32, borderRadius:'50%', background:`${ACCENT}20`,
-                        display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700, color: ACCENT, flexShrink:0 }}>
-                        {cli.nome?.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <div style={{ fontSize:14, fontWeight:600, color:'#111' }}>{cli.nome}</div>
-                        <div style={{ fontSize:11, color:'#aaa' }}>{cli.email || cli.telefone}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </>
-          ) : (
-            <div>
-              {/* Cliente selecionado */}
-              <div style={{ display:'flex', alignItems:'center', gap:'0.75rem', background:'#f9fafb',
-                border:'1px solid #e5e7eb', borderRadius:10, padding:'0.75rem 1rem', marginBottom:'1rem' }}>
-                <div style={{ width:36, height:36, borderRadius:'50%', background:`${ACCENT}20`,
-                  display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:700, color: ACCENT }}>
-                  {clienteSel.nome?.charAt(0).toUpperCase()}
-                </div>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontSize:14, fontWeight:600, color:'#111' }}>{clienteSel.nome}</div>
-                  <div style={{ fontSize:11, color:'#aaa' }}>{clienteSel.email}</div>
-                </div>
-                <button onClick={() => { setClienteSel(null); setSaldoCliente({}); setTipoCredito('') }}
-                  style={{ background:'transparent', border:'none', color:'#aaa', cursor:'pointer', fontSize:16 }}>✕</button>
-              </div>
-
-              {/* Planos disponíveis */}
-              {planosDisp.length === 0 ? (
-                <div>
-                  <div style={{ background:'#fff8f0', border:'1px solid #fed7aa', borderRadius:8, padding:'0.75rem 1rem',
-                    fontSize:13, color:'#9a3412', marginBottom:'1rem' }}>
-                    ⚠️ Cliente sem créditos para esta unidade neste mês.
-                  </div>
-                  {/* Ativação rápida de plano */}
-                  <div style={{ background:'#f0f9ff', border:'1px solid #bae6fd', borderRadius:10, padding:'1rem', marginBottom:'1rem' }}>
-                    <div style={{ fontSize:12, fontWeight:600, color:'#0369a1', marginBottom:10 }}>
-                      ⚡ Ativar plano agora
-                    </div>
-                    <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                      {['wellhub','totalpass'].map(tipo => (
-                        <button key={tipo} onClick={() => ativarPlanoRapido(tipo)}
-                          style={{ padding:'0.5rem 1rem', borderRadius:8, border:'1.5px solid #bae6fd',
-                            background:'#fff', cursor:'pointer', fontSize:13, fontWeight:600,
-                            color:'#0369a1', fontFamily:"'DM Sans', sans-serif" }}>
-                          {tipo === 'wellhub' ? '💜 Wellhub' : '🔵 TotalPass'}
-                        </button>
-                      ))}
-                    </div>
-                    <div style={{ fontSize:11, color:'#0369a1', marginTop:8, opacity:0.7 }}>
-                      Ativa 12 créditos para o mês atual nesta unidade
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ marginBottom:'1rem' }}>
-                  <div style={{ fontSize:12, color:'#888', marginBottom:8, textTransform:'uppercase', letterSpacing:1 }}>Usar crédito de:</div>
-                  <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                    {planosDisp.map(p => {
-                      const { label, icon } = parsePlanoKey(p)
-                      const info = saldoCliente[p]
-                      return (
-                        <button key={p} onClick={() => setTipoCredito(p)}
-                          style={{ padding:'0.5rem 1rem', borderRadius:10, border:`1.5px solid ${tipoCredito===p?ACCENT:'#e5e7eb'}`,
-                            background: tipoCredito===p?`${ACCENT}10`:'#fff', cursor:'pointer',
-                            fontSize:13, fontWeight:600, color: tipoCredito===p?ACCENT:'#555',
-                            fontFamily:"'DM Sans', sans-serif" }}>
-                          {icon} {label} <span style={{ fontSize:11, opacity:0.7 }}>({info?.disponivel} restantes)</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {erroAgendar && (
-                <div style={{ background:'#fff5f5', border:'1px solid #fecaca', borderRadius:8,
-                  padding:'0.6rem 1rem', fontSize:13, color:'#991b1b', marginBottom:'1rem' }}>{erroAgendar}</div>
-              )}
-
-              <div style={{ display:'flex', gap:8 }}>
-                <button onClick={() => { setClienteSel(null); setSaldoCliente({}); setTipoCredito('') }}
-                  style={{ flex:1, background:'#f3f4f6', border:'none', borderRadius:10,
-                    padding:'0.85rem', fontSize:13, color:'#555', cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
-                  Cancelar
-                </button>
-                <button onClick={agendarWalkin} disabled={agendando || planosDisp.length === 0}
-                  style={{ flex:2, background: planosDisp.length===0?'#e5e7eb':ACCENT, color: planosDisp.length===0?'#aaa':'#fff',
-                    border:'none', borderRadius:10, padding:'0.85rem', fontSize:13, fontWeight:600,
-                    cursor: agendando || planosDisp.length===0?'default':'pointer',
-                    fontFamily:"'DM Sans', sans-serif", opacity: agendando?0.7:1 }}>
-                  {agendando ? 'Adicionando...' : '✓ Confirmar presença'}
-                </button>
-              </div>
+      {/* Seção de adicionar: Walk-in (hoje) ou Agendar (futuro) */}
+      {!isPassado && (
+        <div style={{ background:'#fff', border:`1px solid ${isFuturo ? `${CYAN}40` : '#e5e7eb'}`, borderRadius:16, overflow:'hidden' }}>
+          <div style={{ padding:'1rem 1.5rem', borderBottom:'1px solid #f3f4f6',
+            background: isFuturo ? `${CYAN}08` : '#fff' }}>
+            <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>
+              {isFuturo ? '📅 Agendar cliente' : '➕ Adicionar cliente (walk-in)'}
             </div>
-          )}
+            <div style={{ fontSize:12, color:'#aaa', marginTop:2 }}>
+              {isFuturo
+                ? 'Reserve uma vaga para o cliente nesta aula futura'
+                : 'Cliente chegou direto na unidade sem reserva prévia'}
+            </div>
+          </div>
+          <div style={{ padding:'1.25rem 1.5rem' }}>
+
+            {!clienteSel ? (
+              <>
+                <div style={{ display:'flex', gap:8, marginBottom:8 }}>
+                  <input
+                    value={buscaTexto}
+                    onChange={e => setBuscaTexto(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && buscarCliente()}
+                    placeholder="Buscar por nome, email ou telefone..."
+                    style={{ flex:1, border:'1px solid #e5e7eb', borderRadius:8, padding:'0.65rem 1rem',
+                      fontSize:13, color:'#111', fontFamily:"'DM Sans', sans-serif", outline:'none' }}/>
+                  <button onClick={buscarCliente} disabled={buscando}
+                    style={{ background: ACCENT, color:'#fff', border:'none', borderRadius:8,
+                      padding:'0.65rem 1.25rem', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
+                    {buscando ? '...' : 'Buscar'}
+                  </button>
+                </div>
+
+                {resultados.length > 0 && (
+                  <div style={{ border:'1px solid #e5e7eb', borderRadius:8, overflow:'hidden' }}>
+                    {resultados.map((cli, i) => (
+                      <button key={cli.id} onClick={() => selecionarCliente(cli)}
+                        style={{ display:'flex', alignItems:'center', gap:'0.75rem', width:'100%',
+                          padding:'0.75rem 1rem', background:'#fff', border:'none',
+                          borderBottom: i < resultados.length - 1 ? '1px solid #f3f4f6' : 'none',
+                          cursor:'pointer', textAlign:'left' }}
+                        onMouseEnter={e => (e.currentTarget.style.background='#f9fafb')}
+                        onMouseLeave={e => (e.currentTarget.style.background='#fff')}>
+                        <div style={{ width:32, height:32, borderRadius:'50%', background:`${ACCENT}20`,
+                          display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700, color: ACCENT, flexShrink:0 }}>
+                          {cli.nome?.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <div style={{ fontSize:14, fontWeight:600, color:'#111' }}>{cli.nome}</div>
+                          <div style={{ fontSize:11, color:'#aaa' }}>{cli.email || cli.telefone}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div>
+                {/* Cliente selecionado */}
+                <div style={{ display:'flex', alignItems:'center', gap:'0.75rem', background:'#f9fafb',
+                  border:'1px solid #e5e7eb', borderRadius:10, padding:'0.75rem 1rem', marginBottom:'1rem' }}>
+                  <div style={{ width:36, height:36, borderRadius:'50%', background:`${ACCENT}20`,
+                    display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:700, color: ACCENT }}>
+                    {clienteSel.nome?.charAt(0).toUpperCase()}
+                  </div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:14, fontWeight:600, color:'#111' }}>{clienteSel.nome}</div>
+                    <div style={{ fontSize:11, color:'#aaa' }}>{clienteSel.email}</div>
+                  </div>
+                  <button onClick={() => { setClienteSel(null); setSaldoCliente({}); setTipoCredito('') }}
+                    style={{ background:'transparent', border:'none', color:'#aaa', cursor:'pointer', fontSize:16 }}>✕</button>
+                </div>
+
+                {/* Planos disponíveis */}
+                {planosDisp.length === 0 ? (
+                  <div>
+                    <div style={{ background:'#fff8f0', border:'1px solid #fed7aa', borderRadius:8, padding:'0.75rem 1rem',
+                      fontSize:13, color:'#9a3412', marginBottom:'1rem' }}>
+                      ⚠️ Cliente sem créditos para esta unidade neste mês.
+                    </div>
+                    <div style={{ background:'#f0f9ff', border:'1px solid #bae6fd', borderRadius:10, padding:'1rem', marginBottom:'1rem' }}>
+                      <div style={{ fontSize:12, fontWeight:600, color:'#0369a1', marginBottom:10 }}>
+                        ⚡ Ativar plano agora
+                      </div>
+                      <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                        {['wellhub','totalpass'].map(tipo => (
+                          <button key={tipo} onClick={() => ativarPlanoRapido(tipo)}
+                            style={{ padding:'0.5rem 1rem', borderRadius:8, border:'1.5px solid #bae6fd',
+                              background:'#fff', cursor:'pointer', fontSize:13, fontWeight:600,
+                              color:'#0369a1', fontFamily:"'DM Sans', sans-serif" }}>
+                            {tipo === 'wellhub' ? '💜 Wellhub' : '🔵 TotalPass'}
+                          </button>
+                        ))}
+                      </div>
+                      <div style={{ fontSize:11, color:'#0369a1', marginTop:8, opacity:0.7 }}>
+                        Ativa 12 créditos para o mês da aula nesta unidade
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ marginBottom:'1rem' }}>
+                    <div style={{ fontSize:12, color:'#888', marginBottom:8, textTransform:'uppercase', letterSpacing:1 }}>Usar crédito de:</div>
+                    <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                      {planosDisp.map(p => {
+                        const { label, icon } = parsePlanoKey(p)
+                        const info = saldoCliente[p]
+                        return (
+                          <button key={p} onClick={() => setTipoCredito(p)}
+                            style={{ padding:'0.5rem 1rem', borderRadius:10, border:`1.5px solid ${tipoCredito===p?ACCENT:'#e5e7eb'}`,
+                              background: tipoCredito===p?`${ACCENT}10`:'#fff', cursor:'pointer',
+                              fontSize:13, fontWeight:600, color: tipoCredito===p?ACCENT:'#555',
+                              fontFamily:"'DM Sans', sans-serif" }}>
+                            {icon} {label} <span style={{ fontSize:11, opacity:0.7 }}>({info?.disponivel} restantes)</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {erroAgendar && (
+                  <div style={{ background:'#fff5f5', border:'1px solid #fecaca', borderRadius:8,
+                    padding:'0.6rem 1rem', fontSize:13, color:'#991b1b', marginBottom:'1rem' }}>{erroAgendar}</div>
+                )}
+
+                <div style={{ display:'flex', gap:8 }}>
+                  <button onClick={() => { setClienteSel(null); setSaldoCliente({}); setTipoCredito('') }}
+                    style={{ flex:1, background:'#f3f4f6', border:'none', borderRadius:10,
+                      padding:'0.85rem', fontSize:13, color:'#555', cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
+                    Cancelar
+                  </button>
+                  <button onClick={agendarOuWalkin} disabled={agendando || planosDisp.length === 0}
+                    style={{ flex:2, background: planosDisp.length===0?'#e5e7eb': isFuturo ? CYAN : ACCENT,
+                      color: planosDisp.length===0?'#aaa':'#fff', border:'none', borderRadius:10,
+                      padding:'0.85rem', fontSize:13, fontWeight:600,
+                      cursor: agendando || planosDisp.length===0?'default':'pointer',
+                      fontFamily:"'DM Sans', sans-serif", opacity: agendando?0.7:1 }}>
+                    {agendando
+                      ? (isFuturo ? 'Agendando...' : 'Adicionando...')
+                      : (isFuturo ? '📅 Confirmar agendamento' : '✓ Confirmar presença')}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Aula passada — sem seção de adicionar */}
+      {isPassado && (
+        <div style={{ background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:16, padding:'1.25rem 1.5rem',
+          textAlign:'center', color:'#aaa', fontSize:13 }}>
+          Aula encerrada — não é possível adicionar novas presenças.
+        </div>
+      )}
     </div>
   )
 }
