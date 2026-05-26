@@ -410,7 +410,7 @@ export default function MinhaContaPage() {
 
           {/* Card Nossos Planos */}
           <button
-            onClick={() => router.push('/meus-planos')}
+            onClick={() => router.push('/comprar')}
             className="parceiro-card"
             style={{
               display:'flex', alignItems:'center', justifyContent:'space-between',
@@ -449,124 +449,131 @@ export default function MinhaContaPage() {
           {/* Subtítulo unidades */}
           <div style={{fontSize:13,color:'#888',marginBottom:10}}>Onde você gostaria de treinar?</div>
 
-          {/* Cards de unidade */}
+          {/* Cards de unidade com painel inline */}
           {unidadesComPlanos.length === 0 ? (
             <div style={{textAlign:'center',padding:'1.5rem',color:'#444',fontSize:13}}>
               Nenhum plano parceiro disponível no momento.
             </div>
           ) : (
-            <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom: unidadeSel ? '1.25rem' : 0}}>
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
               {unidadesComPlanos.map((unidade: any) => {
                 const isClub  = unidade.tipo === 'club'
                 const isSel   = unidadeSel === unidade.id
                 const temAtivoNessa = unidade.planos?.some((p: any) => planoJaAtivo(p.id))
+                const planosDestaUnidade = planosDisponiveis.filter(p => p.unidade_id === unidade.id)
                 return (
-                  <button
-                    key={unidade.id}
-                    onClick={() => setUnidadeSel(isSel ? null : unidade.id)}
-                    className="parceiro-card"
-                    style={{
-                      display:'flex', alignItems:'center', justifyContent:'space-between',
-                      background: isSel ? '#181018' : '#111',
-                      border: `1.5px solid ${isSel ? ACCENT+'88' : '#2a2a2a'}`,
-                      borderRadius:12, padding:'0.85rem 1rem',
-                      cursor:'pointer', textAlign:'left', width:'100%',
-                      fontFamily:"'DM Sans', sans-serif",
-                      transition:'all .15s',
-                    }}
-                  >
-                    <div style={{display:'flex',alignItems:'center',gap:12}}>
-                      <div style={{
-                        width:40,height:40,borderRadius:10,
-                        background: isSel ? `${ACCENT}22` : '#1a1a1a',
-                        display:'flex',alignItems:'center',justifyContent:'center',
-                        fontSize:20,flexShrink:0,
-                        border:`1px solid ${isSel ? ACCENT+'44' : '#2a2a2a'}`,
+                  <div key={unidade.id} style={{display:'flex',flexDirection:'column',gap:0}}>
+                    {/* Card da unidade */}
+                    <button
+                      onClick={() => setUnidadeSel(isSel ? null : unidade.id)}
+                      className="parceiro-card"
+                      style={{
+                        display:'flex', alignItems:'center', justifyContent:'space-between',
+                        background: isSel ? '#181018' : '#111',
+                        border: `1.5px solid ${isSel ? ACCENT+'88' : '#2a2a2a'}`,
+                        borderRadius: isSel ? '12px 12px 0 0' : '12px',
+                        padding:'0.85rem 1rem',
+                        cursor:'pointer', textAlign:'left', width:'100%',
+                        fontFamily:"'DM Sans', sans-serif",
                         transition:'all .15s',
-                      }}>
-                        {isClub ? '🏢' : '🏋️'}
-                      </div>
-                      <div>
-                        <div style={{fontSize:15,fontWeight:600,color:'#fff'}}>{unidade.nome}</div>
-                        <div style={{fontSize:11,color:'#555',marginTop:2}}>
-                          {isClub ? 'JustClub' : 'Just CT'} · Wellhub & TotalPass disponíveis
+                      }}
+                    >
+                      <div style={{display:'flex',alignItems:'center',gap:12}}>
+                        <div style={{
+                          width:40,height:40,borderRadius:10,
+                          background: isSel ? `${ACCENT}22` : '#1a1a1a',
+                          display:'flex',alignItems:'center',justifyContent:'center',
+                          fontSize:20,flexShrink:0,
+                          border:`1px solid ${isSel ? ACCENT+'44' : '#2a2a2a'}`,
+                          transition:'all .15s',
+                        }}>
+                          {isClub ? '🏢' : '🏋️'}
+                        </div>
+                        <div>
+                          <div style={{fontSize:15,fontWeight:600,color:'#fff'}}>{unidade.nome}</div>
+                          <div style={{fontSize:11,color:'#555',marginTop:2}}>
+                            {isClub ? 'JustClub' : 'Just CT'} · Wellhub & TotalPass disponíveis
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
-                      {temAtivoNessa && (
-                        <div style={{display:'flex',alignItems:'center',gap:4,background:'#0a1a0a',borderRadius:20,padding:'0.2rem 0.6rem'}}>
-                          <div style={{width:5,height:5,borderRadius:'50%',background:VERDE}}/>
-                          <span style={{fontSize:10,fontWeight:700,color:VERDE}}>ATIVO</span>
-                        </div>
-                      )}
+                      <div style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+                        {temAtivoNessa && (
+                          <div style={{display:'flex',alignItems:'center',gap:4,background:'#0a1a0a',borderRadius:20,padding:'0.2rem 0.6rem'}}>
+                            <div style={{width:5,height:5,borderRadius:'50%',background:VERDE}}/>
+                            <span style={{fontSize:10,fontWeight:700,color:VERDE}}>ATIVO</span>
+                          </div>
+                        )}
+                        <div style={{
+                          fontSize:16,color: isSel ? ACCENT : '#444',
+                          transition:'transform .2s, color .15s',
+                          transform: isSel ? 'rotate(90deg)' : 'rotate(0deg)',
+                        }}>›</div>
+                      </div>
+                    </button>
+
+                    {/* Painel de apps — aparece INLINE logo abaixo desta unidade */}
+                    {isSel && planosDestaUnidade.length > 0 && (
                       <div style={{
-                        fontSize:16,color: isSel ? ACCENT : '#444',
-                        transition:'transform .2s, color .15s',
-                        transform: isSel ? 'rotate(90deg)' : 'rotate(0deg)',
-                      }}>›</div>
-                    </div>
-                  </button>
+                        background:'#130010',
+                        border:`1.5px solid ${ACCENT}55`,
+                        borderTop:'none',
+                        borderRadius:'0 0 12px 12px',
+                        padding:'0.85rem',
+                        animation:'fadeIn .18s ease',
+                      }}>
+                        <div style={{fontSize:10,color:ACCENT,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:8,paddingLeft:4}}>
+                          Escolha seu app parceiro
+                        </div>
+                        <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                          {planosDestaUnidade.map((plano: any) => {
+                            const ativo    = planoJaAtivo(plano.id)
+                            const isWell   = plano.tipo === 'wellhub'
+                            const cor      = isWell ? '#a78bfa' : '#38bdf8'
+                            const corBg    = isWell ? '#2d1b69' : '#0c2340'
+                            const gradiente = isWell
+                              ? 'linear-gradient(135deg,#7c3aed,#a855f7)'
+                              : 'linear-gradient(135deg,#0369a1,#0ea5e9)'
+                            return (
+                              <div key={plano.id} style={{
+                                display:'flex',alignItems:'center',justifyContent:'space-between',
+                                background: ativo ? corBg : '#0d0008',
+                                border:`1px solid ${ativo ? cor+'44' : '#2a2a2a'}`,
+                                borderRadius:10,padding:'0.7rem 0.85rem',
+                              }}>
+                                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                                  <span style={{fontSize:18}}>{isWell ? '💜' : '🔵'}</span>
+                                  <div>
+                                    <div style={{fontSize:14,fontWeight:700,color: ativo ? cor : '#fff'}}>
+                                      {isWell ? 'Wellhub' : 'TotalPass'}
+                                    </div>
+                                    <div style={{fontSize:11,color:'#555',marginTop:1}}>
+                                      {plano.creditos_mes} treinos/mês
+                                    </div>
+                                  </div>
+                                </div>
+                                {ativo ? (
+                                  <div style={{display:'flex',alignItems:'center',gap:6,background:corBg,borderRadius:20,padding:'0.3rem 0.85rem',border:`1px solid ${cor}44`}}>
+                                    <div style={{width:6,height:6,borderRadius:'50%',background:cor}}/>
+                                    <span style={{fontSize:12,fontWeight:700,color:cor}}>ATIVO</span>
+                                  </div>
+                                ) : (
+                                  <button onClick={() => abrirModalAtivar(plano)} style={{
+                                    background: gradiente,
+                                    color:'#fff',border:'none',borderRadius:20,
+                                    padding:'0.4rem 1.1rem',fontSize:12,fontWeight:700,
+                                    cursor:'pointer',fontFamily:"'DM Sans', sans-serif",
+                                    whiteSpace:'nowrap',
+                                  }}>Ativar →</button>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )
               })}
-            </div>
-          )}
-
-          {/* Apps disponíveis para a unidade selecionada */}
-          {unidadeSel && planosUnidadeSel.length > 0 && (
-            <div style={{
-              background:'#111',border:`1px solid ${ACCENT}22`,
-              borderRadius:12,padding:'1rem',
-              animation:'fadeIn .2s ease',
-            }}>
-              <div style={{fontSize:11,color:ACCENT,fontWeight:700,letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>
-                Escolha seu app parceiro
-              </div>
-              <div style={{display:'flex',flexDirection:'column',gap:8}}>
-                {planosUnidadeSel.map((plano: any) => {
-                  const ativo  = planoJaAtivo(plano.id)
-                  const isWell = plano.tipo === 'wellhub'
-                  const cor    = isWell ? '#a78bfa' : '#38bdf8'
-                  const corBg  = isWell ? '#2d1b69' : '#0c2340'
-                  const gradiente = isWell
-                    ? 'linear-gradient(135deg,#7c3aed,#a855f7)'
-                    : 'linear-gradient(135deg,#0369a1,#0ea5e9)'
-                  return (
-                    <div key={plano.id} style={{
-                      display:'flex',alignItems:'center',justifyContent:'space-between',
-                      background: ativo ? corBg : '#0a0a0a',
-                      border:`1px solid ${ativo ? cor+'44' : '#2a2a2a'}`,
-                      borderRadius:10,padding:'0.8rem 1rem',
-                    }}>
-                      <div style={{display:'flex',alignItems:'center',gap:10}}>
-                        <span style={{fontSize:20}}>{isWell ? '💜' : '🔵'}</span>
-                        <div>
-                          <div style={{fontSize:14,fontWeight:700,color: ativo ? cor : '#fff'}}>
-                            {isWell ? 'Wellhub' : 'TotalPass'}
-                          </div>
-                          <div style={{fontSize:11,color:'#555',marginTop:1}}>
-                            {plano.creditos_mes} treinos/mês
-                          </div>
-                        </div>
-                      </div>
-                      {ativo ? (
-                        <div style={{display:'flex',alignItems:'center',gap:6,background:corBg,borderRadius:20,padding:'0.3rem 0.85rem',border:`1px solid ${cor}44`}}>
-                          <div style={{width:6,height:6,borderRadius:'50%',background:cor}}/>
-                          <span style={{fontSize:12,fontWeight:700,color:cor}}>ATIVO</span>
-                        </div>
-                      ) : (
-                        <button onClick={() => abrirModalAtivar(plano)} style={{
-                          background: gradiente,
-                          color:'#fff',border:'none',borderRadius:20,
-                          padding:'0.4rem 1.1rem',fontSize:12,fontWeight:700,
-                          cursor:'pointer',fontFamily:"'DM Sans', sans-serif",
-                          whiteSpace:'nowrap',
-                        }}>Ativar →</button>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
             </div>
           )}
         </div>
