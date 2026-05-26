@@ -122,10 +122,11 @@ export default function MinhaContaPage() {
   const [saindoFila,    setSaindoFila]    = useState(false)
 
   // Modal App Parceiros / Contrato
-  const [modalAtivar,    setModalAtivar]    = useState<any>(null) // { plano: {...} }
+  const [modalAtivar,    setModalAtivar]    = useState<any>(null)
   const [contratoAceito, setContratoAceito] = useState(false)
   const [ativando,       setAtivando]       = useState(false)
   const [erroAtivar,     setErroAtivar]     = useState('')
+  const [unidadeSel,     setUnidadeSel]     = useState<string|null>(null)
   const contratoRef = useRef<HTMLDivElement>(null)
 
   const agora          = new Date()
@@ -322,8 +323,18 @@ export default function MinhaContaPage() {
   const temSaldoProximo   = Object.values(saldoProximo).some((s:any)=>s.disponivel>0)
   const planosProxLabel   = Object.entries(saldoProximo).filter(([,s]:any)=>s.disponivel>0).map(([p,s]:any)=>`${s.disponivel} ${parsePlanoKey(p).label}`).join(', ')
 
-  const wellhubPlanos   = planosDisponiveis.filter(p => p.tipo==='wellhub')
-  const totalpassPlanos = planosDisponiveis.filter(p => p.tipo==='totalpass')
+  // Agrupa planos por unidade
+  const unidadesComPlanos = Object.values(
+    planosDisponiveis.reduce((acc: Record<string, any>, p: any) => {
+      if (!acc[p.unidade_id]) acc[p.unidade_id] = { ...p.unidades, id: p.unidade_id, planos: [] }
+      acc[p.unidade_id].planos.push(p)
+      return acc
+    }, {})
+  ) as any[]
+
+  const planosUnidadeSel = unidadeSel
+    ? planosDisponiveis.filter(p => p.unidade_id === unidadeSel)
+    : []
 
   // ── RENDER ────────────────────────────────────────────────────────────────
   return (
@@ -336,6 +347,7 @@ export default function MinhaContaPage() {
         .contrato-scroll::-webkit-scrollbar{width:4px}
         .contrato-scroll::-webkit-scrollbar-track{background:#1a1a1a}
         .contrato-scroll::-webkit-scrollbar-thumb{background:#444;border-radius:2px}
+        @keyframes fadeIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
       `}</style>
       <SiteHeader/>
       <div style={{maxWidth:700,margin:'0 auto',padding:'6rem 1.5rem 2rem'}}>
@@ -386,108 +398,175 @@ export default function MinhaContaPage() {
 
         {/* ── APP PARCEIROS ──────────────────────────────────────────────── */}
         <div style={{background:'#0c0c0c',border:'1px solid #222',borderRadius:16,padding:'1.25rem',marginBottom:'1.5rem'}}>
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'1rem'}}>
-            <div>
-              <div style={{fontSize:11,color:'#aaa',fontWeight:700,letterSpacing:2,textTransform:'uppercase'}}>App Parceiros</div>
-              <div style={{fontSize:12,color:'#555',marginTop:2}}>Ative Wellhub ou TotalPass para liberar agendamentos</div>
+
+          {/* Header */}
+          <div style={{marginBottom:'1.25rem'}}>
+            <div style={{fontSize:11,color:'#aaa',fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginBottom:4}}>Planos & Parceiros</div>
+            <div style={{fontSize:15,color:'#e0e0e0',fontWeight:500,lineHeight:1.5}}>
+              Como você quer treinar?
             </div>
+            <div style={{fontSize:12,color:'#555',marginTop:4}}>Ative um app parceiro ou conheça nossos planos exclusivos</div>
           </div>
 
-          {/* WELLHUB */}
-          {wellhubPlanos.length > 0 && (
-            <div style={{marginBottom:'1rem'}}>
-              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
-                <span style={{fontSize:18}}>💜</span>
-                <span style={{fontSize:13,fontWeight:700,color:'#c084fc',letterSpacing:0.5}}>WELLHUB</span>
-              </div>
-              <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                {wellhubPlanos.map(plano => {
-                  const ativo = planoJaAtivo(plano.id)
-                  const isClub = plano.unidades?.tipo === 'club'
-                  return (
-                    <div key={plano.id} className="parceiro-card" style={{
-                      display:'flex',alignItems:'center',justifyContent:'space-between',
-                      background: ativo ? '#1a0a2e' : '#111',
-                      border: `1px solid ${ativo ? '#7c3aed44' : '#2a2a2a'}`,
-                      borderRadius:10, padding:'0.75rem 1rem',
-                      transition:'border-color .15s',
-                    }}>
-                      <div>
-                        <div style={{fontSize:14,fontWeight:600,color:'#fff'}}>{plano.unidades?.nome||'—'}</div>
-                        <div style={{fontSize:11,color:'#555',marginTop:2}}>
-                          {isClub ? '🏢 JustClub' : '🏋️ Just CT'} · {plano.creditos_mes} treinos/mês
-                        </div>
-                      </div>
-                      {ativo ? (
-                        <div style={{display:'flex',alignItems:'center',gap:6,background:'#2d1b69',borderRadius:20,padding:'0.3rem 0.85rem'}}>
-                          <div style={{width:6,height:6,borderRadius:'50%',background:'#a78bfa'}}/>
-                          <span style={{fontSize:12,fontWeight:700,color:'#c4b5fd'}}>ATIVO</span>
-                        </div>
-                      ) : (
-                        <button onClick={() => abrirModalAtivar(plano)} style={{
-                          background:'linear-gradient(135deg,#7c3aed,#a855f7)',
-                          color:'#fff',border:'none',borderRadius:20,
-                          padding:'0.35rem 1rem',fontSize:12,fontWeight:700,
-                          cursor:'pointer',fontFamily:"'DM Sans', sans-serif",
-                          whiteSpace:'nowrap',
-                        }}>Ativar →</button>
-                      )}
-                    </div>
-                  )
-                })}
+          {/* Card Nossos Planos */}
+          <button
+            onClick={() => router.push('/meus-planos')}
+            className="parceiro-card"
+            style={{
+              display:'flex', alignItems:'center', justifyContent:'space-between',
+              background:'linear-gradient(135deg,#1a0010,#0d0008)',
+              border:`1.5px solid ${ACCENT}44`,
+              borderRadius:12, padding:'0.85rem 1rem',
+              cursor:'pointer', textAlign:'left', width:'100%',
+              fontFamily:"'DM Sans', sans-serif",
+              marginBottom:12,
+              transition:'all .15s',
+            }}
+          >
+            <div style={{display:'flex',alignItems:'center',gap:12}}>
+              <div style={{
+                width:40,height:40,borderRadius:10,
+                background:`${ACCENT}18`,
+                display:'flex',alignItems:'center',justifyContent:'center',
+                fontSize:20,flexShrink:0,
+                border:`1px solid ${ACCENT}33`,
+              }}>🏆</div>
+              <div>
+                <div style={{fontSize:15,fontWeight:700,color:'#fff'}}>Nossos Planos</div>
+                <div style={{fontSize:11,color:'#777',marginTop:2}}>Coach CT Pro · Avulso · Pacotes exclusivos</div>
               </div>
             </div>
-          )}
+            <div style={{fontSize:16,color:ACCENT}}>›</div>
+          </button>
 
-          {/* TOTALPASS */}
-          {totalpassPlanos.length > 0 && (
-            <div>
-              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
-                <span style={{fontSize:18}}>🔵</span>
-                <span style={{fontSize:13,fontWeight:700,color:'#38bdf8',letterSpacing:0.5}}>TOTALPASS</span>
-              </div>
-              <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                {totalpassPlanos.map(plano => {
-                  const ativo = planoJaAtivo(plano.id)
-                  const isClub = plano.unidades?.tipo === 'club'
-                  return (
-                    <div key={plano.id} className="parceiro-card" style={{
-                      display:'flex',alignItems:'center',justifyContent:'space-between',
-                      background: ativo ? '#0a1a2e' : '#111',
-                      border: `1px solid ${ativo ? '#0369a144' : '#2a2a2a'}`,
-                      borderRadius:10, padding:'0.75rem 1rem',
-                      transition:'border-color .15s',
-                    }}>
-                      <div>
-                        <div style={{fontSize:14,fontWeight:600,color:'#fff'}}>{plano.unidades?.nome||'—'}</div>
-                        <div style={{fontSize:11,color:'#555',marginTop:2}}>
-                          {isClub ? '🏢 JustClub' : '🏋️ Just CT'} · {plano.creditos_mes} treinos/mês
-                        </div>
-                      </div>
-                      {ativo ? (
-                        <div style={{display:'flex',alignItems:'center',gap:6,background:'#0c2340',borderRadius:20,padding:'0.3rem 0.85rem'}}>
-                          <div style={{width:6,height:6,borderRadius:'50%',background:'#38bdf8'}}/>
-                          <span style={{fontSize:12,fontWeight:700,color:'#7dd3fc'}}>ATIVO</span>
-                        </div>
-                      ) : (
-                        <button onClick={() => abrirModalAtivar(plano)} style={{
-                          background:'linear-gradient(135deg,#0369a1,#0ea5e9)',
-                          color:'#fff',border:'none',borderRadius:20,
-                          padding:'0.35rem 1rem',fontSize:12,fontWeight:700,
-                          cursor:'pointer',fontFamily:"'DM Sans', sans-serif",
-                          whiteSpace:'nowrap',
-                        }}>Ativar →</button>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
+          {/* Divisor */}
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
+            <div style={{flex:1,height:1,background:'#1e1e1e'}}/>
+            <span style={{fontSize:11,color:'#444',fontWeight:600,letterSpacing:1}}>OU ATIVE SEU APP PARCEIRO</span>
+            <div style={{flex:1,height:1,background:'#1e1e1e'}}/>
+          </div>
 
-          {planosDisponiveis.length === 0 && (
+          {/* Subtítulo unidades */}
+          <div style={{fontSize:13,color:'#888',marginBottom:10}}>Onde você gostaria de treinar?</div>
+
+          {/* Cards de unidade */}
+          {unidadesComPlanos.length === 0 ? (
             <div style={{textAlign:'center',padding:'1.5rem',color:'#444',fontSize:13}}>
               Nenhum plano parceiro disponível no momento.
+            </div>
+          ) : (
+            <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom: unidadeSel ? '1.25rem' : 0}}>
+              {unidadesComPlanos.map((unidade: any) => {
+                const isClub  = unidade.tipo === 'club'
+                const isSel   = unidadeSel === unidade.id
+                const temAtivoNessa = unidade.planos?.some((p: any) => planoJaAtivo(p.id))
+                return (
+                  <button
+                    key={unidade.id}
+                    onClick={() => setUnidadeSel(isSel ? null : unidade.id)}
+                    className="parceiro-card"
+                    style={{
+                      display:'flex', alignItems:'center', justifyContent:'space-between',
+                      background: isSel ? '#181018' : '#111',
+                      border: `1.5px solid ${isSel ? ACCENT+'88' : '#2a2a2a'}`,
+                      borderRadius:12, padding:'0.85rem 1rem',
+                      cursor:'pointer', textAlign:'left', width:'100%',
+                      fontFamily:"'DM Sans', sans-serif",
+                      transition:'all .15s',
+                    }}
+                  >
+                    <div style={{display:'flex',alignItems:'center',gap:12}}>
+                      <div style={{
+                        width:40,height:40,borderRadius:10,
+                        background: isSel ? `${ACCENT}22` : '#1a1a1a',
+                        display:'flex',alignItems:'center',justifyContent:'center',
+                        fontSize:20,flexShrink:0,
+                        border:`1px solid ${isSel ? ACCENT+'44' : '#2a2a2a'}`,
+                        transition:'all .15s',
+                      }}>
+                        {isClub ? '🏢' : '🏋️'}
+                      </div>
+                      <div>
+                        <div style={{fontSize:15,fontWeight:600,color:'#fff'}}>{unidade.nome}</div>
+                        <div style={{fontSize:11,color:'#555',marginTop:2}}>
+                          {isClub ? 'JustClub' : 'Just CT'} · Wellhub & TotalPass disponíveis
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+                      {temAtivoNessa && (
+                        <div style={{display:'flex',alignItems:'center',gap:4,background:'#0a1a0a',borderRadius:20,padding:'0.2rem 0.6rem'}}>
+                          <div style={{width:5,height:5,borderRadius:'50%',background:VERDE}}/>
+                          <span style={{fontSize:10,fontWeight:700,color:VERDE}}>ATIVO</span>
+                        </div>
+                      )}
+                      <div style={{
+                        fontSize:16,color: isSel ? ACCENT : '#444',
+                        transition:'transform .2s, color .15s',
+                        transform: isSel ? 'rotate(90deg)' : 'rotate(0deg)',
+                      }}>›</div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Apps disponíveis para a unidade selecionada */}
+          {unidadeSel && planosUnidadeSel.length > 0 && (
+            <div style={{
+              background:'#111',border:`1px solid ${ACCENT}22`,
+              borderRadius:12,padding:'1rem',
+              animation:'fadeIn .2s ease',
+            }}>
+              <div style={{fontSize:11,color:ACCENT,fontWeight:700,letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>
+                Escolha seu app parceiro
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                {planosUnidadeSel.map((plano: any) => {
+                  const ativo  = planoJaAtivo(plano.id)
+                  const isWell = plano.tipo === 'wellhub'
+                  const cor    = isWell ? '#a78bfa' : '#38bdf8'
+                  const corBg  = isWell ? '#2d1b69' : '#0c2340'
+                  const gradiente = isWell
+                    ? 'linear-gradient(135deg,#7c3aed,#a855f7)'
+                    : 'linear-gradient(135deg,#0369a1,#0ea5e9)'
+                  return (
+                    <div key={plano.id} style={{
+                      display:'flex',alignItems:'center',justifyContent:'space-between',
+                      background: ativo ? corBg : '#0a0a0a',
+                      border:`1px solid ${ativo ? cor+'44' : '#2a2a2a'}`,
+                      borderRadius:10,padding:'0.8rem 1rem',
+                    }}>
+                      <div style={{display:'flex',alignItems:'center',gap:10}}>
+                        <span style={{fontSize:20}}>{isWell ? '💜' : '🔵'}</span>
+                        <div>
+                          <div style={{fontSize:14,fontWeight:700,color: ativo ? cor : '#fff'}}>
+                            {isWell ? 'Wellhub' : 'TotalPass'}
+                          </div>
+                          <div style={{fontSize:11,color:'#555',marginTop:1}}>
+                            {plano.creditos_mes} treinos/mês
+                          </div>
+                        </div>
+                      </div>
+                      {ativo ? (
+                        <div style={{display:'flex',alignItems:'center',gap:6,background:corBg,borderRadius:20,padding:'0.3rem 0.85rem',border:`1px solid ${cor}44`}}>
+                          <div style={{width:6,height:6,borderRadius:'50%',background:cor}}/>
+                          <span style={{fontSize:12,fontWeight:700,color:cor}}>ATIVO</span>
+                        </div>
+                      ) : (
+                        <button onClick={() => abrirModalAtivar(plano)} style={{
+                          background: gradiente,
+                          color:'#fff',border:'none',borderRadius:20,
+                          padding:'0.4rem 1.1rem',fontSize:12,fontWeight:700,
+                          cursor:'pointer',fontFamily:"'DM Sans', sans-serif",
+                          whiteSpace:'nowrap',
+                        }}>Ativar →</button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
         </div>
