@@ -572,16 +572,7 @@ export default function RecepcaoClubDetalhe() {
                       </button>
                     </div>
                   )}
-                  {isFuturo && (
-                    <button onClick={async () => {
-                      await supabase.from('club_reservas').update({ status:'cancelado' }).eq('id', r.id)
-                      await carregarDados(); showMsg('🗑️ Reserva cancelada.')
-                    }} style={{ padding:'0.35rem 0.75rem', borderRadius:8, border:'1.5px solid #fecaca',
-                      background:'#fff5f5', color:VERMELHO, fontSize:12, fontWeight:600,
-                      cursor:'pointer', flexShrink:0, fontFamily:"'DM Sans', sans-serif" }}>
-                      Cancelar
-                    </button>
-                  )}
+
                 </div>
               )
             })}
