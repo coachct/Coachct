@@ -103,6 +103,7 @@ function AulasPageInner() {
   const [unidade,         setUnidade]         = useState<any>(null)
   const [cliente,         setCliente]         = useState<any>(null)
   const [saldo,           setSaldo]           = useState<Record<string, any>>({})
+  const [saldoProximo,    setSaldoProximo]    = useState<Record<string, any>>({})
   const [ocorrencias,     setOcorrencias]     = useState<any[]>([])
   const [reservasCont,    setReservasCont]    = useState<Record<string, number>>({})
   const [minhasReservas,  setMinhasReservas]  = useState<Record<string, any>>({})
@@ -133,6 +134,15 @@ function AulasPageInner() {
   const horaAtual  = `${String(agora.getHours()).padStart(2,'0')}:${String(agora.getMinutes()).padStart(2,'0')}`
   const isHoje     = dataSelStr === dataLocalStr(agora)
 
+  // Detecta se a data selecionada é do mês seguinte
+  const dataSelEhProximoMes = dataSel.getMonth() !== agora.getMonth() || dataSel.getFullYear() !== agora.getFullYear()
+  const mesProximo   = agora.getMonth() === 11 ? 1 : agora.getMonth() + 2
+  const anoProximo   = agora.getMonth() === 11 ? agora.getFullYear() + 1 : agora.getFullYear()
+  const nomeMesProximo = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'][mesProximo - 1]
+
+  // Retorna o saldo correto para a data selecionada
+  function saldoParaData() { return dataSelEhProximoMes ? saldoProximo : saldo }
+
   useEffect(() => { if (!unidadeId) router.replace('/agendar') }, [unidadeId])
   useEffect(() => { if (unidadeId) carregarUnidade() }, [unidadeId])
   useEffect(() => { if (perfil) carregarCliente() }, [perfil])
@@ -151,10 +161,16 @@ function AulasPageInner() {
   async function carregarSaldo() {
     if (!cliente || !unidadeId) return
     const agora = new Date()
-    const { data } = await supabase.rpc('saldo_creditos_cliente', {
-      p_cliente_id: cliente.id, p_mes: agora.getMonth()+1, p_ano: agora.getFullYear(), p_unidade_id: unidadeId,
-    })
-    setSaldo(data || {})
+    const mes  = agora.getMonth() + 1
+    const ano  = agora.getFullYear()
+    const mesP = agora.getMonth() === 11 ? 1 : agora.getMonth() + 2
+    const anoP = agora.getMonth() === 11 ? agora.getFullYear() + 1 : agora.getFullYear()
+    const [{ data: atual }, { data: proximo }] = await Promise.all([
+      supabase.rpc('saldo_creditos_cliente', { p_cliente_id: cliente.id, p_mes: mes,  p_ano: ano,  p_unidade_id: unidadeId }),
+      supabase.rpc('saldo_creditos_cliente', { p_cliente_id: cliente.id, p_mes: mesP, p_ano: anoP, p_unidade_id: unidadeId }),
+    ])
+    setSaldo(atual || {})
+    setSaldoProximo(proximo || {})
   }
   async function carregarOcorrencias(data: string) {
     if (!unidadeId) return
@@ -246,7 +262,7 @@ function AulasPageInner() {
     if (periodo === 'noite') return hora >= 18
     return true
   })
-  const planosDisponiveis = Object.entries(saldo).filter(([,v]: [string,any]) => v?.disponivel > 0).map(([k]) => k)
+  const planosDisponiveis = Object.entries(saldoParaData()).filter(([,v]: [string,any]) => v?.disponivel > 0).map(([k]) => k)
   function vagasInfo(oc: any) {
     const cap=oc.club_aulas?.capacidade||0; const usadas=reservasCont[oc.id]||0; const livres=Math.max(0,cap-usadas)
     return { livres, lotado: livres<=0 }
@@ -286,6 +302,14 @@ function AulasPageInner() {
             👋 Navegando como visitante.{' '}
             <span onClick={() => router.push(`/login?redirect=${encodeURIComponent('/aulas?unidade='+unidadeId)}`)}
               style={{ color:ACCENT, cursor:'pointer', fontWeight:600 }}>Faça login</span> para reservar aulas.
+          </div>
+        )}
+
+        {/* Banner próximo mês */}
+        {user && dataSelEhProximoMes && (
+          <div style={{ background:'#1a1000', border:`1px solid ${AMARELO}44`, borderRadius:12, padding:'0.85rem 1.25rem', marginBottom:'1.5rem', fontSize:13, color:'#ddd', lineHeight:1.6 }}>
+            📅 <strong style={{ color:AMARELO }}>Você está vendo aulas de {nomeMesProximo}.</strong>{' '}
+            As reservas feitas aqui consumirão seus créditos de <strong style={{ color:'#fff' }}>{nomeMesProximo}</strong>, não os de maio.
           </div>
         )}
 
@@ -416,19 +440,24 @@ function AulasPageInner() {
               {/* Plano */}
               <div style={{ marginBottom:'1.5rem' }}>
                 <div style={{ fontSize:11, color:'#555', textTransform:'uppercase', letterSpacing:1, marginBottom:10 }}>Usar crédito de qual plano?</div>
+                {dataSelEhProximoMes && (
+                  <div style={{ background:'#1a1000', border:`1px solid ${AMARELO}44`, borderRadius:8, padding:'0.6rem 1rem', marginBottom:10, fontSize:12, color:AMARELO }}>
+                    📅 Estes créditos são de <strong>{nomeMesProximo}</strong>
+                  </div>
+                )}
                 {planosDisponiveis.length===0 ? (
                   <div style={{ background:'#1a1000', border:'1px solid #ff660033', borderRadius:10, padding:'1rem', fontSize:13, color:AMARELO }}>
-                    ⚠️ Você não tem créditos disponíveis para esta unidade.
+                    ⚠️ Você não tem créditos disponíveis para {dataSelEhProximoMes ? nomeMesProximo : 'esta unidade'}.
                   </div>
                 ) : planosDisponiveis.map(p => {
-                  const {label,icon}=parsePlanoKey(p); const info=saldo[p]
+                  const {label,icon}=parsePlanoKey(p); const info=saldoParaData()[p]
                   return (
                     <div key={p} onClick={() => setTipoCredito(p)}
                       style={{ border:`1.5px solid ${tipoCredito===p?ACCENT:'#2a2a2a'}`, background:tipoCredito===p?`${ACCENT}12`:'transparent', borderRadius:10, padding:'0.85rem 1rem', cursor:'pointer', display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:8, transition:'all .15s' }}>
                       <span style={{ fontSize:20 }}>{icon}</span>
                       <div style={{ flex:1 }}>
                         <div style={{ fontSize:14, fontWeight:600, color:tipoCredito===p?'#fff':'#888' }}>{label}</div>
-                        {info && <div style={{ fontSize:11, color:'#555', marginTop:2 }}>{info.disponivel} crédito{info.disponivel!==1?'s':''} restante{info.disponivel!==1?'s':''} este mês</div>}
+                        {info && <div style={{ fontSize:11, color:'#555', marginTop:2 }}>{info.disponivel} crédito{info.disponivel!==1?'s':''} restante{info.disponivel!==1?'s':''} em {dataSelEhProximoMes?nomeMesProximo:'este mês'}</div>}
                       </div>
                       <div style={{ width:16, height:16, borderRadius:'50%', border:`2px solid ${tipoCredito===p?ACCENT:'#444'}`, background:tipoCredito===p?ACCENT:'transparent', flexShrink:0 }}/>
                     </div>
