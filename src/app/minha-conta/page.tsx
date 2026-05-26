@@ -275,12 +275,16 @@ export default function MinhaContaPage() {
                 const podeCancelar=['agendado','confirmado','reservado'].includes(item.status)
                 const {label}=parsePlanoKey(item.tipoCredito)
                 const isClub=item.tipo==='club'
+                const dataItem = new Date(item.data+'T12:00:00')
+                const isProximoMes = dataItem.getMonth() !== agora.getMonth() || dataItem.getFullYear() !== agora.getFullYear()
+                const nomesMes = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro']
+                const nomeMesItem = nomesMes[dataItem.getMonth()]
                 return (
                   <div key={`${item.tipo}-${item.id}`} style={{background:'#111',border:`1px solid ${isClub?'#2a2a2a':'#222'}`,borderRadius:12,padding:'1rem 1.25rem'}}>
                     <div style={{display:'flex',alignItems:'center',gap:'1rem'}}>
                       <div style={{textAlign:'center',flexShrink:0}}>
-                        <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:28,color:'#fff',lineHeight:1}}>{new Date(item.data+'T12:00:00').getDate()}</div>
-                        <div style={{fontSize:10,color:'#aaa',textTransform:'uppercase'}}>{new Date(item.data+'T12:00:00').toLocaleDateString('pt-BR',{month:'short'})}</div>
+                        <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:28,color:'#fff',lineHeight:1}}>{dataItem.getDate()}</div>
+                        <div style={{fontSize:10,color:'#aaa',textTransform:'uppercase'}}>{dataItem.toLocaleDateString('pt-BR',{month:'short'})}</div>
                       </div>
                       <div style={{width:1,height:36,background:'#2a2a2a',flexShrink:0}}/>
                       <div style={{flex:1,minWidth:0}}>
@@ -293,6 +297,11 @@ export default function MinhaContaPage() {
                             <span style={{fontSize:11,color:VERDE,fontFamily:"'DM Mono', monospace",fontWeight:700}}>{item.posicao}</span>
                           )}
                           <span style={{fontSize:12,color:'#555'}}>{label}</span>
+                          {isProximoMes && (
+                            <span style={{fontSize:10,color:AMARELO,background:`${AMARELO}15`,padding:'1px 7px',borderRadius:20}}>
+                              crédito de {nomeMesItem}
+                            </span>
+                          )}
                         </div>
                       </div>
                       <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:6,flexShrink:0}}>
