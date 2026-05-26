@@ -291,9 +291,9 @@ export default function RecepcaoClubDetalhe() {
         if (!posicoesTomadas.includes(label)) setPosicaoSel(label)
       }
       if (modo === 'troca') {
-        if (!posicoesTomadas.includes(label) || label === posicaoAtualTroca) return
-        if (!posicoesTomadas.includes(label)) confirmarTrocaPosicao(label)
-        else return
+        if (label === posicaoAtualTroca) return // mesma posição, sem mudança
+        const tomadaPorOutro = posicoesTomadas.includes(label)
+        if (tomadaPorOutro) return // posição de outro cliente
         confirmarTrocaPosicao(label)
       }
     }
