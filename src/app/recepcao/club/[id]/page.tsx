@@ -245,8 +245,8 @@ export default function RecepcaoClubDetalhe() {
       const ehTrocando = posicaoAtualTroca === label
 
       if (modo === 'view') {
-        if (!tomado) return { bg:'#f9fafb', border:'#e5e7eb', icon:'#ddd', cursor:'default', nome: null, atual: false }
-        return { bg:`${ACCENT}10`, border:ACCENT, icon:ACCENT, cursor:'default',
+        if (!tomado) return { bg:`${ACCENT}15`, border:ACCENT, icon:ACCENT, cursor:'default', nome: null, atual: false }
+        return { bg:'#e5e5e5', border:'#bbb', icon:'#bbb', cursor:'default',
           nome: reserva?.clientes?.nome?.split(' ')[0] || '?', atual: false }
       }
       if (modo === 'walkin') {
@@ -504,11 +504,14 @@ export default function RecepcaoClubDetalhe() {
                     <div style={{ fontSize:14, fontWeight:600, color:'#111', marginBottom:2 }}>{cli?.nome||'—'}</div>
                     <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
                       <span style={{ fontSize:11, color:'#888' }}>{icon} {label}</span>
-                      {r.posicao && (
+                      {r.posicao ? (
                         <span style={{ fontSize:11, fontFamily:"'DM Mono', monospace", fontWeight:700,
-                          color:'#555', background:'#f3f4f6', padding:'1px 7px', borderRadius:6 }}>
+                          color:ACCENT, background:`${ACCENT}10`, padding:'1px 7px', borderRadius:6,
+                          border:`1px solid ${ACCENT}30` }}>
                           {r.posicao}
                         </span>
+                      ) : isRunning && (
+                        <span style={{ fontSize:11, color:'#ccc', fontStyle:'italic' }}>sem posição</span>
                       )}
                     </div>
                   </div>
