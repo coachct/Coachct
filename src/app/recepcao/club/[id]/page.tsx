@@ -158,6 +158,12 @@ export default function RecepcaoClubDetalhe() {
   }
 
   async function selecionarCliente(cli: any) {
+    // Verifica se cliente já tem reserva ativa nessa ocorrência
+    const { data: jaReservou } = await supabase.from('club_reservas')
+      .select('id').eq('ocorrencia_id', ocId).eq('cliente_id', cli.id)
+      .neq('status', 'cancelado').maybeSingle()
+    if (jaReservou) { setErroAgendar('Este cliente já possui reserva nesta aula.'); return }
+
     setClienteSel(cli)
     setResultados([])
     setBuscaTexto('')
@@ -205,11 +211,28 @@ export default function RecepcaoClubDetalhe() {
     if (isRunning && !posicaoSel) { setErroAgendar('Selecione uma posição.'); return }
     if (!clienteSel || !ocorrencia) return
     setAgendando(true); setErroAgendar('')
-    const { error } = await supabase.from('club_reservas').insert({
-      ocorrencia_id: ocId, cliente_id: clienteSel.id, tipo_credito: tipoCredito,
-      status: isFuturo ? 'reservado' : 'presente',
-      ...(isRunning && posicaoSel ? { posicao: posicaoSel } : {}),
-    })
+
+    // Se existir reserva cancelada para este cliente nesta ocorrência, reativa em vez de inserir
+    const { data: cancelada } = await supabase.from('club_reservas')
+      .select('id').eq('ocorrencia_id', ocId).eq('cliente_id', clienteSel.id)
+      .eq('status', 'cancelado').maybeSingle()
+
+    let error: any = null
+    if (cancelada) {
+      const { error: e } = await supabase.from('club_reservas').update({
+        tipo_credito: tipoCredito,
+        status: isFuturo ? 'reservado' : 'presente',
+        ...(isRunning && posicaoSel ? { posicao: posicaoSel } : {}),
+      }).eq('id', cancelada.id)
+      error = e
+    } else {
+      const { error: e } = await supabase.from('club_reservas').insert({
+        ocorrencia_id: ocId, cliente_id: clienteSel.id, tipo_credito: tipoCredito,
+        status: isFuturo ? 'reservado' : 'presente',
+        ...(isRunning && posicaoSel ? { posicao: posicaoSel } : {}),
+      })
+      error = e
+    }
     if (error) { setErroAgendar('Erro: ' + error.message); setAgendando(false); return }
     setAgendando(false); resetWalkin(); await carregarDados()
     showMsg(isFuturo ? '✅ Reserva criada!' : '✅ Cliente adicionado como presente!')
@@ -505,9 +528,9 @@ export default function RecepcaoClubDetalhe() {
                     <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
                       <span style={{ fontSize:11, color:'#888' }}>{icon} {label}</span>
                       {r.posicao ? (
-                        <span style={{ fontSize:11, fontFamily:"'DM Mono', monospace", fontWeight:700,
-                          color:ACCENT, background:`${ACCENT}10`, padding:'1px 7px', borderRadius:6,
-                          border:`1px solid ${ACCENT}30` }}>
+                        <span style={{ fontSize:14, fontFamily:"'DM Mono', monospace", fontWeight:800,
+                          color:'#fff', background:ACCENT, padding:'3px 12px', borderRadius:8,
+                          letterSpacing:1 }}>
                           {r.posicao}
                         </span>
                       ) : isRunning && (
@@ -531,7 +554,7 @@ export default function RecepcaoClubDetalhe() {
                     </button>
                   )}
 
-                  {!isFuturo && (
+                  {!isFalta && (
                     <div style={{ display:'flex', gap:6, flexShrink:0 }}>
                       <button onClick={() => marcarStatus(r.id, 'presente')} disabled={isPresente||atualizando===r.id}
                         style={{ padding:'0.35rem 0.75rem', borderRadius:8, border:`1.5px solid ${isPresente?VERDE:'#e5e7eb'}`,
