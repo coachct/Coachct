@@ -228,11 +228,10 @@ export default function AdminCalendarioDetalhe() {
           </div>
         )}
         <div style={{ display:'flex', gap:10, marginTop:10, justifyContent:'center', flexWrap:'wrap' }}>
-          {modo==='view' ? [
-            [`${ACCENT}15`,ACCENT,'Livre'], ['#e5e5e5','#bbb','Ocupado']
-          ] : [
-            [`${AMARELO}15`,AMARELO,'Posição atual'], ['#f0fff4',VERDE,'Disponível'], ['#f3f4f6','#d1d5db','Ocupado']
-          ].map(([bg,brd,txt]) => (
+          {(modo==='view'
+            ? [[`${ACCENT}15`,ACCENT,'Livre'],['#e5e5e5','#bbb','Ocupado']]
+            : [[`${AMARELO}15`,AMARELO,'Posição atual'],['#f0fff4',VERDE,'Disponível'],['#f3f4f6','#d1d5db','Ocupado']]
+          ).map(([bg,brd,txt]) => (
             <span key={txt} style={{ fontSize:9, color:brd, display:'flex', alignItems:'center', gap:3 }}>
               <span style={{ width:8, height:8, background:bg, border:`1.5px solid ${brd}`, borderRadius:2, display:'inline-block' }}/>
               {txt}
