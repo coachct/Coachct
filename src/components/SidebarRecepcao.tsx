@@ -2,31 +2,29 @@
 import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
-import { useAuth } from '@/hooks/useAuth'
 import { Calendar, Users, LogOut } from 'lucide-react'
 
 const ACCENT = '#ff2d9b'
 const CYAN   = '#00e5ff'
 
-export default function SidebarRecepcao() {
+export default function SidebarRecepcao({ perfil }: { perfil: any }) {
   const router   = useRouter()
   const pathname = usePathname()
   const supabase = createClient()
-  const { perfil } = useAuth()
 
   const [temCT,   setTemCT]   = useState(false)
   const [temClub, setTemClub] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (perfil) carregarAcessos()
-  }, [perfil])
+    if (perfil?.id) carregarAcessos()
+  }, [perfil?.id])
 
   async function carregarAcessos() {
     const { data: pu } = await supabase
       .from('perfil_unidades')
       .select('unidade_id, unidades(tipo)')
-      .eq('perfil_id', perfil!.id)
+      .eq('perfil_id', perfil.id)
 
     const tipos = (pu || []).map((p: any) => p.unidades?.tipo).filter(Boolean)
     setTemCT(tipos.includes('ct'))
@@ -66,7 +64,6 @@ export default function SidebarRecepcao() {
     <div style={{ width:200, background:'#0f0f1a', display:'flex', flexDirection:'column',
       position:'fixed', top:0, left:0, bottom:0, zIndex:50 }}>
 
-      {/* Logo */}
       <div style={{ padding:'24px 20px 20px', borderBottom:'1px solid #ffffff10' }}>
         <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:22, color:'#fff', letterSpacing:2 }}>
           JUST<span style={{ color: ACCENT }}>CT</span>
@@ -74,7 +71,6 @@ export default function SidebarRecepcao() {
         <div style={{ fontSize:11, color:'#ffffff44', marginTop:2 }}>Recepção</div>
       </div>
 
-      {/* Nav */}
       <nav style={{ flex:1, padding:'16px 10px', display:'flex', flexDirection:'column', gap:4 }}>
         {loading ? (
           <div style={{ padding:'1rem', textAlign:'center' }}>
@@ -84,26 +80,14 @@ export default function SidebarRecepcao() {
           </div>
         ) : (
           <>
-            {/* Agenda CT — só se tiver acesso ao CT */}
-            {temCT && (
-              <NavItem href="/recepcao/agenda" label="Agenda CT" icon={Calendar} cor={ACCENT} />
-            )}
-
-            {/* Aulas Club — só se tiver acesso às clubs */}
-            {temClub && (
-              <NavItem href="/recepcao/club" label="Aulas Club" icon={Calendar} cor={CYAN} />
-            )}
-
-            {/* Divisor antes de Clientes */}
+            {temCT   && <NavItem href="/recepcao/agenda"   label="Agenda CT"   icon={Calendar} cor={ACCENT} />}
+            {temClub && <NavItem href="/recepcao/club"     label="Calendário"  icon={Calendar} cor={CYAN} />}
             {(temCT || temClub) && <Divider />}
-
-            {/* Clientes — universal para qualquer recepcionista */}
-            <NavItem href="/recepcao/clientes" label="Clientes" icon={Users} cor={ACCENT} />
+            <NavItem   href="/recepcao/clientes" label="Clientes" icon={Users} cor={ACCENT} />
           </>
         )}
       </nav>
 
-      {/* Sair */}
       <div style={{ padding:'12px 10px', borderTop:'1px solid #ffffff10' }}>
         <button onClick={sair}
           style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderRadius:10,
