@@ -45,7 +45,6 @@ export default function RecepcaoClubPage() {
   }, [unidadeSel, dataSel])
 
   async function carregarUnidades() {
-    // Busca unidades club vinculadas a este usuário via perfil_unidades
     const { data: pu } = await supabase
       .from('perfil_unidades')
       .select('unidade_id, unidades(id, nome, tipo)')
@@ -55,16 +54,8 @@ export default function RecepcaoClubPage() {
       .map((p: any) => p.unidades)
       .filter((u: any) => u?.tipo === 'club')
 
-    // Se não tiver clube no perfil, mostra todas as clubs (admin de recepcao)
-    if (clubUnidades.length === 0) {
-      const { data: todas } = await supabase
-        .from('unidades').select('id, nome, tipo').eq('tipo', 'club').eq('ativo', true).order('nome')
-      setUnidades(todas || [])
-      if (todas && todas.length > 0) setUnidadeSel(todas[0])
-    } else {
-      setUnidades(clubUnidades)
-      setUnidadeSel(clubUnidades[0])
-    }
+    setUnidades(clubUnidades)
+    if (clubUnidades.length > 0) setUnidadeSel(clubUnidades[0])
   }
 
   async function carregarOcorrencias() {
@@ -139,20 +130,28 @@ export default function RecepcaoClubPage() {
         <div style={{ fontSize:13, color:'#888', marginTop:2 }}>Recepção JustClub</div>
       </div>
 
-      {/* Seletor de unidade (se tiver mais de uma) */}
-      {unidades.length > 1 && (
-        <div style={{ display:'flex', gap:8, marginBottom:'1.5rem' }}>
-          {unidades.map((u: any) => (
-            <button key={u.id} onClick={() => setUnidadeSel(u)}
-              style={{ padding:'0.5rem 1.25rem', borderRadius:10, border:`1.5px solid ${unidadeSel?.id===u.id?CYAN:'#e5e7eb'}`,
-                background: unidadeSel?.id===u.id ? `${CYAN}15` : '#fff',
-                color: unidadeSel?.id===u.id ? CYAN : '#555',
-                fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
-              {u.nome}
-            </button>
-          ))}
+      {unidades.length === 0 ? (
+        <div style={{ background:'#fff8f0', border:'1px solid #fed7aa', borderRadius:16, padding:'3rem', textAlign:'center' }}>
+          <div style={{ fontSize:32, marginBottom:8 }}>🔒</div>
+          <div style={{ fontSize:15, fontWeight:600, color:'#92400e', marginBottom:4 }}>Sem acesso às aulas coletivas</div>
+          <div style={{ fontSize:13, color:'#b45309' }}>Sua conta não está vinculada a nenhuma unidade JustClub.</div>
         </div>
-      )}
+      ) : (
+        <>
+          {/* Seletor de unidade (se tiver mais de uma) */}
+          {unidades.length > 1 && (
+            <div style={{ display:'flex', gap:8, marginBottom:'1.5rem' }}>
+              {unidades.map((u: any) => (
+                <button key={u.id} onClick={() => setUnidadeSel(u)}
+                  style={{ padding:'0.5rem 1.25rem', borderRadius:10, border:`1.5px solid ${unidadeSel?.id===u.id?CYAN:'#e5e7eb'}`,
+                    background: unidadeSel?.id===u.id ? `${CYAN}15` : '#fff',
+                    color: unidadeSel?.id===u.id ? CYAN : '#555',
+                    fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
+                  {u.nome}
+                </button>
+              ))}
+            </div>
+          )}
 
       {/* Seletor de data */}
       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:'1.5rem', flexWrap:'wrap' }}>
@@ -235,6 +234,8 @@ export default function RecepcaoClubPage() {
             )
           })}
         </div>
+      )}
+        </>
       )}
     </div>
   )
