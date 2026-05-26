@@ -1,5 +1,4 @@
 'use client'
-import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { Calendar, Users, LogOut } from 'lucide-react'
@@ -11,31 +10,6 @@ export default function SidebarRecepcao() {
   const router   = useRouter()
   const pathname = usePathname()
   const supabase = createClient()
-
-  const [temCT,   setTemCT]   = useState(false)
-  const [temClub, setTemClub] = useState(false)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => { carregarAcessos() }, [])
-
-  async function carregarAcessos() {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setLoading(false); return }
-
-    const { data: p } = await supabase
-      .from('perfis').select('id').eq('user_id', user.id).maybeSingle()
-    if (!p) { setLoading(false); return }
-
-    const { data: pu } = await supabase
-      .from('perfil_unidades')
-      .select('unidade_id, unidades(tipo)')
-      .eq('perfil_id', p.id)
-
-    const tipos = (pu || []).map((x: any) => x.unidades?.tipo).filter(Boolean)
-    setTemCT(tipos.includes('ct'))
-    setTemClub(tipos.some((t: string) => t === 'club'))
-    setLoading(false)
-  }
 
   async function sair() {
     await supabase.auth.signOut()
@@ -73,20 +47,8 @@ export default function SidebarRecepcao() {
       </div>
 
       <nav style={{ flex:1, padding:'16px 10px', display:'flex', flexDirection:'column', gap:4 }}>
-        {loading ? (
-          <div style={{ padding:'1rem', textAlign:'center' }}>
-            <div style={{ width:20, height:20, border:`2px solid ${ACCENT}`, borderTopColor:'transparent',
-              borderRadius:'50%', animation:'spin 0.8s linear infinite', margin:'0 auto' }}/>
-            <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-          </div>
-        ) : (
-          <>
-            {temCT   && <NavItem href="/recepcao/agenda"   label="Agenda CT"   icon={Calendar} cor={ACCENT} />}
-            {temClub && <NavItem href="/recepcao/club"     label="Calendário"  icon={Calendar} cor={CYAN} />}
-            {(temCT || temClub) && <div style={{ height:1, background:'#ffffff08', margin:'8px 8px' }} />}
-            <NavItem   href="/recepcao/clientes" label="Clientes" icon={Users} cor={ACCENT} />
-          </>
-        )}
+        <NavItem href="/recepcao/club"     label="Calendário" icon={Calendar} cor={CYAN} />
+        <NavItem href="/recepcao/clientes" label="Clientes"   icon={Users}    cor={ACCENT} />
       </nav>
 
       <div style={{ padding:'12px 10px', borderTop:'1px solid #ffffff10' }}>
