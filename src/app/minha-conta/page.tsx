@@ -521,6 +521,20 @@ export default function MinhaContaPage() {
                         padding:'0.85rem',
                         animation:'fadeIn .18s ease',
                       }}>
+                        {/* Aviso informativo para o CT */}
+                        {!isClub && (
+                          <div style={{
+                            background:'#0d0d0d',border:'1px solid #2a2a2a',
+                            borderRadius:8,padding:'0.65rem 0.85rem',
+                            marginBottom:10,
+                            display:'flex',gap:8,alignItems:'flex-start',
+                          }}>
+                            <span style={{fontSize:14,flexShrink:0,marginTop:1}}>ℹ️</span>
+                            <div style={{fontSize:12,color:'#999',lineHeight:1.6}}>
+                              Os créditos abaixo são exclusivos para <strong style={{color:'#fff'}}>sessões com coach</strong>. A <strong style={{color:'#fff'}}>musculação livre</strong> não requer agendamento — é só aparecer!
+                            </div>
+                          </div>
+                        )}
                         <div style={{fontSize:10,color:ACCENT,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:8,paddingLeft:4}}>
                           Escolha seu app parceiro
                         </div>
