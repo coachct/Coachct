@@ -10,12 +10,10 @@ import UnidadeSelector from '@/components/UnidadeSelector'
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const HORARIOS_FDS = ['08:00', '09:00', '10:00', '11:00', '12:00']
 
-// === iDFace ===
 const IDFACE_IP = '192.168.15.129'
 const IDFACE_USER = 'admin'
 const IDFACE_PASS = 'admin'
 
-// 🔧 FIX timezone — usa data local, não UTC
 function dataLocalStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
@@ -45,7 +43,6 @@ function validarEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
 }
 
-// === iDFace API ===
 async function idfaceLogin(): Promise<string | null> {
   try {
     const res = await fetch(`http://${IDFACE_IP}/login.fcgi`, {
@@ -449,9 +446,11 @@ export default function AdminClientesPage() {
     finally { setCriandoAcesso(false) }
   }
 
+  // ✅ PATCH: filtrar multas + inclui produtos globais
   async function abrirVenda() {
     if (!unidadeAtiva) return
     const { data } = await supabase.from('produtos').select('*').eq('ativo', true)
+      .not('subtipo', 'eq', 'multa')
       .or(`unidade_id.eq.${unidadeAtiva.id},unidade_id.is.null`).order('nome')
     setProdutosDisp(data || [])
     setFormVenda({
@@ -596,10 +595,8 @@ export default function AdminClientesPage() {
     return planosDisponiveis.filter(p => p.unidade_id === unidadeAtiva.id && !planosAtivos.includes(p.id))
   }
 
-  // 🔧 diasSemana usa datas locais
   const diasSemana = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date()
-    d.setHours(12, 0, 0, 0)
+    const d = new Date(); d.setHours(12, 0, 0, 0)
     d.setDate(d.getDate() + semanaOffset * 7 + i)
     return d
   })
@@ -612,60 +609,38 @@ export default function AdminClientesPage() {
     if (!unidadeAtiva) return
     const dataSel = diasSemana[diaSel]
     const diaSemNum = dataSel.getDay()
-    const dataStr = dataLocalStr(dataSel) // 🔧 FIX timezone
+    const dataStr = dataLocalStr(dataSel)
     const ehFds = diaSemNum === 0 || diaSemNum === 6
-
     const porHora: Record<string, number> = {}
-
     if (ehFds) {
-      const { data: escala } = await supabase
-        .from('escala_fds').select('coach_id')
-        .eq('data', dataStr).eq('unidade_id', unidadeAtiva.id)
+      const { data: escala } = await supabase.from('escala_fds').select('coach_id').eq('data', dataStr).eq('unidade_id', unidadeAtiva.id)
       const qtd = (escala || []).length
       if (qtd > 0) { for (const hora of HORARIOS_FDS) porHora[hora] = qtd }
     } else {
-      const { data: hors } = await supabase
-        .from('coach_horarios').select('hora')
-        .eq('dia_semana', diaSemNum).eq('unidade_id', unidadeAtiva.id).eq('ativo', true)
-      for (const h of (hors || [])) {
-        const hora = (h.hora || '').slice(0, 5)
-        porHora[hora] = (porHora[hora] || 0) + 1
-      }
+      const { data: hors } = await supabase.from('coach_horarios').select('hora').eq('dia_semana', diaSemNum).eq('unidade_id', unidadeAtiva.id).eq('ativo', true)
+      for (const h of (hors || [])) { const hora = (h.hora || '').slice(0, 5); porHora[hora] = (porHora[hora] || 0) + 1 }
     }
-
     const [{ data: ags }, { data: bloqueadas }] = await Promise.all([
-      supabase.from('agendamentos').select('horario')
-        .eq('data', dataStr).eq('unidade_id', unidadeAtiva.id).neq('status', 'cancelado'),
-      supabase.from('vagas_bloqueadas').select('horario, quantidade')
-        .eq('data', dataStr).eq('unidade_id', unidadeAtiva.id).eq('ativo', true),
+      supabase.from('agendamentos').select('horario').eq('data', dataStr).eq('unidade_id', unidadeAtiva.id).neq('status', 'cancelado'),
+      supabase.from('vagas_bloqueadas').select('horario, quantidade').eq('data', dataStr).eq('unidade_id', unidadeAtiva.id).eq('ativo', true),
     ])
-
     const ocupados: Record<string, number> = {}
-    for (const a of (ags || [])) {
-      const hora = (a.horario || '').slice(0, 5)
-      ocupados[hora] = (ocupados[hora] || 0) + 1
-    }
+    for (const a of (ags || [])) { const hora = (a.horario || '').slice(0, 5); ocupados[hora] = (ocupados[hora] || 0) + 1 }
     const bloqueadasMap: Record<string, number> = {}
-    for (const b of (bloqueadas || [])) {
-      const hora = (b.horario || '').slice(0, 5)
-      bloqueadasMap[hora] = (bloqueadasMap[hora] || 0) + (b.quantidade || 1)
-    }
-
+    for (const b of (bloqueadas || [])) { const hora = (b.horario || '').slice(0, 5); bloqueadasMap[hora] = (bloqueadasMap[hora] || 0) + (b.quantidade || 1) }
     const resultado = Object.entries(porHora).map(([hora, total]) => {
       const bloq = bloqueadasMap[hora] || 0; const ocup = ocupados[hora] || 0
       return { hora, total, ocupados: ocup, bloqueadas: bloq, livres: Math.max(0, total - ocup - bloq) }
     }).sort((a, b) => a.hora.localeCompare(b.hora))
-
     setHorariosSel(resultado)
   }
 
   async function abrirModal(hora: string) {
     if (!unidadeAtiva) return
-    const dataStr = dataLocalStr(diasSemana[diaSel]) // 🔧 FIX timezone
+    const dataStr = dataLocalStr(diasSemana[diaSel])
     const dataObj = diasSemana[diaSel]
     const { data: saldoData } = await supabase.rpc('saldo_creditos_cliente', {
-      p_cliente_id: clienteSel.id, p_mes: dataObj.getMonth() + 1,
-      p_ano: dataObj.getFullYear(), p_unidade_id: unidadeAtiva.id,
+      p_cliente_id: clienteSel.id, p_mes: dataObj.getMonth() + 1, p_ano: dataObj.getFullYear(), p_unidade_id: unidadeAtiva.id,
     })
     setSaldoMes(saldoData || {})
     setModalSlot({ hora, data: dataStr }); setTipoCredito(''); setErroModal('')
@@ -685,7 +660,7 @@ export default function AdminClientesPage() {
     setAba('agendamentos')
   }
 
-  const hoje = dataLocalStr(new Date()) // 🔧 FIX timezone
+  const hoje = dataLocalStr(new Date())
   const agendamentosFuturos = historico.filter(a => a.data >= hoje && ['agendado','confirmado'].includes(a.status)).sort((a, b) => a.data.localeCompare(b.data))
   const agendamentosPassados = historico.filter(a => a.data < hoje || ['realizado','falta','cancelado'].includes(a.status)).sort((a, b) => b.data.localeCompare(a.data))
 
@@ -837,8 +812,9 @@ export default function AdminClientesPage() {
               </div>
             )}
 
+            {/* ✅ PATCH 1: botão "Venda" */}
             <button onClick={abrirVenda} className="w-full mb-4 btn gap-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 py-3 font-semibold shadow-sm">
-              <ShoppingCart size={16} /> Vender produto · {unidadeAtiva.nome}
+              <ShoppingCart size={16} /> Venda
             </button>
 
             <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
@@ -1154,6 +1130,8 @@ export default function AdminClientesPage() {
                                 <span className="text-sm font-semibold text-gray-900">{v.produtos?.nome || 'Produto removido'}</span>
                                 <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">{v.quantidade}x</span>
                                 {v.produtos?.subtipo === 'acesso' && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">Acesso</span>}
+                                {v.produtos?.subtipo === 'pacote' && <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">Pacote</span>}
+                                {v.produtos?.subtipo === 'ilimitado_club' && <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">Ilimitado Club</span>}
                                 {ehCortesiaV && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">🎁 Cortesia</span>}
                                 {v.unidades?.nome && <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">{v.unidades.nome}</span>}
                               </div>
@@ -1371,7 +1349,8 @@ export default function AdminClientesPage() {
           <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
               <div>
-                <div className="font-bold text-gray-900 flex items-center gap-2"><ShoppingCart size={18} className="text-green-600" /> Vender produto</div>
+                {/* ✅ PATCH: título do modal também atualizado */}
+                <div className="font-bold text-gray-900 flex items-center gap-2"><ShoppingCart size={18} className="text-green-600" /> Venda</div>
                 <div className="text-xs text-gray-400 mt-0.5">para {clienteSel?.nome} · {unidadeAtiva.nome}</div>
               </div>
               <button onClick={() => setModalVenda(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
@@ -1389,9 +1368,12 @@ export default function AdminClientesPage() {
                         <div className="flex-1">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-sm font-medium text-gray-900">{p.nome}</span>
+                            {/* ✅ PATCH 3: badges por subtipo */}
                             {p.subtipo === 'acesso' && <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">Acesso</span>}
+                            {p.subtipo === 'pacote' && <span className="text-xs px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">Pacote</span>}
+                            {p.subtipo === 'ilimitado_club' && <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">Ilimitado Club</span>}
                           </div>
-                          <div className="text-xs text-gray-500 mt-0.5">R$ {Number(p.valor).toFixed(2).replace('.', ',')}{p.subtipo === 'acesso' ? ` · ${p.dias_validade} dias de acesso` : (p.creditos_por_venda > 1 ? ` · ${p.creditos_por_venda} créditos por venda` : '')}{p.subtipo !== 'acesso' && p.dias_validade && ` · validade ${p.dias_validade} dias`}</div>
+                          <div className="text-xs text-gray-500 mt-0.5">R$ {Number(p.valor).toFixed(2).replace('.', ',')}{p.subtipo === 'acesso' ? ` · ${p.dias_validade} dias de acesso` : (p.creditos_por_venda > 1 ? ` · ${p.creditos_por_venda} créditos` : '')}{p.subtipo !== 'acesso' && p.dias_validade && ` · validade ${p.dias_validade} dias`}</div>
                         </div>
                       </label>
                     ))}
