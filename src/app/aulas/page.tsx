@@ -127,8 +127,8 @@ function AulasPageInner() {
   const anoProximo   = agora.getMonth() === 11 ? agora.getFullYear() + 1 : agora.getFullYear()
   const nomeMesProximo = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'][mesProximo - 1]
 
-  const temPlanoParceiroAtivo = Object.entries(saldo).some(([, v]: any) => v?.disponivel > 0) ||
-    Object.entries(saldoProximo).some(([, v]: any) => v?.disponivel > 0)
+  const temPlanoParceiroAtivo = Object.entries(saldo).some(([k, v]: any) => !k.startsWith('avulso') && v?.disponivel > 0) ||
+    Object.entries(saldoProximo).some(([k, v]: any) => !k.startsWith('avulso') && v?.disponivel > 0)
   const precisaCartao = !!cliente && temPlanoParceiroAtivo && !cliente?.pagarme_card_id
 
   function saldoParaData() { return dataSelEhProximoMes ? saldoProximo : saldo }
