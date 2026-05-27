@@ -55,15 +55,15 @@ async function importarClientes(supabase: any, rows: any[]) {
   const mapa: Record<string, any> = {}
   for (const row of rows) {
     const cpf = limparCpf(row.txtCpf)
-    const email = (row.txtEmail || '').trim().toLowerCase()
-    if (!email || email === 'null') continue // pula sem email
+    const email = String(row.txtEmail || '').trim().toLowerCase()
+    if (!email || email === 'null') continue
 
     const chave = cpf || email
     if (!mapa[chave]) {
       mapa[chave] = {
-        nome: (row.txtNome || '').trim(),
+        nome: String(row.txtNome || '').trim(),
         email: email,
-        telefone: row.txtTelefone && row.txtTelefone !== 'NULL' ? String(row.txtTelefone).trim() : null,
+        telefone: row.txtTelefone && String(row.txtTelefone) !== 'NULL' ? String(row.txtTelefone).trim() : null,
         cpf: cpf,
         bloqueado: false,
       }
