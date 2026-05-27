@@ -228,7 +228,9 @@ function AulasPageInner() {
       supabase.from('club_reservas').select('posicao').eq('ocorrencia_id', ocorrenciaId).in('status',['reservado','presente']),
     ])
     setPosicoes(pos||[])
-    setPosicoesTomadas((tomadas||[]).map((t: any) => t.posicao).filter(Boolean))
+    const reservadas = (tomadas||[]).map((t: any) => t.posicao).filter(Boolean)
+    const bloqueadas = (pos||[]).filter((p: any) => p.bloqueado).map((p: any) => `${p.tipo}${String(p.numero).padStart(2,'0')}`)
+    setPosicoesTomadas([...reservadas, ...bloqueadas])
   }
 
   function tentarReservar(oc: any) {
