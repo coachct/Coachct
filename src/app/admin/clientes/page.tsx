@@ -307,6 +307,12 @@ export default function AdminClientesPage() {
 
   async function desbloquear() {
     if (!confirm('Desbloquear este cliente?')) return
+    // Marca faltas como dispensadas — impede o cron de re-bloquear
+    await supabase.from('agendamentos').update({ dispensado: true }).eq('cliente_id', clienteSel.id).eq('status', 'falta')
+    await supabase.from('club_reservas').update({ dispensado: true }).eq('cliente_id', clienteSel.id).eq('status', 'falta')
+    // Cancela cobranças pendentes
+    await supabase.from('cobrancas_pendentes').update({ status: 'cancelado' }).eq('cliente_id', clienteSel.id).eq('status', 'pendente')
+    // Desbloqueia o cliente
     await supabase.from('clientes').update({ bloqueado: false, motivo_bloqueio: null }).eq('id', clienteSel.id)
     setClienteSel({ ...clienteSel, bloqueado: false, motivo_bloqueio: null })
   }
