@@ -70,21 +70,10 @@ function PosicaoBtn({ label, tomado, selecionado, cor, onClick }: {
   const isR = label.startsWith('R')
   const iconColor = selecionado ? cor : tomado ? '#1f1f1f' : '#555'
   return (
-    <button
-      disabled={tomado}
-      onClick={onClick}
-      style={{
-        width: 50, height: 60, borderRadius: 10,
-        border: `1.5px solid ${selecionado ? cor : tomado ? '#111' : '#252525'}`,
-        background: selecionado ? `${cor}20` : tomado ? '#0a0a0a' : '#141414',
-        cursor: tomado ? 'not-allowed' : 'pointer',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 5,
-        transition: 'all .15s', padding: '6px 4px',
-      }}>
+    <button disabled={tomado} onClick={onClick}
+      style={{ width:50, height:60, borderRadius:10, border:`1.5px solid ${selecionado?cor:tomado?'#111':'#252525'}`, background:selecionado?`${cor}20`:tomado?'#0a0a0a':'#141414', cursor:tomado?'not-allowed':'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:5, transition:'all .15s', padding:'6px 4px' }}>
       {isR ? <IconEsteira color={iconColor}/> : <IconHaltere color={iconColor}/>}
-      <span style={{ fontSize: 9, fontFamily: "'DM Mono', monospace", fontWeight: 700, color: selecionado ? cor : tomado ? '#252525' : '#555', lineHeight: 1 }}>
-        {label}
-      </span>
+      <span style={{ fontSize:9, fontFamily:"'DM Mono', monospace", fontWeight:700, color:selecionado?cor:tomado?'#252525':'#555', lineHeight:1 }}>{label}</span>
     </button>
   )
 }
@@ -176,24 +165,48 @@ function AulasPageInner() {
     setSaldo(atual || {})
     setSaldoProximo(proximo || {})
   }
+
   async function carregarOcorrencias(data: string) {
     if (!unidadeId) return
     setLoadingOcs(true)
     const { data: aulasIds } = await supabase.from('club_aulas').select('id').eq('unidade_id', unidadeId).eq('ativo', true)
     const ids = (aulasIds || []).map((a: any) => a.id)
     if (!ids.length) { setOcorrencias([]); setLoadingOcs(false); return }
+
+    // ✅ Busca ocorrências SEM join aninhado em grupos_musculares
     const { data: ocs } = await supabase
       .from('club_ocorrencias')
-      .select('*, club_aulas(id, tipo, horario, capacidade, so_mulheres, coaches(nome), grupos_musculares(nome))')
+      .select('*, club_aulas(id, tipo, horario, capacidade, so_mulheres, grupo_muscular_id, coaches(nome))')
       .in('aula_id', ids).eq('data', data).eq('status', 'ativa')
+
     const ocsList = (ocs || []).sort((a: any, b: any) => (a.club_aulas?.horario||'').localeCompare(b.club_aulas?.horario||''))
-    setOcorrencias(ocsList)
-    if (!ocsList.length) { setLoadingOcs(false); return }
-    const ocIds = ocsList.map((o: any) => o.id)
+
+    // ✅ Busca nomes dos grupos musculares separadamente
+    const grupoIds = [...new Set(ocsList.map((o: any) => o.club_aulas?.grupo_muscular_id).filter(Boolean))]
+    let gruposMap: Record<string, string> = {}
+    if (grupoIds.length) {
+      const { data: grupos } = await supabase.from('grupos_musculares').select('id, nome').in('id', grupoIds)
+      for (const g of (grupos || [])) gruposMap[g.id] = g.nome
+    }
+
+    // ✅ Injeta nome do grupo em cada ocorrência
+    const ocsComGrupo = ocsList.map((o: any) => ({
+      ...o,
+      club_aulas: {
+        ...o.club_aulas,
+        grupo_muscular_nome: o.club_aulas?.grupo_muscular_id ? (gruposMap[o.club_aulas.grupo_muscular_id] || null) : null,
+      }
+    }))
+
+    setOcorrencias(ocsComGrupo)
+    if (!ocsComGrupo.length) { setLoadingOcs(false); return }
+
+    const ocIds = ocsComGrupo.map((o: any) => o.id)
     const { data: reservas } = await supabase.from('club_reservas').select('ocorrencia_id, posicao, status').in('ocorrencia_id', ocIds).in('status', ['reservado','presente'])
     const cont: Record<string, number> = {}
     for (const r of (reservas||[])) cont[r.ocorrencia_id] = (cont[r.ocorrencia_id]||0)+1
     setReservasCont(cont)
+
     if (cliente) {
       const [{ data: minhas }, { data: filas }] = await Promise.all([
         supabase.from('club_reservas').select('*').in('ocorrencia_id', ocIds).eq('cliente_id', cliente.id).neq('status','cancelado'),
@@ -208,6 +221,7 @@ function AulasPageInner() {
     }
     setLoadingOcs(false)
   }
+
   async function carregarPosicoes(ocorrenciaId: string) {
     const [{ data: pos }, { data: tomadas }] = await Promise.all([
       supabase.from('club_posicoes').select('*').eq('unidade_id', unidadeId).eq('ativo', true).order('tipo').order('numero'),
@@ -288,22 +302,18 @@ function AulasPageInner() {
         @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
         .dia-tab:hover{color:#fff!important;}
-        .pos-btn:hover:not(:disabled){opacity:0.75;}
       `}</style>
       <SiteHeader/>
       <div style={{ maxWidth:700, margin:'0 auto', padding:'6rem 1.5rem 4rem' }}>
 
-        {/* Cabeçalho */}
         <div style={{ display:'flex', alignItems:'center', gap:'1rem', marginBottom:'2rem' }}>
-          <button onClick={() => router.push('/agendar')}
-            style={{ background:'transparent', border:'1px solid #2a2a2a', borderRadius:'50%', width:36, height:36, color:'#666', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>‹</button>
+          <button onClick={() => router.push('/agendar')} style={{ background:'transparent', border:'1px solid #2a2a2a', borderRadius:'50%', width:36, height:36, color:'#666', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>‹</button>
           <div>
             <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:28, color:'#fff', letterSpacing:1 }}>{unidade?.nome||'Aulas coletivas'}</div>
             <div style={{ fontSize:13, color:'#444', marginTop:2 }}>Lift · Lift for Girls · Running + Funcional</div>
           </div>
         </div>
 
-        {/* Banner bloqueio — cartão recusado */}
         {user && cliente?.bloqueado && cobrancasPend.length > 0 && (
           <div style={{ background:'#1a0000', border:'2px solid #ff4444', borderRadius:16, padding:'1.5rem', marginBottom:'1.5rem' }}>
             <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:'1rem' }}>
@@ -322,14 +332,12 @@ function AulasPageInner() {
                 </div>
               ))}
             </div>
-            <button onClick={() => router.push('/cadastrar-cartao')}
-              style={{ width:'100%', background:'#ff4444', color:'#fff', border:'none', borderRadius:10, padding:'0.85rem', fontWeight:700, fontSize:14, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
+            <button onClick={() => router.push('/cadastrar-cartao')} style={{ width:'100%', background:'#ff4444', color:'#fff', border:'none', borderRadius:10, padding:'0.85rem', fontWeight:700, fontSize:14, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
               💳 Atualizar cartão e regularizar
             </button>
           </div>
         )}
 
-        {/* Banner bloqueio — aguardando regularização */}
         {user && cliente?.bloqueado && cobrancasPend.length === 0 && (
           <div style={{ background:'#1a1000', border:`2px solid ${AMARELO}`, borderRadius:16, padding:'1.5rem', marginBottom:'1.5rem' }}>
             <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:'0.75rem' }}>
@@ -339,39 +347,30 @@ function AulasPageInner() {
                 <div style={{ fontSize:13, color:'#ccc' }}>Conta temporariamente bloqueada</div>
               </div>
             </div>
-            <div style={{ fontSize:14, color:'#ddd', lineHeight:1.7, marginBottom:'0.75rem' }}>
-              {cliente?.motivo_bloqueio || 'Você teve uma falta sem cancelamento prévio.'}
-            </div>
+            <div style={{ fontSize:14, color:'#ddd', lineHeight:1.7, marginBottom:'0.75rem' }}>{cliente?.motivo_bloqueio || 'Você teve uma falta sem cancelamento prévio.'}</div>
             <div style={{ background:'#0a0500', border:`1px solid ${AMARELO}33`, borderRadius:10, padding:'0.85rem 1rem', fontSize:13, color:'#aaa' }}>
               ⏳ <strong style={{ color:'#fff' }}>Aguarde a regularização da cobrança</strong> para fazer novas reservas.
             </div>
           </div>
         )}
 
-        {/* Banner cartão necessário */}
         {user && cliente && !cliente.bloqueado && precisaCartao && (
           <div style={{ background:'#1a1000', border:`1.5px solid ${AMARELO}55`, borderRadius:16, padding:'1.25rem 1.5rem', marginBottom:'1.5rem', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'1rem', flexWrap:'wrap' }}>
             <div>
               <div style={{ fontSize:14, color:AMARELO, fontWeight:700, marginBottom:4 }}>💳 Cadastre um cartão para liberar reservas</div>
               <div style={{ fontSize:13, color:'#888', lineHeight:1.5 }}>Para reservar aulas no JustClub, precisamos de um cartão registrado. <strong style={{ color:'#fff' }}>Nada será cobrado agora.</strong></div>
             </div>
-            <button onClick={() => router.push('/cadastrar-cartao')}
-              style={{ background:AMARELO, color:'#000', border:'none', borderRadius:10, padding:'0.65rem 1.25rem', fontWeight:700, fontSize:13, cursor:'pointer', fontFamily:"'DM Sans', sans-serif", whiteSpace:'nowrap' }}>
-              Cadastrar cartão →
-            </button>
+            <button onClick={() => router.push('/cadastrar-cartao')} style={{ background:AMARELO, color:'#000', border:'none', borderRadius:10, padding:'0.65rem 1.25rem', fontWeight:700, fontSize:13, cursor:'pointer', fontFamily:"'DM Sans', sans-serif", whiteSpace:'nowrap' }}>Cadastrar cartão →</button>
           </div>
         )}
 
-        {/* Banner visitante */}
         {!user && (
           <div style={{ background:'#0a0014', border:`1px solid ${ACCENT}33`, borderRadius:12, padding:'0.85rem 1.25rem', marginBottom:'1.5rem', fontSize:13, color:'#aaa' }}>
             👋 Navegando como visitante.{' '}
-            <span onClick={() => router.push(`/login?redirect=${encodeURIComponent('/aulas?unidade='+unidadeId)}`)}
-              style={{ color:ACCENT, cursor:'pointer', fontWeight:600 }}>Faça login</span> para reservar aulas.
+            <span onClick={() => router.push(`/login?redirect=${encodeURIComponent('/aulas?unidade='+unidadeId)}`)} style={{ color:ACCENT, cursor:'pointer', fontWeight:600 }}>Faça login</span> para reservar aulas.
           </div>
         )}
 
-        {/* Banner próximo mês */}
         {user && dataSelEhProximoMes && (
           <div style={{ background:'#1a1000', border:`1px solid ${AMARELO}44`, borderRadius:12, padding:'0.85rem 1.25rem', marginBottom:'1.5rem', fontSize:13, color:'#ddd', lineHeight:1.6 }}>
             📅 <strong style={{ color:AMARELO }}>Você está vendo aulas de {nomeMesProximo}.</strong>{' '}
@@ -379,7 +378,6 @@ function AulasPageInner() {
           </div>
         )}
 
-        {/* Navegação dias */}
         <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:0 }}>
           <button onClick={() => { setSemanaOffset(o=>Math.max(0,o-1)); setDiaSel(0) }} disabled={semanaOffset===0}
             style={{ width:32, height:32, borderRadius:'50%', border:'1px solid #2a2a2a', background:'transparent', color:semanaOffset===0?'#2a2a2a':'#666', fontSize:16, cursor:semanaOffset===0?'default':'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>‹</button>
@@ -400,7 +398,6 @@ function AulasPageInner() {
             style={{ width:32, height:32, borderRadius:'50%', border:'1px solid #2a2a2a', background:'transparent', color:semanaOffset>=3?'#2a2a2a':'#666', fontSize:16, cursor:semanaOffset>=3?'default':'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>›</button>
         </div>
 
-        {/* Filtro período */}
         <div style={{ display:'flex', gap:8, marginTop:'1.25rem', marginBottom:'1.5rem', flexWrap:'wrap' }}>
           {[{key:'todos',label:'Todos'},{key:'manha',label:'🌅 Manhã'},{key:'tarde',label:'☀️ Tarde'},{key:'noite',label:'🌙 Noite'}].map(p => (
             <button key={p.key} onClick={() => setPeriodo(p.key as any)}
@@ -410,7 +407,6 @@ function AulasPageInner() {
           ))}
         </div>
 
-        {/* Lista de aulas */}
         {loadingOcs ? (
           <div style={{ textAlign:'center', padding:'3rem', color:'#444' }}>Carregando aulas...</div>
         ) : ocsFiltradas.length===0 ? (
@@ -430,14 +426,12 @@ function AulasPageInner() {
                   <div style={{ display:'flex', alignItems:'flex-start', gap:'1rem' }}>
                     <div style={{ fontFamily:"'DM Mono', monospace", fontSize:22, fontWeight:500, color:'#fff', width:56, flexShrink:0, lineHeight:1 }}>{(aula?.horario||'').slice(0,5)}</div>
                     <div style={{ flex:1, minWidth:0 }}>
-                      {/* Badges: tipo + só mulheres */}
                       <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:6 }}>
                         <span style={{ background:cores.badge, color:cores.text, fontSize:11, fontWeight:700, padding:'2px 10px', borderRadius:20, letterSpacing:0.5 }}>{tipoLabel(aula?.tipo)}</span>
                         {aula?.so_mulheres && <span style={{ background:'#ff2d9b18', color:ACCENT, fontSize:10, fontWeight:600, padding:'2px 8px', borderRadius:20 }}>👩 Só mulheres</span>}
-                        {/* ✅ Grupo muscular como badge */}
-                        {aula?.grupos_musculares?.nome && (
+                        {aula?.grupo_muscular_nome && (
                           <span style={{ background:'#ffffff0d', color:'#888', fontSize:10, fontWeight:600, padding:'2px 8px', borderRadius:20, border:'1px solid #2a2a2a' }}>
-                            💪 {aula.grupos_musculares.nome}
+                            💪 {aula.grupo_muscular_nome}
                           </span>
                         )}
                       </div>
@@ -461,15 +455,9 @@ function AulasPageInner() {
                             </div>
                           )}
                           {lotado ? (
-                            <button onClick={() => tentarFila(oc)}
-                              style={{ background:'transparent', color:AMARELO, border:`1px solid ${AMARELO}55`, borderRadius:8, padding:'0.4rem 0.85rem', fontSize:11, fontWeight:600, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
-                              Fila ⏳
-                            </button>
+                            <button onClick={() => tentarFila(oc)} style={{ background:'transparent', color:AMARELO, border:`1px solid ${AMARELO}55`, borderRadius:8, padding:'0.4rem 0.85rem', fontSize:11, fontWeight:600, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>Fila ⏳</button>
                           ) : (
-                            <button onClick={() => tentarReservar(oc)}
-                              style={{ background:ACCENT, color:'#fff', border:'none', borderRadius:8, padding:'0.4rem 0.85rem', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
-                              Reservar
-                            </button>
+                            <button onClick={() => tentarReservar(oc)} style={{ background:ACCENT, color:'#fff', border:'none', borderRadius:8, padding:'0.4rem 0.85rem', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>Reservar</button>
                           )}
                         </>
                       )}
@@ -481,7 +469,7 @@ function AulasPageInner() {
                         <span>Ocupação</span>
                         <span style={{ color:lotado?'#ff4444':livres<=3?AMARELO:'#555' }}>{reservasCont[oc.id]||0}/{aula?.capacidade} vagas</span>
                       </div>
-                      <div style={{ height:3, background:'1a1a1a', borderRadius:2, overflow:'hidden' }}>
+                      <div style={{ height:3, background:'#1a1a1a', borderRadius:2, overflow:'hidden' }}>
                         <div style={{ height:'100%', borderRadius:2, transition:'width .3s', background:lotado?'#ff4444':livres<=3?AMARELO:CYAN, width:`${Math.min(100,((reservasCont[oc.id]||0)/(aula?.capacidade||1))*100)}%` }}/>
                       </div>
                     </div>
@@ -493,33 +481,21 @@ function AulasPageInner() {
         )}
       </div>
 
-      {/* ══ MODAL SEM CARTÃO ══ */}
       {modalSemCartao && (
         <div style={{ position:'fixed', inset:0, background:'#000000cc', zIndex:100, display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}>
           <div style={{ background:'#111', border:`1.5px solid ${AMARELO}55`, borderRadius:20, width:'100%', maxWidth:420, padding:'1.5rem' }}>
             <div style={{ fontSize:36, marginBottom:'1rem', textAlign:'center' }}>💳</div>
             <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:22, color:'#fff', marginBottom:8, textAlign:'center' }}>CARTÃO NECESSÁRIO</div>
-            <div style={{ fontSize:14, color:'#aaa', lineHeight:1.7, marginBottom:'1rem', textAlign:'center' }}>
-              Para reservar aulas no <strong style={{ color:'#fff' }}>JustClub</strong>, precisamos de um cartão cadastrado pra cobrir possíveis multas por faltas.
-            </div>
-            <div style={{ background:'#0a0a0a', border:`1px solid ${AMARELO}33`, borderRadius:10, padding:'0.75rem 1rem', marginBottom:'1.5rem', fontSize:13, color:AMARELO, textAlign:'center', fontWeight:600 }}>
-              🔒 Nada será cobrado agora
-            </div>
+            <div style={{ fontSize:14, color:'#aaa', lineHeight:1.7, marginBottom:'1rem', textAlign:'center' }}>Para reservar aulas no <strong style={{ color:'#fff' }}>JustClub</strong>, precisamos de um cartão cadastrado pra cobrir possíveis multas por faltas.</div>
+            <div style={{ background:'#0a0a0a', border:`1px solid ${AMARELO}33`, borderRadius:10, padding:'0.75rem 1rem', marginBottom:'1.5rem', fontSize:13, color:AMARELO, textAlign:'center', fontWeight:600 }}>🔒 Nada será cobrado agora</div>
             <div style={{ display:'flex', gap:8 }}>
-              <button onClick={() => setModalSemCartao(false)}
-                style={{ flex:1, background:'transparent', border:'1px solid #333', borderRadius:10, padding:'0.85rem', color:'#888', fontSize:14, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
-                Fechar
-              </button>
-              <button onClick={() => router.push('/cadastrar-cartao')}
-                style={{ flex:2, background:AMARELO, color:'#000', border:'none', borderRadius:10, padding:'0.85rem', fontWeight:700, fontSize:15, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
-                Cadastrar cartão →
-              </button>
+              <button onClick={() => setModalSemCartao(false)} style={{ flex:1, background:'transparent', border:'1px solid #333', borderRadius:10, padding:'0.85rem', color:'#888', fontSize:14, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>Fechar</button>
+              <button onClick={() => router.push('/cadastrar-cartao')} style={{ flex:2, background:AMARELO, color:'#000', border:'none', borderRadius:10, padding:'0.85rem', fontWeight:700, fontSize:15, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>Cadastrar cartão →</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ══ MODAL RESERVA ══ */}
       {modalReserva && (
         <div style={{ position:'fixed', inset:0, background:'#000000dd', zIndex:100, display:'flex', alignItems:'flex-end', justifyContent:'center', padding:'1rem' }}>
           <div style={{ background:'#111', border:'1px solid #2a2a2a', borderRadius:'20px 20px 16px 16px', width:'100%', maxWidth:520, maxHeight:'92vh', overflowY:'auto' }}>
@@ -623,7 +599,6 @@ function AulasPageInner() {
         </div>
       )}
 
-      {/* ══ MODAL FILA ══ */}
       {modalFila && (
         <div style={{ position:'fixed', inset:0, background:'#000000dd', zIndex:100, display:'flex', alignItems:'flex-end', justifyContent:'center', padding:'1rem' }}>
           <div style={{ background:'#111', border:`1px solid ${AMARELO}33`, borderRadius:'20px 20px 16px 16px', width:'100%', maxWidth:500, padding:'1.5rem' }}>
@@ -672,7 +647,6 @@ function AulasPageInner() {
         </div>
       )}
 
-      {/* ══ MODAL GÊNERO ══ */}
       {modalGenero && (
         <div style={{ position:'fixed', inset:0, background:'#000000dd', zIndex:100, display:'flex', alignItems:'center', justifyContent:'center', padding:'1.5rem' }}>
           <div style={{ background:'#111', border:`1.5px solid ${ACCENT}55`, borderRadius:20, width:'100%', maxWidth:380, padding:'2rem', textAlign:'center' }}>
