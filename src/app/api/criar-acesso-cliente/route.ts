@@ -44,7 +44,6 @@ export async function POST(req: NextRequest) {
       { auth: { autoRefreshToken: false, persistSession: false } }
     )
 
-    // 1. Busca dados do cliente
     const { data: cliente, error: errCli } = await supabase
       .from('clientes')
       .select('id, nome, email, cpf, user_id')
@@ -69,11 +68,9 @@ export async function POST(req: NextRequest) {
 
     const emailCliente: string = String(cliente.email).toLowerCase()
 
-    // 2. Verifica se o email já está em uso no Auth
     const { data: listaUsers, error: errList } = await supabase.auth.admin.listUsers()
 
     if (errList) {
-      console.error('Erro ao listar usuarios:', errList)
       return NextResponse.json({
         error: 'Erro ao verificar email: ' + errList.message
       }, { status: 500 })
@@ -87,16 +84,12 @@ export async function POST(req: NextRequest) {
 
     if (emailJaUsado) {
       return NextResponse.json({
-        error: 'Já existe um usuário com este email no sistema. Verifique se o cliente não tem cadastro com outro CPF.'
+        error: 'Já existe um usuário com este email no sistema.'
       }, { status: 400 })
     }
 
-    // 3. Gera senha aleatória
     const senhaProvisoria = gerarSenhaAleatoria()
 
-    // 4. Cria usuário no Supabase Auth
-    // IMPORTANTE: passa role='cliente' no metadata pra que o trigger
-    // handle_new_user crie o perfil corretamente com role de cliente
     const { data: novoUser, error: errAuth } = await supabase.auth.admin.createUser({
       email: cliente.email,
       password: senhaProvisoria,
@@ -110,7 +103,6 @@ export async function POST(req: NextRequest) {
     })
 
     if (errAuth || !novoUser?.user) {
-      console.error('Erro ao criar user no Auth:', errAuth)
       return NextResponse.json({
         error: 'Erro ao criar acesso: ' + (errAuth?.message || 'desconhecido')
       }, { status: 500 })
@@ -118,24 +110,18 @@ export async function POST(req: NextRequest) {
 
     const userId = novoUser.user.id
 
-    // 5. Vincula user_id na tabela clientes
-    // O perfil já foi criado automaticamente pelo trigger handle_new_user
-    // com nome, role='cliente' e ativo=true
     const { error: errLink } = await supabase
       .from('clientes')
       .update({ user_id: userId })
       .eq('id', cliente.id)
 
     if (errLink) {
-      console.error('Erro ao vincular user_id:', errLink)
-      // Rollback: deleta o auth user criado
       await supabase.auth.admin.deleteUser(userId)
       return NextResponse.json({
         error: 'Erro ao vincular acesso: ' + errLink.message
       }, { status: 500 })
     }
 
-    // 6. Envia email de boas-vindas
     const primeiroNome = String(cliente.nome || '').split(' ')[0]
     const linkLogin = `${BASE_URL}/login`
 
@@ -145,81 +131,94 @@ export async function POST(req: NextRequest) {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Bem-vindo à Just CT</title>
+  <title>Bem-vindo à Just CT & JustClub</title>
 </head>
 <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background-color:#f5f5f5;color:#222;">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f5f5f5;padding:32px 16px;">
     <tr>
       <td align="center">
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="background-color:#ffffff;border-radius:16px;overflow:hidden;max-width:600px;width:100%;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+
+          <!-- Header -->
           <tr>
             <td style="background:linear-gradient(135deg,#0a0a0a 0%,#1a1a1a 100%);padding:40px 32px;text-align:center;">
-              <div style="font-family:'Bebas Neue',Impact,sans-serif;font-size:36px;color:#ffffff;letter-spacing:4px;font-weight:700;">
+              <div style="font-family:Impact,sans-serif;font-size:34px;color:#ffffff;letter-spacing:4px;font-weight:700;">
                 JUST<span style="color:#ff2d9b;">CT</span>
+                <span style="color:#ffffff;font-size:20px;letter-spacing:2px;margin-left:8px;">&</span>
+                <span style="color:#ff2d9b;font-size:28px;letter-spacing:2px;margin-left:4px;">JUSTCLUB</span>
               </div>
-              <div style="font-size:11px;color:#ff2d9b;letter-spacing:3px;margin-top:8px;text-transform:uppercase;">
-                // bem-vindo
+              <div style="font-size:11px;color:#aaa;letter-spacing:3px;margin-top:10px;text-transform:uppercase;">
+                // bem-vindo ao nosso sistema
               </div>
             </td>
           </tr>
+
+          <!-- Body -->
           <tr>
             <td style="padding:40px 32px;">
               <div style="font-size:22px;font-weight:700;color:#222;margin-bottom:16px;">
                 Olá, ${primeiroNome}! 👋
               </div>
-              <div style="font-size:15px;line-height:1.7;color:#444;margin-bottom:24px;">
-                Sua conta na Just CT foi criada com sucesso! Agora você tem acesso ao nosso sistema Coach CT para agendar suas sessões, acompanhar seus treinos e gerenciar seu plano.
+
+              <div style="font-size:15px;line-height:1.7;color:#444;margin-bottom:28px;">
+                Sua conta foi criada com sucesso! Agora você tem acesso ao nosso sistema online para agendar treinos, acompanhar seu histórico e gerenciar seu plano — tanto na <strong>Just CT</strong> quanto no <strong>JustClub</strong>.
               </div>
 
-              <div style="background-color:#0a0a0a;border-radius:12px;padding:24px;margin-bottom:24px;">
+              <!-- Dados de acesso -->
+              <div style="background-color:#0a0a0a;border-radius:12px;padding:24px;margin-bottom:28px;">
                 <div style="font-size:11px;font-weight:700;color:#ff2d9b;text-transform:uppercase;letter-spacing:2px;margin-bottom:16px;">
                   Seus dados de acesso
                 </div>
-                <div style="margin-bottom:12px;">
+                <div style="margin-bottom:14px;">
                   <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Email</div>
                   <div style="font-size:15px;color:#ffffff;font-family:monospace;">${cliente.email}</div>
                 </div>
                 <div>
                   <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Senha provisória</div>
-                  <div style="font-size:22px;color:#ff2d9b;font-family:monospace;font-weight:700;letter-spacing:2px;">${senhaProvisoria}</div>
+                  <div style="font-size:26px;color:#ff2d9b;font-family:monospace;font-weight:700;letter-spacing:3px;">${senhaProvisoria}</div>
                 </div>
               </div>
 
-              <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto 32px;">
+              <!-- CTA -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto 28px;">
                 <tr>
                   <td align="center" style="background-color:#ff2d9b;border-radius:10px;">
-                    <a href="${linkLogin}" target="_blank" style="display:inline-block;padding:16px 36px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;">
-                      Acessar minha conta
+                    <a href="${linkLogin}" target="_blank" style="display:inline-block;padding:16px 40px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;">
+                      Acessar minha conta →
                     </a>
                   </td>
                 </tr>
               </table>
 
+              <!-- Aviso segurança -->
               <div style="background-color:#fff8e1;border:1px solid #ffe082;border-radius:12px;padding:16px;margin-bottom:24px;">
                 <div style="font-size:13px;font-weight:700;color:#f57c00;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">
-                  🔒 Importante — Segurança
+                  🔒 Troque sua senha no primeiro acesso
                 </div>
                 <div style="font-size:13px;line-height:1.6;color:#666;">
-                  Recomendamos fortemente que você <strong>troque sua senha</strong> assim que entrar na sua conta. Acesse "Minha Conta" no menu principal para alterar.
+                  Acesse <strong>Minha Conta</strong> no menu e cadastre uma senha pessoal. A senha provisória acima é temporária.
                 </div>
               </div>
 
-              <div style="font-size:13px;line-height:1.7;color:#666;">
-                Caso tenha alguma dúvida, entre em contato com a recepção da Just CT.
+              <div style="font-size:13px;line-height:1.7;color:#888;">
+                Qualquer dúvida, fale com a recepção da sua unidade. Estamos aqui para ajudar!
               </div>
             </td>
           </tr>
+
+          <!-- Footer -->
           <tr>
             <td style="background-color:#0a0a0a;padding:24px 32px;text-align:center;">
-              <div style="font-size:11px;color:#666;line-height:1.6;letter-spacing:0.5px;">
-                Just CT — Serious Training<br/>
-                Rua Fiandeiras, 392 · Vila Olímpia · São Paulo/SP
+              <div style="font-size:11px;color:#555;line-height:1.8;letter-spacing:0.5px;">
+                Just CT — Vila Olímpia · Rua Fiandeiras, 392<br/>
+                JustClub — Pinheiros &amp; Vila Olímpia
               </div>
-              <div style="font-size:10px;color:#444;margin-top:16px;line-height:1.5;">
-                Este é um email automático. Se precisar de ajuda, entre em contato com a recepção.
+              <div style="font-size:10px;color:#333;margin-top:14px;">
+                Email automático — não responda a esta mensagem.
               </div>
             </td>
           </tr>
+
         </table>
       </td>
     </tr>
@@ -233,7 +232,7 @@ export async function POST(req: NextRequest) {
     const { data: emailData, error: errEmail } = await resend.emails.send({
       from: REMETENTE,
       to: cliente.email,
-      subject: `Bem-vindo à Just CT — Seus dados de acesso`,
+      subject: `Bem-vindo à Just CT & JustClub — Seus dados de acesso`,
       html,
     })
 
@@ -242,7 +241,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         sucesso_parcial: true,
         senha_provisoria: senhaProvisoria,
-        aviso: 'Acesso criado com sucesso, mas o email de boas-vindas não pôde ser enviado. Anote a senha e passe ao cliente manualmente.',
+        aviso: 'Acesso criado, mas o email não pôde ser enviado. Anote a senha e passe ao cliente manualmente.',
         erro_email: errEmail.message,
       })
     }
