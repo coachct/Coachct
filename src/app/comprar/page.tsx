@@ -257,8 +257,10 @@ export default function ComprarPage() {
                     const mensal = total / 6
                     const vM = fmt(mensal), vT = fmt(total)
                     return (
-                      <div key={p.id} className="card-club" style={{ background: '#0c140f', border: `1.5px solid ${VERDE}44`, borderRadius: 16, padding: '2rem', display: 'flex', flexDirection: 'column' }}>
-                        <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 2, color: VERDE, marginBottom: '0.4rem', fontFamily: "'DM Mono', monospace" }}>justclub · ilimitado</div>
+                      <div key={p.id} className="card-h" style={{ ...card, border: `1.5px solid ${ACCENT}`, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ position: 'absolute', top: 12, right: -20, background: ACCENT, color: '#fff', fontSize: 10, fontWeight: 700, padding: '0.25rem 2.75rem', transform: 'rotate(15deg)', letterSpacing: 1 }}>MAIS POPULAR</div>
+
+                        <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 2, color: ACCENT, marginBottom: '0.4rem', fontFamily: "'DM Mono', monospace" }}>justclub · ilimitado</div>
                         <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', marginBottom: '1rem' }}>SEMESTRAL</div>
 
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', marginBottom: 4 }}>
@@ -268,9 +270,9 @@ export default function ComprarPage() {
                         <div style={{ fontSize: 12, color: '#555', marginBottom: '0.75rem', fontFamily: "'DM Mono', monospace" }}>{vT.reais}{vT.cents} total · {p.max_parcelas || 6}x</div>
 
                         {/* Unidades em destaque */}
-                        <div style={{ background: `${VERDE}15`, border: `1px solid ${VERDE}44`, borderRadius: 8, padding: '0.6rem 0.85rem', marginBottom: '1rem' }}>
-                          <div style={{ fontSize: 11, color: VERDE, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 }}>📍 Studios incluídos</div>
-                          <div style={{ fontSize: 13, color: '#e0ffe8', fontWeight: 600, lineHeight: 1.6 }}>
+                        <div style={{ background: `${ACCENT}10`, border: `1px solid ${ACCENT}33`, borderRadius: 8, padding: '0.6rem 0.85rem', marginBottom: '1rem' }}>
+                          <div style={{ fontSize: 11, color: ACCENT, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 }}>📍 Studios incluídos</div>
+                          <div style={{ fontSize: 13, color: '#fff', fontWeight: 600, lineHeight: 1.6 }}>
                             JustClub Pinheiros<br />JustClub Vila Olímpia
                           </div>
                         </div>
@@ -280,7 +282,7 @@ export default function ComprarPage() {
                         </div>
 
                         <button onClick={() => irParaCheckout(p.id)} className="btn-h"
-                          style={{ background: VERDE, color: '#000', border: 'none', borderRadius: 8, padding: '0.8rem', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", width: '100%' }}>
+                          style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 8, padding: '0.8rem', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", width: '100%' }}>
                           Comprar agora →
                         </button>
                       </div>
