@@ -276,7 +276,7 @@ export default function AdminClientesPage() {
       .select('*, club_ocorrencias(id, data, club_aulas(tipo, horario, unidade_id, unidades(nome)))')
       .eq('cliente_id', clienteId)
       .neq('status', 'cancelado')
-      .order('criado_em', { ascending: false })
+      .order('created_at', { ascending: false })
       .limit(50)
     setClubReservas(data || [])
   }
