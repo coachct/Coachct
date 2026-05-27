@@ -218,20 +218,17 @@ function CheckoutContent() {
         return
       }
 
-      // CARTÃO APROVADO
       if (metodo === 'cartao' && data.cartao?.aprovado) {
         router.push(`/comprar/sucesso?produto=${produtoId}&metodo=cartao&pagamento=${data.pagamento_id}`)
         return
       }
 
-      // CARTÃO RECUSADO
       if (metodo === 'cartao' && !data.cartao?.aprovado) {
         setErro(data.cartao?.motivo || 'Cartão recusado. Verifique os dados ou tente outro cartão.')
         setEtapa('pagamento')
         return
       }
 
-      // PIX GERADO COM SUCESSO
       if (metodo === 'pix' && data.pix?.qr_code) {
         setPixQrCode(data.pix.qr_code)
         setPixQrCodeUrl(data.pix.qr_code_url)
@@ -239,7 +236,6 @@ function CheckoutContent() {
         return
       }
 
-      // PIX FALHOU (sem qr_code)
       setErro('Não foi possível gerar o PIX. Tente novamente ou use cartão de crédito.')
       setEtapa('pagamento')
 
@@ -255,6 +251,21 @@ function CheckoutContent() {
 
   function calcularParcela(valor: number, n: number) {
     return valor / n
+  }
+
+  // Descrição do produto no resumo do pedido
+  function descricaoProduto(p: any): string {
+    switch (p.subtipo) {
+      case 'acesso':
+        return `Acesso ilimitado ao Just CT por ${p.dias_validade} dias`
+      case 'pacote':
+        return `${p.creditos_por_venda} créditos · válidos por ${p.dias_validade} dias a partir da compra · Todas as unidades`
+      case 'ilimitado_club':
+        return `30 créditos/mês por 6 meses · Renovação mensal na data da compra · JustClub + Just CT`
+      case 'credito':
+      default:
+        return `1 crédito · válido por ${p.dias_validade || 30} dias`
+    }
   }
 
   const card = { background: '#111', border: '1px solid #222', borderRadius: 16, padding: '2rem' }
@@ -328,7 +339,7 @@ function CheckoutContent() {
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 16, fontWeight: 600, color: '#fff', marginBottom: 4 }}>{produto.nome}</div>
               <div style={{ fontSize: 13, color: '#888', lineHeight: 1.5 }}>
-                {produto.subtipo === 'acesso' ? `Acesso ilimitado ao Just CT por ${produto.dias_validade} dias` : `1 crédito · válido por ${produto.dias_validade || 30} dias`}
+                {descricaoProduto(produto)}
               </div>
             </div>
             <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: '#fff', lineHeight: 1, whiteSpace: 'nowrap' as const }}>
@@ -410,7 +421,6 @@ function CheckoutContent() {
         {/* ETAPA: PAGAMENTO */}
         {etapa === 'pagamento' && cliente && (
           <>
-            {/* Dados do cliente */}
             <div style={{ ...card, marginBottom: '1.5rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
                 <div>
@@ -422,7 +432,6 @@ function CheckoutContent() {
               </div>
             </div>
 
-            {/* PIX QR Code */}
             {metodo === 'pix' && pixQrCode && (
               <div style={{ ...card, marginBottom: '1.5rem', textAlign: 'center' as const }}>
                 <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>PIX gerado</div>
@@ -435,11 +444,10 @@ function CheckoutContent() {
                   style={{ background: 'transparent', color: '#aaa', border: '1px solid #333', borderRadius: 8, padding: '0.6rem 1.5rem', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
                   Copiar código PIX
                 </button>
-                <div style={{ fontSize: 12, color: '#555', marginTop: '1rem' }}>Após o pagamento, seu crédito será liberado automaticamente.</div>
+                <div style={{ fontSize: 12, color: '#555', marginTop: '1rem' }}>Após o pagamento, seus créditos serão liberados automaticamente.</div>
               </div>
             )}
 
-            {/* Método de pagamento */}
             {!pixQrCode && (
               <div style={{ ...card, marginBottom: '1.5rem' }}>
                 <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>Forma de pagamento</div>
@@ -460,7 +468,6 @@ function CheckoutContent() {
                   ))}
                 </div>
 
-                {/* Campos do cartão */}
                 {metodo === 'cartao' && (
                   <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <div>
@@ -488,7 +495,6 @@ function CheckoutContent() {
                   </div>
                 )}
 
-                {/* Parcelas */}
                 {metodo === 'cartao' && maxParcelas > 1 && (
                   <div style={{ marginTop: '1.25rem' }}>
                     <label style={labelStyle}>Parcelamento</label>
@@ -504,7 +510,6 @@ function CheckoutContent() {
                   </div>
                 )}
 
-                {/* Total */}
                 <div style={{ marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid #222', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: 14, color: '#aaa' }}>Total</span>
                   <div style={{ textAlign: 'right' as const }}>
@@ -532,7 +537,6 @@ function CheckoutContent() {
           </>
         )}
 
-        {/* ETAPA: PROCESSANDO */}
         {etapa === 'processando' && (
           <div style={{ ...card, textAlign: 'center' as const, padding: '3rem 2rem' }}>
             <div style={{ width: 48, height: 48, border: `4px solid ${ACCENT}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 1.5rem' }} />
