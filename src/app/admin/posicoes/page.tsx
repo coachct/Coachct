@@ -4,14 +4,11 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
 
-const ACCENT = '#ff2d9b'
-const VERDE  = '#2ddd8b'
-const CINZA  = '#ff6b35'
-
-function IconEsteira({ color }: { color: string }) {
+function IconEsteira({ blocked }: { blocked: boolean }) {
+  const color = blocked ? '#ef4444' : '#9ca3af'
   return (
-    <svg width="22" height="18" viewBox="0 0 26 22">
-      <rect x="1" y="17" width="24" height="3" rx="1.5" fill={color} opacity="0.35"/>
+    <svg width="20" height="17" viewBox="0 0 26 22">
+      <rect x="1" y="17" width="24" height="3" rx="1.5" fill={color} opacity="0.4"/>
       <circle cx="17" cy="4.5" r="2.5" fill={color}/>
       <line x1="17" y1="7" x2="15" y2="12" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
       <line x1="15" y1="12" x2="11" y2="17" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
@@ -22,9 +19,10 @@ function IconEsteira({ color }: { color: string }) {
   )
 }
 
-function IconHaltere({ color }: { color: string }) {
+function IconHaltere({ blocked }: { blocked: boolean }) {
+  const color = blocked ? '#ef4444' : '#9ca3af'
   return (
-    <svg width="24" height="16" viewBox="0 0 28 18">
+    <svg width="22" height="15" viewBox="0 0 28 18">
       <rect x="0" y="6" width="5" height="6" rx="1.5" fill={color}/>
       <rect x="2" y="4" width="2" height="10" rx="1" fill={color}/>
       <rect x="7" y="8" width="14" height="2.5" rx="1.25" fill={color}/>
@@ -39,16 +37,16 @@ export default function AdminPosicoesPage() {
   const router = useRouter()
   const supabase = createClient()
 
-  const [unidades,    setUnidades]    = useState<any[]>([])
-  const [unidadeSel,  setUnidadeSel]  = useState<any>(null)
-  const [posicoes,    setPosicoes]    = useState<any[]>([])
-  const [salvando,    setSalvando]    = useState<string | null>(null)
-  const [loadingPos,  setLoadingPos]  = useState(false)
+  const [unidades,   setUnidades]   = useState<any[]>([])
+  const [unidadeSel, setUnidadeSel] = useState<any>(null)
+  const [posicoes,   setPosicoes]   = useState<any[]>([])
+  const [salvando,   setSalvando]   = useState<string | null>(null)
+  const [loadingPos, setLoadingPos] = useState(false)
 
   useEffect(() => {
     if (loading) return
     if (!perfil) { router.push('/'); return }
-    if ((perfil.role as any) !== 'admin') { router.push('/'); return }
+    if (!['admin','recepcionista'].includes(perfil.role as string)) { router.push('/'); return }
     carregarUnidades()
   }, [loading, perfil])
 
@@ -70,151 +68,131 @@ export default function AdminPosicoesPage() {
   }
 
   async function toggleBloqueio(pos: any) {
-    const label = `${pos.tipo}${String(pos.numero).padStart(2, '0')}`
     setSalvando(pos.id)
     const { error } = await supabase.from('club_posicoes').update({ bloqueado: !pos.bloqueado }).eq('id', pos.id)
-    if (!error) {
-      setPosicoes(prev => prev.map(p => p.id === pos.id ? { ...p, bloqueado: !p.bloqueado } : p))
-    }
+    if (!error) setPosicoes(prev => prev.map(p => p.id === pos.id ? { ...p, bloqueado: !p.bloqueado } : p))
     setSalvando(null)
   }
 
-  const esteiras   = posicoes.filter(p => p.tipo === 'R').sort((a, b) => b.numero - a.numero)
-  const funcional1 = posicoes.filter(p => p.tipo === 'F' && p.numero % 2 === 1).sort((a, b) => b.numero - a.numero)
-  const funcional2 = posicoes.filter(p => p.tipo === 'F' && p.numero % 2 === 0).sort((a, b) => b.numero - a.numero)
-
+  const esteiras  = posicoes.filter(p => p.tipo === 'R').sort((a, b) => b.numero - a.numero)
+  const funcional = posicoes.filter(p => p.tipo === 'F').sort((a, b) => b.numero - a.numero)
   const totalBloqueadas = posicoes.filter(p => p.bloqueado).length
-
-  if (loading) return (
-    <div className="flex items-center justify-center h-screen">
-      <div className="w-8 h-8 border-4 border-pink-500 border-t-transparent rounded-full animate-spin"/>
-    </div>
-  )
 
   function PosCard({ pos }: { pos: any }) {
     const label = `${pos.tipo}${String(pos.numero).padStart(2, '0')}`
     const isR = pos.tipo === 'R'
     const bloqueado = pos.bloqueado
     const carregando = salvando === pos.id
-    const cor = bloqueado ? CINZA : isR ? ACCENT : VERDE
 
     return (
       <button
         onClick={() => toggleBloqueio(pos)}
         disabled={!!carregando}
-        style={{
-          width: 56, height: 68, borderRadius: 10,
-          border: `1.5px solid ${bloqueado ? CINZA + '99' : '#2a2a2a'}`,
-          background: bloqueado ? '#1a0a00' : '#111',
-          cursor: carregando ? 'wait' : 'pointer',
-          display: 'flex', flexDirection: 'column', alignItems: 'center',
-          justifyContent: 'center', gap: 4, transition: 'all .15s',
-          opacity: carregando ? 0.6 : 1,
-          position: 'relative',
-        }}
+        title={bloqueado ? 'Clique para desbloquear' : 'Clique para bloquear'}
+        className={`
+          relative flex flex-col items-center justify-center gap-1 rounded-xl border transition-all
+          ${bloqueado
+            ? 'bg-red-50 border-red-200 hover:bg-red-100'
+            : 'bg-white border-gray-200 hover:border-gray-400 hover:bg-gray-50'}
+          ${carregando ? 'opacity-50 cursor-wait' : 'cursor-pointer'}
+        `}
+        style={{ width: 58, height: 66, padding: '6px 4px' }}
       >
         {bloqueado && (
-          <div style={{ position: 'absolute', top: 4, right: 4, fontSize: 8, color: CINZA, fontWeight: 900 }}>✕</div>
+          <span className="absolute top-1 right-1.5 text-red-400 font-black" style={{ fontSize: 9 }}>✕</span>
         )}
-        {isR ? <IconEsteira color={cor}/> : <IconHaltere color={cor}/>}
-        <span style={{ fontSize: 9, fontFamily: "'DM Mono', monospace", fontWeight: 700, color: bloqueado ? CINZA : '#555', lineHeight: 1 }}>
+        {isR ? <IconEsteira blocked={bloqueado}/> : <IconHaltere blocked={bloqueado}/>}
+        <span className={`font-mono font-bold leading-none ${bloqueado ? 'text-red-400' : 'text-gray-400'}`} style={{ fontSize: 9 }}>
           {label}
         </span>
       </button>
     )
   }
 
-  return (
-    <div className="min-h-screen bg-gray-950 text-white" style={{ fontFamily: "'DM Sans', sans-serif" }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap');`}</style>
+  if (loading) return (
+    <div className="flex items-center justify-center h-screen">
+      <div className="w-8 h-8 border-4 border-primary-400 border-t-transparent rounded-full animate-spin"/>
+    </div>
+  )
 
+  return (
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center gap-3 sticky top-0 z-10">
-        <button onClick={() => router.push('/admin')} className="text-gray-500 hover:text-gray-300 text-lg">‹</button>
-        <div>
-          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, letterSpacing: 1 }}>Mapa de Posições</div>
-          <div className="text-xs text-gray-500 mt-0.5">Bloquear / desbloquear posições do Running</div>
-        </div>
+      <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
+        <div className="text-base font-semibold text-gray-900">Mapa de Posições</div>
+        <div className="text-xs text-gray-400 mt-0.5">Bloquear / desbloquear posições do Running</div>
       </div>
 
-      <div className="max-w-2xl mx-auto px-4 py-6">
+      <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
 
         {/* Seletor de unidade */}
-        <div className="flex gap-3 mb-6">
+        <div className="flex gap-2">
           {unidades.map(u => (
             <button key={u.id} onClick={() => setUnidadeSel(u)}
-              style={{
-                flex: 1, padding: '0.75rem 1rem', borderRadius: 12,
-                border: `1.5px solid ${unidadeSel?.id === u.id ? ACCENT + '88' : '#2a2a2a'}`,
-                background: unidadeSel?.id === u.id ? '#1a0010' : '#111',
-                color: unidadeSel?.id === u.id ? '#fff' : '#666',
-                fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 14, cursor: 'pointer',
-                transition: 'all .15s',
-              }}
-            >
+              className={`flex-1 py-2.5 px-4 rounded-xl text-sm font-semibold border transition-all
+                ${unidadeSel?.id === u.id
+                  ? 'bg-primary-600 text-white border-primary-600'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'}`}>
               {u.nome}
             </button>
           ))}
         </div>
 
-        {/* Status */}
+        {/* Contadores */}
         {posicoes.length > 0 && (
-          <div style={{ display: 'flex', gap: 12, marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-            <div style={{ background: '#111', border: '1px solid #222', borderRadius: 10, padding: '0.6rem 1rem', fontSize: 13 }}>
-              <span style={{ color: '#555' }}>Total: </span>
-              <span style={{ color: '#fff', fontWeight: 600 }}>{posicoes.length} posições</span>
+          <div className="flex gap-2">
+            <div className="card py-2 px-4 flex-1 text-center">
+              <div className="text-xs text-gray-400">Total</div>
+              <div className="text-lg font-bold text-gray-900">{posicoes.length}</div>
             </div>
-            <div style={{ background: totalBloqueadas > 0 ? '#1a0a00' : '#111', border: `1px solid ${totalBloqueadas > 0 ? CINZA + '44' : '#222'}`, borderRadius: 10, padding: '0.6rem 1rem', fontSize: 13 }}>
-              <span style={{ color: '#555' }}>Bloqueadas: </span>
-              <span style={{ color: totalBloqueadas > 0 ? CINZA : '#fff', fontWeight: 600 }}>{totalBloqueadas}</span>
+            <div className={`card py-2 px-4 flex-1 text-center ${totalBloqueadas > 0 ? 'border-red-200 bg-red-50' : ''}`}>
+              <div className="text-xs text-gray-400">Bloqueadas</div>
+              <div className={`text-lg font-bold ${totalBloqueadas > 0 ? 'text-red-500' : 'text-gray-900'}`}>{totalBloqueadas}</div>
             </div>
-            <div style={{ background: '#111', border: '1px solid #222', borderRadius: 10, padding: '0.6rem 1rem', fontSize: 13 }}>
-              <span style={{ color: '#555' }}>Disponíveis: </span>
-              <span style={{ color: VERDE, fontWeight: 600 }}>{posicoes.length - totalBloqueadas}</span>
+            <div className="card py-2 px-4 flex-1 text-center">
+              <div className="text-xs text-gray-400">Disponíveis</div>
+              <div className="text-lg font-bold text-green-600">{posicoes.length - totalBloqueadas}</div>
             </div>
           </div>
         )}
 
+        {/* Mapa */}
         {loadingPos ? (
-          <div style={{ textAlign: 'center', padding: '3rem', color: '#444' }}>Carregando posições...</div>
+          <div className="card text-center py-12 text-gray-400 text-sm">Carregando posições...</div>
         ) : posicoes.length === 0 ? (
-          <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#444', fontSize: 14 }}>
-            Nenhuma posição cadastrada para esta unidade.
-          </div>
+          <div className="card text-center py-12 text-gray-400 text-sm">Nenhuma posição cadastrada para esta unidade.</div>
         ) : (
-          <div style={{ background: '#0d0d0d', border: '1px solid #1e1e1e', borderRadius: 16, padding: '1.5rem' }}>
-
+          <div className="card space-y-5">
             {/* Legenda */}
-            <div style={{ display: 'flex', gap: '1.25rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-              {[
-                { bg: '#111', border: '#2a2a2a', cor: '#555', label: 'Disponível' },
-                { bg: '#1a0a00', border: CINZA + '99', cor: CINZA, label: 'Bloqueada' },
-              ].map(({ bg, border, cor, label }) => (
-                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: cor }}>
-                  <div style={{ width: 14, height: 14, borderRadius: 4, background: bg, border: `1.5px solid ${border}` }}/>
-                  {label}
-                </div>
-              ))}
-              <div style={{ fontSize: 11, color: '#444', marginLeft: 'auto' }}>Clique para bloquear / desbloquear</div>
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                <div className="w-3.5 h-3.5 rounded bg-white border border-gray-300"/>Disponível
+              </div>
+              <div className="flex items-center gap-1.5 text-xs text-red-400">
+                <div className="w-3.5 h-3.5 rounded bg-red-50 border border-red-300"/>Bloqueada
+              </div>
+              <span className="ml-auto text-xs text-gray-400">Clique para bloquear / desbloquear</span>
             </div>
+
+            <hr className="border-gray-100"/>
 
             {/* Esteiras */}
             {esteiras.length > 0 && (
-              <div style={{ marginBottom: '1.5rem' }}>
-                <div style={{ fontSize: 10, color: '#444', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 10, textAlign: 'center' }}>ESTEIRAS</div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
+              <div>
+                <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest text-center mb-3">Esteiras</div>
+                <div className="flex flex-wrap gap-2 justify-center">
                   {esteiras.map(pos => <PosCard key={pos.id} pos={pos}/>)}
                 </div>
               </div>
             )}
 
-            {(funcional1.length > 0 || funcional2.length > 0) && (
+            {funcional.length > 0 && (
               <>
-                <div style={{ height: 1, background: '#1e1e1e', marginBottom: '1.5rem' }}/>
+                <hr className="border-gray-100"/>
                 <div>
-                  <div style={{ fontSize: 10, color: '#444', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 10, textAlign: 'center' }}>FUNCIONAL</div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
-                    {[...funcional1, ...funcional2].sort((a,b) => b.numero - a.numero).map(pos => <PosCard key={pos.id} pos={pos}/>)}
+                  <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest text-center mb-3">Funcional</div>
+                  <div className="flex flex-wrap gap-2 justify-center">
+                    {funcional.map(pos => <PosCard key={pos.id} pos={pos}/>)}
                   </div>
                 </div>
               </>
@@ -222,9 +200,9 @@ export default function AdminPosicoesPage() {
           </div>
         )}
 
-        {/* Info */}
-        <div style={{ marginTop: '1.25rem', background: '#0d0d0d', border: '1px solid #1e1e1e', borderRadius: 12, padding: '0.85rem 1rem', fontSize: 12, color: '#555', lineHeight: 1.7 }}>
-          ⚠️ Posições bloqueadas aparecem como <strong style={{ color: CINZA }}>indisponíveis</strong> no mapa de reserva dos clientes. O bloqueio é permanente até você desbloquear manualmente.
+        {/* Aviso */}
+        <div className="card border-amber-200 bg-amber-50 text-xs text-amber-700 leading-relaxed">
+          ⚠️ Posições bloqueadas ficam indisponíveis para reserva imediatamente. O bloqueio é permanente até você desbloquear manualmente.
         </div>
       </div>
     </div>
