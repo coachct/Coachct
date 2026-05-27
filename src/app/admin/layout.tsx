@@ -15,6 +15,7 @@ const nav = [
   { label: '─ JustClub',             href: '/admin/justclub' },
   { label: 'Calendário Club',         href: '/admin/justclub/calendario' },
   { label: 'Mapa de Posições',        href: '/admin/posicoes' },
+  { label: 'Importar Clientes',       href: '/admin/importar' },
   { label: 'Analytics de Coaches',   href: '/admin/analytics' },
   { label: 'Custo × Retorno',        href: '/admin/relatorios/custo' },
   { label: 'Pagamentos',             href: '/admin/relatorios/pagamentos' },
