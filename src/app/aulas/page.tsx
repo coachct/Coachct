@@ -137,7 +137,6 @@ function AulasPageInner() {
   const anoProximo   = agora.getMonth() === 11 ? agora.getFullYear() + 1 : agora.getFullYear()
   const nomeMesProximo = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'][mesProximo - 1]
 
-  // ── Idêntico ao CT: precisa de cartão se tem plano parceiro e não tem cartão cadastrado ──
   const temPlanoParceiroAtivo = Object.entries(saldo).some(([, v]: any) => v?.disponivel > 0) ||
     Object.entries(saldoProximo).some(([, v]: any) => v?.disponivel > 0)
   const precisaCartao = !!cliente && temPlanoParceiroAtivo && !cliente?.pagarme_card_id
@@ -218,7 +217,6 @@ function AulasPageInner() {
     setPosicoesTomadas((tomadas||[]).map((t: any) => t.posicao).filter(Boolean))
   }
 
-  // ── Idêntico ao CT: checa cartão ANTES de abrir qualquer modal de reserva ──
   function tentarReservar(oc: any) {
     if (!user) { router.push(`/login?redirect=${encodeURIComponent("/aulas?unidade="+unidadeId)}`); return }
     if (cliente?.bloqueado) return
@@ -350,7 +348,7 @@ function AulasPageInner() {
           </div>
         )}
 
-        {/* Banner cartão necessário — IDÊNTICO AO CT */}
+        {/* Banner cartão necessário */}
         {user && cliente && !cliente.bloqueado && precisaCartao && (
           <div style={{ background:'#1a1000', border:`1.5px solid ${AMARELO}55`, borderRadius:16, padding:'1.25rem 1.5rem', marginBottom:'1.5rem', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'1rem', flexWrap:'wrap' }}>
             <div>
@@ -432,11 +430,17 @@ function AulasPageInner() {
                   <div style={{ display:'flex', alignItems:'flex-start', gap:'1rem' }}>
                     <div style={{ fontFamily:"'DM Mono', monospace", fontSize:22, fontWeight:500, color:'#fff', width:56, flexShrink:0, lineHeight:1 }}>{(aula?.horario||'').slice(0,5)}</div>
                     <div style={{ flex:1, minWidth:0 }}>
+                      {/* Badges: tipo + só mulheres */}
                       <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:6 }}>
                         <span style={{ background:cores.badge, color:cores.text, fontSize:11, fontWeight:700, padding:'2px 10px', borderRadius:20, letterSpacing:0.5 }}>{tipoLabel(aula?.tipo)}</span>
                         {aula?.so_mulheres && <span style={{ background:'#ff2d9b18', color:ACCENT, fontSize:10, fontWeight:600, padding:'2px 8px', borderRadius:20 }}>👩 Só mulheres</span>}
+                        {/* ✅ Grupo muscular como badge */}
+                        {aula?.grupos_musculares?.nome && (
+                          <span style={{ background:'#ffffff0d', color:'#888', fontSize:10, fontWeight:600, padding:'2px 8px', borderRadius:20, border:'1px solid #2a2a2a' }}>
+                            💪 {aula.grupos_musculares.nome}
+                          </span>
+                        )}
                       </div>
-                      <div style={{ fontSize:14, color:'#ddd', fontWeight:600, marginBottom:3 }}>{aula?.grupos_musculares?.nome||'—'}</div>
                       <div style={{ fontSize:12, color:'#555' }}>👤 {aula?.coaches?.nome?.split(' ')[0]||'—'} · {aula?.duracao_min||50}min</div>
                     </div>
                     <div style={{ flexShrink:0, textAlign:'right', minWidth:110 }}>
@@ -489,7 +493,7 @@ function AulasPageInner() {
         )}
       </div>
 
-      {/* ══ MODAL SEM CARTÃO — IDÊNTICO AO CT ══ */}
+      {/* ══ MODAL SEM CARTÃO ══ */}
       {modalSemCartao && (
         <div style={{ position:'fixed', inset:0, background:'#000000cc', zIndex:100, display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}>
           <div style={{ background:'#111', border:`1.5px solid ${AMARELO}55`, borderRadius:20, width:'100%', maxWidth:420, padding:'1.5rem' }}>
@@ -556,7 +560,6 @@ function AulasPageInner() {
                 })}
               </div>
 
-              {/* Mapa de posições — Running */}
               {modalReserva.club_aulas?.tipo === 'running_funcional' && (
                 <div style={{ marginBottom:'1.5rem' }}>
                   <div style={{ fontSize:11, color:'#555', textTransform:'uppercase', letterSpacing:1, marginBottom:14 }}>Escolha sua posição</div>
