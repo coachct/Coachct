@@ -69,8 +69,25 @@ export default function AdminPosicoesPage() {
 
   async function toggleBloqueio(pos: any) {
     setSalvando(pos.id)
-    const { error } = await supabase.from('club_posicoes').update({ bloqueado: !pos.bloqueado }).eq('id', pos.id)
-    if (!error) setPosicoes(prev => prev.map(p => p.id === pos.id ? { ...p, bloqueado: !p.bloqueado } : p))
+    const novoEstado = !pos.bloqueado
+    const { error } = await supabase.from('club_posicoes').update({ bloqueado: novoEstado }).eq('id', pos.id)
+    if (!error) {
+      setPosicoes(prev => prev.map(p => p.id === pos.id ? { ...p, bloqueado: novoEstado } : p))
+      // Se desbloqueou, processa fila das ocorrências futuras desta unidade
+      if (!novoEstado) {
+        const hoje = new Date().toISOString().split('T')[0]
+        const { data: ocs } = await supabase
+          .from('club_ocorrencias')
+          .select('id, club_aulas!inner(unidade_id, tipo)')
+          .eq('club_aulas.unidade_id', pos.unidade_id)
+          .eq('club_aulas.tipo', 'running_funcional')
+          .gte('data', hoje)
+          .eq('status', 'ativa')
+        for (const oc of (ocs || [])) {
+          await supabase.rpc('processar_fila_espera_club', { p_ocorrencia_id: oc.id })
+        }
+      }
+    }
     setSalvando(null)
   }
 
