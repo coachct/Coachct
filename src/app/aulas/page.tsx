@@ -112,6 +112,7 @@ function AulasPageInner() {
   const [erroModal,      setErroModal]      = useState('')
   const [filaAceite,     setFilaAceite]     = useState(false)
   const [modalGenero,    setModalGenero]    = useState(false)
+  const [filaConfirmada, setFilaConfirmada] = useState<{ posicao: number; oc: any } | null>(null)
 
   const diasSemana = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(); d.setDate(d.getDate() + semanaOffset * 7 + i); return d
@@ -283,7 +284,10 @@ function AulasPageInner() {
       status: 'aguardando', data: dataSelStr, horario: modalFila.club_aulas?.horario, unidade_id: unidadeId,
     })
     if (error) { setErroModal('Erro ao entrar na fila: '+error.message); setEntrandoFila(false); return }
-    setEntrandoFila(false); setModalFila(null)
+    const { count } = await supabase.from('fila_espera').select('*', { count: 'exact', head: true }).eq('ocorrencia_id', modalFila.id).eq('status', 'aguardando')
+    setEntrandoFila(false)
+    setFilaConfirmada({ posicao: count || 1, oc: modalFila })
+    setModalFila(null)
     await carregarOcorrencias(dataSelStr)
   }
 
@@ -651,6 +655,31 @@ function AulasPageInner() {
                 {entrandoFila?'Entrando...':'Entrar na fila ⏳'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {filaConfirmada && (
+        <div style={{ position:'fixed', inset:0, background:'#000000dd', zIndex:100, display:'flex', alignItems:'center', justifyContent:'center', padding:'1.5rem' }}>
+          <div style={{ background:'#111', border:`2px solid ${AMARELO}55`, borderRadius:20, width:'100%', maxWidth:420, padding:'2rem', textAlign:'center' }}>
+            <div style={{ fontSize:52, marginBottom:'0.75rem' }}>⏳</div>
+            <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:26, color:AMARELO, letterSpacing:1, marginBottom:6 }}>VOCÊ ESTÁ NA FILA!</div>
+            <div style={{ fontSize:13, color:'#666', marginBottom:'1.5rem' }}>{tipoLabel(filaConfirmada.oc?.club_aulas?.tipo)} · {(filaConfirmada.oc?.club_aulas?.horario||'').slice(0,5)} · {unidade?.nome}</div>
+            <div style={{ background:'#1a1200', border:`1px solid ${AMARELO}33`, borderRadius:14, padding:'1.25rem', marginBottom:'1.5rem' }}>
+              <div style={{ fontSize:13, color:'#888', marginBottom:8 }}>Sua posição na fila</div>
+              <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:52, color:AMARELO, lineHeight:1 }}>#{filaConfirmada.posicao}</div>
+            </div>
+            <div style={{ background:'#0d0d0d', border:'1px solid #222', borderRadius:12, padding:'1rem', marginBottom:'1.5rem', fontSize:13, color:'#666', lineHeight:1.7, textAlign:'left' }}>
+              <div style={{ color:'#aaa', fontWeight:600, marginBottom:6 }}>Lembre-se:</div>
+              <ul style={{ paddingLeft:'1.1rem', display:'flex', flexDirection:'column', gap:4 }}>
+                <li>Se houver cancelamento, você será <strong style={{ color:'#fff' }}>reservado automaticamente</strong></li>
+                <li>Vagas podem abrir até <strong style={{ color:'#fff' }}>3h antes</strong> do início</li>
+                <li>Fique atento ao seu email e ao <strong style={{ color:'#fff' }}>Minha Conta</strong></li>
+              </ul>
+            </div>
+            <button onClick={() => setFilaConfirmada(null)} style={{ width:'100%', background:AMARELO, color:'#000', border:'none', borderRadius:12, padding:'0.9rem', fontWeight:700, fontSize:15, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
+              Entendido ✓
+            </button>
           </div>
         </div>
       )}
