@@ -88,12 +88,14 @@ function MapaPageInner() {
         .eq('id', ocId).maybeSingle(),
       supabase.from('club_posicoes').select('*')
         .eq('unidade_id', unidadeId).eq('ativo', true).order('tipo').order('numero'),
-      // Usa RPC para contornar RLS — retorna só posicoes tomadas sem dados pessoais
       supabase.rpc('posicoes_tomadas', { p_ocorrencia_id: ocId }),
     ])
     setOcorrencia(oc)
     setPosicoes(pos || [])
-    setPosicoesTomadas((tomadas || []).map((t: any) => t.posicao).filter(Boolean))
+    // ✅ Inclui posições bloqueadas como indisponíveis
+    const reservadas = (tomadas || []).map((t: any) => t.posicao).filter(Boolean)
+    const bloqueadas = (pos || []).filter((p: any) => p.bloqueado).map((p: any) => `${p.tipo}${String(p.numero).padStart(2,'0')}`)
+    setPosicoesTomadas([...reservadas, ...bloqueadas])
     setLoading(false)
   }
 
@@ -136,7 +138,7 @@ function MapaPageInner() {
   const posF_par = posicoes.filter((p:any) => p.tipo==='F' && p.numero%2===0).sort((a:any,b:any) => b.numero-a.numero)
 
   function corBtn(label: string) {
-    const tomado     = posicoesTomadas.includes(label)
+    const tomado      = posicoesTomadas.includes(label)
     const selecionado = posicaoSel === label
     if (tomado)      return { borderColor:'#111', bg:'#0a0a0a', iconColor:'#1a1a1a', labelColor:'#1a1a1a' }
     if (selecionado) return { borderColor:'#333', bg:'#1a1a1a', iconColor:'#333', labelColor:'#444' }
@@ -264,7 +266,6 @@ function MapaPageInner() {
       {modalAberto && posicaoSel && (
         <div style={{ position:'fixed', inset:0, background:'#000000dd', zIndex:100, display:'flex', alignItems:'flex-end', justifyContent:'center', padding:'1rem' }}>
           <div style={{ background:'#111', border:'1px solid #2a2a2a', borderRadius:'20px 20px 16px 16px', width:'100%', maxWidth:480, padding:'1.5rem' }}>
-
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1.25rem' }}>
               <div>
                 <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:20, color:'#fff', letterSpacing:1 }}>CONFIRMAR RESERVA</div>
