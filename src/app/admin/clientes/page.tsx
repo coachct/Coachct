@@ -24,6 +24,7 @@ const statusConfig: Record<string, { label: string; color: string }> = {
   realizado:  { label: 'Realizado',  color: 'bg-gray-100 text-gray-600' },
   cancelado:  { label: 'Cancelado',  color: 'bg-red-100 text-red-600' },
   falta:      { label: 'Falta',      color: 'bg-orange-100 text-orange-700' },
+  reservado:  { label: 'Reservado',  color: 'bg-blue-100 text-blue-700' },
 }
 
 const FORMAS_PAGAMENTO = [
@@ -141,6 +142,7 @@ export default function AdminClientesPage() {
   const [salvando, setSalvando] = useState(false)
 
   const [historico, setHistorico] = useState<any[]>([])
+  const [clubReservas, setClubReservas] = useState<any[]>([])
   const [saldoMes, setSaldoMes] = useState<Record<string, any>>({})
   const [vendas, setVendas] = useState<any[]>([])
   const [planosCliente, setPlanosCliente] = useState<any[]>([])
@@ -238,10 +240,10 @@ export default function AdminClientesPage() {
 
   async function abrirCliente(cliente: any) {
     setClienteSel(cliente); setForm({ ...cliente }); setEditando(false); setAba('dados')
-    setHistorico([]); setVendas([]); setModalSlot(null); setTipoCredito('')
+    setHistorico([]); setClubReservas([]); setVendas([]); setModalSlot(null); setTipoCredito('')
     setErroCriarAcesso(''); setFotoUrl(null); setStatusSync('idle'); setErroSync('')
     await Promise.all([
-      carregarSaldo(cliente.id), carregarHistorico(cliente.id),
+      carregarSaldo(cliente.id), carregarHistorico(cliente.id), carregarClubReservas(cliente.id),
       carregarVendas(cliente.id), carregarPlanosCliente(cliente.id), carregarFotoUrl(cliente),
     ])
   }
@@ -267,6 +269,16 @@ export default function AdminClientesPage() {
     const { data } = await supabase.from('agendamentos').select('*, unidades(nome)')
       .eq('cliente_id', clienteId).order('data', { ascending: false }).limit(50)
     setHistorico(data || [])
+  }
+
+  async function carregarClubReservas(clienteId: string) {
+    const { data } = await supabase.from('club_reservas')
+      .select('*, club_ocorrencias(id, data, club_aulas(tipo, horario, unidade_id, unidades(nome)))')
+      .eq('cliente_id', clienteId)
+      .neq('status', 'cancelado')
+      .order('criado_em', { ascending: false })
+      .limit(50)
+    setClubReservas(data || [])
   }
 
   async function carregarVendas(clienteId: string) {
@@ -595,6 +607,17 @@ export default function AdminClientesPage() {
     await Promise.all([carregarSaldo(clienteSel.id), carregarHistorico(clienteSel.id)])
   }
 
+  async function cancelarReservaClub(crId: string) {
+    if (!confirm('Cancelar esta reserva? O crédito será devolvido ao cliente.')) return
+    setCancelandoId(crId)
+    const { error } = await supabase.from('club_reservas').update({
+      status: 'cancelado', cancelado_em: new Date().toISOString(),
+    }).eq('id', crId)
+    setCancelandoId(null)
+    if (error) { alert('Erro ao cancelar: ' + error.message); return }
+    await Promise.all([carregarSaldo(clienteSel.id), carregarClubReservas(clienteSel.id)])
+  }
+
   function planosDisponiveisParaAtivar() {
     if (!unidadeAtiva) return []
     const planosAtivos = planosCliente.filter(p => p.ativo).map(p => p.planos_disponiveis?.id).filter(Boolean)
@@ -670,11 +693,18 @@ export default function AdminClientesPage() {
   const agendamentosFuturos = historico.filter(a => a.data >= hoje && ['agendado','confirmado'].includes(a.status)).sort((a, b) => a.data.localeCompare(b.data))
   const agendamentosPassados = historico.filter(a => a.data < hoje || ['realizado','falta','cancelado'].includes(a.status)).sort((a, b) => b.data.localeCompare(a.data))
 
+  const clubReservasFuturas = clubReservas.filter(cr => {
+    const data = cr.club_ocorrencias?.data
+    return data && data >= hoje && ['reservado','confirmado'].includes(cr.status)
+  }).sort((a, b) => (a.club_ocorrencias?.data || '').localeCompare(b.club_ocorrencias?.data || ''))
+
+  const totalFuturos = agendamentosFuturos.length + clubReservasFuturas.length
+
   const abas = [
     { key: 'dados', label: 'Dados' },
     { key: 'planos', label: 'Planos' },
     { key: 'vendas', label: `Vendas${vendas.length > 0 ? ` (${vendas.length})` : ''}` },
-    { key: 'agendamentos', label: `Agenda${agendamentosFuturos.length > 0 ? ` (${agendamentosFuturos.length})` : ''}` },
+    { key: 'agendamentos', label: `Agenda${totalFuturos > 0 ? ` (${totalFuturos})` : ''}` },
     { key: 'historico', label: 'Histórico' },
     { key: 'agendar', label: '+ Agendar' },
   ]
@@ -1164,9 +1194,9 @@ export default function AdminClientesPage() {
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <div className="text-sm font-semibold text-gray-900">Próximos agendamentos</div>
-                  <button onClick={() => setAba('agendar')} className="btn btn-sm gap-1 bg-primary-600 text-white"><Plus size={12} /> Agendar</button>
+                  <button onClick={() => setAba('agendar')} className="btn btn-sm gap-1 bg-primary-600 text-white"><Plus size={12} /> Agendar CT</button>
                 </div>
-                {agendamentosFuturos.length === 0 ? (
+                {totalFuturos === 0 ? (
                   <div className="card text-center py-12 text-gray-400 text-sm">Nenhum agendamento futuro.</div>
                 ) : (
                   <div className="space-y-2">
@@ -1179,6 +1209,7 @@ export default function AdminClientesPage() {
                           </div>
                           <div className="flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-primary-100 text-primary-700 font-medium">Coach CT</span>
                               <span className="text-sm font-semibold text-gray-900 capitalize">{new Date(ag.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long' })}</span>
                               <span className="font-mono text-xs text-gray-500">{(ag.horario || '').slice(0,5)}</span>
                               <span className={`text-xs px-2 py-0.5 rounded-full ${statusConfig[ag.status]?.color}`}>{statusConfig[ag.status]?.label}</span>
@@ -1192,6 +1223,34 @@ export default function AdminClientesPage() {
                         </div>
                       </div>
                     ))}
+                    {clubReservasFuturas.map(cr => {
+                      const oc = cr.club_ocorrencias
+                      const aula = oc?.club_aulas
+                      const data = oc?.data || ''
+                      return (
+                        <div key={cr.id} className="card border-l-4 border-l-purple-400">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-purple-50 flex flex-col items-center justify-center flex-shrink-0">
+                              <div className="text-sm font-bold text-purple-700 leading-none">{data ? new Date(data + 'T12:00:00').getDate() : '—'}</div>
+                              <div className="text-xs text-purple-500 uppercase">{data ? new Date(data + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' }) : ''}</div>
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">Club</span>
+                                <span className="text-sm font-semibold text-gray-900 capitalize">{data ? new Date(data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long' }) : '—'}</span>
+                                <span className="font-mono text-xs text-gray-500">{(aula?.horario || '').slice(0,5)}</span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${statusConfig[cr.status]?.color || 'bg-gray-100 text-gray-600'}`}>{statusConfig[cr.status]?.label || cr.status}</span>
+                                {aula?.unidades?.nome && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{aula.unidades.nome}</span>}
+                              </div>
+                              <div className="text-xs text-gray-400 mt-0.5">{aula?.tipo} · {cr.tipo_credito}</div>
+                            </div>
+                            <button onClick={() => cancelarReservaClub(cr.id)} disabled={cancelandoId === cr.id} className="btn btn-sm gap-1 text-red-500 hover:bg-red-50 flex-shrink-0">
+                              <X size={12} /> {cancelandoId === cr.id ? 'Cancelando...' : 'Cancelar'}
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
               </div>
