@@ -257,7 +257,12 @@ function AulasPageInner() {
     const payload: any = { ocorrencia_id: modalReserva.id, cliente_id: cliente.id, tipo_credito: tipoCredito, status: 'reservado' }
     if (posicaoSel) payload.posicao = posicaoSel
     const { error } = await supabase.from('club_reservas').insert(payload)
-    if (error) { setErroModal('Erro ao reservar: '+error.message); setConfirmando(false); return }
+    if (error) {
+      const msg = error.message?.includes('já tem uma reserva')
+        ? 'Você já tem uma reserva nesta unidade neste dia com este plano. Cada plano permite apenas uma reserva por dia por unidade.'
+        : 'Erro ao reservar: ' + error.message
+      setErroModal(msg); setConfirmando(false); return
+    }
     setConfirmando(false); setModalReserva(null)
     router.push('/minha-conta')
   }
