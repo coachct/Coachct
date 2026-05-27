@@ -14,8 +14,8 @@ export default function ComprarPage() {
   const supabase = createClient()
   const { perfil } = useAuth()
 
-  const [produtos, setProdutos]             = useState<any[]>([])
-  const [loading, setLoading]               = useState(true)
+  const [produtos, setProdutos]               = useState<any[]>([])
+  const [loading, setLoading]                 = useState(true)
   const [coachCtProAtivo, setCoachCtProAtivo] = useState<any | null>(null)
 
   useEffect(() => { carregarProdutos() }, [])
@@ -68,26 +68,29 @@ export default function ComprarPage() {
     return `${dia}/${mes}/${ano}`
   }
 
-  // ── Coach CT Pro
   const isPromo      = (p: any) => p.subtipo === 'coach_ct_pro' && /promo/i.test(p.nome || '')
   const isTrimestral = (p: any) => p.subtipo === 'coach_ct_pro' && /trimestral/i.test(p.nome || '')
   const beneficiosPro = (p: any) => {
     const trim = isTrimestral(p)
-    return ['3 treinos / semana', `${trim ? 36 : 72} sessões em ${trim ? 3 : 6} meses`, 'Escolha do coach no agendamento', 'Calendário preferencial · 14 dias', 'Cancelamento até 3h antes', 'Open Gym (acesso ao CT)']
+    return [
+      '3 treinos / semana',
+      `${trim ? 36 : 72} sessões em ${trim ? 3 : 6} meses`,
+      'Escolha do coach no agendamento',
+      'Calendário preferencial · 14 dias',
+      'Cancelamento até 3h antes',
+      'Open Gym (acesso ao CT)',
+    ]
   }
 
-  // ── Separação
-  const produtosCoachPro  = produtos.filter(p => p.subtipo === 'coach_ct_pro')
-  const produtosAcessoCT  = produtos.filter(p => p.subtipo === 'acesso')
-  const produtosIlimitado = produtos.filter(p => p.subtipo === 'ilimitado_club')
-  // Pacotes & avulsos juntos — ordenar: coach avulso, treino avulso, pacotes crescente
+  const produtosCoachPro       = produtos.filter(p => p.subtipo === 'coach_ct_pro')
+  const produtosAcessoCT       = produtos.filter(p => p.subtipo === 'acesso')
+  const produtosIlimitado      = produtos.filter(p => p.subtipo === 'ilimitado_club')
   const produtosPacotesAvulsos = [
     ...produtos.filter(p => p.subtipo === 'credito' && p.tipo === 'credito_coach'),
     ...produtos.filter(p => p.subtipo === 'credito' && p.tipo === 'credito_treino'),
     ...produtos.filter(p => p.subtipo === 'pacote').sort((a, b) => Number(a.valor) - Number(b.valor)),
   ]
 
-  // ── Estilos reutilizáveis
   const card = { background: '#111', border: '1px solid #222', borderRadius: 16, padding: '2rem' }
 
   return (
@@ -96,15 +99,26 @@ export default function ComprarPage() {
         @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
         @keyframes spin { to { transform: rotate(360deg) } }
-        .card-h    { transition: all .25s; }
+        .card-h   { transition: all .25s; }
         .card-h:hover { border-color: ${ACCENT} !important; transform: translateY(-4px); }
-        .card-pro  { transition: all .3s; }
+        .card-pro { transition: all .3s; }
         .card-pro:hover { transform: translateY(-6px); box-shadow: 0 12px 32px -8px ${ACCENT}33; }
         .card-club { transition: all .3s; }
         .card-club:hover { transform: translateY(-6px); box-shadow: 0 12px 32px -8px ${VERDE}33; border-color: ${VERDE} !important; }
         .btn-h:hover { opacity: 0.85; }
         .btn-ghost:hover { background: ${ACCENT} !important; color: #fff !important; }
-        @media (max-width: 768px) { .grid-3 { grid-template-columns: 1fr !important; } }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; }
+        .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; }
+        .grid-acesso { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+        @media (max-width: 900px) {
+          .grid-3     { grid-template-columns: repeat(2, 1fr) !important; }
+          .grid-acesso { grid-template-columns: repeat(2, 1fr) !important; }
+          .grid-2     { grid-template-columns: 1fr !important; }
+        }
+        @media (max-width: 600px) {
+          .grid-3     { grid-template-columns: 1fr !important; }
+          .grid-acesso { grid-template-columns: 1fr !important; }
+        }
       `}</style>
 
       <SiteHeader />
@@ -114,7 +128,7 @@ export default function ComprarPage() {
         <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 3, color: ACCENT, fontFamily: "'DM Mono', monospace", marginBottom: '1rem' }}>// comprar online</div>
         <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(48px,6vw,72px)', color: '#fff', lineHeight: 1.05, marginBottom: '1rem', letterSpacing: 2 }}>PLANOS & PACOTES</div>
         <div style={{ color: '#999', fontSize: 16, maxWidth: 580, lineHeight: 1.7, margin: '0 auto' }}>
-          Coach CT personal training, acesso ao CT, plano ilimitado JustClub ou pacotes de créditos. Pagamento via PIX ou cartão de crédito.
+          Coach CT personal training, acesso aos studios, plano ilimitado JustClub ou pacotes de créditos. Pagamento via PIX ou cartão de crédito.
         </div>
       </div>
 
@@ -125,9 +139,7 @@ export default function ComprarPage() {
           </div>
         ) : (
           <>
-            {/* ══════════════════════════════
-                1. COACH CT PRO
-            ══════════════════════════════ */}
+            {/* ══ 1. COACH CT PRO ══ */}
             {produtosCoachPro.length > 0 && (
               <div style={{ marginBottom: '5rem' }}>
                 <div style={{ marginBottom: '1.5rem' }}>
@@ -147,7 +159,7 @@ export default function ComprarPage() {
                   </div>
                 )}
 
-                <div className="grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+                <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
                   {produtosCoachPro.map(p => {
                     const promo  = isPromo(p)
                     const trim   = isTrimestral(p)
@@ -186,41 +198,47 @@ export default function ComprarPage() {
               </div>
             )}
 
-            {/* ══════════════════════════════
-                2. PLANOS DE ACESSO (CT + Club juntos)
-            ══════════════════════════════ */}
+            {/* ══ 2. ACESSO AOS STUDIOS (CT + Club) ══ */}
             {(produtosAcessoCT.length > 0 || produtosIlimitado.length > 0) && (
               <div style={{ marginBottom: '5rem' }}>
                 <div style={{ marginBottom: '1.5rem' }}>
                   <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 2, color: '#888', marginBottom: '0.5rem', fontFamily: "'DM Mono', monospace" }}>// planos de acesso</div>
-                  <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: '#fff', letterSpacing: 1.5 }}>ACESSO AO ESPAÇO</div>
+                  <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: '#fff', letterSpacing: 1.5 }}>ACESSO AOS STUDIOS</div>
                 </div>
 
-                <div className="grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
+                <div className="grid-acesso">
 
-                  {/* Cards CT (Semestral + Anual) */}
+                  {/* Cards CT */}
                   {produtosAcessoCT.map(p => {
-                    const isAnual = /anual/i.test(p.nome)
+                    const isAnual     = /anual/i.test(p.nome)
                     const isSemestral = /semestral/i.test(p.nome)
-                    const meses = isAnual ? 12 : isSemestral ? 6 : 1
-                    const total = Number(p.valor)
+                    const meses  = isAnual ? 12 : isSemestral ? 6 : 1
+                    const total  = Number(p.valor)
                     const mensal = total / meses
                     const vM = fmt(mensal), vT = fmt(total)
                     const destaque = isSemestral
                     return (
                       <div key={p.id} className="card-h" style={{ ...card, border: `1px solid ${destaque ? ACCENT : '#222'}`, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                         {destaque && <div style={{ position: 'absolute', top: 12, right: -20, background: ACCENT, color: '#fff', fontSize: 10, fontWeight: 700, padding: '0.25rem 2.75rem', transform: 'rotate(15deg)', letterSpacing: 1 }}>MAIS POPULAR</div>}
-                        {isAnual  && <div style={{ position: 'absolute', top: 12, right: -20, background: '#444', color: '#fff', fontSize: 10, fontWeight: 700, padding: '0.25rem 2.75rem', transform: 'rotate(15deg)', letterSpacing: 1 }}>MELHOR PREÇO</div>}
+                        {isAnual   && <div style={{ position: 'absolute', top: 12, right: -20, background: '#444', color: '#fff', fontSize: 10, fontWeight: 700, padding: '0.25rem 2.75rem', transform: 'rotate(15deg)', letterSpacing: 1 }}>MELHOR PREÇO</div>}
+
                         <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 2, color: '#555', marginBottom: '0.4rem', fontFamily: "'DM Mono', monospace" }}>just ct</div>
-                        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: '#fff', marginBottom: '1rem' }}>{p.nome.replace('Just CT', '').replace('Just Ct', '').trim()}</div>
+                        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', marginBottom: '1rem' }}>
+                          {p.nome.toUpperCase().replace('JUST CT', '').replace('JUST_CT', '').trim()}
+                        </div>
+
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', marginBottom: 4 }}>
-                          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 46, color: '#fff', lineHeight: 1 }}>{vM.reais}<span style={{ fontSize: 22 }}>{vM.cents}</span></div>
+                          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 44, color: '#fff', lineHeight: 1 }}>{vM.reais}<span style={{ fontSize: 22 }}>{vM.cents}</span></div>
                           <div style={{ fontSize: 13, color: '#999' }}>/mês</div>
                         </div>
-                        <div style={{ fontSize: 12, color: '#555', marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>{vT.reais}{vT.cents} total · {meses}x</div>
+                        <div style={{ fontSize: 12, color: '#555', marginBottom: '0.75rem', fontFamily: "'DM Mono', monospace" }}>{vT.reais}{vT.cents} total · {meses}x</div>
+
+                        <div style={{ fontSize: 12, color: '#666', fontWeight: 600, marginBottom: '1rem' }}>📍 Just CT — São Paulo, SP</div>
+
                         <div style={{ fontSize: 13, color: '#777', lineHeight: 1.6, flex: 1, marginBottom: '1.5rem' }}>
                           Acesso ilimitado ao espaço de musculação Just CT por {p.dias_validade} dias. Válido somente para o titular.
                         </div>
+
                         <button onClick={() => irParaCheckout(p.id)}
                           className={destaque ? 'btn-h' : 'btn-ghost'}
                           style={destaque
@@ -239,20 +257,28 @@ export default function ComprarPage() {
                     const mensal = total / 6
                     const vM = fmt(mensal), vT = fmt(total)
                     return (
-                      <div key={p.id} className="card-club" style={{ background: '#0c140f', border: `1.5px solid ${VERDE}44`, borderRadius: 16, padding: '2rem', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
-                        <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 2, color: VERDE, marginBottom: '0.4rem', fontFamily: "'DM Mono', monospace" }}>justclub</div>
-                        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: '#fff', marginBottom: '1rem' }}>ILIMITADO SEMESTRAL</div>
+                      <div key={p.id} className="card-club" style={{ background: '#0c140f', border: `1.5px solid ${VERDE}44`, borderRadius: 16, padding: '2rem', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 2, color: VERDE, marginBottom: '0.4rem', fontFamily: "'DM Mono', monospace" }}>justclub · ilimitado</div>
+                        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', marginBottom: '1rem' }}>SEMESTRAL</div>
+
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', marginBottom: 4 }}>
-                          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 46, color: '#fff', lineHeight: 1 }}>{vM.reais}<span style={{ fontSize: 22 }}>{vM.cents}</span></div>
+                          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 44, color: '#fff', lineHeight: 1 }}>{vM.reais}<span style={{ fontSize: 22 }}>{vM.cents}</span></div>
                           <div style={{ fontSize: 13, color: '#999' }}>/mês</div>
                         </div>
-                        <div style={{ fontSize: 12, color: '#555', marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>{vT.reais}{vT.cents} total · {p.max_parcelas || 6}x</div>
-                        <div style={{ fontSize: 13, color: '#777', lineHeight: 1.7, flex: 1, marginBottom: '0.75rem' }}>
+                        <div style={{ fontSize: 12, color: '#555', marginBottom: '0.75rem', fontFamily: "'DM Mono', monospace" }}>{vT.reais}{vT.cents} total · {p.max_parcelas || 6}x</div>
+
+                        {/* Unidades em destaque */}
+                        <div style={{ background: `${VERDE}15`, border: `1px solid ${VERDE}44`, borderRadius: 8, padding: '0.6rem 0.85rem', marginBottom: '1rem' }}>
+                          <div style={{ fontSize: 11, color: VERDE, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 }}>📍 Studios incluídos</div>
+                          <div style={{ fontSize: 13, color: '#e0ffe8', fontWeight: 600, lineHeight: 1.6 }}>
+                            JustClub Pinheiros<br />JustClub Vila Olímpia
+                          </div>
+                        </div>
+
+                        <div style={{ fontSize: 13, color: '#777', lineHeight: 1.6, flex: 1, marginBottom: '1.5rem' }}>
                           30 treinos por mês · renovação mensal na data da compra · créditos não utilizados não acumulam.
                         </div>
-                        <div style={{ fontSize: 12, color: VERDE + 'cc', marginBottom: '1.5rem', fontWeight: 600 }}>
-                          📍 JustClub Pinheiros + JustClub Vila Olímpia
-                        </div>
+
                         <button onClick={() => irParaCheckout(p.id)} className="btn-h"
                           style={{ background: VERDE, color: '#000', border: 'none', borderRadius: 8, padding: '0.8rem', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", width: '100%' }}>
                           Comprar agora →
@@ -265,9 +291,7 @@ export default function ComprarPage() {
               </div>
             )}
 
-            {/* ══════════════════════════════
-                3. PACOTES & AVULSOS
-            ══════════════════════════════ */}
+            {/* ══ 3. PACOTES & AVULSOS ══ */}
             {produtosPacotesAvulsos.length > 0 && (
               <div style={{ marginBottom: '3rem' }}>
                 <div style={{ marginBottom: '1.5rem' }}>
@@ -275,7 +299,8 @@ export default function ComprarPage() {
                   <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: '#fff', letterSpacing: 1.5 }}>PACOTES & AVULSOS</div>
                 </div>
 
-                <div className="grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem' }}>
+                {/* Grid fixo 3 colunas */}
+                <div className="grid-3">
                   {produtosPacotesAvulsos.map(p => {
                     const ehCoach  = p.tipo === 'credito_coach'
                     const ehPacote = p.subtipo === 'pacote'
@@ -285,22 +310,18 @@ export default function ComprarPage() {
                     const vPC = fmt(porCred), vT = fmt(total)
 
                     return (
-                      <div key={p.id} className="card-h" style={{ ...card, border: `1px solid ${ehCoach ? ACCENT + '66' : '#222'}`, display: 'flex', flexDirection: 'column' }}>
-
-                        {/* Label */}
+                      <div key={p.id} className="card-h" style={{ ...card, border: `1px solid ${ehCoach ? ACCENT + '55' : '#222'}`, display: 'flex', flexDirection: 'column' }}>
                         <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 2, color: ehCoach ? ACCENT : '#555', marginBottom: '0.35rem', fontFamily: "'DM Mono', monospace" }}>
                           {ehCoach ? 'just ct · coach' : ehPacote ? `pacote ${creditos} treinos` : 'todas as unidades'}
                         </div>
 
                         <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', marginBottom: '0.75rem' }}>{p.nome}</div>
 
-                        {/* Preço */}
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.3rem', marginBottom: 2 }}>
-                          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 40, color: '#fff', lineHeight: 1 }}>{vPC.reais}<span style={{ fontSize: 20 }}>{vPC.cents}</span></div>
+                          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 38, color: '#fff', lineHeight: 1 }}>{vPC.reais}<span style={{ fontSize: 19 }}>{vPC.cents}</span></div>
                           <div style={{ fontSize: 12, color: '#777' }}>/ treino</div>
                         </div>
 
-                        {/* Total / parcelas */}
                         {ehPacote && (
                           <div style={{ fontSize: 12, color: '#555', marginBottom: '0.5rem', fontFamily: "'DM Mono', monospace" }}>
                             {vT.reais}{vT.cents} total{p.max_parcelas > 1 ? ` · ${p.max_parcelas}x` : ''}
@@ -320,7 +341,7 @@ export default function ComprarPage() {
                           className={ehCoach ? 'btn-h' : 'btn-ghost'}
                           style={ehCoach
                             ? { background: ACCENT, color: '#fff', border: 'none', borderRadius: 8, padding: '0.75rem', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", width: '100%' }
-                            : { background: 'transparent', color: ACCENT, border: `1.5px solid ${ACCENT}55`, borderRadius: 8, padding: '0.75rem', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", width: '100%', transition: 'all .2s' }
+                            : { background: 'transparent', color: ACCENT, border: `1.5px solid ${ACCENT}44`, borderRadius: 8, padding: '0.75rem', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", width: '100%', transition: 'all .2s' }
                           }>
                           Comprar →
                         </button>
@@ -333,12 +354,11 @@ export default function ComprarPage() {
           </>
         )}
 
-        {/* TRUST SIGNALS */}
+        {/* TRUST SIGNALS — sem suporte WhatsApp */}
         <div style={{ marginTop: '4rem', display: 'flex', gap: '2rem', flexWrap: 'wrap', justifyContent: 'center', borderTop: '1px solid #1a1a1a', paddingTop: '2.5rem' }}>
           {[
             { icon: '🔒', title: 'Pagamento seguro', desc: 'Processado pela Pagar.me' },
             { icon: '⚡', title: 'Ativação rápida',  desc: 'Confirmação em minutos' },
-            { icon: '💬', title: 'Suporte',           desc: 'Atendimento via WhatsApp' },
           ].map((it, i) => (
             <div key={i} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
               <span style={{ fontSize: 24 }}>{it.icon}</span>
