@@ -202,10 +202,8 @@ export default function AdminPosicoesPage() {
             {esteiras.length > 0 && (
               <div style={{ marginBottom: '1.5rem' }}>
                 <div style={{ fontSize: 10, color: '#444', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 10, textAlign: 'center' }}>ESTEIRAS</div>
-                <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
-                  <div style={{ display: 'flex', gap: 6, minWidth: 'max-content', margin: '0 auto', width: 'fit-content' }}>
-                    {esteiras.map(pos => <PosCard key={pos.id} pos={pos}/>)}
-                  </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
+                  {esteiras.map(pos => <PosCard key={pos.id} pos={pos}/>)}
                 </div>
               </div>
             )}
@@ -215,11 +213,8 @@ export default function AdminPosicoesPage() {
                 <div style={{ height: 1, background: '#1e1e1e', marginBottom: '1.5rem' }}/>
                 <div>
                   <div style={{ fontSize: 10, color: '#444', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 10, textAlign: 'center' }}>FUNCIONAL</div>
-                  <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 6 }}>
-                    {funcional1.map(pos => <PosCard key={pos.id} pos={pos}/>)}
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, justifyContent: 'center', paddingLeft: 31 }}>
-                    {funcional2.map(pos => <PosCard key={pos.id} pos={pos}/>)}
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
+                    {[...funcional1, ...funcional2].sort((a,b) => b.numero - a.numero).map(pos => <PosCard key={pos.id} pos={pos}/>)}
                   </div>
                 </div>
               </>
