@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Bem-vindo à Just CT & JustClub</title>
+  <title>Bem-vindo ao Just Club &amp; CT</title>
 </head>
 <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background-color:#f5f5f5;color:#222;">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f5f5f5;padding:32px 16px;">
@@ -139,47 +139,39 @@ export async function POST(req: NextRequest) {
       <td align="center">
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="background-color:#ffffff;border-radius:16px;overflow:hidden;max-width:600px;width:100%;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
 
-          <!-- Header -->
           <tr>
-            <td style="background:linear-gradient(135deg,#0a0a0a 0%,#1a1a1a 100%);padding:40px 32px;text-align:center;">
-              <div style="font-family:Impact,sans-serif;font-size:34px;color:#ffffff;letter-spacing:4px;font-weight:700;">
-                JUST<span style="color:#ff2d9b;">CT</span>
-                <span style="color:#ffffff;font-size:20px;letter-spacing:2px;margin-left:8px;">&</span>
-                <span style="color:#ff2d9b;font-size:28px;letter-spacing:2px;margin-left:4px;">JUSTCLUB</span>
+            <td style="background:#111111;padding:40px 32px;text-align:center;">
+              <div style="font-family:Impact,sans-serif;font-size:30px;color:#ffffff;letter-spacing:4px;font-weight:700;">
+                JUST <span style="color:#ff2d9b;">CLUB &amp; CT</span>
               </div>
-              <div style="font-size:11px;color:#aaa;letter-spacing:3px;margin-top:10px;text-transform:uppercase;">
+              <div style="font-size:11px;color:#888;letter-spacing:3px;margin-top:10px;text-transform:uppercase;">
                 // bem-vindo ao nosso sistema
               </div>
             </td>
           </tr>
 
-          <!-- Body -->
           <tr>
             <td style="padding:40px 32px;">
-              <div style="font-size:22px;font-weight:700;color:#222;margin-bottom:16px;">
+              <div style="font-size:22px;font-weight:700;color:#222;margin-bottom:14px;">
                 Olá, ${primeiroNome}! 👋
               </div>
 
-              <div style="font-size:15px;line-height:1.7;color:#444;margin-bottom:28px;">
-                Sua conta foi criada com sucesso! Agora você tem acesso ao nosso sistema online para agendar treinos, acompanhar seu histórico e gerenciar seu plano — tanto na <strong>Just CT</strong> quanto no <strong>JustClub</strong>.
+              <div style="font-size:15px;line-height:1.7;color:#555;margin-bottom:28px;">
+                Sua conta foi criada com sucesso! Agora você tem acesso ao nosso sistema online para agendar treinos, acompanhar seu histórico e gerenciar seu plano — tanto na <strong style="color:#222;">Just CT</strong> quanto no <strong style="color:#222;">JustClub</strong>.
               </div>
 
-              <!-- Dados de acesso -->
-              <div style="background-color:#0a0a0a;border-radius:12px;padding:24px;margin-bottom:28px;">
-                <div style="font-size:11px;font-weight:700;color:#ff2d9b;text-transform:uppercase;letter-spacing:2px;margin-bottom:16px;">
-                  Seus dados de acesso
-                </div>
+              <div style="background:#111;border-radius:12px;padding:22px 24px;margin-bottom:26px;">
+                <div style="font-size:10px;font-weight:700;color:#ff2d9b;text-transform:uppercase;letter-spacing:2px;margin-bottom:16px;">Seus dados de acesso</div>
                 <div style="margin-bottom:14px;">
-                  <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Email</div>
+                  <div style="font-size:10px;color:#777;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Email</div>
                   <div style="font-size:15px;color:#ffffff;font-family:monospace;">${cliente.email}</div>
                 </div>
                 <div>
-                  <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Senha provisória</div>
+                  <div style="font-size:10px;color:#777;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Senha provisória</div>
                   <div style="font-size:26px;color:#ff2d9b;font-family:monospace;font-weight:700;letter-spacing:3px;">${senhaProvisoria}</div>
                 </div>
               </div>
 
-              <!-- CTA -->
               <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto 28px;">
                 <tr>
                   <td align="center" style="background-color:#ff2d9b;border-radius:10px;">
@@ -190,32 +182,26 @@ export async function POST(req: NextRequest) {
                 </tr>
               </table>
 
-              <!-- Aviso segurança -->
-              <div style="background-color:#fff8e1;border:1px solid #ffe082;border-radius:12px;padding:16px;margin-bottom:24px;">
-                <div style="font-size:13px;font-weight:700;color:#f57c00;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">
-                  🔒 Troque sua senha no primeiro acesso
-                </div>
-                <div style="font-size:13px;line-height:1.6;color:#666;">
-                  Acesse <strong>Minha Conta</strong> no menu e cadastre uma senha pessoal. A senha provisória acima é temporária.
-                </div>
+              <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:14px 16px;margin-bottom:24px;">
+                <div style="font-size:12px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Troque sua senha no primeiro acesso</div>
+                <div style="font-size:13px;color:#78350f;line-height:1.6;">Acesse <strong>Minha Conta</strong> no menu e cadastre uma senha pessoal. A senha provisória acima é temporária.</div>
               </div>
 
-              <div style="font-size:13px;line-height:1.7;color:#888;">
-                Qualquer dúvida, fale com a recepção da sua unidade. Estamos aqui para ajudar!
+              <div style="font-size:13px;color:#888;line-height:1.7;">
+                Qualquer dúvida, chame a gente no Direct do Instagram
+                <a href="https://instagram.com/justclub.ct" target="_blank" style="color:#ff2d9b;text-decoration:none;font-weight:700;">@justclub.ct</a>
+                — estamos aqui para te ajudar!
               </div>
             </td>
           </tr>
 
-          <!-- Footer -->
           <tr>
-            <td style="background-color:#0a0a0a;padding:24px 32px;text-align:center;">
-              <div style="font-size:11px;color:#555;line-height:1.8;letter-spacing:0.5px;">
+            <td style="background:#111;padding:22px 32px;text-align:center;">
+              <div style="font-size:11px;color:#555;line-height:1.8;">
                 Just CT — Vila Olímpia · Rua Fiandeiras, 392<br/>
                 JustClub — Pinheiros &amp; Vila Olímpia
               </div>
-              <div style="font-size:10px;color:#333;margin-top:14px;">
-                Email automático — não responda a esta mensagem.
-              </div>
+              <div style="font-size:10px;color:#333;margin-top:12px;">Email automático — não responda a esta mensagem.</div>
             </td>
           </tr>
 
@@ -232,7 +218,7 @@ export async function POST(req: NextRequest) {
     const { data: emailData, error: errEmail } = await resend.emails.send({
       from: REMETENTE,
       to: cliente.email,
-      subject: `Bem-vindo à Just CT & JustClub — Seus dados de acesso`,
+      subject: `Bem-vindo ao Just Club & CT — Seus dados de acesso`,
       html,
     })
 
