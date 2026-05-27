@@ -100,6 +100,7 @@ function AulasPageInner() {
   const [semanaOffset,    setSemanaOffset]    = useState(0)
   const [diaSel,          setDiaSel]          = useState(0)
   const [periodo,         setPeriodo]         = useState<'todos'|'manha'|'tarde'|'noite'>('todos')
+  const [bloqueadasCount, setBloqueadasCount] = useState(0)
 
   const [modalReserva,   setModalReserva]   = useState<any>(null)
   const [modalFila,      setModalFila]      = useState<any>(null)
@@ -207,6 +208,10 @@ function AulasPageInner() {
     for (const r of (reservas||[])) cont[r.ocorrencia_id] = (cont[r.ocorrencia_id]||0)+1
     setReservasCont(cont)
 
+    // ✅ Conta posições bloqueadas desta unidade para ajustar vagas do Running
+    const { data: bloqData } = await supabase.from('club_posicoes').select('id').eq('unidade_id', unidadeId).eq('ativo', true).eq('bloqueado', true)
+    setBloqueadasCount((bloqData || []).length)
+
     if (cliente) {
       const [{ data: minhas }, { data: filas }] = await Promise.all([
         supabase.from('club_reservas').select('*').in('ocorrencia_id', ocIds).eq('cliente_id', cliente.id).neq('status','cancelado'),
@@ -292,7 +297,10 @@ function AulasPageInner() {
   })
   const planosDisponiveis = Object.entries(saldoParaData()).filter(([,v]: [string,any]) => v?.disponivel > 0).map(([k]) => k)
   function vagasInfo(oc: any) {
-    const cap=oc.club_aulas?.capacidade||0; const usadas=reservasCont[oc.id]||0; const livres=Math.max(0,cap-usadas)
+    const cap=oc.club_aulas?.capacidade||0; const usadas=reservasCont[oc.id]||0
+    const isRunning=oc.club_aulas?.tipo==='running_funcional'
+    const efetivas = isRunning ? Math.max(0, cap - bloqueadasCount) : cap
+    const livres=Math.max(0,efetivas-usadas)
     return { livres, lotado: livres<=0 }
   }
 
