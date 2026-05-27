@@ -493,6 +493,9 @@ export default function MinhaContaPage() {
                         {isClub && item.posicao && (
                           <span style={{fontSize:10,color:VERDE,fontFamily:"'DM Mono', monospace",fontWeight:700,background:`${VERDE}15`,padding:'1px 7px',borderRadius:20}}>{item.posicao}</span>
                         )}
+                        {item.tipoCredito && (()=>{ const {label,icon}=parsePlanoKey(item.tipoCredito); return (
+                          <span style={{fontSize:10,color:'#777',background:'#1a1a1a',padding:'1px 7px',borderRadius:20,border:'1px solid #2a2a2a'}}>{icon} {label}</span>
+                        )})()}
                         {isProxMes && (
                           <span style={{fontSize:10,color:AMARELO,background:`${AMARELO}15`,padding:'1px 7px',borderRadius:20}}>crédito {MESES[d.getMonth()]}</span>
                         )}
