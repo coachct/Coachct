@@ -449,9 +449,9 @@ function AulasPageInner() {
                               {livres===1?'ÚLTIMA VAGA':`${livres} VAGAS`}
                             </div>
                           )}
-                          {isRunning && livres>0 && (
-                            <div style={{ fontSize:11, fontFamily:"'DM Mono', monospace", fontWeight:700, color:livres<=3?(livres===1?'#ff4444':AMARELO):'#555', marginBottom:8 }}>
-                              {livres===1?'ÚLTIMA VAGA':`${livres}/${aula?.capacidade}`}
+                          {isRunning && livres>0 && livres<=3 && (
+                            <div style={{ fontSize:11, fontFamily:"'DM Mono', monospace", fontWeight:700, color:livres===1?'#ff4444':AMARELO, marginBottom:8 }}>
+                              {livres===1?'ÚLTIMA VAGA':`${livres} VAGAS`}
                             </div>
                           )}
                           {lotado ? (
@@ -463,17 +463,7 @@ function AulasPageInner() {
                       )}
                     </div>
                   </div>
-                  {isLift && !minhaRes && !naFila && (
-                    <div style={{ marginTop:'0.75rem', paddingTop:'0.75rem', borderTop:`1px solid ${cores.border}` }}>
-                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:'#333', marginBottom:4 }}>
-                        <span>Ocupação</span>
-                        <span style={{ color:lotado?'#ff4444':livres<=3?AMARELO:'#555' }}>{reservasCont[oc.id]||0}/{aula?.capacidade} vagas</span>
-                      </div>
-                      <div style={{ height:3, background:'#1a1a1a', borderRadius:2, overflow:'hidden' }}>
-                        <div style={{ height:'100%', borderRadius:2, transition:'width .3s', background:lotado?'#ff4444':livres<=3?AMARELO:CYAN, width:`${Math.min(100,((reservasCont[oc.id]||0)/(aula?.capacidade||1))*100)}%` }}/>
-                      </div>
-                    </div>
-                  )}
+
                 </div>
               )
             })}
