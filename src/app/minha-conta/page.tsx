@@ -434,12 +434,9 @@ export default function MinhaContaPage() {
 
         {/* ── BOTÕES DE AÇÃO ── */}
         {!estaBloqueado && (
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:'2rem'}}>
-            <button onClick={()=>router.push('/agendar')} style={{background:ACCENT,color:'#fff',border:'none',borderRadius:12,padding:'0.9rem',fontWeight:700,fontSize:14,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
+          <div style={{marginBottom:'2rem'}}>
+            <button onClick={()=>router.push('/agendar')} style={{width:'100%',background:ACCENT,color:'#fff',border:'none',borderRadius:12,padding:'0.9rem',fontWeight:700,fontSize:14,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
               + Agendar Treino
-            </button>
-            <button onClick={()=>router.push('/aulas')} style={{background:'transparent',color:'#fff',border:`1.5px solid #333`,borderRadius:12,padding:'0.9rem',fontWeight:600,fontSize:14,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
-              Ver Aulas Club
             </button>
           </div>
         )}
