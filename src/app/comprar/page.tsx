@@ -145,6 +145,7 @@ export default function ComprarPage() {
                 <div style={{ marginBottom: '1.5rem' }}>
                   <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 2, color: ACCENT, marginBottom: '0.5rem', fontFamily: "'DM Mono', monospace" }}>// planos coach ct</div>
                   <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: '#fff', letterSpacing: 1.5 }}>PERSONAL TRAINING PREMIUM</div>
+                  <div style={{ fontSize: 14, color: '#555', marginTop: '0.5rem', fontStyle: 'italic' }}>Tem o plano que entrega muito. E o que entrega até o que você nem pediu.</div>
                 </div>
 
                 {coachCtProAtivo && (
@@ -204,6 +205,7 @@ export default function ComprarPage() {
                 <div style={{ marginBottom: '1.5rem' }}>
                   <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 2, color: '#888', marginBottom: '0.5rem', fontFamily: "'DM Mono', monospace" }}>// planos de acesso</div>
                   <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: '#fff', letterSpacing: 1.5 }}>ACESSO AOS STUDIOS</div>
+                  <div style={{ fontSize: 14, color: '#555', marginTop: '0.5rem', fontStyle: 'italic' }}>Quando o serviço é bom, o limite incomoda.</div>
                 </div>
 
                 <div className="grid-acesso">
@@ -299,6 +301,7 @@ export default function ComprarPage() {
                 <div style={{ marginBottom: '1.5rem' }}>
                   <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 2, color: '#888', marginBottom: '0.5rem', fontFamily: "'DM Mono', monospace" }}>// créditos</div>
                   <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: '#fff', letterSpacing: 1.5 }}>PACOTES & AVULSOS</div>
+                  <div style={{ fontSize: 14, color: '#555', marginTop: '0.5rem', fontStyle: 'italic' }}>Sem frequência obrigatória. Só experiências que valem voltar.</div>
                 </div>
 
                 {/* Grid fixo 3 colunas */}
@@ -356,7 +359,16 @@ export default function ComprarPage() {
           </>
         )}
 
-        {/* TRUST SIGNALS — sem suporte WhatsApp */}
+        {/* FRASE DE ENCERRAMENTO */}
+        <div style={{ margin: '5rem auto 0', maxWidth: 680, textAlign: 'center', padding: '0 1rem' }}>
+          <div style={{ fontSize: 28, color: '#333', fontFamily: "'Bebas Neue', sans-serif", lineHeight: 1, marginBottom: '0.5rem' }}>"</div>
+          <div style={{ fontSize: 'clamp(16px, 2.2vw, 22px)', color: '#444', lineHeight: 1.7, fontStyle: 'italic' }}>
+            Alguns vêm sempre. Outros aparecem quando querem.<br />Todos entendem a diferença.
+          </div>
+          <div style={{ fontSize: 28, color: '#333', fontFamily: "'Bebas Neue', sans-serif", lineHeight: 1, marginTop: '0.5rem' }}>"</div>
+        </div>
+
+        {/* TRUST SIGNALS */}
         <div style={{ marginTop: '4rem', display: 'flex', gap: '2rem', flexWrap: 'wrap', justifyContent: 'center', borderTop: '1px solid #1a1a1a', paddingTop: '2.5rem' }}>
           {[
             { icon: '🔒', title: 'Pagamento seguro', desc: 'Processado pela Pagar.me' },
