@@ -470,7 +470,10 @@ function AulasPageInner() {
                             </div>
                           )}
                           {lotado ? (
-                            <button onClick={() => tentarFila(oc)} style={{ background:'transparent', color:AMARELO, border:`1px solid ${AMARELO}55`, borderRadius:8, padding:'0.4rem 0.85rem', fontSize:11, fontWeight:600, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>Fila ⏳</button>
+                            <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:5 }}>
+                              <div style={{ fontSize:10, fontWeight:700, color:'#ff4444', letterSpacing:0.5, fontFamily:"'DM Mono', monospace" }}>LOTADA</div>
+                              <button onClick={() => tentarFila(oc)} style={{ background:`${AMARELO}15`, color:AMARELO, border:`1px solid ${AMARELO}55`, borderRadius:8, padding:'0.3rem 0.75rem', fontSize:10, fontWeight:700, cursor:'pointer', fontFamily:"'DM Sans', sans-serif", whiteSpace:'nowrap' }}>Fila de espera</button>
+                            </div>
                           ) : (
                             <button onClick={() => tentarReservar(oc)} style={{ background:ACCENT, color:'#fff', border:'none', borderRadius:8, padding:'0.4rem 0.85rem', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>Reservar</button>
                           )}
@@ -617,9 +620,9 @@ function AulasPageInner() {
             <div style={{ background:'#1a1000', border:`1px solid ${AMARELO}22`, borderRadius:10, padding:'1rem', marginBottom:'1.25rem', fontSize:13, color:'#888', lineHeight:1.7 }}>
               <div style={{ color:AMARELO, fontWeight:600, marginBottom:6 }}>⚠️ Atenção</div>
               <ul style={{ paddingLeft:'1.2rem', display:'flex', flexDirection:'column', gap:5 }}>
-                <li>Se alguém cancelar, <strong style={{ color:'#fff' }}>você será confirmado automaticamente</strong>.</li>
-                <li>Após confirmado, cancelamento <strong style={{ color:'#fff' }}>até 3h antes</strong>.</li>
-                <li>Falta sem aviso gera multa de R$49,90.</li>
+                <li>Cancelamentos são permitidos <strong style={{ color:'#fff' }}>até 3h antes</strong> — vagas podem abrir até esse limite.</li>
+                <li>Se uma vaga abrir, <strong style={{ color:'#fff' }}>você será confirmado automaticamente</strong> a qualquer momento até 3h antes do início.</li>
+                <li>Após confirmado, as mesmas regras se aplicam. Falta sem aviso gera multa de R$49,90.</li>
               </ul>
             </div>
             <div style={{ marginBottom:'1.25rem' }}>
