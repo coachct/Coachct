@@ -373,7 +373,6 @@ export default function LandingPage() {
           {unidades.map((u: any) => {
             const dados = DADOS_UNIDADES[u.nome]
             if (!dados) return null
-            const isCT = u.tipo === 'ct'
             const mapsHref = `https://maps.google.com/?q=${encodeURIComponent(dados.endereco)}`
             return (
               <div key={u.id} className="unidade-card-h"
@@ -381,9 +380,6 @@ export default function LandingPage() {
 
                 {/* Nome + bairro */}
                 <div>
-                  <div style={{ fontSize: 11, color: ACCENT, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: 4, fontFamily: "'DM Mono', monospace" }}>
-                    {isCT ? '⚡ Coach CT' : '🏋️ JustClub'}
-                  </div>
                   <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: '#fff', letterSpacing: 1, lineHeight: 1.1 }}>
                     {u.nome.toUpperCase()}
                   </div>
@@ -432,18 +428,12 @@ export default function LandingPage() {
                 {/* Espaçador pra empurrar botões pro fim */}
                 <div style={{ flex: 1 }} />
 
-                {/* Botões */}
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
-                  <button onClick={() => router.push('/comprar')}
-                    style={{ flex: 1, minWidth: 110, background: ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.7rem', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", letterSpacing: 0.3 }}>
-                    Ver planos
+                {/* Botão Como chegar */}
+                <a href={mapsHref} target="_blank" rel="noopener noreferrer" style={{ display: 'block' }}>
+                  <button className="maps-btn" style={{ width: '100%', background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.7rem', color: '#aaa', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", transition: 'all .2s' }}>
+                    📍 Como chegar
                   </button>
-                  <a href={mapsHref} target="_blank" rel="noopener noreferrer" style={{ flex: 1, minWidth: 110 }}>
-                    <button className="maps-btn" style={{ width: '100%', background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.7rem', color: '#aaa', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", transition: 'all .2s' }}>
-                      📍 Como chegar
-                    </button>
-                  </a>
-                </div>
+                </a>
               </div>
             )
           })}
