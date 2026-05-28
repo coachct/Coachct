@@ -1,5 +1,5 @@
 'use client'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 
 const ACCENT = '#ff2d9b'
@@ -7,7 +7,17 @@ const ACCENT = '#ff2d9b'
 export default function SiteHeader() {
   const { perfil, loading } = useAuth()
   const router = useRouter()
+  const pathname = usePathname()
   const isClienteLogado = perfil?.role === 'cliente'
+
+  // Navega normalmente; se já estiver na rota destino, força recarregar
+  function irPara(rota: string) {
+    if (pathname === rota) {
+      window.location.href = rota
+    } else {
+      router.push(rota)
+    }
+  }
 
   if (loading) return (
     <div style={{ height: 64, background: '#08080895', borderBottom: '1px solid #1a1a1a' }} />
@@ -45,7 +55,7 @@ export default function SiteHeader() {
         }
         .sh-btn-cta:hover { opacity: 0.85; }
 
-        /* ── Mobile: reduz padding, encolhe botões, esconde "Comprar" ── */
+        /* ── Mobile: reduz padding, encolhe botões, esconde só "Cadastro" ── */
         @media (max-width: 560px) {
           .sh-nav { padding: 0 1rem; }
           .sh-logo { font-size: 22px; letter-spacing: 1px; }
@@ -57,29 +67,29 @@ export default function SiteHeader() {
         }
       `}</style>
 
-      <div className="sh-logo" onClick={() => router.push('/')}>
+      <div className="sh-logo" onClick={() => irPara('/')}>
         JUST<span style={{ color: ACCENT }}>CT</span>
       </div>
 
       <div className="sh-actions">
         {isClienteLogado ? (
-          <button onClick={() => router.push('/minha-conta')} className="sh-btn sh-btn-auth">
+          <button onClick={() => irPara('/minha-conta')} className="sh-btn sh-btn-auth">
             Minha conta
           </button>
         ) : (
           <>
-            <button onClick={() => router.push('/login')} className="sh-btn sh-btn-auth">
+            <button onClick={() => irPara('/login')} className="sh-btn sh-btn-auth">
               Login
             </button>
-            <button onClick={() => router.push('/cadastro')} className="sh-btn sh-btn-auth sh-hide-mobile">
+            <button onClick={() => irPara('/cadastro')} className="sh-btn sh-btn-auth sh-hide-mobile">
               Cadastro
             </button>
           </>
         )}
-        <button onClick={() => router.push('/comprar')} className="sh-btn sh-btn-cta sh-hide-mobile">
+        <button onClick={() => irPara('/comprar')} className="sh-btn sh-btn-cta">
           Comprar
         </button>
-        <button onClick={() => router.push('/agendar')} className="sh-btn sh-btn-cta">
+        <button onClick={() => irPara('/agendar')} className="sh-btn sh-btn-cta">
           Agendar Treino
         </button>
       </div>
