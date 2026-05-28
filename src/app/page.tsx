@@ -107,7 +107,9 @@ export default function LandingPage() {
           .grid3-r { grid-template-columns: 1fr !important; }
           .grid2-r { grid-template-columns: 1fr !important; }
           .pro-grid-r { grid-template-columns: 1fr 1fr !important; }
-          .pro-hero-r { grid-template-columns: 1fr !important; }
+          .pro-hero-r { grid-template-columns: 1fr !important; gap: 0 !important; background: #111; border: 1px solid #222; border-radius: 16px; overflow: hidden; }
+          .pro-hero-text-col { order: 2; padding: 1.5rem; }
+          .pro-hero-video-col { order: 1; border-radius: 0 !important; aspect-ratio: 4/5 !important; }
           .planos-spoiler-grid-r { grid-template-columns: 1fr !important; }
           .unidades-grid-r { grid-template-columns: 1fr !important; }
         }
@@ -281,7 +283,7 @@ export default function LandingPage() {
           COACH CT <span style={{ color: ACCENT }}>PRO</span>
         </div>
         <div className="pro-hero-r" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3rem', marginBottom: '4rem', alignItems: 'center' }}>
-          <div>
+          <div className="pro-hero-text-col">
             <div style={{ fontSize: 16, color: '#aaa', lineHeight: 1.9, marginBottom: '2rem' }}>
               O Coach CT já é diferente. O Pro é o que acontece quando você decide parar de encaixar o treino na sua agenda — e começa a construir a agenda em torno do treino.
               <br /><br />
@@ -300,7 +302,7 @@ export default function LandingPage() {
               </button>
             </div>
           </div>
-          <div style={{ borderRadius: 20, overflow: 'hidden', aspectRatio: '4/5', position: 'relative' as const, background: '#000' }}>
+          <div className="pro-hero-video-col" style={{ borderRadius: 20, overflow: 'hidden', aspectRatio: '4/5', position: 'relative' as const, background: '#000' }}>
             <video
               src="/VIDEO%20COACH%20CT%20MP4.mp4"
               autoPlay
