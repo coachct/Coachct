@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import {
   Plus, Save, X, Calendar, List, AlertCircle,
   Pencil, Power, Users, Clock, ChevronDown, ChevronUp,
-  Tag, RefreshCw, CheckCircle, CalendarDays, Filter
+  Tag, RefreshCw, CheckCircle, CalendarDays, Filter, Trash2
 } from 'lucide-react'
 
 const DIAS_ABREV = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
@@ -118,6 +118,11 @@ export default function JustClubAdminPage() {
   const [editandoGrupo, setEditandoGrupo] = useState<any | null>(null)
   const [nomeGrupoEdit, setNomeGrupoEdit] = useState('')
 
+  // Estado para modal de exclusão
+  const [modalExcluir,   setModalExcluir]   = useState<{ aula?: any; ocorrencia?: any } | null>(null)
+  const [excluindo,      setExcluindo]      = useState(false)
+  const [infoReservas,   setInfoReservas]   = useState<{ ocorrencia: number; recorrencia: number; proximaData?: string } | null>(null)
+
   useEffect(() => {
     if (!loading && perfil && perfil.role !== 'admin' && perfil.role !== 'coordenadora') router.push('/')
   }, [perfil, loading])
@@ -213,7 +218,6 @@ export default function JustClubAdminPage() {
       grupo_muscular_id: form.grupo_muscular_id, coach_id: form.coach_id,
       dia_semana: form.dia_semana, horario: form.horario+':00',
       duracao_min: form.duracao_min, capacidade: form.capacidade,
-      // so_mulheres é automático pelo tipo
       so_mulheres: form.tipo === 'lift_for_girls',
       ativo: true,
     }
@@ -261,6 +265,110 @@ export default function JustClubAdminPage() {
     if (abaAtiva==='calendario') carregarOcorrencias(diasCalendario)
   }
 
+  // Abre modal de exclusão a partir da LISTA (aula recorrente)
+  async function abrirExcluirAula(aula: any) {
+    setModalExcluir({ aula })
+    setInfoReservas(null)
+    // Busca ocorrências futuras e próxima data
+    const hoje = dataLocalStr(new Date())
+    const { data: ocs } = await supabase.from('club_ocorrencias')
+      .select('id, data').eq('aula_id', aula.id).eq('status','ativa').gte('data', hoje).order('data')
+    const proximaOc = ocs?.[0]
+    const ocIds = (ocs || []).map((o:any) => o.id)
+    let reservasOc = 0
+    let reservasRec = 0
+    if (proximaOc) {
+      const { count: c1 } = await supabase.from('club_reservas').select('*', { count:'exact', head:true })
+        .eq('ocorrencia_id', proximaOc.id).neq('status','cancelado')
+      reservasOc = c1 || 0
+    }
+    if (ocIds.length) {
+      const { count: c2 } = await supabase.from('club_reservas').select('*', { count:'exact', head:true })
+        .in('ocorrencia_id', ocIds).neq('status','cancelado')
+      reservasRec = c2 || 0
+    }
+    setInfoReservas({ ocorrencia: reservasOc, recorrencia: reservasRec, proximaData: proximaOc?.data })
+  }
+
+  // Abre modal de exclusão a partir do CALENDÁRIO (ocorrência específica)
+  async function abrirExcluirOcorrencia(ocorrencia: any) {
+    setModalExcluir({ ocorrencia })
+    setInfoReservas(null)
+    const aulaId = ocorrencia.aula_id || ocorrencia.club_aulas?.id
+    const hoje = dataLocalStr(new Date())
+    // Reservas só dessa ocorrência
+    const { count: c1 } = await supabase.from('club_reservas').select('*', { count:'exact', head:true })
+      .eq('ocorrencia_id', ocorrencia.id).neq('status','cancelado')
+    // Reservas de toda a recorrência futura
+    const { data: ocs } = await supabase.from('club_ocorrencias')
+      .select('id').eq('aula_id', aulaId).eq('status','ativa').gte('data', hoje)
+    const ocIds = (ocs || []).map((o:any) => o.id)
+    let reservasRec = 0
+    if (ocIds.length) {
+      const { count: c2 } = await supabase.from('club_reservas').select('*', { count:'exact', head:true })
+        .in('ocorrencia_id', ocIds).neq('status','cancelado')
+      reservasRec = c2 || 0
+    }
+    setInfoReservas({ ocorrencia: c1 || 0, recorrencia: reservasRec, proximaData: ocorrencia.data })
+  }
+
+  // Cancela somente a próxima ocorrência (mantém a regra)
+  async function excluirSomenteOcorrencia() {
+    if (!modalExcluir) return
+    setExcluindo(true)
+    const aulaId = modalExcluir.aula?.id || modalExcluir.ocorrencia?.aula_id || modalExcluir.ocorrencia?.club_aulas?.id
+    let ocId = modalExcluir.ocorrencia?.id
+    if (!ocId && aulaId) {
+      const hoje = dataLocalStr(new Date())
+      const { data } = await supabase.from('club_ocorrencias')
+        .select('id').eq('aula_id', aulaId).eq('status','ativa').gte('data', hoje).order('data').limit(1)
+      ocId = data?.[0]?.id
+    }
+    if (!ocId) { showMsg('Nenhuma ocorrência futura para cancelar.'); setExcluindo(false); setModalExcluir(null); return }
+    // Cancela reservas dessa ocorrência
+    await supabase.from('club_reservas').update({ status:'cancelado', cancelado_em: new Date().toISOString() })
+      .eq('ocorrencia_id', ocId).neq('status','cancelado')
+    // Marca a ocorrência como cancelada
+    await supabase.from('club_ocorrencias').update({ status: 'cancelada' }).eq('id', ocId)
+    setExcluindo(false); setModalExcluir(null); setInfoReservas(null)
+    await carregarAulas()
+    if (abaAtiva==='calendario') await carregarOcorrencias(diasCalendario)
+    showMsg('Ocorrência cancelada.')
+  }
+
+  // Exclui toda a recorrência (apaga regra + todas as ocorrências futuras)
+  async function excluirTodaRecorrencia() {
+    if (!modalExcluir) return
+    setExcluindo(true)
+    const aulaId = modalExcluir.aula?.id || modalExcluir.ocorrencia?.aula_id || modalExcluir.ocorrencia?.club_aulas?.id
+    if (!aulaId) { setExcluindo(false); setModalExcluir(null); return }
+    const hoje = dataLocalStr(new Date())
+    // Busca ocorrências futuras
+    const { data: ocs } = await supabase.from('club_ocorrencias')
+      .select('id').eq('aula_id', aulaId).gte('data', hoje)
+    const ocIds = (ocs || []).map((o:any) => o.id)
+    if (ocIds.length) {
+      // Cancela reservas
+      await supabase.from('club_reservas').update({ status:'cancelado', cancelado_em: new Date().toISOString() })
+        .in('ocorrencia_id', ocIds).neq('status','cancelado')
+      // Apaga ocorrências futuras
+      await supabase.from('club_ocorrencias').delete().in('id', ocIds)
+    }
+    // Verifica se sobrou alguma ocorrência passada
+    const { count: passadas } = await supabase.from('club_ocorrencias').select('*', { count:'exact', head:true }).eq('aula_id', aulaId)
+    if (passadas && passadas > 0) {
+      // Mantém histórico — desativa a regra
+      await supabase.from('club_aulas').update({ ativo: false }).eq('id', aulaId)
+    } else {
+      // Sem histórico — apaga de vez
+      await supabase.from('club_aulas').delete().eq('id', aulaId)
+    }
+    setExcluindo(false); setModalExcluir(null); setInfoReservas(null)
+    await carregarAulas()
+    if (abaAtiva==='calendario') await carregarOcorrencias(diasCalendario)
+    showMsg('Recorrência excluída.')
+  }
+
   async function criarGrupo() {
     if (!novoGrupo.trim()) return
     setSalvandoGrupo(true)
@@ -303,7 +411,6 @@ export default function JustClubAdminPage() {
   return (
     <div className="min-h-screen bg-gray-50">
 
-      {/* Header com abas de unidade */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="px-6 pt-4 pb-0">
           <h1 className="text-lg font-semibold text-gray-900 mb-4">JustClub — Aulas coletivas</h1>
@@ -345,7 +452,6 @@ export default function JustClubAdminPage() {
             <div className={`mb-4 px-4 py-2.5 rounded-xl text-sm font-medium ${msg.startsWith('Erro')?'bg-red-50 text-red-700 border border-red-100':'bg-green-50 text-green-800 border border-green-100'}`}>{msg}</div>
           )}
 
-          {/* Abas de conteúdo */}
           <div className="flex items-center gap-2 mb-3 flex-wrap">
             {(['lista','grade','calendario','grupos'] as const).map(aba => {
               const cfg = {
@@ -372,7 +478,6 @@ export default function JustClubAdminPage() {
             )}
           </div>
 
-          {/* Filtros */}
           {abaAtiva!=='grupos' && (
             <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 mb-4 flex items-center gap-3 flex-wrap">
               <Filter size={13} className="text-gray-400 flex-shrink-0"/>
@@ -409,7 +514,6 @@ export default function JustClubAdminPage() {
             </div>
           ) : (
             <>
-              {/* LISTA */}
               {abaAtiva==='lista' && (
                 <div className="space-y-3">
                   {todasAulas.length===0 ? (
@@ -446,6 +550,9 @@ export default function JustClubAdminPage() {
                             <button onClick={()=>toggleAtivo(aula)} className={`btn btn-sm gap-1 ${aula.ativo?'text-red-500 hover:bg-red-50':'text-green-600 hover:bg-green-50'}`}>
                               <Power size={12}/> {aula.ativo?'Desativar':'Ativar'}
                             </button>
+                            <button onClick={()=>abrirExcluirAula(aula)} className="btn btn-sm gap-1 text-red-600 hover:bg-red-50 border border-red-200" title="Excluir">
+                              <Trash2 size={12}/>
+                            </button>
                           </div>
                           {aula.ativo && (
                             <button onClick={()=>abrirReplicar(aula)} className="btn btn-sm gap-1 text-cyan-700 bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 w-full justify-center">
@@ -459,7 +566,6 @@ export default function JustClubAdminPage() {
                 </div>
               )}
 
-              {/* GRADE */}
               {abaAtiva==='grade' && (
                 <div className="space-y-3">
                   {aulasAtivas.length===0 ? (
@@ -485,6 +591,7 @@ export default function JustClubAdminPage() {
                                 <span className="text-xs text-gray-400 flex-shrink-0">👤 {aula.coaches?.nome?.split(' ')[0]||'—'}</span>
                                 <span className="text-xs text-gray-400 flex-shrink-0 flex items-center gap-1"><Users size={10}/> {aula.capacidade}</span>
                                 <button onClick={()=>abrirEdicao(aula)} className="text-gray-400 hover:text-primary-600 flex-shrink-0"><Pencil size={13}/></button>
+                                <button onClick={()=>abrirExcluirAula(aula)} className="text-gray-400 hover:text-red-600 flex-shrink-0" title="Excluir"><Trash2 size={13}/></button>
                               </div>
                             ))}
                           </div>
@@ -495,7 +602,6 @@ export default function JustClubAdminPage() {
                 </div>
               )}
 
-              {/* CALENDÁRIO */}
               {abaAtiva==='calendario' && (
                 <div>
                   <div className="flex items-center gap-2 mb-4 flex-wrap">
@@ -543,6 +649,7 @@ export default function JustClubAdminPage() {
                                   <span className="text-xs text-gray-600 flex-1 truncate">{oc.club_aulas?.grupos_musculares?.nome||'—'}</span>
                                   <span className="text-xs text-gray-400 flex-shrink-0">👤 {oc.club_aulas?.coaches?.nome?.split(' ')[0]||'—'}</span>
                                   <span className="text-xs text-gray-400 flex-shrink-0 flex items-center gap-1"><Users size={10}/> {oc.club_aulas?.capacidade||'—'}</span>
+                                  <button onClick={()=>abrirExcluirOcorrencia(oc)} className="text-gray-400 hover:text-red-600 flex-shrink-0" title="Excluir"><Trash2 size={13}/></button>
                                 </div>
                               ))}
                             </div>
@@ -554,7 +661,6 @@ export default function JustClubAdminPage() {
                 </div>
               )}
 
-              {/* GRUPOS */}
               {abaAtiva==='grupos' && (
                 <div className="space-y-4">
                   <div className="card">
@@ -604,7 +710,6 @@ export default function JustClubAdminPage() {
         </div>
       )}
 
-      {/* MODAL CADASTRO / EDIÇÃO */}
       {modalAberto && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md max-h-[92vh] flex flex-col shadow-xl">
@@ -614,7 +719,6 @@ export default function JustClubAdminPage() {
             </div>
             <div className="px-6 py-4 space-y-5 overflow-y-auto flex-1">
 
-              {/* Tipo */}
               <div>
                 <label className="label">Tipo de aula *</label>
                 <div className="grid grid-cols-3 gap-2">
@@ -633,7 +737,6 @@ export default function JustClubAdminPage() {
                 )}
               </div>
 
-              {/* Grupo muscular */}
               <div>
                 <label className="label">Grupo muscular *</label>
                 {gruposAtivos.length===0 ? (
@@ -646,7 +749,6 @@ export default function JustClubAdminPage() {
                 )}
               </div>
 
-              {/* Coach */}
               <div>
                 <label className="label">Coach responsável *</label>
                 {coaches.length===0 ? (
@@ -659,7 +761,6 @@ export default function JustClubAdminPage() {
                 )}
               </div>
 
-              {/* Dia da semana */}
               <div>
                 <label className="label">Dia da semana *</label>
                 <div className="grid grid-cols-7 gap-1">
@@ -672,7 +773,6 @@ export default function JustClubAdminPage() {
                 </div>
               </div>
 
-              {/* Horário */}
               <div>
                 <label className="label">Horário *</label>
                 {(() => {
@@ -697,7 +797,6 @@ export default function JustClubAdminPage() {
                 })()}
               </div>
 
-              {/* Duração e Capacidade */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label">Duração (min)</label>
@@ -717,7 +816,6 @@ export default function JustClubAdminPage() {
                 </div>
               </div>
 
-              {/* Replicar (só no cadastro) */}
               {!editando && (
                 <div className="border border-gray-200 rounded-xl overflow-hidden">
                   <button type="button" onClick={()=>setFormReplicar(r=>!r)}
@@ -763,7 +861,6 @@ export default function JustClubAdminPage() {
         </div>
       )}
 
-      {/* MODAL REPLICAÇÃO */}
       {modalReplicar && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl">
@@ -808,6 +905,84 @@ export default function JustClubAdminPage() {
                   </div>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL EXCLUIR */}
+      {modalExcluir && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-xl">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-red-50 flex items-center justify-center"><Trash2 size={16} className="text-red-600"/></div>
+                <div>
+                  <h2 className="font-semibold text-gray-900">Excluir aula</h2>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {modalExcluir.aula
+                      ? `${tipoLabel(modalExcluir.aula.tipo)} · ${DIAS_FULL[modalExcluir.aula.dia_semana]} às ${(modalExcluir.aula.horario||'').slice(0,5)}`
+                      : `${tipoLabel(modalExcluir.ocorrencia?.club_aulas?.tipo)} · ${modalExcluir.ocorrencia?.data} às ${(modalExcluir.ocorrencia?.club_aulas?.horario||'').slice(0,5)}`}
+                  </p>
+                </div>
+              </div>
+              <button onClick={()=>{setModalExcluir(null);setInfoReservas(null)}} className="text-gray-400 hover:text-gray-600 p-1"><X size={18}/></button>
+            </div>
+            <div className="px-6 py-4 space-y-3">
+              <p className="text-sm text-gray-600">Escolha o que você quer excluir:</p>
+
+              <button
+                onClick={excluirSomenteOcorrencia}
+                disabled={excluindo || (modalExcluir.aula && !infoReservas?.proximaData)}
+                className="w-full text-left bg-white border-2 border-orange-200 hover:bg-orange-50 rounded-xl p-4 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-orange-100 flex items-center justify-center flex-shrink-0">
+                    <Calendar size={16} className="text-orange-600"/>
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-gray-900 text-sm">Somente essa aula</div>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {modalExcluir.aula
+                        ? (infoReservas?.proximaData
+                            ? `Cancela só a próxima ocorrência (${infoReservas.proximaData}). A recorrência semanal continua ativa.`
+                            : 'Nenhuma ocorrência futura encontrada para esta regra.')
+                        : `Cancela só o dia ${modalExcluir.ocorrencia?.data}. A recorrência semanal continua ativa.`}
+                    </p>
+                    {infoReservas !== null && infoReservas.ocorrencia > 0 && (
+                      <div className="mt-2 inline-flex items-center gap-1.5 bg-red-50 border border-red-100 rounded-lg px-2.5 py-1 text-xs text-red-700">
+                        <AlertCircle size={12}/> {infoReservas.ocorrencia} reserva{infoReservas.ocorrencia!==1?'s':''} será{infoReservas.ocorrencia!==1?'ão':''} cancelada{infoReservas.ocorrencia!==1?'s':''}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={excluirTodaRecorrencia}
+                disabled={excluindo}
+                className="w-full text-left bg-white border-2 border-red-200 hover:bg-red-50 rounded-xl p-4 transition-all disabled:opacity-50">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0">
+                    <RefreshCw size={16} className="text-red-600"/>
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-gray-900 text-sm">Toda a recorrência</div>
+                    <p className="text-xs text-gray-500 mt-0.5">Apaga a regra semanal + todas as ocorrências futuras. Esta ação não pode ser desfeita.</p>
+                    {infoReservas !== null && infoReservas.recorrencia > 0 && (
+                      <div className="mt-2 inline-flex items-center gap-1.5 bg-red-50 border border-red-100 rounded-lg px-2.5 py-1 text-xs text-red-700">
+                        <AlertCircle size={12}/> {infoReservas.recorrencia} reserva{infoReservas.recorrencia!==1?'s':''} ativa{infoReservas.recorrencia!==1?'s':''} no total
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={()=>{setModalExcluir(null);setInfoReservas(null)}}
+                disabled={excluindo}
+                className="btn w-full text-gray-500 border border-gray-200">
+                Cancelar
+              </button>
             </div>
           </div>
         </div>
