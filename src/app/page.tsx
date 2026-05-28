@@ -151,6 +151,53 @@ export default function LandingPage() {
 
       <div style={s.divider} />
 
+      {/* JUSTCLUB — aulas coletivas */}
+      <div id="justclub" style={s.section}>
+        <div style={s.sTag}>// o diferencial justclub</div>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: `${ACCENT}15`, border: `1px solid ${ACCENT}30`, borderRadius: 20, padding: '0.35rem 1rem', fontSize: 12, color: ACCENT, fontWeight: 600, marginBottom: '1.5rem' }}>
+          🏋️ JUSTCLUB
+        </div>
+        <div style={s.sTitle}>
+          A VIBE DO COLETIVO<br />FAZ VOCÊ RENDER MAIS SEM PERCEBER.
+        </div>
+        <div style={{ fontSize: 16, color: '#888', maxWidth: 700, lineHeight: 1.8, marginBottom: '3rem' }}>
+          Aulas coletivas em ambientes pensados pra você esquecer o resto. Iluminação, playlist e equipamentos exclusivos — três modalidades, energia alta, resultado real.
+        </div>
+
+        <div className="grid3-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}>
+
+          {/* Lift */}
+          <div className="feature-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem', display: 'flex', flexDirection: 'column' as const }}>
+            <div style={{ width: 40, height: 40, background: `${ACCENT}15`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, marginBottom: '1rem' }}>🏋️</div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', marginBottom: '0.5rem', letterSpacing: 1 }}>LIFT</div>
+            <div style={{ fontSize: 14, color: '#888', lineHeight: 1.7 }}>
+              Musculação coletiva em um formato inédito, com equipamentos exclusivos, iluminação e playlists diferenciadas. Todo dia um treino e grupo muscular diferente, preparado pelos nossos coaches, que estarão próximos para auxiliar nas execuções. Esqueça o formato chato de sempre — aqui você pega gosto pela musculação. O básico bem feito funciona, pode confiar.
+            </div>
+          </div>
+
+          {/* Lift for Girls */}
+          <div className="feature-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem', display: 'flex', flexDirection: 'column' as const }}>
+            <div style={{ width: 40, height: 40, background: `${ACCENT}15`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, marginBottom: '1rem' }}>👩</div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', marginBottom: '0.5rem', letterSpacing: 1 }}>LIFT FOR GIRLS</div>
+            <div style={{ fontSize: 14, color: '#888', lineHeight: 1.7 }}>
+              Uma aula exclusiva para vocês meninas, com o treino mais procurado de todos: <strong style={{ color: '#fff' }}>Glúteos & Abs</strong>. Fiquem à vontade pra treinar com toda liberdade — a sala é somente de vocês, o resultado é para todos.
+            </div>
+          </div>
+
+          {/* Running + Funcional */}
+          <div className="feature-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem', display: 'flex', flexDirection: 'column' as const }}>
+            <div style={{ width: 40, height: 40, background: `${ACCENT}15`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, marginBottom: '1rem' }}>🏃</div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', marginBottom: '0.5rem', letterSpacing: 1 }}>RUNNING + FUNCIONAL</div>
+            <div style={{ fontSize: 14, color: '#888', lineHeight: 1.7 }}>
+              Treino de 50 minutos intervalado entre corrida e funcional. Altíssima intensidade e coaches extremamente preparados para te levar a um alto gasto calórico — cada um na sua intensidade. Ambiente exclusivo, iluminação diferenciada e playlists únicas (gostamos de som alto) vão te fazer esquecer qualquer outro tipo de treino, acredite.
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div style={s.divider} />
+
       {/* COACH CT — banner único (personal 1×1 + musculação livre) */}
       <div id="coach-ct" style={s.section}>
         <div style={s.sTag}>// o diferencial coach ct</div>
@@ -265,8 +312,6 @@ export default function LandingPage() {
           </div>
         </div>
       </div>
-
-      <div style={s.divider} />
 
       <div style={s.divider} />
 
