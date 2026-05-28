@@ -510,7 +510,7 @@ function AulasPageInner() {
                         </button>
                       ) : (
                         <button onClick={() => tentarReservar(oc)} style={{
-                          width:'100%', background:ACCENT, color:'#fff',
+                          width:'100%', background:'#cc2580', color:'#fff',
                           border:'none', borderRadius:12,
                           padding: isMobile ? '0.9rem' : '0.65rem', fontSize: isMobile ? 15 : 13, fontWeight:700,
                           cursor:'pointer', fontFamily:"'DM Sans', sans-serif", letterSpacing:0.3
