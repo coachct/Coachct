@@ -136,6 +136,15 @@ export default function MinhaContaPage() {
   const [erroAtivar,     setErroAtivar]     = useState('')
   const [modalSucesso,   setModalSucesso]   = useState<any>(null)
   const [modalParceiros, setModalParceiros] = useState(false)
+
+  // ── Alterar senha ──
+  const [modalSenha,     setModalSenha]     = useState(false)
+  const [novaSenha,      setNovaSenha]      = useState('')
+  const [confirmaSenha,  setConfirmaSenha]  = useState('')
+  const [salvandoSenha,  setSalvandoSenha]  = useState(false)
+  const [erroSenha,      setErroSenha]      = useState('')
+  const [senhaSalva,     setSenhaSalva]     = useState(false)
+
   const contratoRef = useRef<HTMLDivElement>(null)
 
   const agora          = new Date()
@@ -171,40 +180,31 @@ export default function MinhaContaPage() {
       { data: planosData },
       { data: cobrancasData },
     ] = await Promise.all([
-      // Futuros CT
       supabase.from('agendamentos').select('*, unidades(nome)')
         .eq('cliente_id', cli.id).gte('data', hoje)
         .not('status','in','("cancelado")').order('data').order('horario').limit(30),
-      // Passados CT
       supabase.from('agendamentos').select('*, unidades(nome)')
         .eq('cliente_id', cli.id).lt('data', hoje)
         .in('status', ['realizado','falta']).order('data',{ascending:false}).limit(20),
-      // Fila
       supabase.from('fila_espera').select('*, unidades(nome)')
         .eq('cliente_id', cli.id).eq('status','aguardando').gte('data', hoje)
         .order('data').order('horario'),
-      // Planos
       supabase.from('cliente_planos').select('*, planos_disponiveis(id, nome, tipo, unidade_id)')
         .eq('cliente_id', cli.id).eq('ativo', true),
-      // Compras
       supabase.from('vendas').select('*, produtos(nome, subtipo, dias_validade)')
         .eq('cliente_id', cli.id).order('vendido_em',{ascending:false}).limit(10),
-      // Club reservas futuras
       supabase.from('club_reservas').select(`
         id, status, tipo_credito, posicao, cancelado_em,
         club_ocorrencias(id, data, club_aulas(tipo, horario, unidade_id, unidades(nome)))
       `).eq('cliente_id', cli.id).not('status','in','("cancelado")'),
-      // Club reservas passadas
       supabase.from('club_reservas').select(`
         id, status, tipo_credito, posicao,
         club_ocorrencias(id, data, club_aulas(tipo, horario, unidade_id, unidades(nome)))
       `).eq('cliente_id', cli.id).in('status',['presente','realizado','falta']).limit(20),
-      // Planos disponíveis
       supabase.from('planos_disponiveis')
         .select('id, nome, tipo, creditos_mes, unidade_id, unidades(id, nome, tipo)')
         .in('tipo', ['wellhub', 'totalpass']).eq('ativo', true)
         .order('tipo').order('unidade_id'),
-      // Cobranças
       supabase.from('cobrancas_pendentes').select('*').eq('cliente_id', cli.id).eq('status', 'pendente'),
     ])
 
@@ -236,7 +236,6 @@ export default function MinhaContaPage() {
     const mp:Record<string,any>={}; sp.forEach(r=>Object.assign(mp,r.data||{})); setSaldoProximo(mp)
   }
 
-  // Feed futuro unificado
   const feedFuturo = [
     ...(agendamentos.map(ag => ({
       id: ag.id, tipo:'ct' as const,
@@ -258,7 +257,6 @@ export default function MinhaContaPage() {
     }))),
   ].sort((a,b) => `${a.data}T${a.horario}`.localeCompare(`${b.data}T${b.horario}`))
 
-  // Feed histórico unificado
   const feedHistorico = [
     ...(agendamentosPassados.map(ag => ({
       id: ag.id, tipo:'ct' as const,
@@ -299,6 +297,23 @@ export default function MinhaContaPage() {
       await loadDados()
     } catch { setErroAtivar('Erro ao ativar plano. Tente novamente ou fale com a recepção.') }
     finally { setAtivando(false) }
+  }
+
+  // ── Alterar senha ──
+  function abrirModalSenha() {
+    setNovaSenha(''); setConfirmaSenha(''); setErroSenha(''); setSenhaSalva(false); setModalSenha(true)
+  }
+
+  async function salvarNovaSenha() {
+    setErroSenha('')
+    if (novaSenha.length < 6) { setErroSenha('A senha deve ter pelo menos 6 caracteres.'); return }
+    if (novaSenha !== confirmaSenha) { setErroSenha('As senhas não coincidem.'); return }
+    setSalvandoSenha(true)
+    const { error } = await supabase.auth.updateUser({ password: novaSenha })
+    setSalvandoSenha(false)
+    if (error) { setErroSenha('Erro ao alterar a senha. Tente novamente.'); return }
+    setSenhaSalva(true)
+    setNovaSenha(''); setConfirmaSenha('')
   }
 
   async function abrirModalCancelar(item: typeof feedFuturo[0]) {
@@ -382,6 +397,7 @@ export default function MinhaContaPage() {
         .contrato-scroll::-webkit-scrollbar-thumb{background:#444;border-radius:2px}
         @keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+        input:focus{outline:none;border-color:${ACCENT} !important;}
       `}</style>
       <SiteHeader/>
 
@@ -471,7 +487,6 @@ export default function MinhaContaPage() {
                 const dias=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
                 return (
                   <div key={`${item.tipo}-${item.id}`} style={{background:'#111',border:'1px solid #1e1e1e',borderRadius:12,padding:'0.9rem 1rem',display:'flex',alignItems:'center',gap:'0.85rem'}}>
-                    {/* Data */}
                     <div style={{flexShrink:0,textAlign:'center',width:42}}>
                       <div style={{fontSize:9,color:'#555',fontWeight:700,letterSpacing:1,textTransform:'uppercase'}}>{dias[d.getDay()]}</div>
                       <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:26,color:'#fff',lineHeight:1}}>{d.getDate()}</div>
@@ -480,7 +495,6 @@ export default function MinhaContaPage() {
 
                     <div style={{width:1,height:40,background:'#222',flexShrink:0}}/>
 
-                    {/* Info */}
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',marginBottom:3}}>
                         <span style={{fontSize:14,fontWeight:600,color:'#fff'}}>{item.horario}</span>
@@ -502,7 +516,6 @@ export default function MinhaContaPage() {
                       </div>
                     </div>
 
-                    {/* Status + cancelar */}
                     <div style={{flexShrink:0,textAlign:'right'}}>
                       <div style={{fontSize:10,fontWeight:700,color:sc.cor,textTransform:'uppercase',marginBottom:4}}>{sc.label}</div>
                       {podeCancelar && (
@@ -581,7 +594,6 @@ export default function MinhaContaPage() {
                         <span style={{fontSize:12,color:'#444'}}> / {total}</span>
                       </div>
                     </div>
-                    {/* Barra de progresso */}
                     <div style={{height:3,background:'#1a1a1a',borderRadius:2,overflow:'hidden',marginBottom:6}}>
                       <div style={{height:'100%',borderRadius:2,background:restante===0?'#222':cor,width:`${pct}%`,transition:'width .3s'}}/>
                     </div>
@@ -595,7 +607,6 @@ export default function MinhaContaPage() {
             </div>
           )}
 
-          {/* Botões agendar/comprar abaixo dos planos */}
           {(Object.keys(saldoAtual).length>0||clientePlanos.length>0) && (
             <div style={{display:'flex',gap:8,marginTop:10}}>
               <button onClick={()=>router.push('/comprar')} style={{flex:1,background:'transparent',color:'#aaa',border:'1px solid #222',borderRadius:10,padding:'0.6rem',fontSize:12,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
@@ -676,11 +687,14 @@ export default function MinhaContaPage() {
             {label:'Email',   value:cliente?.email||'—'},
             {label:'Telefone',value:cliente?.telefone||'—'},
           ].map((item,i,arr)=>(
-            <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'0.5rem 0',borderBottom:i<arr.length-1?'1px solid #181818':'none'}}>
+            <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'0.5rem 0',borderBottom:'1px solid #181818'}}>
               <span style={{fontSize:13,color:'#444'}}>{item.label}</span>
               <span style={{fontSize:13,color:'#888'}}>{item.value}</span>
             </div>
           ))}
+          <button onClick={abrirModalSenha} style={{width:'100%',marginTop:'1rem',background:'transparent',border:`1px solid ${ACCENT}44`,borderRadius:10,padding:'0.7rem',fontSize:13,color:ACCENT,fontWeight:600,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
+            🔑 Alterar senha
+          </button>
         </div>
 
         <div style={{textAlign:'center',paddingBottom:'3rem'}}>
@@ -691,6 +705,54 @@ export default function MinhaContaPage() {
           </span>
         </div>
       </div>
+
+      {/* ══════════════════════════════════════════
+          MODAL — ALTERAR SENHA
+      ══════════════════════════════════════════ */}
+      {modalSenha && (
+        <div style={{position:'fixed',inset:0,background:'#000000dd',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
+          <div style={{background:'#111',border:'1px solid #333',borderRadius:20,width:'100%',maxWidth:400,padding:'1.5rem'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.25rem'}}>
+              <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:22,color:'#fff',letterSpacing:1}}>ALTERAR SENHA</div>
+              <button onClick={()=>setModalSenha(false)} style={{background:'transparent',border:'none',color:'#555',fontSize:20,cursor:'pointer'}}>✕</button>
+            </div>
+
+            {senhaSalva ? (
+              <div style={{textAlign:'center',padding:'1rem 0'}}>
+                <div style={{fontSize:40,marginBottom:'1rem'}}>✅</div>
+                <div style={{fontSize:16,fontWeight:600,color:'#fff',marginBottom:6}}>Senha alterada!</div>
+                <div style={{fontSize:13,color:'#888',marginBottom:'1.5rem',lineHeight:1.6}}>Sua nova senha já está valendo. Use ela no próximo login.</div>
+                <button onClick={()=>setModalSenha(false)} style={{width:'100%',background:VERDE,color:'#000',border:'none',borderRadius:10,padding:'0.85rem',fontWeight:700,fontSize:15,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
+                  Fechar
+                </button>
+              </div>
+            ) : (
+              <>
+                <div style={{marginBottom:'1rem'}}>
+                  <label style={{fontSize:12,color:'#555',display:'block',marginBottom:6,textTransform:'uppercase',letterSpacing:1}}>Nova senha</label>
+                  <input type="password" placeholder="Mínimo 6 caracteres" value={novaSenha}
+                    onChange={e=>setNovaSenha(e.target.value)}
+                    style={{width:'100%',background:'#080808',border:'1px solid #333',borderRadius:10,padding:'0.75rem 1rem',color:'#fff',fontSize:14,fontFamily:"'DM Sans', sans-serif"}}/>
+                </div>
+                <div style={{marginBottom:'1.25rem'}}>
+                  <label style={{fontSize:12,color:'#555',display:'block',marginBottom:6,textTransform:'uppercase',letterSpacing:1}}>Confirmar nova senha</label>
+                  <input type="password" placeholder="Digite novamente" value={confirmaSenha}
+                    onChange={e=>setConfirmaSenha(e.target.value)}
+                    onKeyDown={e=>{ if(e.key==='Enter') salvarNovaSenha() }}
+                    style={{width:'100%',background:'#080808',border:'1px solid #333',borderRadius:10,padding:'0.75rem 1rem',color:'#fff',fontSize:14,fontFamily:"'DM Sans', sans-serif"}}/>
+                </div>
+                {erroSenha && <div style={{background:'#ff2d9b15',border:'1px solid #ff2d9b44',borderRadius:8,padding:'0.6rem 1rem',fontSize:13,color:ACCENT,marginBottom:'1rem'}}>{erroSenha}</div>}
+                <div style={{display:'flex',gap:8}}>
+                  <button onClick={()=>setModalSenha(false)} style={{flex:1,background:'transparent',border:'1px solid #333',borderRadius:10,padding:'0.85rem',color:'#888',fontSize:14,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>Cancelar</button>
+                  <button onClick={salvarNovaSenha} disabled={salvandoSenha} style={{flex:2,background:ACCENT,color:'#fff',border:'none',borderRadius:10,padding:'0.85rem',fontWeight:600,fontSize:15,cursor:salvandoSenha?'default':'pointer',fontFamily:"'DM Sans', sans-serif",opacity:salvandoSenha?0.7:1}}>
+                    {salvandoSenha?'Salvando...':'Salvar nova senha'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ══════════════════════════════════════════
           MODAL — ATIVAR APP PARCEIRO
