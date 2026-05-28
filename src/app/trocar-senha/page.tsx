@@ -1,66 +1,36 @@
 'use client'
-import { useState, useRef } from 'react'
-import { createClient } from '@/lib/supabase'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 export default function TrocarSenhaPage() {
   const [email, setEmail] = useState('')
-  const [codigo, setCodigo] = useState('')
-  const [nova, setNova] = useState('')
-  const [confirma, setConfirma] = useState('')
-  const [etapa, setEtapa] = useState<'email' | 'codigo'>('email')
   const [loading, setLoading] = useState(false)
   const [erro, setErro] = useState('')
-  const [msg, setMsg] = useState('')
+  const [enviado, setEnviado] = useState(false)
   const router = useRouter()
-  const supabase = useRef(createClient()).current
 
-  async function handleEnviarCodigo() {
+  async function handleEnviar() {
     setErro('')
-    if (!email) { setErro('Digite seu email.'); return }
+    if (!email.trim()) { setErro('Digite seu email.'); return }
     setLoading(true)
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { shouldCreateUser: false }
-    })
-    setLoading(false)
-    if (error) {
-      setErro('Email não encontrado. Verifique e tente novamente.')
-      return
-    }
-    setEtapa('codigo')
-  }
-
-  async function handleSalvar() {
-    setErro('')
-    if (!codigo || codigo.length < 6) { setErro('Digite o código de 6 dígitos.'); return }
-    if (!nova || nova.length < 6) { setErro('A senha deve ter pelo menos 6 caracteres.'); return }
-    if (nova !== confirma) { setErro('As senhas não coincidem.'); return }
-    setLoading(true)
-    // Verifica o OTP e cria sessão
-    const { error: otpError } = await supabase.auth.verifyOtp({
-      email,
-      token: codigo,
-      type: 'email',
-    })
-    if (otpError) {
-      setErro('Código inválido ou expirado. Tente novamente.')
+    try {
+      const res = await fetch('/api/resetar-senha-cliente', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setErro(data.error || 'Erro ao enviar. Tente novamente.')
+        setLoading(false)
+        return
+      }
+      setEnviado(true)
+    } catch (e: any) {
+      setErro('Erro de conexão. Tente novamente.')
+    } finally {
       setLoading(false)
-      return
     }
-    // Atualiza a senha
-    const { error: updateError } = await supabase.auth.updateUser({ password: nova })
-    if (updateError) {
-      setErro('Erro ao salvar senha. Tente novamente.')
-      setLoading(false)
-      return
-    }
-    setMsg('Senha alterada com sucesso! Redirecionando...')
-    setTimeout(async () => {
-      await supabase.auth.signOut()
-      router.push('/login')
-    }, 2000)
-    setLoading(false)
   }
 
   return (
@@ -72,11 +42,22 @@ export default function TrocarSenhaPage() {
         </div>
         <div className="bg-white rounded-2xl p-6 shadow-xl">
 
-          {etapa === 'email' && (
+          {enviado ? (
+            <div className="text-center py-2">
+              <div className="text-4xl mb-4">📧</div>
+              <h1 className="text-lg font-semibold text-gray-900 mb-2">Email enviado!</h1>
+              <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+                Se o email estiver cadastrado, você receberá uma <strong>senha provisória</strong> em instantes. Use ela para entrar e depois cadastre uma nova senha em Minha Conta.
+              </p>
+              <button onClick={() => router.push('/login')} className="btn btn-primary w-full">
+                Voltar ao login
+              </button>
+            </div>
+          ) : (
             <>
               <h1 className="text-lg font-semibold text-gray-900 mb-1">Esqueci minha senha</h1>
               <p className="text-xs text-gray-400 mb-5 leading-relaxed">
-                Digite seu email e enviaremos um código de verificação.
+                Digite seu email e enviaremos uma senha provisória para você acessar.
               </p>
               <div className="space-y-4">
                 <div>
@@ -90,63 +71,12 @@ export default function TrocarSenhaPage() {
                   />
                 </div>
                 {erro && <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{erro}</p>}
-                <button onClick={handleEnviarCodigo} disabled={loading} className="btn btn-primary w-full">
-                  {loading ? 'Enviando...' : 'Enviar código'}
+                <button onClick={handleEnviar} disabled={loading} className="btn btn-primary w-full">
+                  {loading ? 'Enviando...' : 'Enviar senha provisória'}
                 </button>
                 <button onClick={() => router.push('/login')}
                   className="w-full text-sm text-gray-400 hover:text-gray-600 text-center mt-2">
                   ← Voltar ao login
-                </button>
-              </div>
-            </>
-          )}
-
-          {etapa === 'codigo' && (
-            <>
-              <h1 className="text-lg font-semibold text-gray-900 mb-1">Nova senha</h1>
-              <p className="text-xs text-gray-400 mb-5 leading-relaxed">
-                Digite o código enviado para <strong>{email}</strong> e escolha uma nova senha.
-              </p>
-              <div className="space-y-4">
-                <div>
-                  <label className="label">Código de verificação</label>
-                  <input
-                    className="input"
-                    type="text"
-                    placeholder="000000"
-                    maxLength={6}
-                    value={codigo}
-                    onChange={e => setCodigo(e.target.value.replace(/\D/g, ''))}
-                  />
-                </div>
-                <div>
-                  <label className="label">Nova senha</label>
-                  <input
-                    className="input"
-                    type="password"
-                    placeholder="Mínimo 6 caracteres"
-                    value={nova}
-                    onChange={e => setNova(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="label">Confirmar nova senha</label>
-                  <input
-                    className="input"
-                    type="password"
-                    placeholder="Digite novamente"
-                    value={confirma}
-                    onChange={e => setConfirma(e.target.value)}
-                  />
-                </div>
-                {erro && <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{erro}</p>}
-                {msg && <p className="text-xs text-green-700 bg-green-50 px-3 py-2 rounded-lg">{msg}</p>}
-                <button onClick={handleSalvar} disabled={loading} className="btn btn-primary w-full">
-                  {loading ? 'Salvando...' : 'Salvar nova senha'}
-                </button>
-                <button onClick={() => { setEtapa('email'); setErro(''); setCodigo('') }}
-                  className="w-full text-sm text-gray-400 hover:text-gray-600 text-center mt-2">
-                  ← Reenviar código
                 </button>
               </div>
             </>
