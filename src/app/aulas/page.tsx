@@ -447,16 +447,16 @@ function AulasPageInner() {
               return (
                 <div key={oc.id} style={{ background:cores.bg, border:`1.5px solid ${borderColor}`, borderRadius:18, overflow:'hidden' }}>
                   {/* Corpo do card: horário+duração à esquerda, info à direita */}
-                  <div style={{ display:'flex', gap:'1rem', padding:'1rem 1.25rem 1rem' }}>
+                  <div style={{ display:'flex', gap:0, padding:'1rem 1.25rem 1rem' }}>
                     {/* Coluna esquerda: horário + duração */}
-                    <div style={{ display:'flex', flexDirection:'column', gap:4, flexShrink:0, width:64 }}>
+                    <div style={{ display:'flex', flexDirection:'column', gap:4, flexShrink:0, width:72, paddingRight:'1rem', borderRight:'1px solid #ffffff12' }}>
                       <div style={{ fontFamily:"'DM Mono', monospace", fontSize:28, fontWeight:700, color:'#fff', lineHeight:1, letterSpacing:-0.5 }}>
                         {(aula?.horario||'').slice(0,5)}
                       </div>
                       <div style={{ fontSize:12, color:'#666' }}>{duracao} min</div>
                     </div>
                     {/* Coluna direita: nome da aula grande + grupo + professor */}
-                    <div style={{ flex:1, display:'flex', flexDirection:'column', gap:5 }}>
+                    <div style={{ flex:1, display:'flex', flexDirection:'column', gap:5, paddingLeft:'1rem' }}>
                       <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8 }}>
                         <div style={{ fontSize:22, fontWeight:700, color:cores.text, lineHeight:1.1 }}>
                           {tipoLabel(aula?.tipo)}
