@@ -113,6 +113,8 @@ function AulasPageInner() {
   const [diaSel,          setDiaSel]          = useState(0)
   const [periodo,         setPeriodo]         = useState<'todos'|'manha'|'tarde'|'noite'>('todos')
   const [bloqueadasCount, setBloqueadasCount] = useState(0)
+  const [ocorrenciasSemana, setOcorrenciasSemana] = useState<Record<string, any[]>>({})
+  const [loadingSemana,    setLoadingSemana]    = useState(false)
 
   const [modalReserva,   setModalReserva]   = useState<any>(null)
   const [modalFila,      setModalFila]      = useState<any>(null)
@@ -150,11 +152,74 @@ function AulasPageInner() {
   useEffect(() => { if (unidadeId) carregarUnidade() }, [unidadeId])
   useEffect(() => { if (perfil) carregarCliente() }, [perfil])
   useEffect(() => { if (unidadeId) carregarOcorrencias(dataSelStr) }, [dataSelStr, unidadeId, cliente?.id])
+  useEffect(() => { if (!isMobile && unidadeId) carregarSemana() }, [isMobile, semanaOffset, unidadeId, cliente?.id])
   useEffect(() => { if (cliente && unidadeId) carregarSaldo() }, [cliente?.id, unidadeId])
 
   async function carregarUnidade() {
     const { data } = await supabase.from('unidades').select('id, nome, tipo').eq('id', unidadeId).maybeSingle()
     setUnidade(data)
+  }
+
+  async function carregarSemana() {
+    if (!unidadeId) return
+    setLoadingSemana(true)
+    const dataInicio = dataLocalStr(diasSemana[0])
+    const dataFim    = dataLocalStr(diasSemana[6])
+
+    const { data: ocs } = await supabase
+      .from('club_ocorrencias')
+      .select('*, club_aulas(id, tipo, horario, capacidade, duracao_min, so_mulheres, grupo_muscular_id, coaches(nome))')
+      .eq('unidade_id', unidadeId)
+      .eq('cancelada', false)
+      .gte('data', dataInicio)
+      .lte('data', dataFim)
+
+    const ocsList = (ocs || []).sort((a: any, b: any) => (a.club_aulas?.horario||'').localeCompare(b.club_aulas?.horario||''))
+
+    // Busca nomes dos grupos musculares
+    const grupoIds = [...new Set(ocsList.map((o: any) => o.club_aulas?.grupo_muscular_id).filter(Boolean))]
+    let gruposMap: Record<string, string> = {}
+    if (grupoIds.length) {
+      const { data: grupos } = await supabase.from('grupos_musculares').select('id, nome').in('id', grupoIds)
+      for (const g of (grupos || [])) gruposMap[g.id] = g.nome
+    }
+
+    const ocsComGrupo = ocsList.map((o: any) => ({
+      ...o,
+      club_aulas: { ...o.club_aulas, grupo_muscular_nome: o.club_aulas?.grupo_muscular_id ? (gruposMap[o.club_aulas.grupo_muscular_id] || null) : null }
+    }))
+
+    // Agrupa por data
+    const porDia: Record<string, any[]> = {}
+    diasSemana.forEach(d => { porDia[dataLocalStr(d)] = [] })
+    ocsComGrupo.forEach((oc: any) => { if (porDia[oc.data]) porDia[oc.data].push(oc) })
+    setOcorrenciasSemana(porDia)
+
+    // Reservas, fila, bloqueadas
+    const ocIds = ocsComGrupo.map((o: any) => o.id)
+    if (ocIds.length) {
+      const { data: reservas } = await supabase.from('club_reservas').select('ocorrencia_id').in('ocorrencia_id', ocIds).in('status', ['reservado','presente'])
+      const cont: Record<string, number> = {}
+      for (const r of (reservas||[])) cont[r.ocorrencia_id] = (cont[r.ocorrencia_id]||0)+1
+      setReservasCont(cont)
+
+      const { data: bloqData } = await supabase.from('club_posicoes').select('id').eq('unidade_id', unidadeId).eq('ativo', true).eq('bloqueado', true)
+      setBloqueadasCount((bloqData || []).length)
+
+      if (cliente) {
+        const [{ data: minhas }, { data: filas }] = await Promise.all([
+          supabase.from('club_reservas').select('*').in('ocorrencia_id', ocIds).eq('cliente_id', cliente.id).neq('status','cancelado'),
+          supabase.from('fila_espera').select('*').in('ocorrencia_id', ocIds).eq('cliente_id', cliente.id).eq('status','aguardando'),
+        ])
+        const minhasMap: Record<string, any> = {}
+        for (const r of (minhas||[])) minhasMap[r.ocorrencia_id] = r
+        setMinhasReservas(minhasMap)
+        const filaMap: Record<string, any> = {}
+        for (const f of (filas||[])) if (f.ocorrencia_id) filaMap[f.ocorrencia_id] = f
+        setFilaCliente(filaMap)
+      }
+    }
+    setLoadingSemana(false)
   }
   async function carregarCliente() {
     if (!perfil) return
@@ -335,7 +400,7 @@ function AulasPageInner() {
         .dia-tab:hover{color:#fff!important;}
       `}</style>
       <SiteHeader/>
-      <div style={{ maxWidth:700, margin:'0 auto', padding:'6rem 1.5rem 4rem' }}>
+      <div style={{ maxWidth: isMobile ? 700 : 1400, margin:'0 auto', padding: isMobile ? '6rem 1.5rem 4rem' : '6rem 2rem 4rem' }}>
 
         <div style={{ display:'flex', alignItems:'center', gap:'1rem', marginBottom:'2rem' }}>
           <button onClick={() => router.push('/agendar')} style={{ background:'transparent', border:'1px solid #2a2a2a', borderRadius:'50%', width:36, height:36, color:'#666', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>‹</button>
@@ -438,6 +503,108 @@ function AulasPageInner() {
           ))}
         </div>
 
+        {/* ── DESKTOP: grade semanal ── */}
+        {!isMobile && (
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(7, minmax(0, 1fr))', gap:8, marginTop:'1.5rem' }}>
+            {diasSemana.map((dia, i) => {
+              const diaStr  = dataLocalStr(dia)
+              const isHojeDia = diaStr === dataLocalStr(new Date())
+              const aulas   = (ocorrenciasSemana[diaStr] || []).filter(oc => {
+                const hora = parseInt((oc.club_aulas?.horario||'').slice(0,2))
+                if (periodo === 'manha') return hora < 12
+                if (periodo === 'tarde') return hora >= 12 && hora < 18
+                if (periodo === 'noite') return hora >= 18
+                return true
+              })
+              return (
+                <div key={i}>
+                  {/* Cabeçalho do dia */}
+                  <div style={{ textAlign:'center', padding:'8px 4px', borderRadius:10, background:'#0d0d0d', border:`1px solid ${isHojeDia ? ACCENT+'44' : '#1a1a1a'}`, marginBottom:8 }}>
+                    <div style={{ fontSize:9, fontWeight:700, letterSpacing:1, color: isHojeDia ? ACCENT : '#444', textTransform:'uppercase' }}>
+                      {isHojeDia ? 'HOJE' : DIAS_ABREV[dia.getDay()]}
+                    </div>
+                    <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:20, lineHeight:1.1, color: isHojeDia ? '#fff' : '#666', marginTop:2 }}>
+                      {dia.getDate()}
+                    </div>
+                    <div style={{ fontSize:9, color: isHojeDia ? ACCENT : '#333', textTransform:'uppercase' }}>
+                      {MESES_ABREV[dia.getMonth()]}
+                    </div>
+                  </div>
+
+                  {loadingSemana ? (
+                    <div style={{ textAlign:'center', padding:'1rem 0', color:'#333', fontSize:11 }}>...</div>
+                  ) : aulas.length === 0 ? (
+                    <div style={{ textAlign:'center', padding:'1rem 0', color:'#2a2a2a', fontSize:11 }}>—</div>
+                  ) : aulas.map((oc: any) => {
+                    const aula       = oc.club_aulas
+                    const { livres, lotado } = vagasInfo(oc)
+                    const minhaRes   = minhasReservas[oc.id]
+                    const naFila     = filaCliente[oc.id]
+                    const cores      = tipoColor(aula?.tipo||'')
+                    const nomeCoach  = aula?.coaches?.nome?.split(' ')[0]||'—'
+                    const duracao    = aula?.duracao_min||50
+                    const poucasVagas = livres > 0 && livres <= 3
+                    const borderColor = minhaRes ? CYAN+'55' : naFila ? AMARELO+'55' : cores.border
+                    return (
+                      <div key={oc.id} style={{ background:cores.bg, border:`1px solid ${borderColor}`, borderRadius:12, padding:'10px', marginBottom:8, overflow:'hidden' }}>
+                        {/* Horário + duração */}
+                        <div style={{ fontFamily:"'DM Mono', monospace", fontSize:13, fontWeight:700, color:'#fff', lineHeight:1 }}>
+                          {(aula?.horario||'').slice(0,5)}
+                        </div>
+                        <div style={{ fontSize:10, color:'#555', marginBottom:5 }}>{duracao} min</div>
+
+                        {/* Badge nome da aula */}
+                        <div style={{ background:cores.badge, color:cores.text, border:`1px solid ${cores.text}55`, fontSize:9, fontWeight:700, padding:'2px 7px', borderRadius:20, letterSpacing:0.4, display:'inline-block', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:'100%', marginBottom:5 }}>
+                          {tipoLabel(aula?.tipo)}
+                        </div>
+
+                        {/* Grupo muscular */}
+                        {aula?.grupo_muscular_nome && (
+                          <div style={{ fontSize:10, color:'#777', marginBottom:2, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                            {aula.grupo_muscular_nome}
+                          </div>
+                        )}
+
+                        {/* Professor */}
+                        <div style={{ fontSize:10, color:'#666', marginBottom:6, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                          👤 {nomeCoach}
+                        </div>
+
+                        {/* Status ou botão */}
+                        {minhaRes ? (
+                          <div style={{ fontSize:10, color:CYAN, fontWeight:700 }}>✓ Reservado</div>
+                        ) : naFila ? (
+                          <div style={{ fontSize:10, color:AMARELO, fontWeight:700 }}>⏳ Na fila</div>
+                        ) : (
+                          <>
+                            {poucasVagas && (
+                              <div style={{ fontSize:9, fontFamily:"'DM Mono', monospace", fontWeight:700, color:livres===1?'#ff4444':AMARELO, marginBottom:4 }}>
+                                {livres===1?'ÚLTIMA VAGA':`${livres} VAGAS`}
+                              </div>
+                            )}
+                            {lotado ? (
+                              <button onClick={() => tentarFila(oc)} style={{ width:'100%', background:`${AMARELO}15`, color:AMARELO, border:`1px solid ${AMARELO}55`, borderRadius:8, padding:'5px', fontSize:10, fontWeight:700, cursor:'pointer' }}>
+                                ⏳ Fila
+                              </button>
+                            ) : (
+                              <button onClick={() => tentarReservar(oc)} style={{ width:'100%', background:'#cc2580', color:'#fff', border:'none', borderRadius:8, padding:'6px', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                                Reservar
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* ── MOBILE: lista do dia selecionado ── */}
+        {isMobile && (
+          <>
         {loadingOcs ? (
           <div style={{ textAlign:'center', padding:'3rem', color:'#444' }}>Carregando aulas...</div>
         ) : ocsFiltradas.length===0 ? (
@@ -524,6 +691,8 @@ function AulasPageInner() {
               )
             })}
           </div>
+        )}
+          </>
         )}
       </div>
 
