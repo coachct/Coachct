@@ -488,7 +488,7 @@ function AulasPageInner() {
                   {/* Grupo muscular + professor + duração */}
                   <div style={{ padding:'0 1.25rem 1rem', display:'flex', flexDirection:'column', gap:4 }}>
                     {aula?.grupo_muscular_nome && (
-                      <div style={{ fontSize:13, color:'#aaa', fontWeight:500 }}>💪 {aula.grupo_muscular_nome}</div>
+                      <div style={{ fontSize:13, color:'#aaa', fontWeight:500 }}>{aula.grupo_muscular_nome}</div>
                     )}
                     <div style={{ fontSize:13, color:'#888' }}>👤 {nomeCoach} · {duracao} min</div>
                   </div>
