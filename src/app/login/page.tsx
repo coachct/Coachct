@@ -83,12 +83,6 @@ function LoginPageInner() {
           </div>
         </div>
 
-        <p style={{ textAlign: 'center' as const, fontSize: 12, color: '#333', marginTop: '1.5rem' }}>
-          É da equipe?{' '}
-          <span onClick={() => router.push('/equipe')} style={{ color: '#555', cursor: 'pointer' }}>
-            Acesse por aqui
-          </span>
-        </p>
       </div>
     </div>
   )
