@@ -44,6 +44,7 @@ export default function LandingPage() {
   const isLogado = !!perfil
 
   const [unidades, setUnidades] = useState<any[]>([])
+  const [popupAberto, setPopupAberto] = useState(false)
 
   useEffect(() => {
     async function carregarUnidades() {
@@ -62,6 +63,21 @@ export default function LandingPage() {
     }
     carregarUnidades()
   }, [])
+
+  // Popup de aviso de sistema novo — aparece uma vez por navegador
+  useEffect(() => {
+    try {
+      const visto = window.localStorage.getItem('popup_sistema_novo_visto')
+      if (!visto) setPopupAberto(true)
+    } catch (e) {
+      setPopupAberto(true)
+    }
+  }, [])
+
+  function fecharPopup() {
+    try { window.localStorage.setItem('popup_sistema_novo_visto', '1') } catch (e) {}
+    setPopupAberto(false)
+  }
 
   const s: Record<string, any> = {
     page: { background: '#080808', minHeight: '100vh', color: '#f0f0f0', fontFamily: "'DM Sans', sans-serif" },
@@ -84,8 +100,11 @@ export default function LandingPage() {
   return (
     <div style={s.page}>
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Caveat:wght@700&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
         @keyframes spin { to { transform: rotate(360deg) } }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes popupIn { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: scale(1); } }
         .btn-ghost-h:hover { border-color: ${ACCENT} !important; color: ${ACCENT} !important; }
         .feature-h { transition: all .2s; }
         .feature-h:hover { border-color: ${ACCENT} !important; }
@@ -100,6 +119,22 @@ export default function LandingPage() {
         .planos-cta-arrow { transition: all .2s; display: inline-block; }
         .unidade-card-h { transition: all .25s; }
         .unidade-card-h:hover { border-color: ${ACCENT}55 !important; transform: translateY(-3px); }
+
+        /* Frase grafite do hero */
+        .hero-frase { line-height: 1; animation: fadeInUp .6s ease-out both; }
+        .hero-frase-line1, .hero-frase-line2 { display: block; }
+        .hero-frase-line1 { margin-bottom: 0.4rem; }
+        .hero-frase-marker { font-family: 'Permanent Marker', cursive; color: #fff; font-size: clamp(48px, 9vw, 120px); letter-spacing: 1px; }
+        .hero-frase-place { display: inline-block; transform: rotate(-2deg); }
+        .hero-frase-just { font-family: 'Caveat', cursive; font-weight: 700; color: ${ACCENT}; font-size: clamp(72px, 14vw, 180px); display: inline-block; transform: rotate(-3deg); margin: 0 0.1em 0 0.05em; vertical-align: -0.1em; text-shadow: 0 0 40px ${ACCENT}55; }
+        .hero-frase-smiley { font-family: 'Caveat', cursive; font-weight: 700; color: ${ACCENT}; font-size: clamp(40px, 7vw, 90px); display: inline-block; transform: rotate(8deg); margin-left: 0.15em; vertical-align: -0.05em; }
+
+        /* Popup go-live */
+        .popup-overlay { position: fixed; inset: 0; background: #000000d9; backdrop-filter: blur(6px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1rem; animation: fadeInUp .25s ease-out both; }
+        .popup-card { position: relative; background: #111; border: 1.5px solid ${ACCENT}55; border-radius: 20px; padding: 2.5rem 2rem 2rem; max-width: 520px; width: 100%; box-shadow: 0 20px 60px -10px ${ACCENT}33; animation: popupIn .3s ease-out both; max-height: 92vh; overflow-y: auto; }
+        .popup-close { position: absolute; top: 14px; right: 14px; background: transparent; border: 1px solid #333; color: #888; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; transition: all .2s; }
+        .popup-close:hover { border-color: ${ACCENT}; color: ${ACCENT}; }
+
         @media (max-width: 768px) {
           .nav-links-d { display: none !important; }
           .hero-title-r { font-size: 36px !important; }
@@ -112,31 +147,26 @@ export default function LandingPage() {
           .pro-hero-video-col { order: 1; border-radius: 0 !important; aspect-ratio: 4/5 !important; }
           .planos-spoiler-grid-r { grid-template-columns: 1fr !important; }
           .unidades-grid-r { grid-template-columns: 1fr !important; }
+          .hero-frase-wrap { padding: 4rem 1.25rem 3rem !important; }
         }
       `}</style>
 
       <SiteHeader />
 
-      {/* BANNER GO-LIVE — aviso de sistema novo (remover em 10-15 dias) */}
-      <div style={{ background: '#1a1a1a', borderBottom: '1px solid #2a2a2a', paddingTop: 64 }}>
-        <div style={{ maxWidth: 1100, margin: '0 auto', padding: '3rem 2.5rem' }}>
-          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(28px, 4vw, 44px)', color: ACCENT, lineHeight: 1.1, letterSpacing: 1.5, marginBottom: '1.25rem', textShadow: `0 0 30px ${ACCENT}66` }}>
-            🎉 SISTEMA NOVO NO AR!
-          </div>
-          <div style={{ fontSize: 16, color: '#fff', lineHeight: 1.8, marginBottom: '1rem', maxWidth: 760 }}>
-            <strong>Já é cliente Just e possui cadastro?</strong> Só clicar em <strong>Login</strong> e depois em <strong>"Esqueci minha senha"</strong> — acesse com sua senha provisória que chegará no seu email de cadastro.
-          </div>
-          <div style={{ fontSize: 16, color: '#fff', lineHeight: 1.8, marginBottom: '1rem', maxWidth: 760 }}>
-            <strong>Primeira vez por aqui?</strong> Cadastre-se normalmente e agende seu primeiro treino.
-          </div>
-          <div style={{ fontSize: 15, color: '#bbb', lineHeight: 1.7, marginBottom: '1.75rem', maxWidth: 760 }}>
-            Qualquer dúvida nos primeiros dias, fale com a gente no direct do Instagram 👇
-          </div>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <button onClick={() => router.push('/login')} style={s.btnPrimary}>Fazer login →</button>
-            <a href="https://instagram.com/justclub.ct" target="_blank" rel="noopener noreferrer">
-              <button className="btn-ghost-h" style={s.btnGhost}>📩 Falar no Instagram</button>
-            </a>
+      {/* HERO — frase de efeito da Just (grafite style) */}
+      <div style={{ background: '#080808', paddingTop: 64 }}>
+        <div className="hero-frase-wrap" style={{ maxWidth: 1200, margin: '0 auto', padding: '6rem 2.5rem 4rem', textAlign: 'center' as const }}>
+          <div className="hero-frase">
+            <div className="hero-frase-line1">
+              <span className="hero-frase-marker">"There's no</span>{' '}
+              <span className="hero-frase-marker hero-frase-place">PLACE</span>
+            </div>
+            <div className="hero-frase-line2">
+              <span className="hero-frase-marker">like</span>{' '}
+              <span className="hero-frase-just">just.</span>
+              <span className="hero-frase-marker">"</span>{' '}
+              <span className="hero-frase-smiley">:)</span>
+            </div>
           </div>
         </div>
       </div>
@@ -562,6 +592,47 @@ export default function LandingPage() {
           )}
         </div>
       </footer>
+
+      {/* POPUP GO-LIVE — aparece 1x por navegador. Remover este bloco em 10-15 dias. */}
+      {popupAberto && (
+        <div className="popup-overlay" onClick={fecharPopup}>
+          <div className="popup-card" onClick={(e) => e.stopPropagation()}>
+            <button className="popup-close" onClick={fecharPopup} aria-label="Fechar">✕</button>
+
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(26px, 4vw, 36px)', color: ACCENT, lineHeight: 1.1, letterSpacing: 1.5, marginBottom: '1.25rem', textShadow: `0 0 30px ${ACCENT}66`, textAlign: 'center' as const }}>
+              🎉 SISTEMA NOVO NO AR!
+            </div>
+
+            <div style={{ fontSize: 14, color: '#fff', lineHeight: 1.7, marginBottom: '0.85rem' }}>
+              <strong>Já é cliente Just e possui cadastro?</strong> Só clicar em <strong>Login</strong> e depois em <strong>"Esqueci minha senha"</strong> — acesse com sua senha provisória que chegará no seu email de cadastro.
+            </div>
+            <div style={{ fontSize: 14, color: '#fff', lineHeight: 1.7, marginBottom: '0.85rem' }}>
+              <strong>Primeira vez por aqui?</strong> Cadastre-se normalmente e agende seu primeiro treino.
+            </div>
+            <div style={{ fontSize: 13, color: '#bbb', lineHeight: 1.6, marginBottom: '1.5rem' }}>
+              Qualquer dúvida nos primeiros dias, fale com a gente no direct do Instagram 👇
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const, marginBottom: '0.85rem' }}>
+              <button onClick={() => { fecharPopup(); router.push('/login') }}
+                style={{ flex: 1, minWidth: 140, background: ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                Fazer login →
+              </button>
+              <a href="https://instagram.com/justclub.ct" target="_blank" rel="noopener noreferrer" style={{ flex: 1, minWidth: 140 }} onClick={fecharPopup}>
+                <button style={{ width: '100%', background: 'transparent', color: '#fff', border: '1.5px solid #333', borderRadius: 10, padding: '0.85rem', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                  📩 Falar no Instagram
+                </button>
+              </a>
+            </div>
+
+            <button onClick={fecharPopup}
+              style={{ width: '100%', background: 'transparent', color: '#888', border: 'none', padding: '0.5rem', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+              Entendi, ver o site →
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
