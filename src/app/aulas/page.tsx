@@ -5,6 +5,17 @@ import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
 import SiteHeader from '@/components/SiteHeader'
 
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(true)
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+  return isMobile
+}
+
 const ACCENT  = '#ff2d9b'
 const CYAN    = '#00e5ff'
 const AMARELO = '#ffaa00'
@@ -84,6 +95,7 @@ function AulasPageInner() {
   const unidadeId = params.get('unidade') || ''
   const { user, perfil } = useAuth()
   const supabase  = createClient()
+  const isMobile  = useIsMobile()
 
   const [unidade,         setUnidade]         = useState<any>(null)
   const [cliente,         setCliente]         = useState<any>(null)
@@ -447,20 +459,20 @@ function AulasPageInner() {
               return (
                 <div key={oc.id} style={{ background:cores.bg, border:`1.5px solid ${borderColor}`, borderRadius:18, overflow:'hidden' }}>
                   {/* Topo: horário à esquerda, badge à direita */}
-                  <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', padding:'1rem 1.25rem 0.25rem' }}>
+                  <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', padding: isMobile ? '1rem 1.25rem 0.25rem' : '0.75rem 1rem 0.2rem' }}>
                     <div style={{ display:'flex', flexDirection:'column', gap:3, flexShrink:0 }}>
-                      <div style={{ fontFamily:"'DM Mono', monospace", fontSize:20, fontWeight:700, color:'#fff', lineHeight:1, letterSpacing:-0.5 }}>
+                      <div style={{ fontFamily:"'DM Mono', monospace", fontSize: isMobile ? 20 : 15, fontWeight:700, color:'#fff', lineHeight:1, letterSpacing:-0.5 }}>
                         {(aula?.horario||'').slice(0,5)}
                       </div>
-                      <div style={{ fontSize:11, color:'#555' }}>{duracao} min</div>
+                      <div style={{ fontSize: isMobile ? 11 : 10, color:'#555' }}>{duracao} min</div>
                     </div>
-                    <span style={{ background:cores.badge, color:cores.text, border:`1px solid ${cores.text}55`, fontSize:13, fontWeight:700, padding:'4px 12px', borderRadius:20, letterSpacing:0.5, whiteSpace:'nowrap' }}>
+                    <span style={{ background:cores.badge, color:cores.text, border:`1px solid ${cores.text}55`, fontSize: isMobile ? 13 : 11, fontWeight:700, padding: isMobile ? '4px 12px' : '3px 9px', borderRadius:20, letterSpacing:0.5, whiteSpace:'nowrap' }}>
                       {tipoLabel(aula?.tipo)}
                     </span>
                   </div>
 
                   {/* Grupo muscular + professor alinhados à direita */}
-                  <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:3, padding:'0.5rem 1.25rem 1rem' }}>
+                  <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:3, padding: isMobile ? '0.5rem 1.25rem 1rem' : '0.35rem 1rem 0.75rem' }}>
                     {aula?.so_mulheres && (
                       <span style={{ background:'#ff2d9b18', color:ACCENT, border:`1px solid ${ACCENT}44`, fontSize:10, fontWeight:600, padding:'2px 8px', borderRadius:20 }}>👩 Só mulheres</span>
                     )}
@@ -479,19 +491,19 @@ function AulasPageInner() {
                       <div style={{ fontFamily:"'DM Mono', monospace", fontSize:11, fontWeight:700, color:'#ff4444' }}>LOTADA</div>
                     )}
                     {aula?.grupo_muscular_nome && (
-                      <div style={{ fontSize:13, color:'#888' }}>{aula.grupo_muscular_nome}</div>
+                      <div style={{ fontSize: isMobile ? 13 : 11, color:'#888' }}>{aula.grupo_muscular_nome}</div>
                     )}
-                    <div style={{ fontSize:13, color:'#666' }}>👤 {nomeCoach}</div>
+                    <div style={{ fontSize: isMobile ? 13 : 11, color:'#666' }}>👤 {nomeCoach}</div>
                   </div>
 
                   {/* Botão de ação — full-width, só aparece se não tiver reservado/fila */}
                   {!minhaRes && !naFila && (
-                    <div style={{ padding:'0 1.25rem 1.25rem' }}>
+                    <div style={{ padding: isMobile ? '0 1.25rem 1.25rem' : '0 1rem 1rem' }}>
                       {lotado ? (
                         <button onClick={() => tentarFila(oc)} style={{
                           width:'100%', background:`${AMARELO}15`, color:AMARELO,
                           border:`1.5px solid ${AMARELO}55`, borderRadius:12,
-                          padding:'0.85rem', fontSize:14, fontWeight:700,
+                          padding: isMobile ? '0.85rem' : '0.6rem', fontSize: isMobile ? 14 : 12, fontWeight:700,
                           cursor:'pointer', fontFamily:"'DM Sans', sans-serif", letterSpacing:0.3
                         }}>
                           ⏳ Entrar na fila de espera
@@ -500,7 +512,7 @@ function AulasPageInner() {
                         <button onClick={() => tentarReservar(oc)} style={{
                           width:'100%', background:ACCENT, color:'#fff',
                           border:'none', borderRadius:12,
-                          padding:'0.9rem', fontSize:15, fontWeight:700,
+                          padding: isMobile ? '0.9rem' : '0.65rem', fontSize: isMobile ? 15 : 13, fontWeight:700,
                           cursor:'pointer', fontFamily:"'DM Sans', sans-serif", letterSpacing:0.3
                         }}>
                           Reservar
