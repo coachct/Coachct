@@ -14,6 +14,7 @@ const nav = [
   { label: 'Escala',                  href: '/admin/escala' },
   { label: '─ JustClub',             href: '/admin/justclub' },
   { label: 'Calendário Club',         href: '/admin/justclub/calendario' },
+  { label: 'Escala Club',             href: '/admin/justclub/escala-club' },
   { label: 'Mapa de Posições',        href: '/admin/posicoes' },
   { label: 'Importar Clientes',       href: '/admin/importar' },
   { label: 'Analytics de Coaches',   href: '/admin/analytics' },
