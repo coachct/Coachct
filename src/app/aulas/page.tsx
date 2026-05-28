@@ -755,8 +755,21 @@ function AulasPageInner() {
                   </div>
                 )}
                 {planosDisponiveis.length===0 ? (
-                  <div style={{ background:'#1a1000', border:'1px solid #ff660033', borderRadius:10, padding:'1rem', fontSize:13, color:AMARELO }}>
-                    ⚠️ Você não tem créditos disponíveis para {dataSelEhProximoMes ? nomeMesProximo : 'esta unidade'}.
+                  <div style={{ background:'#0d0d0d', border:`1px solid ${AMARELO}33`, borderRadius:12, padding:'1.25rem' }}>
+                    <div style={{ fontSize:14, color:'#fff', fontWeight:700, marginBottom:6 }}>
+                      Você ainda não tem um plano ativo {dataSelEhProximoMes ? `para ${nomeMesProximo}` : 'nesta unidade'}
+                    </div>
+                    <div style={{ fontSize:13, color:'#aaa', lineHeight:1.6, marginBottom:'1.1rem' }}>
+                      Para reservar, ative o seu app parceiro (Wellhub ou TotalPass) da unidade onde quer treinar, ou compre um pacote avulso.
+                    </div>
+                    <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                      <button onClick={() => router.push('/minha-conta')} style={{ flex:1, minWidth:150, background:ACCENT, color:'#fff', border:'none', borderRadius:10, padding:'0.75rem', fontWeight:700, fontSize:13, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
+                        Ativar app parceiro →
+                      </button>
+                      <button onClick={() => router.push('/comprar')} style={{ flex:1, minWidth:130, background:'transparent', color:'#ccc', border:'1px solid #333', borderRadius:10, padding:'0.75rem', fontWeight:600, fontSize:13, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
+                        Ver pacotes
+                      </button>
+                    </div>
                   </div>
                 ) : planosDisponiveis.map(p => {
                   const {label,icon}=parsePlanoKey(p); const info=saldoParaData()[p]
@@ -857,7 +870,24 @@ function AulasPageInner() {
             </div>
             <div style={{ marginBottom:'1.25rem' }}>
               <div style={{ fontSize:11, color:'#555', textTransform:'uppercase', letterSpacing:1, marginBottom:10 }}>Usar crédito de qual plano?</div>
-              {planosDisponiveis.map(p => {
+              {planosDisponiveis.length===0 ? (
+                <div style={{ background:'#0d0d0d', border:`1px solid ${AMARELO}33`, borderRadius:12, padding:'1.25rem' }}>
+                  <div style={{ fontSize:14, color:'#fff', fontWeight:700, marginBottom:6 }}>
+                    Você ainda não tem um plano ativo {dataSelEhProximoMes ? `para ${nomeMesProximo}` : 'nesta unidade'}
+                  </div>
+                  <div style={{ fontSize:13, color:'#aaa', lineHeight:1.6, marginBottom:'1.1rem' }}>
+                    Para entrar na fila, ative o seu app parceiro (Wellhub ou TotalPass) da unidade onde quer treinar, ou compre um pacote avulso.
+                  </div>
+                  <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                    <button onClick={() => router.push('/minha-conta')} style={{ flex:1, minWidth:150, background:AMARELO, color:'#000', border:'none', borderRadius:10, padding:'0.75rem', fontWeight:700, fontSize:13, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
+                      Ativar app parceiro →
+                    </button>
+                    <button onClick={() => router.push('/comprar')} style={{ flex:1, minWidth:130, background:'transparent', color:'#ccc', border:'1px solid #333', borderRadius:10, padding:'0.75rem', fontWeight:600, fontSize:13, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
+                      Ver pacotes
+                    </button>
+                  </div>
+                </div>
+              ) : planosDisponiveis.map(p => {
                 const {label,icon}=parsePlanoKey(p)
                 return (
                   <div key={p} onClick={() => setTipoCredito(p)}
