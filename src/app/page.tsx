@@ -100,7 +100,7 @@ export default function LandingPage() {
   return (
     <div style={s.page}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Caveat:wght@700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Shadows+Into+Light&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
         @keyframes spin { to { transform: rotate(360deg) } }
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -121,13 +121,9 @@ export default function LandingPage() {
         .unidade-card-h:hover { border-color: ${ACCENT}55 !important; transform: translateY(-3px); }
 
         /* Frase grafite do hero */
-        .hero-frase { line-height: 1; animation: fadeInUp .6s ease-out both; }
-        .hero-frase-line1, .hero-frase-line2 { display: block; }
-        .hero-frase-line1 { margin-bottom: 0.4rem; }
-        .hero-frase-marker { font-family: 'Permanent Marker', cursive; color: #fff; font-size: clamp(48px, 9vw, 120px); letter-spacing: 1px; }
-        .hero-frase-place { display: inline-block; transform: rotate(-2deg); }
-        .hero-frase-just { font-family: 'Caveat', cursive; font-weight: 700; color: ${ACCENT}; font-size: clamp(72px, 14vw, 180px); display: inline-block; transform: rotate(-3deg); margin: 0 0.1em 0 0.05em; vertical-align: -0.1em; text-shadow: 0 0 40px ${ACCENT}55; }
-        .hero-frase-smiley { font-family: 'Caveat', cursive; font-weight: 700; color: ${ACCENT}; font-size: clamp(40px, 7vw, 90px); display: inline-block; transform: rotate(8deg); margin-left: 0.15em; vertical-align: -0.05em; }
+        .hero-frase { font-family: 'Shadows Into Light', cursive; color: #fff; font-size: clamp(40px, 6.5vw, 70px); line-height: 1.15; letter-spacing: 0.5px; animation: fadeInUp .6s ease-out both; }
+        .hero-frase-just { color: ${ACCENT}; text-shadow: 0 0 25px ${ACCENT}73; font-size: 1.25em; }
+        .hero-frase-smiley { color: ${ACCENT}; }
 
         /* Popup go-live */
         .popup-overlay { position: fixed; inset: 0; background: #000000d9; backdrop-filter: blur(6px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1rem; animation: fadeInUp .25s ease-out both; }
@@ -157,16 +153,7 @@ export default function LandingPage() {
       <div style={{ background: '#080808', paddingTop: 64 }}>
         <div className="hero-frase-wrap" style={{ maxWidth: 1200, margin: '0 auto', padding: '6rem 2.5rem 4rem', textAlign: 'center' as const }}>
           <div className="hero-frase">
-            <div className="hero-frase-line1">
-              <span className="hero-frase-marker">"There's no</span>{' '}
-              <span className="hero-frase-marker hero-frase-place">PLACE</span>
-            </div>
-            <div className="hero-frase-line2">
-              <span className="hero-frase-marker">like</span>{' '}
-              <span className="hero-frase-just">just.</span>
-              <span className="hero-frase-marker">"</span>{' '}
-              <span className="hero-frase-smiley">:)</span>
-            </div>
+            "There's no PLACE like <span className="hero-frase-just">JUST.</span>" <span className="hero-frase-smiley">:)</span>
           </div>
         </div>
       </div>
