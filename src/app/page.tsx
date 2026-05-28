@@ -1,16 +1,67 @@
 'use client'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import { createClient } from '@/lib/supabase'
 import SiteHeader from '@/components/SiteHeader'
 
 const ACCENT = '#ff2d9b'
 
+// Dados fixos por tipo de unidade (endereço, horários, aulas)
+// O id real vem do banco; aqui só mapeamos pelo nome.
+const DADOS_UNIDADES: Record<string, {
+  endereco: string
+  horariosFixos: { semana: string; fds: string } | null
+  aulas: string
+  bairro: string
+}> = {
+  'Just CT': {
+    endereco: 'Rua Fiandeiras, 392 — Vila Olímpia, São Paulo',
+    bairro: 'Vila Olímpia',
+    horariosFixos: { semana: 'Seg a Sex · 05:30 às 21:00', fds: 'Sáb, Dom e Feriados · 08:00 às 13:00' },
+    aulas: 'Coach CT · Musculação livre',
+  },
+  'JustClub Vila Olímpia': {
+    endereco: 'Av. Dr. Cardoso de Melo, 1337 — Vila Olímpia, São Paulo',
+    bairro: 'Vila Olímpia',
+    horariosFixos: null,
+    aulas: 'Lift · Lift for Girls · Running + Funcional',
+  },
+  'JustClub Pinheiros': {
+    endereco: 'Rua Deputado Lacerda Franco, 342 — Pinheiros, São Paulo',
+    bairro: 'Pinheiros',
+    horariosFixos: null,
+    aulas: 'Lift · Lift for Girls · Running + Funcional',
+  },
+}
+
 export default function LandingPage() {
   const { perfil, loading } = useAuth()
   const router = useRouter()
+  const supabase = createClient()
 
   const isCliente = perfil?.role === 'cliente'
   const isLogado = !!perfil
+
+  const [unidades, setUnidades] = useState<any[]>([])
+
+  useEffect(() => {
+    async function carregarUnidades() {
+      const { data } = await supabase
+        .from('unidades')
+        .select('id, nome, tipo')
+        .order('tipo', { ascending: true })
+        .order('nome', { ascending: true })
+      // Ordem fixa: Just CT primeiro, depois JustClub Vila Olímpia, depois Pinheiros
+      const ord = ['Just CT', 'JustClub Vila Olímpia', 'JustClub Pinheiros']
+      const lista = (data || []).slice().sort((a: any, b: any) => {
+        const ia = ord.indexOf(a.nome); const ib = ord.indexOf(b.nome)
+        return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
+      })
+      setUnidades(lista)
+    }
+    carregarUnidades()
+  }, [])
 
   const s: Record<string, any> = {
     page: { background: '#080808', minHeight: '100vh', color: '#f0f0f0', fontFamily: "'DM Sans', sans-serif" },
@@ -47,6 +98,8 @@ export default function LandingPage() {
         .planos-spoiler-h:hover { border-color: ${ACCENT}55 !important; }
         .planos-spoiler-h:hover .planos-cta-arrow { color: ${ACCENT} !important; transform: translateX(4px); }
         .planos-cta-arrow { transition: all .2s; display: inline-block; }
+        .unidade-card-h { transition: all .25s; }
+        .unidade-card-h:hover { border-color: ${ACCENT}55 !important; transform: translateY(-3px); }
         @media (max-width: 768px) {
           .nav-links-d { display: none !important; }
           .hero-title-r { font-size: 36px !important; }
@@ -56,6 +109,7 @@ export default function LandingPage() {
           .pro-grid-r { grid-template-columns: 1fr 1fr !important; }
           .pro-hero-r { grid-template-columns: 1fr !important; }
           .planos-spoiler-grid-r { grid-template-columns: 1fr !important; }
+          .unidades-grid-r { grid-template-columns: 1fr !important; }
         }
       `}</style>
 
@@ -307,38 +361,92 @@ export default function LandingPage() {
 
       <div style={s.divider} />
 
-      {/* LOCALIZAÇÃO */}
+      {/* UNIDADES — 3 cards */}
       <div id="localizacao" style={s.section}>
         <div style={s.sTag}>// onde estamos</div>
-        <div style={s.sTitle}>VILA OLÍMPIA<br />SÃO PAULO</div>
-        <div className="grid2-r" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3rem', marginTop: '2rem', alignItems: 'start' }}>
-          <div>
-            {[
-              { icon: '📍', title: 'Endereço', desc: 'Rua Fiandeiras, 392 — Vila Olímpia, São Paulo' },
-              { icon: '🕐', title: 'Seg a Sex', desc: '05:30 às 21:00' },
-              { icon: '🕐', title: 'Sáb, Dom e Feriados', desc: '08:00 às 13:00' },
-              { icon: '📲', title: 'Wellhub e TotalPass', desc: 'Faça check-in pelo app parceiro na recepção' },
-            ].map((item, i) => (
-              <div key={i} style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
-                <div style={{ width: 40, height: 40, background: `${ACCENT}15`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>{item.icon}</div>
+        <div style={s.sTitle}>NOSSAS UNIDADES</div>
+        <div style={{ ...s.sSub, marginBottom: '2.5rem' }}>
+          São Paulo · três endereços, três experiências.
+        </div>
+
+        <div className="unidades-grid-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.25rem' }}>
+          {unidades.map((u: any) => {
+            const dados = DADOS_UNIDADES[u.nome]
+            if (!dados) return null
+            const isCT = u.tipo === 'ct'
+            const mapsHref = `https://maps.google.com/?q=${encodeURIComponent(dados.endereco)}`
+            return (
+              <div key={u.id} className="unidade-card-h"
+                style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem', display: 'flex', flexDirection: 'column' as const, gap: '1rem' }}>
+
+                {/* Nome + bairro */}
                 <div>
-                  <div style={{ fontWeight: 600, color: '#fff', marginBottom: 4, fontSize: 15 }}>{item.title}</div>
-                  <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6 }}>{item.desc}</div>
+                  <div style={{ fontSize: 11, color: ACCENT, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: 4, fontFamily: "'DM Mono', monospace" }}>
+                    {isCT ? '⚡ Coach CT' : '🏋️ JustClub'}
+                  </div>
+                  <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, color: '#fff', letterSpacing: 1, lineHeight: 1.1 }}>
+                    {u.nome.toUpperCase()}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>{dados.bairro}</div>
+                </div>
+
+                {/* Aulas oferecidas — faixa discreta */}
+                <div style={{ background: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: 8, padding: '0.5rem 0.75rem', fontSize: 11, color: '#888', letterSpacing: 0.3 }}>
+                  {dados.aulas}
+                </div>
+
+                {/* Endereço */}
+                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                  <div style={{ fontSize: 14, flexShrink: 0 }}>📍</div>
+                  <div style={{ fontSize: 13, color: '#aaa', lineHeight: 1.5 }}>{dados.endereco}</div>
+                </div>
+
+                {/* Horários: fixos no CT, link de calendário nas Clubs */}
+                {dados.horariosFixos ? (
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    <div style={{ fontSize: 14, flexShrink: 0 }}>🕐</div>
+                    <div style={{ fontSize: 13, color: '#aaa', lineHeight: 1.6 }}>
+                      {dados.horariosFixos.semana}<br />
+                      {dados.horariosFixos.fds}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    <div style={{ fontSize: 14, flexShrink: 0 }}>🕐</div>
+                    <div style={{ fontSize: 13, color: '#aaa', lineHeight: 1.5 }}>
+                      Funciona nos horários das aulas.<br />
+                      <span onClick={() => router.push(`/aulas?unidade=${u.id}`)}
+                        style={{ color: ACCENT, fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>
+                        Ver calendário de aulas →
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Apps aceitos */}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
+                  <span style={{ background: '#1a0f1f', border: '1px solid #2a1a35', borderRadius: 20, padding: '4px 10px', fontSize: 11, color: '#bb88dd', fontWeight: 600 }}>💜 Wellhub</span>
+                  <span style={{ background: '#0a1a1f', border: '1px solid #1a2a35', borderRadius: 20, padding: '4px 10px', fontSize: 11, color: '#5ab', fontWeight: 600 }}>🔵 TotalPass</span>
+                </div>
+
+                {/* Espaçador pra empurrar botões pro fim */}
+                <div style={{ flex: 1 }} />
+
+                {/* Botões */}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
+                  <button onClick={() => router.push('/comprar')}
+                    style={{ flex: 1, minWidth: 110, background: ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.7rem', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", letterSpacing: 0.3 }}>
+                    Ver planos
+                  </button>
+                  <a href={mapsHref} target="_blank" rel="noopener noreferrer" style={{ flex: 1, minWidth: 110 }}>
+                    <button className="maps-btn" style={{ width: '100%', background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.7rem', color: '#aaa', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", transition: 'all .2s' }}>
+                      📍 Como chegar
+                    </button>
+                  </a>
                 </div>
               </div>
-            ))}
-            <a href="https://maps.google.com/?q=Rua+Fiandeiras+392+Vila+Olimpia+Sao+Paulo" target="_blank" rel="noopener noreferrer">
-              <button className="maps-btn" style={{ marginTop: '0.5rem', background: 'transparent', border: '1px solid #333', borderRadius: 8, padding: '0.6rem 1.25rem', color: '#888', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", transition: 'all .2s', display: 'flex', alignItems: 'center', gap: 8 }}>
-                📍 Abrir no Google Maps →
-              </button>
-            </a>
-          </div>
-          <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, overflow: 'hidden', aspectRatio: '4/3' }}>
-            <iframe
-              src="https://maps.google.com/maps?q=Rua+Fiandeiras+392+Vila+Olimpia+Sao+Paulo&output=embed"
-              width="100%" height="100%" style={{ border: 'none' }} loading="lazy"
-            />
-          </div>
+            )
+          })}
         </div>
       </div>
 
