@@ -197,8 +197,6 @@ export default function LandingPage() {
 
       */}
 
-      <div style={s.divider} />
-
       {/* JUSTCLUB — aulas coletivas */}
       <div id="justclub" style={s.section}>
         <div style={s.sTag}>// o diferencial justclub</div>
