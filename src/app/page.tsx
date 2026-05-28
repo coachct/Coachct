@@ -315,11 +315,11 @@ export default function LandingPage() {
           </div>
         </div>
         <div className="pro-grid-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
-          <div className="pro-card-h" style={{ background: `linear-gradient(135deg, #1a0010 0%, #0d0008 100%)`, border: `1.5px solid ${ACCENT}44`, borderRadius: 16, padding: '1.5rem', position: 'relative' as const, overflow: 'hidden' }}>
+          <div className="pro-card-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem', position: 'relative' as const, overflow: 'hidden' }}>
             <div>
               <div style={{ fontSize: 10, color: ACCENT, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: 6, fontFamily: "'DM Mono', monospace" }}>by</div>
               <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', letterSpacing: 1, lineHeight: 1.1, marginBottom: 8 }}>JU HITOMI</div>
-              <div style={{ fontSize: 13, color: '#888', lineHeight: 1.6 }}>Todos os treinos do Coach CT Pro são elaborados por ela. Intensidade e método — garantidos.</div>
+              <div style={{ fontSize: 13, color: '#555', lineHeight: 1.6 }}>Todos os treinos do Coach CT Pro são elaborados por ela. Intensidade e método — garantidos.</div>
             </div>
           </div>
           <div className="pro-card-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem' }}>
