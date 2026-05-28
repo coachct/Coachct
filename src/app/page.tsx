@@ -117,7 +117,34 @@ export default function LandingPage() {
 
       <SiteHeader />
 
-      {/* HERO */}
+      {/* BANNER GO-LIVE — aviso de sistema novo (remover em 10-15 dias) */}
+      <div style={{ background: '#1a1a1a', borderBottom: '1px solid #2a2a2a', paddingTop: 64 }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto', padding: '3rem 2.5rem' }}>
+          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(28px, 4vw, 44px)', color: ACCENT, lineHeight: 1.1, letterSpacing: 1.5, marginBottom: '1.25rem', textShadow: `0 0 30px ${ACCENT}66` }}>
+            🎉 SISTEMA NOVO NO AR!
+          </div>
+          <div style={{ fontSize: 16, color: '#fff', lineHeight: 1.8, marginBottom: '1rem', maxWidth: 760 }}>
+            <strong>Já é cliente Just e possui cadastro?</strong> Só clicar em <strong>Login</strong> e depois em <strong>"Esqueci minha senha"</strong> — acesse com sua senha provisória que chegará no seu email de cadastro.
+          </div>
+          <div style={{ fontSize: 16, color: '#fff', lineHeight: 1.8, marginBottom: '1rem', maxWidth: 760 }}>
+            <strong>Primeira vez por aqui?</strong> Cadastre-se normalmente e agende seu primeiro treino.
+          </div>
+          <div style={{ fontSize: 15, color: '#bbb', lineHeight: 1.7, marginBottom: '1.75rem', maxWidth: 760 }}>
+            Qualquer dúvida nos primeiros dias, fale com a gente no direct do Instagram 👇
+          </div>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <button onClick={() => router.push('/login')} style={s.btnPrimary}>Fazer login →</button>
+            <a href="https://instagram.com/justclub.ct" target="_blank" rel="noopener noreferrer">
+              <button className="btn-ghost-h" style={s.btnGhost}>📩 Falar no Instagram</button>
+            </a>
+          </div>
+        </div>
+      </div>
+
+      {/*
+        HERO ORIGINAL — desativado durante o banner de go-live.
+        Pra reativar: descomentar este bloco e remover o banner acima.
+
       <div style={{ position: 'relative', paddingTop: 64, overflow: 'hidden' }}>
         <div style={{ position: 'absolute', inset: 0, backgroundImage: 'url(/hero.jpg)', backgroundSize: 'cover', backgroundPosition: 'center top', zIndex: 0 }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right, #080808ee 50%, #08080888 100%)', zIndex: 1 }} />
@@ -150,6 +177,8 @@ export default function LandingPage() {
           </div>
         </div>
       </div>
+
+      */}
 
       <div style={s.divider} />
 
