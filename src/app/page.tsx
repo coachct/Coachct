@@ -167,7 +167,7 @@ export default function LandingPage() {
         {/* Duas fotos da academia */}
         <div className="grid2-r" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '2.5rem' }}>
           <div style={{ borderRadius: 16, overflow: 'hidden', aspectRatio: '16/9' }}>
-            <img src="/foto capa CT.jpg" alt="Leg Zone Just CT" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <img src="/hero.jpg" alt="Ju Hitomi com aluna" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </div>
           <div style={{ borderRadius: 16, overflow: 'hidden', aspectRatio: '16/9' }}>
             <img src="/Imagem Treino Sala CT.jpg" alt="Sala Just CT" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
