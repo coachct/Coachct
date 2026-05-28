@@ -300,9 +300,16 @@ export default function LandingPage() {
               </button>
             </div>
           </div>
-          <div style={{ borderRadius: 20, overflow: 'hidden', aspectRatio: '4/5', position: 'relative' as const }}>
-            <img src="/hero.jpg" alt="Coach CT Pro" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, #080808cc 0%, transparent 50%)' }} />
+          <div style={{ borderRadius: 20, overflow: 'hidden', aspectRatio: '4/5', position: 'relative' as const, background: '#000' }}>
+            <video
+              src="/VIDEO%20COACH%20CT%20MP4.mp4"
+              autoPlay
+              muted
+              loop
+              playsInline
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, #080808cc 0%, transparent 50%)', pointerEvents: 'none' as const }} />
           </div>
         </div>
         <div className="pro-grid-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
