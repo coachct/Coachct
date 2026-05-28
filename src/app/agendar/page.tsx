@@ -105,7 +105,6 @@ function CardUnidade({ unidade, onClick }: { unidade: any; onClick: () => void }
         gap: '1.25rem',
       }}
     >
-      {/* Ícone */}
       <div style={{
         width: 56, height: 56, borderRadius: 14, flexShrink: 0,
         background: `${cor}18`, border: `1px solid ${cor}33`,
@@ -115,7 +114,6 @@ function CardUnidade({ unidade, onClick }: { unidade: any; onClick: () => void }
         {isClub ? '⚡' : '🏋️'}
       </div>
 
-      {/* Texto */}
       <div style={{ flex: 1 }}>
         <div style={{
           fontFamily: "'Bebas Neue', sans-serif",
@@ -130,7 +128,6 @@ function CardUnidade({ unidade, onClick }: { unidade: any; onClick: () => void }
         </div>
       </div>
 
-      {/* Seta */}
       <div style={{
         width: 36, height: 36, borderRadius: '50%',
         border: `1.5px solid ${hover ? cor : '#333'}`,
@@ -148,8 +145,6 @@ export default function AgendarPage() {
   const router = useRouter()
   const supabase = createClient()
 
-  // ── Estado local para controlar se o usuário já escolheu a unidade ──
-  // Começa false: mostra os cards de seleção. Vira true após clicar.
   const [unidadeConfirmada, setUnidadeConfirmada] = useState(false)
 
   const [diaSel, setDiaSel] = useState(0)
@@ -158,6 +153,9 @@ export default function AgendarPage() {
   const [horarios, setHorarios] = useState<any[]>([])
   const [cliente, setCliente] = useState<any>(null)
   const [loadingHorarios, setLoadingHorarios] = useState(false)
+  // ── FIX: estado de loading de saldos separado ─────────────────────────────
+  const [loadingSaldos, setLoadingSaldos] = useState(true)
+  // ──────────────────────────────────────────────────────────────────────────
   const [tipoDia, setTipoDia] = useState<'util' | 'fds' | 'feriado'>('util')
   const [feriadoDescricao, setFeriadoDescricao] = useState<string>('')
   const [saldoMesAtual, setSaldoMesAtual] = useState<Record<string, any>>({})
@@ -201,7 +199,6 @@ export default function AgendarPage() {
     return d
   })
 
-  // Se só tem uma unidade, confirma automaticamente
   useEffect(() => {
     if (!loadingUnidade && unidadesPermitidas.length === 1) {
       setUnidadeConfirmada(true)
@@ -243,6 +240,9 @@ export default function AgendarPage() {
   }
 
   async function carregarSaldos(clienteId: string, unidadeId: string) {
+    // ── FIX: sinaliza início do carregamento de saldos ────────────────────
+    setLoadingSaldos(true)
+    // ──────────────────────────────────────────────────────────────────────
     const agora = new Date()
     const mesAtual = agora.getMonth() + 1
     const anoAtual = agora.getFullYear()
@@ -256,6 +256,9 @@ export default function AgendarPage() {
     } else {
       setSaldoMesProximo({})
     }
+    // ── FIX: sinaliza fim do carregamento de saldos ───────────────────────
+    setLoadingSaldos(false)
+    // ──────────────────────────────────────────────────────────────────────
   }
 
   async function loadHorarios() {
@@ -385,7 +388,11 @@ export default function AgendarPage() {
     { key: 'nenhuma', label: 'Sem aviso', icon: '🔕' },
   ]
 
-  const semPlanoAtivo = !loadingHorarios && cliente && Object.keys(saldoMesAtual).length === 0 && Object.keys(saldoMesProximo).length === 0
+  // ── FIX: inclui !loadingSaldos na checagem para evitar falso positivo ─────
+  const semPlanoAtivo = !loadingHorarios && !loadingSaldos && !!cliente &&
+    Object.keys(saldoMesAtual).length === 0 &&
+    Object.keys(saldoMesProximo).length === 0
+  // ──────────────────────────────────────────────────────────────────────────
 
   function tentarAgendar(hora: string, vagas: number) {
     if (!user) { router.push('/login'); return }
@@ -476,12 +483,11 @@ export default function AgendarPage() {
 
   const planosDisp = planosDisponiveisParaDia()
   const saldoExibir = saldoParaData()
-  const todosSemSaldo = cliente && Object.keys(saldoExibir).length > 0 && planosDisp.length === 0
+  const todosSemSaldo = !!cliente && Object.keys(saldoExibir).length > 0 && planosDisp.length === 0
   const temFila = modalSlot ? temFilaNoHorario(modalSlot.hora) : false
   const dataSelEhProximoMes = diasSemana[diaSel].getMonth() !== new Date().getMonth() || diasSemana[diaSel].getFullYear() !== new Date().getFullYear()
   const isCredPro = tipoCredito.startsWith('coach_ct_pro_')
 
-  // ── Mostra hero de seleção quando há múltiplas unidades e ainda não escolheu ──
   const mostrarHero = !clienteBloqueado && unidadesPermitidas.length > 1 && !unidadeConfirmada
 
   return (
@@ -543,7 +549,6 @@ export default function AgendarPage() {
           </div>
 
         ) : (
-          /* ══ CONTEÚDO NORMAL (CT booking) ══ */
           <>
             <div style={{ marginBottom: '1.5rem' }}>
               <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: '#fff' }}>AGENDAR TREINO</div>
@@ -552,7 +557,6 @@ export default function AgendarPage() {
               </div>
             </div>
 
-            {/* Tab compacto de unidade (quando há múltiplas e já escolheu) */}
             {unidadesPermitidas.length > 1 && (
               <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
                 <span style={{ fontSize: 11, color: '#444', textTransform: 'uppercase', letterSpacing: 1 }}>Unidade:</span>
@@ -589,7 +593,6 @@ export default function AgendarPage() {
               </div>
             )}
 
-            {/* Badge unidade única */}
             {unidadesPermitidas.length === 1 && unidadeAtiva && (
               <div style={{ marginBottom: '1.5rem' }}>
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: `${ACCENT}15`, border: `1px solid ${ACCENT}44`, borderRadius: 8, padding: '0.35rem 0.85rem' }}>
@@ -655,7 +658,15 @@ export default function AgendarPage() {
               </div>
             )}
 
-            {!clienteBloqueado && semPlanoAtivo && (
+            {/* ── FIX: mostra skeleton enquanto saldos carregam, evitando flash do banner errado ── */}
+            {!clienteBloqueado && loadingSaldos && cliente && (
+              <div style={{ background: '#111', border: '1px solid #1a1a1a', borderRadius: 16, padding: '1rem 1.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 16, height: 16, border: `2px solid ${ACCENT}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
+                <div style={{ fontSize: 13, color: '#444' }}>Verificando plano...</div>
+              </div>
+            )}
+
+            {!clienteBloqueado && !loadingSaldos && semPlanoAtivo && (
               <div style={{ background: '#110008', border: `1.5px solid ${ACCENT}55`, borderRadius: 16, padding: '1.25rem 1.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
                 <div>
                   <div style={{ fontSize: 14, color: ACCENT, fontWeight: 700, marginBottom: 4 }}>⚡ Você não tem um plano ativo</div>
@@ -665,7 +676,7 @@ export default function AgendarPage() {
               </div>
             )}
 
-            {!clienteBloqueado && !semPlanoAtivo && precisaCartao && (
+            {!clienteBloqueado && !loadingSaldos && !semPlanoAtivo && precisaCartao && (
               <div style={{ background: '#1a1000', border: `1.5px solid ${AMARELO}55`, borderRadius: 16, padding: '1.25rem 1.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
                 <div>
                   <div style={{ fontSize: 14, color: AMARELO, fontWeight: 700, marginBottom: 4 }}>💳 Cadastre um cartão para liberar agendamentos</div>
