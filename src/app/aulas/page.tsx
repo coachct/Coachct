@@ -446,45 +446,44 @@ function AulasPageInner() {
               const borderColor=minhaRes?CYAN+'55':naFila?AMARELO+'55':cores.border
               return (
                 <div key={oc.id} style={{ background:cores.bg, border:`1.5px solid ${borderColor}`, borderRadius:18, overflow:'hidden' }}>
-                  {/* Corpo do card: horário+duração à esquerda, info à direita */}
-                  <div style={{ display:'flex', gap:0, padding:'1rem 1.25rem 1rem' }}>
-                    {/* Coluna esquerda: horário + duração */}
-                    <div style={{ display:'flex', flexDirection:'column', gap:4, flexShrink:0, width:72, paddingRight:'1rem', borderRight:'1px solid #ffffff12' }}>
-                      <div style={{ fontFamily:"'DM Mono', monospace", fontSize:28, fontWeight:700, color:'#fff', lineHeight:1, letterSpacing:-0.5 }}>
+                  {/* Topo: horário à esquerda, badge com borda no canto direito */}
+                  <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', padding:'1rem 1.25rem 0.5rem' }}>
+                    <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+                      <div style={{ fontFamily:"'DM Mono', monospace", fontSize:20, fontWeight:700, color:'#fff', lineHeight:1, letterSpacing:-0.5 }}>
                         {(aula?.horario||'').slice(0,5)}
                       </div>
-                      <div style={{ fontSize:12, color:'#666' }}>{duracao} min</div>
+                      <div style={{ fontSize:11, color:'#555' }}>{duracao} min</div>
                     </div>
-                    {/* Coluna direita: nome da aula grande + grupo + professor */}
-                    <div style={{ flex:1, display:'flex', flexDirection:'column', gap:5, paddingLeft:'1rem' }}>
-                      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8 }}>
-                        <div style={{ fontSize:22, fontWeight:700, color:cores.text, lineHeight:1.1 }}>
-                          {tipoLabel(aula?.tipo)}
-                        </div>
-                        {/* Status / vagas */}
-                        {minhaRes && (
-                          <div style={{ background:`${CYAN}18`, border:`1px solid ${CYAN}44`, borderRadius:20, padding:'3px 10px', fontSize:11, color:CYAN, fontWeight:700, whiteSpace:'nowrap', flexShrink:0 }}>✓ Reservado</div>
-                        )}
-                        {naFila && (
-                          <div style={{ background:`${AMARELO}18`, border:`1px solid ${AMARELO}44`, borderRadius:20, padding:'3px 10px', fontSize:11, color:AMARELO, fontWeight:700, whiteSpace:'nowrap', flexShrink:0 }}>⏳ Na fila</div>
-                        )}
-                        {!minhaRes && !naFila && poucasVagas && (
-                          <div style={{ fontFamily:"'DM Mono', monospace", fontSize:11, fontWeight:700, color:livres===1?'#ff4444':AMARELO, whiteSpace:'nowrap', flexShrink:0 }}>
-                            {livres===1?'ÚLTIMA VAGA':`${livres} VAGAS`}
-                          </div>
-                        )}
-                        {!minhaRes && !naFila && lotado && (
-                          <div style={{ fontFamily:"'DM Mono', monospace", fontSize:11, fontWeight:700, color:'#ff4444', whiteSpace:'nowrap', flexShrink:0 }}>LOTADA</div>
-                        )}
-                      </div>
+                    <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:5 }}>
+                      <span style={{ background:cores.badge, color:cores.text, border:`1px solid ${cores.text}55`, fontSize:12, fontWeight:700, padding:'4px 12px', borderRadius:20, letterSpacing:0.5 }}>
+                        {tipoLabel(aula?.tipo)}
+                      </span>
                       {aula?.so_mulheres && (
-                        <span style={{ background:'#ff2d9b18', color:ACCENT, fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:20, alignSelf:'flex-start' }}>👩 Só mulheres</span>
+                        <span style={{ background:'#ff2d9b18', color:ACCENT, border:`1px solid ${ACCENT}44`, fontSize:10, fontWeight:600, padding:'2px 8px', borderRadius:20 }}>👩 Só mulheres</span>
                       )}
-                      {aula?.grupo_muscular_nome && (
-                        <div style={{ fontSize:14, color:'#888' }}>{aula.grupo_muscular_nome}</div>
+                      {minhaRes && (
+                        <div style={{ background:`${CYAN}18`, border:`1px solid ${CYAN}44`, borderRadius:20, padding:'3px 10px', fontSize:11, color:CYAN, fontWeight:700 }}>✓ Reservado</div>
                       )}
-                      <div style={{ fontSize:13, color:'#666' }}>{nomeCoach}</div>
+                      {naFila && (
+                        <div style={{ background:`${AMARELO}18`, border:`1px solid ${AMARELO}44`, borderRadius:20, padding:'3px 10px', fontSize:11, color:AMARELO, fontWeight:700 }}>⏳ Na fila</div>
+                      )}
+                      {!minhaRes && !naFila && poucasVagas && (
+                        <div style={{ fontFamily:"'DM Mono', monospace", fontSize:11, fontWeight:700, color:livres===1?'#ff4444':AMARELO }}>
+                          {livres===1?'ÚLTIMA VAGA':`${livres} VAGAS`}
+                        </div>
+                      )}
+                      {!minhaRes && !naFila && lotado && (
+                        <div style={{ fontFamily:"'DM Mono', monospace", fontSize:11, fontWeight:700, color:'#ff4444' }}>LOTADA</div>
+                      )}
                     </div>
+                  </div>
+
+                  {/* Grupo muscular + professor */}
+                  <div style={{ padding:'0 1.25rem 1rem', display:'flex', flexDirection:'column', gap:3 }}>
+                    {aula?.grupo_muscular_nome && (
+                      <div style={{ fontSize:13, color:'#888' }}>{aula.grupo_muscular_nome}</div>
+                    )}
+                    <div style={{ fontSize:13, color:'#666' }}>{nomeCoach}</div>
                   </div>
 
                   {/* Botão de ação — full-width, só aparece se não tiver reservado/fila */}
