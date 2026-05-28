@@ -166,11 +166,15 @@ function AulasPageInner() {
     const dataInicio = dataLocalStr(diasSemana[0])
     const dataFim    = dataLocalStr(diasSemana[6])
 
+    const { data: aulasIds } = await supabase.from('club_aulas').select('id').eq('unidade_id', unidadeId).eq('ativo', true)
+    const ids = (aulasIds || []).map((a: any) => a.id)
+    if (!ids.length) { setOcorrenciasSemana({}); setLoadingSemana(false); return }
+
     const { data: ocs } = await supabase
       .from('club_ocorrencias')
       .select('*, club_aulas(id, tipo, horario, capacidade, duracao_min, so_mulheres, grupo_muscular_id, coaches(nome))')
-      .eq('unidade_id', unidadeId)
-      .eq('cancelada', false)
+      .in('aula_id', ids)
+      .eq('status', 'ativa')
       .gte('data', dataInicio)
       .lte('data', dataFim)
 
