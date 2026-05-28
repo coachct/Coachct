@@ -167,11 +167,16 @@ export default function LandingPage() {
         <div className="grid3-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}>
 
           {/* Lift */}
-          <div className="feature-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem', display: 'flex', flexDirection: 'column' as const }}>
-            <div style={{ width: 40, height: 40, background: `${ACCENT}15`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, marginBottom: '1rem' }}>🏋️</div>
-            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', marginBottom: '0.5rem', letterSpacing: 1 }}>LIFT</div>
-            <div style={{ fontSize: 14, color: '#888', lineHeight: 1.7 }}>
-              Musculação coletiva em um formato inédito, com equipamentos exclusivos, iluminação e playlists diferenciadas. Todo dia um treino e grupo muscular diferente, preparado pelos nossos coaches, que estarão próximos para auxiliar nas execuções. Esqueça o formato chato de sempre — aqui você pega gosto pela musculação. O básico bem feito funciona, pode confiar.
+          <div className="feature-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, overflow: 'hidden' as const, display: 'flex', flexDirection: 'column' as const }}>
+            <div style={{ aspectRatio: '16/10', overflow: 'hidden' as const, position: 'relative' as const }}>
+              <img src="/IMG_1912.jpg" alt="Lift" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <div style={{ position: 'absolute' as const, inset: 0, background: 'linear-gradient(to top, #111 0%, transparent 50%)' }} />
+            </div>
+            <div style={{ padding: '1.25rem 1.5rem 1.5rem' }}>
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', marginBottom: '0.5rem', letterSpacing: 1 }}>LIFT</div>
+              <div style={{ fontSize: 14, color: '#888', lineHeight: 1.7 }}>
+                Musculação coletiva em um formato inédito, com equipamentos exclusivos, iluminação e playlists diferenciadas. Todo dia um treino e grupo muscular diferente, preparado pelos nossos coaches, que estarão próximos para auxiliar nas execuções. Esqueça o formato chato de sempre — aqui você pega gosto pela musculação. O básico bem feito funciona, pode confiar.
+              </div>
             </div>
           </div>
 
@@ -185,11 +190,16 @@ export default function LandingPage() {
           </div>
 
           {/* Running + Funcional */}
-          <div className="feature-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem', display: 'flex', flexDirection: 'column' as const }}>
-            <div style={{ width: 40, height: 40, background: `${ACCENT}15`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, marginBottom: '1rem' }}>🏃</div>
-            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', marginBottom: '0.5rem', letterSpacing: 1 }}>RUNNING + FUNCIONAL</div>
-            <div style={{ fontSize: 14, color: '#888', lineHeight: 1.7 }}>
-              Treino de 50 minutos intervalado entre corrida e funcional. Altíssima intensidade e coaches extremamente preparados para te levar a um alto gasto calórico — cada um na sua intensidade. Ambiente exclusivo, iluminação diferenciada e playlists únicas (gostamos de som alto) vão te fazer esquecer qualquer outro tipo de treino, acredite.
+          <div className="feature-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, overflow: 'hidden' as const, display: 'flex', flexDirection: 'column' as const }}>
+            <div style={{ aspectRatio: '16/10', overflow: 'hidden' as const, position: 'relative' as const }}>
+              <img src="/IMG_1965.jpg" alt="Running + Funcional" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <div style={{ position: 'absolute' as const, inset: 0, background: 'linear-gradient(to top, #111 0%, transparent 50%)' }} />
+            </div>
+            <div style={{ padding: '1.25rem 1.5rem 1.5rem' }}>
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', marginBottom: '0.5rem', letterSpacing: 1 }}>RUNNING + FUNCIONAL</div>
+              <div style={{ fontSize: 14, color: '#888', lineHeight: 1.7 }}>
+                Treino de 50 minutos intervalado entre corrida e funcional. Altíssima intensidade e coaches extremamente preparados para te levar a um alto gasto calórico — cada um na sua intensidade. Ambiente exclusivo, iluminação diferenciada e playlists únicas (gostamos de som alto) vão te fazer esquecer qualquer outro tipo de treino, acredite.
+              </div>
             </div>
           </div>
 
