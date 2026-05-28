@@ -143,7 +143,7 @@ export default function LandingPage() {
           .pro-hero-video-col { order: 1; border-radius: 0 !important; aspect-ratio: 4/5 !important; }
           .planos-spoiler-grid-r { grid-template-columns: 1fr !important; }
           .unidades-grid-r { grid-template-columns: 1fr !important; }
-          .hero-frase-wrap { padding: 4rem 1.25rem 1rem !important; }
+          .hero-frase-wrap { padding: 4rem 1.25rem 0.25rem !important; }
         }
       `}</style>
 
@@ -151,7 +151,7 @@ export default function LandingPage() {
 
       {/* HERO — frase de efeito da Just (grafite style) */}
       <div style={{ background: '#080808', paddingTop: 64 }}>
-        <div className="hero-frase-wrap" style={{ maxWidth: 1200, margin: '0 auto', padding: '6rem 2.5rem 2rem', textAlign: 'center' as const }}>
+        <div className="hero-frase-wrap" style={{ maxWidth: 1200, margin: '0 auto', padding: '6rem 2.5rem 1rem', textAlign: 'center' as const }}>
           <div className="hero-frase">
             "There's no PLACE like <span className="hero-frase-just">JUST.</span>" <span className="hero-frase-smiley">:)</span>
           </div>
