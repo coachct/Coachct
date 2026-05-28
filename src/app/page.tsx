@@ -181,11 +181,23 @@ export default function LandingPage() {
           </div>
 
           {/* Lift for Girls */}
-          <div className="feature-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem', display: 'flex', flexDirection: 'column' as const }}>
-            <div style={{ width: 40, height: 40, background: `${ACCENT}15`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, marginBottom: '1rem' }}>👩</div>
-            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', marginBottom: '0.5rem', letterSpacing: 1 }}>LIFT FOR GIRLS</div>
-            <div style={{ fontSize: 14, color: '#888', lineHeight: 1.7 }}>
-              Uma aula exclusiva para vocês meninas, com o treino mais procurado de todos: <strong style={{ color: '#fff' }}>Glúteos & Abs</strong>. Fiquem à vontade pra treinar com toda liberdade — a sala é somente de vocês, o resultado é para todos.
+          <div className="feature-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, overflow: 'hidden' as const, display: 'flex', flexDirection: 'column' as const }}>
+            <div style={{ aspectRatio: '9/16', overflow: 'hidden' as const, position: 'relative' as const, background: '#000' }}>
+              <video
+                src="/Video%20Lift%20for%20girls%20MP4.mp4"
+                autoPlay
+                muted
+                loop
+                playsInline
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+              <div style={{ position: 'absolute' as const, inset: 0, background: 'linear-gradient(to top, #111 0%, transparent 30%)', pointerEvents: 'none' as const }} />
+            </div>
+            <div style={{ padding: '1.25rem 1.5rem 1.5rem' }}>
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', marginBottom: '0.5rem', letterSpacing: 1 }}>LIFT FOR GIRLS</div>
+              <div style={{ fontSize: 14, color: '#888', lineHeight: 1.7 }}>
+                Uma aula exclusiva para vocês meninas, com o treino mais procurado de todos: <strong style={{ color: '#fff' }}>Glúteos & Abs</strong>. Fiquem à vontade pra treinar com toda liberdade — a sala é somente de vocês, o resultado é para todos.
+              </div>
             </div>
           </div>
 
