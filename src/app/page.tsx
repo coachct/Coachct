@@ -248,6 +248,21 @@ export default function LandingPage() {
 
           <div className="planos-spoiler-grid-r" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1.5rem' }}>
 
+            {/* Planos Just Club & CT — destaque */}
+            <div style={{ background: `linear-gradient(135deg, ${ACCENT}18 0%, ${ACCENT}05 100%)`, border: `2px solid ${ACCENT}`, borderRadius: 12, padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column' as const, justifyContent: 'space-between', boxShadow: `0 0 24px -10px ${ACCENT}55` }}>
+              <div>
+                <div style={{ fontSize: 11, color: ACCENT, fontWeight: 700, letterSpacing: 1, marginBottom: 10, textTransform: 'uppercase' as const, fontFamily: "'DM Mono', monospace" }}>
+                  ⚡ Planos Just Club & CT
+                </div>
+                <div style={{ fontSize: 13, color: '#ccc', lineHeight: 1.6 }}>
+                  Mensal · Semestral · Anual · <strong style={{ color: '#fff' }}>Coach CT Pro</strong> · Créditos avulsos
+                </div>
+              </div>
+              <div style={{ fontSize: 12, color: ACCENT, fontWeight: 700, marginTop: 12, fontFamily: "'DM Sans', sans-serif" }}>
+                Ver detalhes <span className="planos-cta-arrow">→</span>
+              </div>
+            </div>
+
             {/* Wellhub */}
             <div>
               <div style={{ fontSize: 11, color: ACCENT, fontWeight: 700, letterSpacing: 1, marginBottom: 10, textTransform: 'uppercase' as const, fontFamily: "'DM Mono', monospace" }}>
@@ -273,30 +288,18 @@ export default function LandingPage() {
                 <div><span style={{ color: '#aaa' }}>JustClub Pinheiros</span> → <span style={{ color: '#fff', fontWeight: 600 }}>TP3</span></div>
               </div>
             </div>
-
-            {/* Planos Coach CT */}
-            <div style={{ background: `linear-gradient(135deg, ${ACCENT}10 0%, transparent 100%)`, border: `1px solid ${ACCENT}33`, borderRadius: 12, padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column' as const, justifyContent: 'space-between' }}>
-              <div>
-                <div style={{ fontSize: 11, color: ACCENT, fontWeight: 700, letterSpacing: 1, marginBottom: 10, textTransform: 'uppercase' as const, fontFamily: "'DM Mono', monospace" }}>
-                  ⚡ Planos Coach CT
-                </div>
-                <div style={{ fontSize: 13, color: '#aaa', lineHeight: 1.6 }}>
-                  Mensal · Semestral · Anual · <strong style={{ color: '#fff' }}>Coach CT Pro</strong> · Créditos avulsos
-                </div>
-              </div>
-              <div style={{ fontSize: 12, color: ACCENT, fontWeight: 700, marginTop: 12, fontFamily: "'DM Sans', sans-serif" }}>
-                Ver detalhes <span className="planos-cta-arrow">→</span>
-              </div>
-            </div>
           </div>
 
-          <div style={{ borderTop: '1px solid #1a1a1a', marginTop: '1.5rem', paddingTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' as const, gap: 8 }}>
+          <div style={{ borderTop: '1px solid #1a1a1a', marginTop: '1.5rem', paddingTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' as const, gap: 12 }}>
             <div style={{ fontSize: 12, color: '#555' }}>
               Todos os planos e detalhes de cada modalidade na página de compras.
             </div>
-            <div style={{ fontSize: 13, color: '#fff', fontWeight: 600 }}>
-              Ir para a página de planos <span className="planos-cta-arrow">→</span>
-            </div>
+            <button onClick={(e) => { e.stopPropagation(); router.push('/comprar') }}
+              style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.75rem 1.75rem', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", letterSpacing: 0.5, transition: 'opacity .2s' }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = '0.85' }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = '1' }}>
+              Planos →
+            </button>
           </div>
 
         </div>
