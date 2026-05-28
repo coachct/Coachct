@@ -10,29 +10,45 @@ export default function TrocarSenhaPage() {
   const [erro, setErro] = useState('')
   const [msg, setMsg] = useState('')
   const [pronto, setPronto] = useState(false)
+  const [linkInvalido, setLinkInvalido] = useState(false)
   const supabase = createClient()
   const router = useRouter()
 
   useEffect(() => {
     const hash = window.location.hash
+
     if (hash && hash.includes('access_token')) {
       const params = new URLSearchParams(hash.substring(1))
       const accessToken = params.get('access_token')
-      const refreshToken = params.get('refresh_token')
-      if (accessToken && refreshToken) {
+      const refreshToken = params.get('refresh_token') || ''
+
+      if (accessToken) {
         supabase.auth.setSession({
           access_token: accessToken,
           refresh_token: refreshToken,
-        }).then(() => {
+        }).then(({ error }) => {
           window.history.replaceState(null, '', window.location.pathname)
-          setPronto(true)
+          if (error) {
+            setLinkInvalido(true)
+          } else {
+            setPronto(true)
+          }
         })
+      } else {
+        setLinkInvalido(true)
       }
-    } else {
-      supabase.auth.getSession().then(({ data }) => {
-        if (data.session) setPronto(true)
-      })
+      return
     }
+
+    // Sem hash: verifica se já tem sessão ativa (ex: usuário logado quer trocar senha)
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) {
+        setPronto(true)
+      } else {
+        // Sem hash e sem sessão = link inválido ou expirado
+        setLinkInvalido(true)
+      }
+    })
   }, [])
 
   async function handleSalvar() {
@@ -62,12 +78,39 @@ export default function TrocarSenhaPage() {
     setLoading(false)
   }
 
+  // Link inválido ou expirado
+  if (linkInvalido) return (
+    <div className="min-h-screen bg-primary-900 flex items-center justify-center p-4">
+      <div className="w-full max-w-sm">
+        <div className="text-center mb-8">
+          <div className="text-primary-200 text-2xl font-semibold tracking-widest mb-1">● COACH CT</div>
+          <p className="text-primary-400 text-sm">Redefinição de senha</p>
+        </div>
+        <div className="bg-white rounded-2xl p-6 shadow-xl text-center">
+          <div className="text-4xl mb-4">⚠️</div>
+          <h1 className="text-lg font-semibold text-gray-900 mb-2">Link expirado</h1>
+          <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+            Este link de redefinição expirou ou já foi usado. Solicite um novo na tela de login.
+          </p>
+          <button
+            onClick={() => router.push('/login')}
+            className="btn btn-primary w-full"
+          >
+            Solicitar novo link
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+
+  // Carregando / verificando token
   if (!pronto) return (
     <div className="min-h-screen bg-primary-900 flex items-center justify-center">
       <div className="w-8 h-8 border-4 border-primary-400 border-t-transparent rounded-full animate-spin" />
     </div>
   )
 
+  // Formulário de nova senha
   return (
     <div className="min-h-screen bg-primary-900 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
@@ -100,7 +143,7 @@ export default function TrocarSenhaPage() {
               />
             </div>
             {erro && <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{erro}</p>}
-            {msg && <p className="text-xs text-green-700 bg-green-50 px-3 py-2 rounded-lg">{msg}</p>}
+            {msg && <p className="text-xs text-green-700bg-green-50 px-3 py-2 rounded-lg">{msg}</p>}
             <button onClick={handleSalvar} disabled={loading} className="btn btn-primary w-full">
               {loading ? 'Salvando...' : 'Salvar nova senha'}
             </button>
