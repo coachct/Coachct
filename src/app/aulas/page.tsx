@@ -446,42 +446,43 @@ function AulasPageInner() {
               const borderColor=minhaRes?CYAN+'55':naFila?AMARELO+'55':cores.border
               return (
                 <div key={oc.id} style={{ background:cores.bg, border:`1.5px solid ${borderColor}`, borderRadius:18, overflow:'hidden' }}>
-                  {/* Topo: horário + badge + vagas urgentes */}
-                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'1rem 1.25rem 0.75rem' }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                  {/* Topo: horário+duração à esquerda, badge grande à direita */}
+                  <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', padding:'1rem 1.25rem 0.75rem' }}>
+                    <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
                       <div style={{ fontFamily:"'DM Mono', monospace", fontSize:28, fontWeight:700, color:'#fff', lineHeight:1, letterSpacing:-0.5 }}>
                         {(aula?.horario||'').slice(0,5)}
                       </div>
-                      <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-                        <span style={{ background:cores.badge, color:cores.text, fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, letterSpacing:0.5, display:'inline-block' }}>
-                          {tipoLabel(aula?.tipo)}
-                        </span>
-                        {aula?.so_mulheres && (
-                          <span style={{ background:'#ff2d9b18', color:ACCENT, fontSize:10, fontWeight:600, padding:'2px 8px', borderRadius:20, display:'inline-block' }}>
-                            👩 Só mulheres
-                          </span>
-                        )}
-                      </div>
+                      <div style={{ fontSize:12, color:'#666' }}>{duracao} min</div>
                     </div>
-                    {/* Status canto superior direito */}
-                    {minhaRes && (
-                      <div style={{ background:`${CYAN}18`, border:`1px solid ${CYAN}44`, borderRadius:20, padding:'4px 12px', fontSize:12, color:CYAN, fontWeight:700, letterSpacing:0.3 }}>
-                        ✓ Reservado
-                      </div>
-                    )}
-                    {naFila && (
-                      <div style={{ background:`${AMARELO}18`, border:`1px solid ${AMARELO}44`, borderRadius:20, padding:'4px 12px', fontSize:12, color:AMARELO, fontWeight:700 }}>
-                        ⏳ Na fila
-                      </div>
-                    )}
-                    {!minhaRes && !naFila && poucasVagas && (
-                      <div style={{ fontFamily:"'DM Mono', monospace", fontSize:11, fontWeight:700, color:livres===1?'#ff4444':AMARELO, letterSpacing:0.5 }}>
-                        {livres===1?'ÚLTIMA VAGA':`${livres} VAGAS`}
-                      </div>
-                    )}
-                    {!minhaRes && !naFila && lotado && (
-                      <div style={{ fontFamily:"'DM Mono', monospace", fontSize:11, fontWeight:700, color:'#ff4444', letterSpacing:0.5 }}>LOTADA</div>
-                    )}
+                    <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:5 }}>
+                      <span style={{ background:cores.badge, color:cores.text, fontSize:14, fontWeight:700, padding:'5px 14px', borderRadius:20, letterSpacing:0.3 }}>
+                        {tipoLabel(aula?.tipo)}
+                      </span>
+                      {aula?.so_mulheres && (
+                        <span style={{ background:'#ff2d9b18', color:ACCENT, fontSize:11, fontWeight:600, padding:'3px 10px', borderRadius:20 }}>
+                          👩 Só mulheres
+                        </span>
+                      )}
+                      {/* Status */}
+                      {minhaRes && (
+                        <div style={{ background:`${CYAN}18`, border:`1px solid ${CYAN}44`, borderRadius:20, padding:'3px 10px', fontSize:11, color:CYAN, fontWeight:700 }}>
+                          ✓ Reservado
+                        </div>
+                      )}
+                      {naFila && (
+                        <div style={{ background:`${AMARELO}18`, border:`1px solid ${AMARELO}44`, borderRadius:20, padding:'3px 10px', fontSize:11, color:AMARELO, fontWeight:700 }}>
+                          ⏳ Na fila
+                        </div>
+                      )}
+                      {!minhaRes && !naFila && poucasVagas && (
+                        <div style={{ fontFamily:"'DM Mono', monospace", fontSize:11, fontWeight:700, color:livres===1?'#ff4444':AMARELO, letterSpacing:0.5 }}>
+                          {livres===1?'ÚLTIMA VAGA':`${livres} VAGAS`}
+                        </div>
+                      )}
+                      {!minhaRes && !naFila && lotado && (
+                        <div style={{ fontFamily:"'DM Mono', monospace", fontSize:11, fontWeight:700, color:'#ff4444', letterSpacing:0.5 }}>LOTADA</div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Grupo muscular + professor + duração */}
