@@ -151,32 +151,59 @@ export default function LandingPage() {
 
       <div style={s.divider} />
 
-      {/* COACH CT */}
+      {/* COACH CT — banner único (personal 1×1 + musculação livre) */}
       <div id="coach-ct" style={s.section}>
-        <div style={s.sTag}>// o diferencial</div>
+        <div style={s.sTag}>// o diferencial coach ct</div>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: `${ACCENT}15`, border: `1px solid ${ACCENT}30`, borderRadius: 20, padding: '0.35rem 1rem', fontSize: 12, color: ACCENT, fontWeight: 600, marginBottom: '1.5rem' }}>
           ⚡ COACH CT
         </div>
-        <div style={s.sTitle}>PERSONAL QUANDO VOCÊ QUISER</div>
-        <div style={{ fontSize: 16, color: '#888', maxWidth: 680, lineHeight: 1.8, marginBottom: '3rem' }}>
-          Agende um horário e, ao chegar no CT, um dos nossos Coaches irá te acompanhar em formato personal — sim, 1×1.
-          Escolha um dos grupos musculares que ele lhe oferecer. Ah, e um detalhe:{' '}
-          <strong style={{ color: '#fff' }}>todos os treinos do Coach CT são montados pela nossa coordenadora Ju Hitomi</strong>,
-          então fiquem tranquilos que será intenso. Os treinos possuem até 1h de duração, e você sentirá a real diferença
-          de treinar com alguém dedicado 100% a você.
+        <div style={s.sTitle}>
+          PERSONAL QUANDO VOCÊ QUISER.<br />OU TREINE SOZINHO, COMO PREFERIR.
         </div>
+        <div style={{ fontSize: 16, color: '#888', maxWidth: 700, lineHeight: 1.8, marginBottom: '2.5rem' }}>
+          No Just CT você escolhe como treinar. Agende um horário e treine em formato <strong style={{ color: '#fff' }}>personal 1×1</strong> com um dos nossos Coaches, ou venha quando quiser para a <strong style={{ color: '#fff' }}>musculação livre</strong> e treine no seu ritmo. Os dois formatos com máquinas premium e ambiente pensado nos mínimos detalhes.
+        </div>
+
+        {/* Duas fotos da academia */}
+        <div className="grid2-r" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '2.5rem' }}>
+          <div style={{ borderRadius: 16, overflow: 'hidden', aspectRatio: '16/9' }}>
+            <img src="/foto capa CT.jpg" alt="Leg Zone Just CT" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          </div>
+          <div style={{ borderRadius: 16, overflow: 'hidden', aspectRatio: '16/9' }}>
+            <img src="/Imagem Treino Sala CT.jpg" alt="Sala Just CT" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          </div>
+        </div>
+
+        {/* Parágrafo Ju Hitomi — credibilidade */}
+        <div style={{ background: '#0d0d0d', border: `1px solid ${ACCENT}22`, borderRadius: 12, padding: '1rem 1.25rem', fontSize: 14, color: '#aaa', lineHeight: 1.7, marginBottom: '2.5rem' }}>
+          💡 <strong style={{ color: '#fff' }}>Todos os treinos do Coach CT são montados pela nossa coordenadora Ju Hitomi.</strong> Sessões de até 1h, intensidade garantida e a diferença real de treinar com alguém dedicado 100% a você.
+        </div>
+
+        {/* 3 cards — os dois formatos + apps */}
         <div className="grid3-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}>
-          {[
-            { icon: '📅', title: 'Agendamento flexível', desc: 'Escolha o dia e horário que encaixam na sua rotina. Sem mensalidade de personal, sem compromisso fixo.' },
-            { icon: '🎯', title: '1×1 de verdade', desc: 'Um coach. Um aluno. Atenção total durante toda a sessão — sem divisão de atenção.' },
-            { icon: '📲', title: 'Wellhub e TotalPass', desc: 'Wellhub Diamond e TotalPass TP6 têm direito a sessões Coach CT com check-in pelo app. Sem custo extra.' },
-          ].map((f, i) => (
-            <div key={i} className="feature-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem' }}>
-              <div style={{ width: 40, height: 40, background: `${ACCENT}15`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, marginBottom: '1rem' }}>{f.icon}</div>
-              <div style={{ fontWeight: 600, color: '#fff', marginBottom: '0.5rem', fontSize: 15 }}>{f.title}</div>
-              <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6 }}>{f.desc}</div>
+          <div className="feature-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem' }}>
+            <div style={{ width: 40, height: 40, background: `${ACCENT}15`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, marginBottom: '1rem' }}>🎯</div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: '0.5rem', letterSpacing: 1 }}>1×1 COM COACH CT</div>
+            <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6 }}>
+              Agendamento flexível, um coach dedicado só a você. Escolha o dia e horário que encaixam na sua rotina, sem mensalidade de personal e sem compromisso fixo.
             </div>
-          ))}
+          </div>
+          <div className="feature-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem' }}>
+            <div style={{ width: 40, height: 40, background: `${ACCENT}15`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, marginBottom: '1rem' }}>🏋️</div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: '0.5rem', letterSpacing: 1 }}>MUSCULAÇÃO LIVRE</div>
+            <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6 }}>
+              Quer treinar sozinho? Sem problemas. Equipamentos premium, halteres completos e espaço de sobra para você treinar no seu ritmo, quando quiser.
+            </div>
+          </div>
+          <div className="feature-h" style={{ background: '#111', border: `1px solid ${ACCENT}`, borderRadius: 16, padding: '1.5rem', position: 'relative' as const, overflow: 'hidden' as const }}>
+            <div style={{ position: 'absolute' as const, top: 0, right: 0, background: ACCENT, fontSize: 10, fontWeight: 700, padding: '0.2rem 1rem', letterSpacing: 1, color: '#fff' }}>ACEITO AQUI</div>
+            <div style={{ width: 40, height: 40, background: `${ACCENT}15`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, marginBottom: '1rem' }}>📲</div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: '0.5rem', letterSpacing: 1 }}>WELLHUB & TOTALPASS</div>
+            <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6 }}>
+              <strong style={{ color: '#fff' }}>Gold+</strong> / <strong style={{ color: '#fff' }}>TP4</strong> → musculação livre.<br />
+              <strong style={{ color: '#fff' }}>Diamond</strong> / <strong style={{ color: '#fff' }}>TP6</strong> → sessões Coach CT. Check-in pelo app, sem custo extra.
+            </div>
+          </div>
         </div>
       </div>
 
@@ -247,45 +274,6 @@ export default function LandingPage() {
       </div>
 
       <div style={s.divider} />
-
-      {/* ESPAÇO */}
-      <div id="espaco" style={{ ...s.section, paddingBottom: '4rem' }}>
-        <div style={s.sTag}>// musculação livre</div>
-        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(32px, 4vw, 52px)', color: '#fff', lineHeight: 1.05, marginBottom: '1rem' }}>
-          QUER TREINAR SOZINHO?<br />SEM PROBLEMAS.
-        </div>
-        <div style={{ fontSize: 16, color: '#666', maxWidth: 600, lineHeight: 1.7, marginBottom: '2.5rem' }}>
-          Olha as máquinas que te esperam. Equipamentos premium, ambiente inspirador e espaço de sobra para você treinar no seu ritmo.
-        </div>
-        <div className="grid2-r" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '3rem' }}>
-          <div style={{ borderRadius: 16, overflow: 'hidden', aspectRatio: '16/9' }}>
-            <img src="/foto capa CT.jpg" alt="Leg Zone Just CT" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          </div>
-          <div style={{ borderRadius: 16, overflow: 'hidden', aspectRatio: '16/9' }}>
-            <img src="/Imagem Treino Sala CT.jpg" alt="Sala Just CT" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          </div>
-        </div>
-        <div className="grid3-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}>
-          <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem' }}>
-            <div style={{ fontSize: 28, marginBottom: '1rem' }}>🏋️</div>
-            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: '0.75rem', letterSpacing: 1 }}>EQUIPAMENTOS PREMIUM</div>
-            <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6 }}>Máquinas de última geração, halteres completos e espaço planejado para o seu melhor desempenho. A Leg Zone é só um dos destaques.</div>
-          </div>
-          <div style={{ background: '#111', border: `1px solid ${ACCENT}`, borderRadius: 16, padding: '1.5rem', position: 'relative', overflow: 'hidden' }}>
-            <div style={{ position: 'absolute', top: 0, right: 0, background: ACCENT, fontSize: 10, fontWeight: 700, padding: '0.2rem 1rem', letterSpacing: 1, color: '#fff' }}>ACEITO AQUI</div>
-            <div style={{ fontSize: 28, marginBottom: '1rem' }}>📲</div>
-            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: '0.75rem', letterSpacing: 1 }}>WELLHUB & TOTALPASS</div>
-            <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6 }}>
-              <strong style={{ color: '#fff' }}>Wellhub Gold+</strong> e superiores e <strong style={{ color: '#fff' }}>TotalPass TP4</strong> e superiores têm acesso liberado à musculação. Check-in direto pelo app na recepção.
-            </div>
-          </div>
-          <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem' }}>
-            <div style={{ fontSize: 28, marginBottom: '1rem' }}>✨</div>
-            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: '0.75rem', letterSpacing: 1 }}>O AMBIENTE INSPIRA</div>
-            <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6 }}>De Vila Olímpia para o mundo. Um espaço pensado nos mínimos detalhes — da iluminação aos grafites — para você querer voltar sempre.</div>
-          </div>
-        </div>
-      </div>
 
       <div style={s.divider} />
 
