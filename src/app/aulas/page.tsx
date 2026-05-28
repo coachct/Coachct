@@ -180,7 +180,6 @@ function AulasPageInner() {
 
     const ocsList = (ocs || []).sort((a: any, b: any) => (a.club_aulas?.horario||'').localeCompare(b.club_aulas?.horario||''))
 
-    // Busca nomes dos grupos musculares
     const grupoIds = [...new Set(ocsList.map((o: any) => o.club_aulas?.grupo_muscular_id).filter(Boolean))]
     let gruposMap: Record<string, string> = {}
     if (grupoIds.length) {
@@ -193,13 +192,11 @@ function AulasPageInner() {
       club_aulas: { ...o.club_aulas, grupo_muscular_nome: o.club_aulas?.grupo_muscular_id ? (gruposMap[o.club_aulas.grupo_muscular_id] || null) : null }
     }))
 
-    // Agrupa por data
     const porDia: Record<string, any[]> = {}
     diasSemana.forEach(d => { porDia[dataLocalStr(d)] = [] })
     ocsComGrupo.forEach((oc: any) => { if (porDia[oc.data]) porDia[oc.data].push(oc) })
     setOcorrenciasSemana(porDia)
 
-    // Reservas, fila, bloqueadas
     const ocIds = ocsComGrupo.map((o: any) => o.id)
     if (ocIds.length) {
       const { data: reservas } = await supabase.from('club_reservas').select('ocorrencia_id').in('ocorrencia_id', ocIds).in('status', ['reservado','presente'])
@@ -256,7 +253,6 @@ function AulasPageInner() {
     const ids = (aulasIds || []).map((a: any) => a.id)
     if (!ids.length) { setOcorrencias([]); setLoadingOcs(false); return }
 
-    // ✅ Busca ocorrências SEM join aninhado em grupos_musculares
     const { data: ocs } = await supabase
       .from('club_ocorrencias')
       .select('*, club_aulas(id, tipo, horario, capacidade, so_mulheres, grupo_muscular_id, coaches(nome))')
@@ -264,7 +260,6 @@ function AulasPageInner() {
 
     const ocsList = (ocs || []).sort((a: any, b: any) => (a.club_aulas?.horario||'').localeCompare(b.club_aulas?.horario||''))
 
-    // ✅ Busca nomes dos grupos musculares separadamente
     const grupoIds = [...new Set(ocsList.map((o: any) => o.club_aulas?.grupo_muscular_id).filter(Boolean))]
     let gruposMap: Record<string, string> = {}
     if (grupoIds.length) {
@@ -272,7 +267,6 @@ function AulasPageInner() {
       for (const g of (grupos || [])) gruposMap[g.id] = g.nome
     }
 
-    // ✅ Injeta nome do grupo em cada ocorrência
     const ocsComGrupo = ocsList.map((o: any) => ({
       ...o,
       club_aulas: {
@@ -290,7 +284,6 @@ function AulasPageInner() {
     for (const r of (reservas||[])) cont[r.ocorrencia_id] = (cont[r.ocorrencia_id]||0)+1
     setReservasCont(cont)
 
-    // ✅ Conta posições bloqueadas desta unidade para ajustar vagas do Running
     const { data: bloqData } = await supabase.from('club_posicoes').select('id').eq('unidade_id', unidadeId).eq('ativo', true).eq('bloqueado', true)
     setBloqueadasCount((bloqData || []).length)
 
@@ -389,6 +382,14 @@ function AulasPageInner() {
     return { livres, lotado: livres<=0 }
   }
 
+  // Rótulo da semana (desktop): "26 mai – 1 jun"
+  const semanaLabel = (() => {
+    const ini = diasSemana[0]; const fim = diasSemana[6]
+    const mesIni = MESES_ABREV[ini.getMonth()].toLowerCase()
+    const mesFim = MESES_ABREV[fim.getMonth()].toLowerCase()
+    return `${ini.getDate()} ${mesIni} – ${fim.getDate()} ${mesFim}`
+  })()
+
   if (!unidadeId) return (
     <div style={{ minHeight:'100vh', background:'#080808', display:'flex', alignItems:'center', justifyContent:'center' }}>
       <div style={{ width:32, height:32, border:`4px solid ${ACCENT}`, borderTopColor:'transparent', borderRadius:'50%', animation:'spin 0.8s linear infinite' }}/>
@@ -410,7 +411,7 @@ function AulasPageInner() {
           <button onClick={() => router.push('/agendar')} style={{ background:'transparent', border:'1px solid #2a2a2a', borderRadius:'50%', width:36, height:36, color:'#666', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>‹</button>
           <div>
             <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:28, color:'#fff', letterSpacing:1 }}>{unidade?.nome||'Aulas coletivas'}</div>
-            <div style={{ fontSize:13, color:'#444', marginTop:2 }}>Lift · Lift for Girls · Running + Funcional</div>
+            <div style={{ fontSize:13, color:'#888', marginTop:2 }}>Lift · Lift for Girls · Running + Funcional</div>
           </div>
         </div>
 
@@ -478,30 +479,48 @@ function AulasPageInner() {
           </div>
         )}
 
-        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:0 }}>
-          <button onClick={() => { setSemanaOffset(o=>Math.max(0,o-1)); setDiaSel(0) }} disabled={semanaOffset===0}
-            style={{ width:32, height:32, borderRadius:'50%', border:'1px solid #2a2a2a', background:'transparent', color:semanaOffset===0?'#2a2a2a':'#666', fontSize:16, cursor:semanaOffset===0?'default':'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>‹</button>
-          <div style={{ flex:1, display:'flex', borderBottom:'1px solid #1a1a1a' }}>
-            {diasSemana.map((d,i) => {
-              const sel=i===diaSel; const isHojeTab=semanaOffset===0&&i===0
-              return (
-                <button key={i} className="dia-tab" onClick={() => setDiaSel(i)}
-                  style={{ flex:1, minWidth:0, padding:'0.75rem 0.25rem', background:'transparent', border:'none', borderBottom:`2px solid ${sel?ACCENT:'transparent'}`, cursor:'pointer', textAlign:'center', transition:'all .15s', color:sel?'#fff':'#444' }}>
-                  <div style={{ fontSize:9, fontWeight:700, letterSpacing:1, marginBottom:4, color:sel?ACCENT:'#333' }}>{isHojeTab?'HOJE':DIAS_ABREV[d.getDay()]}</div>
-                  <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:22, lineHeight:1, color:sel?'#fff':'#555' }}>{d.getDate()}</div>
-                  <div style={{ fontSize:9, color:sel?ACCENT:'#2a2a2a', textTransform:'uppercase', marginTop:2 }}>{MESES_ABREV[d.getMonth()]}</div>
-                </button>
-              )
-            })}
+        {/* ── NAVEGAÇÃO DE DATA ── */}
+        {isMobile ? (
+          /* MOBILE: régua de tabs por dia (inalterada) */
+          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:0 }}>
+            <button onClick={() => { setSemanaOffset(o=>Math.max(0,o-1)); setDiaSel(0) }} disabled={semanaOffset===0}
+              style={{ width:32, height:32, borderRadius:'50%', border:'1px solid #2a2a2a', background:'transparent', color:semanaOffset===0?'#2a2a2a':'#666', fontSize:16, cursor:semanaOffset===0?'default':'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>‹</button>
+            <div style={{ flex:1, display:'flex', borderBottom:'1px solid #1a1a1a' }}>
+              {diasSemana.map((d,i) => {
+                const sel=i===diaSel; const isHojeTab=semanaOffset===0&&i===0
+                return (
+                  <button key={i} className="dia-tab" onClick={() => setDiaSel(i)}
+                    style={{ flex:1, minWidth:0, padding:'0.75rem 0.25rem', background:'transparent', border:'none', borderBottom:`2px solid ${sel?ACCENT:'transparent'}`, cursor:'pointer', textAlign:'center', transition:'all .15s', color:sel?'#fff':'#444' }}>
+                    <div style={{ fontSize:9, fontWeight:700, letterSpacing:1, marginBottom:4, color:sel?ACCENT:'#333' }}>{isHojeTab?'HOJE':DIAS_ABREV[d.getDay()]}</div>
+                    <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:22, lineHeight:1, color:sel?'#fff':'#555' }}>{d.getDate()}</div>
+                    <div style={{ fontSize:9, color:sel?ACCENT:'#2a2a2a', textTransform:'uppercase', marginTop:2 }}>{MESES_ABREV[d.getMonth()]}</div>
+                  </button>
+                )
+              })}
+            </div>
+            <button onClick={() => { setSemanaOffset(o=>Math.min(3,o+1)); setDiaSel(0) }} disabled={semanaOffset>=3}
+              style={{ width:32, height:32, borderRadius:'50%', border:'1px solid #2a2a2a', background:'transparent', color:semanaOffset>=3?'#2a2a2a':'#666', fontSize:16, cursor:semanaOffset>=3?'default':'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>›</button>
           </div>
-          <button onClick={() => { setSemanaOffset(o=>Math.min(3,o+1)); setDiaSel(0) }} disabled={semanaOffset>=3}
-            style={{ width:32, height:32, borderRadius:'50%', border:'1px solid #2a2a2a', background:'transparent', color:semanaOffset>=3?'#2a2a2a':'#666', fontSize:16, cursor:semanaOffset>=3?'default':'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>›</button>
-        </div>
+        ) : (
+          /* DESKTOP: só navegação de semana (a grade já mostra os 7 dias) */
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'1.25rem', marginBottom:0 }}>
+            <button onClick={() => { setSemanaOffset(o=>Math.max(0,o-1)); setDiaSel(0) }} disabled={semanaOffset===0}
+              style={{ width:40, height:40, borderRadius:'50%', border:`1px solid ${semanaOffset===0?'#2a2a2a':'#444'}`, background:'transparent', color:semanaOffset===0?'#333':'#ccc', fontSize:18, cursor:semanaOffset===0?'default':'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>‹</button>
+            <div style={{ textAlign:'center', minWidth:220 }}>
+              <div style={{ fontSize:11, color:'#888', fontWeight:700, letterSpacing:2, textTransform:'uppercase', marginBottom:2 }}>
+                {semanaOffset===0 ? 'Esta semana' : `Semana +${semanaOffset}`}
+              </div>
+              <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:22, color:'#fff', letterSpacing:1 }}>{semanaLabel}</div>
+            </div>
+            <button onClick={() => { setSemanaOffset(o=>Math.min(3,o+1)); setDiaSel(0) }} disabled={semanaOffset>=3}
+              style={{ width:40, height:40, borderRadius:'50%', border:`1px solid ${semanaOffset>=3?'#2a2a2a':'#444'}`, background:'transparent', color:semanaOffset>=3?'#333':'#ccc', fontSize:18, cursor:semanaOffset>=3?'default':'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>›</button>
+          </div>
+        )}
 
         <div style={{ display:'flex', gap:8, marginTop:'1.25rem', marginBottom:'1.5rem', flexWrap:'wrap' }}>
           {[{key:'todos',label:'Todos'},{key:'manha',label:'🌅 Manhã'},{key:'tarde',label:'☀️ Tarde'},{key:'noite',label:'🌙 Noite'}].map(p => (
             <button key={p.key} onClick={() => setPeriodo(p.key as any)}
-              style={{ padding:'0.35rem 1rem', borderRadius:20, border:`1px solid ${periodo===p.key?ACCENT:'#2a2a2a'}`, background:periodo===p.key?`${ACCENT}20`:'transparent', color:periodo===p.key?ACCENT:'#444', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
+              style={{ padding:'0.35rem 1rem', borderRadius:20, border:`1px solid ${periodo===p.key?ACCENT:'#2a2a2a'}`, background:periodo===p.key?`${ACCENT}20`:'transparent', color:periodo===p.key?ACCENT:'#888', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
               {p.label}
             </button>
           ))}
@@ -523,22 +542,22 @@ function AulasPageInner() {
               return (
                 <div key={i}>
                   {/* Cabeçalho do dia */}
-                  <div style={{ textAlign:'center', padding:'8px 4px', borderRadius:10, background:'#0d0d0d', border:`1px solid ${isHojeDia ? ACCENT+'44' : '#1a1a1a'}`, marginBottom:8 }}>
-                    <div style={{ fontSize:9, fontWeight:700, letterSpacing:1, color: isHojeDia ? ACCENT : '#444', textTransform:'uppercase' }}>
+                  <div style={{ textAlign:'center', padding:'8px 4px', borderRadius:10, background:'#0d0d0d', border:`1px solid ${isHojeDia ? ACCENT+'66' : '#222'}`, marginBottom:8 }}>
+                    <div style={{ fontSize:9, fontWeight:700, letterSpacing:1, color: isHojeDia ? ACCENT : '#fff', textTransform:'uppercase' }}>
                       {isHojeDia ? 'HOJE' : DIAS_ABREV[dia.getDay()]}
                     </div>
-                    <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:20, lineHeight:1.1, color: isHojeDia ? '#fff' : '#666', marginTop:2 }}>
+                    <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:20, lineHeight:1.1, color:'#fff', marginTop:2 }}>
                       {dia.getDate()}
                     </div>
-                    <div style={{ fontSize:9, color: isHojeDia ? ACCENT : '#333', textTransform:'uppercase' }}>
+                    <div style={{ fontSize:9, color: isHojeDia ? ACCENT : '#999', textTransform:'uppercase' }}>
                       {MESES_ABREV[dia.getMonth()]}
                     </div>
                   </div>
 
                   {loadingSemana ? (
-                    <div style={{ textAlign:'center', padding:'1rem 0', color:'#333', fontSize:11 }}>...</div>
+                    <div style={{ textAlign:'center', padding:'1rem 0', color:'#555', fontSize:11 }}>...</div>
                   ) : aulas.length === 0 ? (
-                    <div style={{ textAlign:'center', padding:'1rem 0', color:'#2a2a2a', fontSize:11 }}>—</div>
+                    <div style={{ textAlign:'center', padding:'1rem 0', color:'#444', fontSize:11 }}>—</div>
                   ) : aulas.map((oc: any) => {
                     const aula       = oc.club_aulas
                     const { livres, lotado } = vagasInfo(oc)
@@ -555,7 +574,7 @@ function AulasPageInner() {
                         <div style={{ fontFamily:"'DM Mono', monospace", fontSize:13, fontWeight:700, color:'#fff', lineHeight:1 }}>
                           {(aula?.horario||'').slice(0,5)}
                         </div>
-                        <div style={{ fontSize:10, color:'#555', marginBottom:5 }}>{duracao} min</div>
+                        <div style={{ fontSize:10, color:'#888', marginBottom:5 }}>{duracao} min</div>
 
                         {/* Badge nome da aula */}
                         <div style={{ background:cores.badge, color:cores.text, border:`1px solid ${cores.text}55`, fontSize:9, fontWeight:700, padding:'2px 7px', borderRadius:20, letterSpacing:0.4, display:'inline-block', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:'100%', marginBottom:5 }}>
@@ -564,13 +583,13 @@ function AulasPageInner() {
 
                         {/* Grupo muscular */}
                         {aula?.grupo_muscular_nome && (
-                          <div style={{ fontSize:10, color:'#777', marginBottom:2, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                          <div style={{ fontSize:10, color:'#bbb', marginBottom:2, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
                             {aula.grupo_muscular_nome}
                           </div>
                         )}
 
                         {/* Professor */}
-                        <div style={{ fontSize:10, color:'#666', marginBottom:6, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                        <div style={{ fontSize:10, color:'#aaa', marginBottom:6, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
                           👤 {nomeCoach}
                         </div>
 
@@ -591,7 +610,7 @@ function AulasPageInner() {
                                 ⏳ Fila
                               </button>
                             ) : (
-                              <button onClick={() => tentarReservar(oc)} style={{ width:'100%', background:'#cc2580', color:'#fff', border:'none', borderRadius:8, padding:'6px', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                              <button onClick={() => tentarReservar(oc)} style={{ width:'100%', background:ACCENT, color:'#fff', border:'none', borderRadius:8, padding:'6px', fontSize:11, fontWeight:700, cursor:'pointer' }}>
                                 Reservar
                               </button>
                             )}
