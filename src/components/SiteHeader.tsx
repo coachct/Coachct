@@ -1,15 +1,12 @@
 'use client'
 import { useRouter, usePathname } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-
 const ACCENT = '#ff2d9b'
-
 export default function SiteHeader() {
   const { perfil, loading } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
   const isClienteLogado = perfil?.role === 'cliente'
-
   // Navega normalmente; se já estiver na rota destino, força recarregar
   function irPara(rota: string) {
     if (pathname === rota) {
@@ -18,11 +15,9 @@ export default function SiteHeader() {
       router.push(rota)
     }
   }
-
   if (loading) return (
     <div style={{ height: 64, background: '#08080895', borderBottom: '1px solid #1a1a1a' }} />
   )
-
   return (
     <nav className="sh-nav">
       <style>{`
@@ -54,7 +49,6 @@ export default function SiteHeader() {
           padding: 0.45rem 1.25rem;
         }
         .sh-btn-cta:hover { opacity: 0.85; }
-
         /* ── Mobile: reduz padding, encolhe botões, esconde só "Cadastro" ── */
         @media (max-width: 560px) {
           .sh-nav { padding: 0 1rem; }
@@ -66,11 +60,9 @@ export default function SiteHeader() {
           .sh-hide-mobile { display: none !important; }
         }
       `}</style>
-
       <div className="sh-logo" onClick={() => irPara('/')}>
-        JUST<span style={{ color: ACCENT }}>CT</span>
+        JUST <span style={{ color: ACCENT }}>CLUB &amp; CT</span>
       </div>
-
       <div className="sh-actions">
         {isClienteLogado ? (
           <button onClick={() => irPara('/minha-conta')} className="sh-btn sh-btn-auth">
