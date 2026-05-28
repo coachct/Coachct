@@ -314,11 +314,7 @@ export default function LandingPage() {
         </div>
         <div className="pro-grid-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
           <div className="pro-card-h" style={{ background: `linear-gradient(135deg, #1a0010 0%, #0d0008 100%)`, border: `1.5px solid ${ACCENT}44`, borderRadius: 16, padding: '1.5rem', position: 'relative' as const, overflow: 'hidden' }}>
-            <div style={{ position: 'absolute', top: 0, right: 0, left: 0, height: 120, overflow: 'hidden' }}>
-              <img src="/foto capa CT.jpg" alt="Ju Hitomi" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center top', opacity: 0.4 }} />
-              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, transparent 30%, #1a0010 100%)' }} />
-            </div>
-            <div style={{ position: 'relative', paddingTop: 80 }}>
+            <div>
               <div style={{ fontSize: 10, color: ACCENT, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: 6, fontFamily: "'DM Mono', monospace" }}>by</div>
               <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', letterSpacing: 1, lineHeight: 1.1, marginBottom: 8 }}>JU HITOMI</div>
               <div style={{ fontSize: 13, color: '#888', lineHeight: 1.6 }}>Todos os treinos do Coach CT Pro são elaborados por ela. Intensidade e método — garantidos.</div>
