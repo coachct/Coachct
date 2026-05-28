@@ -191,7 +191,6 @@ export default function LandingPage() {
             </div>
           </div>
           <div className="feature-h" style={{ background: `linear-gradient(135deg, ${ACCENT}12 0%, #111 100%)`, border: `1.5px solid ${ACCENT}55`, borderRadius: 16, padding: '1.5rem', position: 'relative' as const, overflow: 'hidden' as const }}>
-            <div style={{ position: 'absolute' as const, top: 0, right: 0, background: ACCENT, fontSize: 10, fontWeight: 700, padding: '0.2rem 1rem', letterSpacing: 1, color: '#fff' }}>ASSINATURA</div>
             <div style={{ width: 40, height: 40, background: `${ACCENT}25`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, marginBottom: '1rem' }}>💡</div>
             <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: '0.5rem', letterSpacing: 1 }}>TREINOS BY JU HITOMI</div>
             <div style={{ fontSize: 14, color: '#aaa', lineHeight: 1.6 }}>
