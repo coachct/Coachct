@@ -13,6 +13,20 @@ const VERDE   = '#2ddd8b'
 
 const MESES = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro']
 
+// Tier mínimo por app + unidade (texto fixo, casado por tipo + nome da unidade)
+const TIER_INFO: Record<string, { tier: string; creditos: number }> = {
+  'wellhub|Just CT':         { tier: 'Diamond', creditos: 8 },
+  'totalpass|Just CT':       { tier: 'TP6',     creditos: 10 },
+  'wellhub|Vila Olímpia':    { tier: 'Gold',    creditos: 12 },
+  'totalpass|Vila Olímpia':  { tier: 'TP3',     creditos: 12 },
+  'wellhub|Pinheiros':       { tier: 'Gold',    creditos: 12 },
+  'totalpass|Pinheiros':     { tier: 'TP3',     creditos: 12 },
+}
+
+function tierDoPlano(tipo: string, nomeUnidade: string): { tier: string; creditos: number } | null {
+  return TIER_INFO[`${tipo}|${nomeUnidade}`] || null
+}
+
 const CONTRATO_TEXTO = `TERMOS DE USO — JUST CT & JUSTCLUB
 
 Última atualização: maio de 2025
@@ -135,7 +149,6 @@ export default function MinhaContaPage() {
   const [ativando,       setAtivando]       = useState(false)
   const [erroAtivar,     setErroAtivar]     = useState('')
   const [modalSucesso,   setModalSucesso]   = useState<any>(null)
-  const [modalParceiros, setModalParceiros] = useState(false)
 
   // ── Alterar senha ──
   const [modalSenha,     setModalSenha]     = useState(false)
@@ -180,31 +193,40 @@ export default function MinhaContaPage() {
       { data: planosData },
       { data: cobrancasData },
     ] = await Promise.all([
+      // Futuros CT
       supabase.from('agendamentos').select('*, unidades(nome)')
         .eq('cliente_id', cli.id).gte('data', hoje)
         .not('status','in','("cancelado")').order('data').order('horario').limit(30),
+      // Passados CT
       supabase.from('agendamentos').select('*, unidades(nome)')
         .eq('cliente_id', cli.id).lt('data', hoje)
         .in('status', ['realizado','falta']).order('data',{ascending:false}).limit(20),
+      // Fila
       supabase.from('fila_espera').select('*, unidades(nome)')
         .eq('cliente_id', cli.id).eq('status','aguardando').gte('data', hoje)
         .order('data').order('horario'),
+      // Planos
       supabase.from('cliente_planos').select('*, planos_disponiveis(id, nome, tipo, unidade_id)')
         .eq('cliente_id', cli.id).eq('ativo', true),
+      // Compras
       supabase.from('vendas').select('*, produtos(nome, subtipo, dias_validade)')
         .eq('cliente_id', cli.id).order('vendido_em',{ascending:false}).limit(10),
+      // Club reservas futuras
       supabase.from('club_reservas').select(`
         id, status, tipo_credito, posicao, cancelado_em,
         club_ocorrencias(id, data, club_aulas(tipo, horario, unidade_id, unidades(nome)))
       `).eq('cliente_id', cli.id).not('status','in','("cancelado")'),
+      // Club reservas passadas
       supabase.from('club_reservas').select(`
         id, status, tipo_credito, posicao,
         club_ocorrencias(id, data, club_aulas(tipo, horario, unidade_id, unidades(nome)))
       `).eq('cliente_id', cli.id).in('status',['presente','realizado','falta']).limit(20),
+      // Planos disponíveis
       supabase.from('planos_disponiveis')
         .select('id, nome, tipo, creditos_mes, unidade_id, unidades(id, nome, tipo)')
         .in('tipo', ['wellhub', 'totalpass']).eq('ativo', true)
         .order('tipo').order('unidade_id'),
+      // Cobranças
       supabase.from('cobrancas_pendentes').select('*').eq('cliente_id', cli.id).eq('status', 'pendente'),
     ])
 
@@ -236,6 +258,7 @@ export default function MinhaContaPage() {
     const mp:Record<string,any>={}; sp.forEach(r=>Object.assign(mp,r.data||{})); setSaldoProximo(mp)
   }
 
+  // Feed futuro unificado
   const feedFuturo = [
     ...(agendamentos.map(ag => ({
       id: ag.id, tipo:'ct' as const,
@@ -257,6 +280,7 @@ export default function MinhaContaPage() {
     }))),
   ].sort((a,b) => `${a.data}T${a.horario}`.localeCompare(`${b.data}T${b.horario}`))
 
+  // Feed histórico unificado
   const feedHistorico = [
     ...(agendamentosPassados.map(ag => ({
       id: ag.id, tipo:'ct' as const,
@@ -292,7 +316,7 @@ export default function MinhaContaPage() {
         aceite_pendente: false, inicio: dataLocalStr(new Date()),
       })
       if (error) throw error
-      setModalAtivar(null); setModalParceiros(false)
+      setModalAtivar(null)
       setModalSucesso({ plano: modalAtivar.plano })
       await loadDados()
     } catch { setErroAtivar('Erro ao ativar plano. Tente novamente ou fale com a recepção.') }
@@ -377,6 +401,14 @@ export default function MinhaContaPage() {
   const estaBloqueado       = !!cliente?.bloqueado
   const temCobrancaPendente = cobrancasPendentes.length>0
   const historicoExibido    = verTodosHistorico ? feedHistorico : feedHistorico.slice(0,5)
+
+  // Agrupa os planos parceiros por unidade (para o bloco de ativação visível)
+  const gruposParceiros = planosDisponiveis.reduce((acc:any[],p:any)=>{
+    const uid=p.unidade_id
+    if(!acc.find((g:any)=>g.uid===uid)) acc.push({uid,nome:p.unidades?.nome,tipo:p.unidades?.tipo,planos:[]})
+    acc.find((g:any)=>g.uid===uid).planos.push(p)
+    return acc
+  },[])
 
   const statusConfig: Record<string,{label:string;cor:string}> = {
     agendado:   {label:'Agendado',   cor:CYAN},
@@ -487,6 +519,7 @@ export default function MinhaContaPage() {
                 const dias=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
                 return (
                   <div key={`${item.tipo}-${item.id}`} style={{background:'#111',border:'1px solid #1e1e1e',borderRadius:12,padding:'0.9rem 1rem',display:'flex',alignItems:'center',gap:'0.85rem'}}>
+                    {/* Data */}
                     <div style={{flexShrink:0,textAlign:'center',width:42}}>
                       <div style={{fontSize:9,color:'#555',fontWeight:700,letterSpacing:1,textTransform:'uppercase'}}>{dias[d.getDay()]}</div>
                       <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:26,color:'#fff',lineHeight:1}}>{d.getDate()}</div>
@@ -495,6 +528,7 @@ export default function MinhaContaPage() {
 
                     <div style={{width:1,height:40,background:'#222',flexShrink:0}}/>
 
+                    {/* Info */}
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',marginBottom:3}}>
                         <span style={{fontSize:14,fontWeight:600,color:'#fff'}}>{item.horario}</span>
@@ -516,6 +550,7 @@ export default function MinhaContaPage() {
                       </div>
                     </div>
 
+                    {/* Status + cancelar */}
                     <div style={{flexShrink:0,textAlign:'right'}}>
                       <div style={{fontSize:10,fontWeight:700,color:sc.cor,textTransform:'uppercase',marginBottom:4}}>{sc.label}</div>
                       {podeCancelar && (
@@ -561,18 +596,11 @@ export default function MinhaContaPage() {
             SEÇÃO 2 — MEUS PLANOS & CRÉDITOS
         ══════════════════════════════════════════ */}
         <div style={{marginBottom:'2rem'}}>
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'0.85rem'}}>
-            <div style={{fontSize:11,color:'#aaa',fontWeight:700,letterSpacing:2,textTransform:'uppercase'}}>🏆 Meus planos & créditos</div>
-            <button onClick={()=>setModalParceiros(true)} style={{background:'transparent',border:'1px solid #2a2a2a',borderRadius:8,padding:'0.25rem 0.75rem',fontSize:11,color:'#888',cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>+ Ativar plano</button>
-          </div>
+          <div style={{fontSize:11,color:'#aaa',fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginBottom:'0.85rem'}}>🏆 Meus planos & créditos</div>
 
           {Object.keys(saldoAtual).length===0 && clientePlanos.length===0 ? (
             <div style={{background:'#111',border:'1px solid #1e1e1e',borderRadius:14,padding:'1.5rem',textAlign:'center'}}>
-              <div style={{fontSize:13,color:'#555',marginBottom:'1rem'}}>Nenhum plano ativo no momento.</div>
-              <div style={{display:'flex',gap:8,justifyContent:'center',flexWrap:'wrap'}}>
-                <button onClick={()=>router.push('/comprar')} style={{background:ACCENT,color:'#fff',border:'none',borderRadius:10,padding:'0.6rem 1.25rem',fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>Ver planos →</button>
-                <button onClick={()=>setModalParceiros(true)} style={{background:'transparent',color:'#aaa',border:'1px solid #2a2a2a',borderRadius:10,padding:'0.6rem 1.25rem',fontSize:13,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>App parceiro</button>
-              </div>
+              <div style={{fontSize:13,color:'#555'}}>Nenhum plano ativo no momento.</div>
             </div>
           ) : (
             <div style={{display:'flex',flexDirection:'column',gap:6}}>
@@ -594,6 +622,7 @@ export default function MinhaContaPage() {
                         <span style={{fontSize:12,color:'#444'}}> / {total}</span>
                       </div>
                     </div>
+                    {/* Barra de progresso */}
                     <div style={{height:3,background:'#1a1a1a',borderRadius:2,overflow:'hidden',marginBottom:6}}>
                       <div style={{height:'100%',borderRadius:2,background:restante===0?'#222':cor,width:`${pct}%`,transition:'width .3s'}}/>
                     </div>
@@ -607,11 +636,78 @@ export default function MinhaContaPage() {
             </div>
           )}
 
+          {/* Botão comprar abaixo dos planos */}
           {(Object.keys(saldoAtual).length>0||clientePlanos.length>0) && (
             <div style={{display:'flex',gap:8,marginTop:10}}>
               <button onClick={()=>router.push('/comprar')} style={{flex:1,background:'transparent',color:'#aaa',border:'1px solid #222',borderRadius:10,padding:'0.6rem',fontSize:12,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
                 🛍️ Ver planos e pacotes
               </button>
+            </div>
+          )}
+        </div>
+
+        {/* ══════════════════════════════════════════
+            SEÇÃO 2B — ATIVAR PLANO DE APP PARCEIRO (visível)
+        ══════════════════════════════════════════ */}
+        <div style={{marginBottom:'2rem'}}>
+          <div style={{fontSize:11,color:'#aaa',fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginBottom:'0.85rem'}}>📲 Ativar plano de app parceiro</div>
+
+          {/* Explicação */}
+          <div style={{background:'#0d0d0d',border:'1px solid #1e1e1e',borderRadius:14,padding:'1.1rem 1.25rem',marginBottom:'1rem'}}>
+            <p style={{fontSize:13,color:'#bbb',lineHeight:1.7,marginBottom:'0.75rem'}}>
+              É cliente <strong style={{color:'#a78bfa'}}>Wellhub</strong> ou <strong style={{color:'#38bdf8'}}>TotalPass</strong>? Ative o plano da unidade onde quer treinar. Cada unidade tem seu próprio limite de treinos no mês, e você pode ter os dois apps ativos ao mesmo tempo, sem problema.
+            </p>
+            <div style={{background:'#0a0a0a',border:`1px solid ${AMARELO}22`,borderRadius:10,padding:'0.75rem 0.9rem',fontSize:12.5,color:'#ddd',lineHeight:1.6}}>
+              💡 No <strong>Just CT</strong>, só precisa ativar se quiser agendar <strong>Coach CT</strong>. Para <strong>musculação livre</strong>, é só fazer o check-in direto na recepção da unidade.
+            </div>
+          </div>
+
+          {/* Cards por unidade */}
+          {gruposParceiros.length===0 ? (
+            <div style={{background:'#111',border:'1px solid #1e1e1e',borderRadius:14,padding:'1.5rem',textAlign:'center',fontSize:13,color:'#555'}}>
+              Nenhum plano parceiro disponível no momento.
+            </div>
+          ) : (
+            <div style={{display:'flex',flexDirection:'column',gap:'1.25rem'}}>
+              {gruposParceiros.map((grupo:any)=>(
+                <div key={grupo.uid}>
+                  <div style={{fontSize:11,color:'#666',fontWeight:700,letterSpacing:1,textTransform:'uppercase',marginBottom:8,display:'flex',alignItems:'center',gap:6}}>
+                    <span>{grupo.tipo==='club'?'🏢':'🏋️'}</span>{grupo.nome}
+                  </div>
+                  <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                    {grupo.planos.map((plano:any)=>{
+                      const ativo=planoJaAtivo(plano.id)
+                      const isWell=plano.tipo==='wellhub'
+                      const cor=isWell?'#a78bfa':'#38bdf8'
+                      const info=tierDoPlano(plano.tipo, grupo.nome)
+                      const creditosTxt = info ? info.creditos : plano.creditos_mes
+                      return (
+                        <div key={plano.id} style={{background:ativo?'#111':'#0a0a0a',border:`1px solid ${ativo?cor+'44':'#222'}`,borderRadius:12,padding:'0.9rem 1rem',display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
+                          <div style={{display:'flex',alignItems:'center',gap:11,minWidth:0}}>
+                            <span style={{fontSize:20,flexShrink:0}}>{isWell?'💜':'🔵'}</span>
+                            <div style={{minWidth:0}}>
+                              <div style={{fontSize:14,fontWeight:600,color:ativo?cor:'#eee'}}>{isWell?'Wellhub':'TotalPass'}</div>
+                              <div style={{fontSize:11.5,color:'#888',marginTop:2,lineHeight:1.4}}>
+                                {info ? <>a partir do <strong style={{color:'#aaa'}}>{info.tier}</strong> · {creditosTxt} treinos/mês</> : <>{creditosTxt} treinos/mês</>}
+                              </div>
+                            </div>
+                          </div>
+                          {ativo?(
+                            <div style={{display:'flex',alignItems:'center',gap:5,background:'#0a1a0a',borderRadius:20,padding:'0.35rem 0.85rem',border:`1px solid ${cor}44`,flexShrink:0}}>
+                              <div style={{width:5,height:5,borderRadius:'50%',background:cor}}/>
+                              <span style={{fontSize:11,fontWeight:700,color:cor}}>ATIVO</span>
+                            </div>
+                          ):(
+                            <button onClick={()=>abrirModalAtivar(plano)} style={{background:isWell?'linear-gradient(135deg,#7c3aed,#a855f7)':'linear-gradient(135deg,#0369a1,#0ea5e9)',color:'#fff',border:'none',borderRadius:20,padding:'0.45rem 1.15rem',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:"'DM Sans', sans-serif",flexShrink:0}}>
+                              Ativar →
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -750,66 +846,6 @@ export default function MinhaContaPage() {
                 </div>
               </>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* ══════════════════════════════════════════
-          MODAL — ATIVAR APP PARCEIRO
-      ══════════════════════════════════════════ */}
-      {modalParceiros && !modalAtivar && (
-        <div style={{position:'fixed',inset:0,background:'#000000dd',zIndex:100,display:'flex',alignItems:'flex-end',justifyContent:'center',padding:'1rem'}}>
-          <div style={{background:'#111',border:'1px solid #2a2a2a',borderRadius:'20px 20px 16px 16px',width:'100%',maxWidth:500,padding:'1.5rem',maxHeight:'85vh',overflowY:'auto'}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.25rem'}}>
-              <div>
-                <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:22,color:'#fff',letterSpacing:1}}>ATIVAR PLANO PARCEIRO</div>
-                <div style={{fontSize:12,color:'#555',marginTop:2}}>Wellhub & TotalPass disponíveis</div>
-              </div>
-              <button onClick={()=>setModalParceiros(false)} style={{background:'transparent',border:'none',color:'#555',fontSize:20,cursor:'pointer'}}>✕</button>
-            </div>
-            {planosDisponiveis.length===0 ? (
-              <div style={{textAlign:'center',padding:'2rem',color:'#444',fontSize:13}}>Nenhum plano parceiro disponível.</div>
-            ) : (
-              planosDisponiveis.reduce((acc:any[],p:any)=>{
-                const uid=p.unidade_id; if(!acc.find((g:any)=>g.uid===uid)) acc.push({uid,nome:p.unidades?.nome,tipo:p.unidades?.tipo,planos:[]})
-                acc.find((g:any)=>g.uid===uid).planos.push(p); return acc
-              },[]).map((grupo:any)=>(
-                <div key={grupo.uid} style={{marginBottom:'1.25rem'}}>
-                  <div style={{fontSize:11,color:'#666',fontWeight:700,letterSpacing:1,textTransform:'uppercase',marginBottom:8,display:'flex',alignItems:'center',gap:6}}>
-                    <span>{grupo.tipo==='club'?'🏢':'🏋️'}</span>{grupo.nome}
-                  </div>
-                  <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                    {grupo.planos.map((plano:any)=>{
-                      const ativo=planoJaAtivo(plano.id)
-                      const isWell=plano.tipo==='wellhub'
-                      const cor=isWell?'#a78bfa':'#38bdf8'
-                      return (
-                        <div key={plano.id} style={{background:ativo?'#111':'#0a0a0a',border:`1px solid ${ativo?cor+'33':'#222'}`,borderRadius:10,padding:'0.85rem 1rem',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                          <div style={{display:'flex',alignItems:'center',gap:10}}>
-                            <span style={{fontSize:18}}>{isWell?'💜':'🔵'}</span>
-                            <div>
-                              <div style={{fontSize:14,fontWeight:600,color:ativo?cor:'#ccc'}}>{isWell?'Wellhub':'TotalPass'}</div>
-                              <div style={{fontSize:11,color:'#555',marginTop:1}}>{plano.creditos_mes} treinos/mês</div>
-                            </div>
-                          </div>
-                          {ativo?(
-                            <div style={{display:'flex',alignItems:'center',gap:5,background:'#0a1a0a',borderRadius:20,padding:'0.3rem 0.85rem',border:`1px solid ${cor}33`}}>
-                              <div style={{width:5,height:5,borderRadius:'50%',background:cor}}/>
-                              <span style={{fontSize:11,fontWeight:700,color:cor}}>ATIVO</span>
-                            </div>
-                          ):(
-                            <button onClick={()=>abrirModalAtivar(plano)} style={{background:isWell?'linear-gradient(135deg,#7c3aed,#a855f7)':'linear-gradient(135deg,#0369a1,#0ea5e9)',color:'#fff',border:'none',borderRadius:20,padding:'0.4rem 1.1rem',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
-                              Ativar →
-                            </button>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))
-            )}
-            <button onClick={()=>setModalParceiros(false)} style={{width:'100%',background:'transparent',border:'1px solid #2a2a2a',borderRadius:10,padding:'0.75rem',color:'#666',fontSize:14,cursor:'pointer',fontFamily:"'DM Sans', sans-serif",marginTop:4}}>Fechar</button>
           </div>
         </div>
       )}
