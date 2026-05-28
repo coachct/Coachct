@@ -2,6 +2,8 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
+const ACCENT = '#ff2d9b'
+
 export default function TrocarSenhaPage() {
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
@@ -34,55 +36,68 @@ export default function TrocarSenhaPage() {
   }
 
   return (
-    <div className="min-h-screen bg-primary-900 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <div className="text-primary-200 text-2xl font-semibold tracking-widest mb-1">● COACH CT</div>
-          <p className="text-primary-400 text-sm">Redefinição de senha</p>
+    <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', fontFamily: "'DM Sans', sans-serif" }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap'); * { box-sizing: border-box; margin: 0; padding: 0; } input:focus { outline: none; border-color: ${ACCENT} !important; }`}</style>
+      <div style={{ width: '100%', maxWidth: 400 }}>
+
+        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+          <div onClick={() => router.push('/')} style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: '#fff', letterSpacing: 3, cursor: 'pointer', display: 'inline-block' }}>
+            JUST<span style={{ color: ACCENT }}>CT</span>
+          </div>
+          <div style={{ fontSize: 13, color: '#555', marginTop: 4 }}>Área do aluno</div>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-xl">
+
+        <div style={{ background: '#111', border: '1px solid #222', borderRadius: 20, padding: '2rem' }}>
 
           {enviado ? (
-            <div className="text-center py-2">
-              <div className="text-4xl mb-4">📧</div>
-              <h1 className="text-lg font-semibold text-gray-900 mb-2">Email enviado!</h1>
-              <p className="text-sm text-gray-500 mb-6 leading-relaxed">
-                Se o email estiver cadastrado, você receberá uma <strong>senha provisória</strong> em instantes. Use ela para entrar e depois cadastre uma nova senha em Minha Conta.
+            <div style={{ textAlign: 'center' as const, padding: '0.5rem 0' }}>
+              <div style={{ fontSize: 40, marginBottom: '1rem' }}>📧</div>
+              <p style={{ fontSize: 18, fontWeight: 600, color: '#fff', marginBottom: 8 }}>Email enviado!</p>
+              <p style={{ fontSize: 13, color: '#888', marginBottom: '1.5rem', lineHeight: 1.6 }}>
+                Se o email estiver cadastrado, você receberá uma <strong style={{ color: '#fff' }}>senha provisória</strong> em instantes. Use ela para entrar e depois cadastre uma nova senha em Minha Conta.
               </p>
-              <button onClick={() => router.push('/login')} className="btn btn-primary w-full">
+              <button onClick={() => router.push('/login')}
+                style={{ width: '100%', background: ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
                 Voltar ao login
               </button>
             </div>
           ) : (
             <>
-              <h1 className="text-lg font-semibold text-gray-900 mb-1">Esqueci minha senha</h1>
-              <p className="text-xs text-gray-400 mb-5 leading-relaxed">
+              <h1 style={{ fontSize: 20, fontWeight: 600, color: '#fff', marginBottom: 8 }}>Esqueci minha senha</h1>
+              <p style={{ fontSize: 13, color: '#555', marginBottom: '1.5rem', lineHeight: 1.6 }}>
                 Digite seu email e enviaremos uma senha provisória para você acessar.
               </p>
-              <div className="space-y-4">
-                <div>
-                  <label className="label">Email</label>
-                  <input
-                    className="input"
-                    type="email"
-                    placeholder="seu@email.com"
-                    value={email}
-                    onChange={e => setEmail(e.target.value)}
-                  />
-                </div>
-                {erro && <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{erro}</p>}
-                <button onClick={handleEnviar} disabled={loading} className="btn btn-primary w-full">
-                  {loading ? 'Enviando...' : 'Enviar senha provisória'}
-                </button>
-                <button onClick={() => router.push('/login')}
-                  className="w-full text-sm text-gray-400 hover:text-gray-600 text-center mt-2">
-                  ← Voltar ao login
-                </button>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ fontSize: 12, color: '#555', display: 'block', marginBottom: 6, textTransform: 'uppercase' as const, letterSpacing: 1 }}>Email</label>
+                <input type="email" placeholder="seu@email.com" value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleEnviar() }}
+                  style={{ width: '100%', background: '#080808', border: '1px solid #333', borderRadius: 10, padding: '0.75rem 1rem', color: '#fff', fontSize: 14, fontFamily: "'DM Sans', sans-serif" }} />
               </div>
+              {erro && (
+                <div style={{ background: '#ff2d9b15', border: '1px solid #ff2d9b44', borderRadius: 8, padding: '0.6rem 1rem', fontSize: 13, color: ACCENT, marginBottom: '1rem' }}>
+                  {erro}
+                </div>
+              )}
+              <button onClick={handleEnviar} disabled={loading}
+                style={{ width: '100%', background: ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 600, fontSize: 15, cursor: loading ? 'default' : 'pointer', fontFamily: "'DM Sans', sans-serif", opacity: loading ? 0.7 : 1 }}>
+                {loading ? 'Enviando...' : 'Enviar senha provisória'}
+              </button>
+              <button onClick={() => router.push('/login')}
+                style={{ width: '100%', background: 'none', border: '1px solid #333', borderRadius: 10, padding: '0.75rem', color: '#888', fontSize: 14, cursor: 'pointer', marginTop: '0.75rem', fontFamily: "'DM Sans', sans-serif" }}>
+                ← Voltar ao login
+              </button>
             </>
           )}
 
         </div>
+
+        <p style={{ textAlign: 'center' as const, fontSize: 12, color: '#333', marginTop: '1.5rem' }}>
+          É da equipe?{' '}
+          <span onClick={() => router.push('/equipe')} style={{ color: '#555', cursor: 'pointer' }}>
+            Acesse por aqui
+          </span>
+        </p>
       </div>
     </div>
   )
