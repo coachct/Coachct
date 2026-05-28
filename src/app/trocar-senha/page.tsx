@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 
@@ -11,49 +11,65 @@ export default function TrocarSenhaPage() {
   const [msg, setMsg] = useState('')
   const [pronto, setPronto] = useState(false)
   const [linkInvalido, setLinkInvalido] = useState(false)
-  const supabase = createClient()
   const router = useRouter()
 
+  // ── Instância única do cliente para toda a vida do componente ─────────────
+  const supabase = useRef(createClient()).current
+
   useEffect(() => {
-    const hash = window.location.hash
+    async function verificar() {
+      // ── Fluxo 1: PKCE — ?code= na query string ────────────────────────────
+      const searchParams = new URLSearchParams(window.location.search)
+      const code = searchParams.get('code')
+      if (code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code)
+        window.history.replaceState(null, '', window.location.pathname)
+        if (error) {
+          setLinkInvalido(true)
+        } else {
+          setPronto(true)
+        }
+        return
+      }
 
-    if (hash && hash.includes('access_token')) {
-      const params = new URLSearchParams(hash.substring(1))
-      const accessToken = params.get('access_token')
-      const refreshToken = params.get('refresh_token') || ''
-
-      if (accessToken) {
-        supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        }).then(({ error }) => {
+      // ── Fluxo 2: Implicit — #access_token= no hash ────────────────────────
+      const hash = window.location.hash
+      if (hash && hash.includes('access_token')) {
+        const params = new URLSearchParams(hash.substring(1))
+        const accessToken = params.get('access_token')
+        const refreshToken = params.get('refresh_token') || ''
+        if (accessToken) {
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          })
           window.history.replaceState(null, '', window.location.pathname)
           if (error) {
             setLinkInvalido(true)
           } else {
             setPronto(true)
           }
-        })
-      } else {
-        setLinkInvalido(true)
+          return
+        }
       }
-      return
-    }
 
-    // Sem hash: verifica se já tem sessão ativa (ex: usuário logado quer trocar senha)
-    supabase.auth.getSession().then(({ data }) => {
+      // ── Fluxo 3: sessão já ativa ──────────────────────────────────────────
+      const { data } = await supabase.auth.getSession()
       if (data.session) {
         setPronto(true)
-      } else {
-        // Sem hash e sem sessão = link inválido ou expirado
-        setLinkInvalido(true)
+        return
       }
-    })
+
+      setLinkInvalido(true)
+    }
+
+    verificar()
   }, [])
 
   async function handleSalvar() {
     setErro('')
     setMsg('')
+
     if (!nova || nova.length < 6) {
       setErro('A nova senha deve ter pelo menos 6 caracteres.')
       return
@@ -62,19 +78,31 @@ export default function TrocarSenhaPage() {
       setErro('As senhas não coincidem.')
       return
     }
+
+    // Confirma que a sessão ainda está ativa antes de tentar salvar
+    const { data: sessionData } = await supabase.auth.getSession()
+    if (!sessionData.session) {
+      setErro('Sessão expirada. Solicite um novo link de redefinição.')
+      return
+    }
+
     setLoading(true)
     const { error } = await supabase.auth.updateUser({ password: nova })
     if (error) {
       setErro('Erro ao alterar senha: ' + error.message)
-    } else {
-      setMsg('Senha alterada com sucesso! Faça login com sua nova senha.')
-      setNova('')
-      setConfirma('')
-      setTimeout(async () => {
-        await supabase.auth.signOut()
-        router.push('/login')
-      }, 2000)
+      setLoading(false)
+      return
     }
+
+    setMsg('Senha alterada com sucesso! Redirecionando...')
+    setNova('')
+    setConfirma('')
+
+    setTimeout(async () => {
+      await supabase.auth.signOut()
+      router.push('/login')
+    }, 2000)
+
     setLoading(false)
   }
 
@@ -92,10 +120,7 @@ export default function TrocarSenhaPage() {
           <p className="text-sm text-gray-500 mb-6 leading-relaxed">
             Este link de redefinição expirou ou já foi usado. Solicite um novo na tela de login.
           </p>
-          <button
-            onClick={() => router.push('/login')}
-            className="btn btn-primary w-full"
-          >
+          <button onClick={() => router.push('/login')} className="btn btn-primary w-full">
             Solicitar novo link
           </button>
         </div>
@@ -143,7 +168,7 @@ export default function TrocarSenhaPage() {
               />
             </div>
             {erro && <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{erro}</p>}
-            {msg && <p className="text-xs text-green-700bg-green-50 px-3 py-2 rounded-lg">{msg}</p>}
+            {msg && <p className="text-xs text-green-700 bg-green-50 px-3 py-2 rounded-lg">{msg}</p>}
             <button onClick={handleSalvar} disabled={loading} className="btn btn-primary w-full">
               {loading ? 'Salvando...' : 'Salvar nova senha'}
             </button>
