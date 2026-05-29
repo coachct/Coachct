@@ -102,6 +102,10 @@ export default function RecepcaoClubDetalhe() {
   const [trocandoReserva, setTrocandoReserva] = useState<any>(null)
   const [salvandoTroca,   setSalvandoTroca]   = useState(false)
 
+  // NOVO: bloqueio de vagas (Lift / Lift for Girls)
+  const [vagasBloqueadas, setVagasBloqueadas] = useState(0)
+  const [salvandoVagas,   setSalvandoVagas]   = useState(false)
+
   const isRunning = ocorrencia?.club_aulas?.tipo === 'running_funcional'
 
   useEffect(() => { if (ocId) carregarDados() }, [ocId])
@@ -114,6 +118,7 @@ export default function RecepcaoClubDetalhe() {
       .select('*, coach_escalado:coaches!coach_id(id, nome), club_aulas(tipo, horario, capacidade, unidade_id, coaches(nome), grupos_musculares(nome), unidades(nome))')
       .eq('id', ocId).maybeSingle()
     setOcorrencia(oc)
+    setVagasBloqueadas(oc?.vagas_bloqueadas || 0)
 
     const { data: res } = await supabase
       .from('club_reservas')
@@ -201,6 +206,24 @@ export default function RecepcaoClubDetalhe() {
       showMsg(`🚫 Posição ${label} bloqueada nesta aula`)
     }
     setSalvandoBloqueio(null)
+  }
+
+  // NOVO: define quantas vagas ficam bloqueadas nesta aula (Lift / Lift for Girls)
+  async function salvarBloqueioVagas(n: number) {
+    const cap = ocorrencia?.club_aulas?.capacidade || 0
+    const max = Math.max(0, cap - reservas.length)
+    const val = Math.max(0, Math.min(n, max))
+    setSalvandoVagas(true)
+    const { error } = await supabase
+      .from('club_ocorrencias')
+      .update({ vagas_bloqueadas: val })
+      .eq('id', ocId)
+    if (error) { showMsg('Erro: '+error.message); setSalvandoVagas(false); return }
+    setVagasBloqueadas(val)
+    setSalvandoVagas(false)
+    showMsg(val === 0
+      ? '✅ Vagas liberadas'
+      : `🚫 ${val} vaga${val>1?'s':''} bloqueada${val>1?'s':''} nesta aula`)
   }
 
   async function buscarCliente() {
@@ -548,6 +571,80 @@ export default function RecepcaoClubDetalhe() {
           </div>
         ))}
       </div>
+
+      {/* NOVO: Bloquear vagas — só Lift / Lift for Girls, em aula de hoje/futuro */}
+      {!isRunning && !isPassado && aula && (
+        <div style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:16, marginBottom:'1.5rem', overflow:'hidden' }}>
+          <div style={{ padding:'0.85rem 1.5rem', borderBottom:'1px solid #f3f4f6' }}>
+            <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>Bloquear vagas</div>
+            <div style={{ fontSize:12, color:'#aaa', marginTop:2 }}>
+              Reduz as vagas disponíveis desta aula (ex: equipamento quebrado). Não afeta reservas já feitas.
+            </div>
+          </div>
+          <div style={{ padding:'1.25rem 1.5rem' }}>
+            {(() => {
+              const cap = aula?.capacidade || 0
+              const reservadas = reservas.length
+              const livres = Math.max(0, cap - reservadas - vagasBloqueadas)
+              const maxBloq = Math.max(0, cap - reservadas)
+              return (
+                <>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:'1.25rem' }}>
+                    {[
+                      { label:'Capacidade', value:cap,             cor:'#111' },
+                      { label:'Reservadas', value:reservadas,      cor:CYAN },
+                      { label:'Bloqueadas', value:vagasBloqueadas, cor:VERMELHO },
+                      { label:'Livres',     value:livres,          cor:VERDE },
+                    ].map(s => (
+                      <div key={s.label} style={{ background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:10, padding:'0.75rem', textAlign:'center' }}>
+                        <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:30, color:s.cor, lineHeight:1 }}>{s.value}</div>
+                        <div style={{ fontSize:10, color:'#aaa', marginTop:4, textTransform:'uppercase', letterSpacing:0.5 }}>{s.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:14 }}>
+                    <button onClick={() => salvarBloqueioVagas(vagasBloqueadas - 1)}
+                      disabled={salvandoVagas || vagasBloqueadas <= 0}
+                      style={{ width:44, height:44, borderRadius:'50%', border:'1.5px solid #e5e7eb',
+                        background:'#fff', fontSize:22, color: vagasBloqueadas<=0 ? '#ddd' : '#555',
+                        cursor: (salvandoVagas||vagasBloqueadas<=0) ? 'default' : 'pointer', lineHeight:1 }}>
+                      −
+                    </button>
+                    <div style={{ minWidth:90, textAlign:'center' }}>
+                      <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:40, color:VERMELHO, lineHeight:1 }}>{vagasBloqueadas}</div>
+                      <div style={{ fontSize:10, color:'#aaa', textTransform:'uppercase', letterSpacing:0.5, marginTop:2 }}>bloqueadas</div>
+                    </div>
+                    <button onClick={() => salvarBloqueioVagas(vagasBloqueadas + 1)}
+                      disabled={salvandoVagas || vagasBloqueadas >= maxBloq}
+                      style={{ width:44, height:44, borderRadius:'50%',
+                        border:`1.5px solid ${vagasBloqueadas>=maxBloq?'#e5e7eb':VERMELHO}`,
+                        background: vagasBloqueadas>=maxBloq ? '#fff' : `${VERMELHO}10`, fontSize:22,
+                        color: vagasBloqueadas>=maxBloq ? '#ddd' : VERMELHO,
+                        cursor: (salvandoVagas||vagasBloqueadas>=maxBloq) ? 'default' : 'pointer', lineHeight:1 }}>
+                      +
+                    </button>
+                  </div>
+                  {vagasBloqueadas > 0 && (
+                    <div style={{ textAlign:'center', marginTop:'1rem' }}>
+                      <button onClick={() => salvarBloqueioVagas(0)} disabled={salvandoVagas}
+                        style={{ background:'transparent', border:'none', color:'#888', fontSize:12,
+                          textDecoration:'underline', cursor: salvandoVagas ? 'default' : 'pointer',
+                          fontFamily:"'DM Sans', sans-serif" }}>
+                        Liberar todas
+                      </button>
+                    </div>
+                  )}
+                  {maxBloq === 0 && (
+                    <div style={{ textAlign:'center', marginTop:'0.85rem', fontSize:12, color:'#aaa' }}>
+                      Todas as vagas já estão reservadas — não há vagas livres para bloquear.
+                    </div>
+                  )}
+                </>
+              )
+            })()}
+          </div>
+        </div>
+      )}
 
       {/* Mapa permanente — só Running */}
       {isRunning && posicoes.length > 0 && !trocandoReserva && (
