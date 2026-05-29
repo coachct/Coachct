@@ -41,9 +41,9 @@ export default function SidebarRecepcao() {
         <div style={{ fontSize:11, color:'#ffffff44', marginTop:2 }}>Recepção</div>
       </div>
       <nav style={{ flex:1, padding:'16px 10px', display:'flex', flexDirection:'column', gap:4 }}>
-        <NavItem href="/recepcao/club"     label="Calendário"    icon={Calendar} cor={CYAN}   />
-        <NavItem href="/recepcao/clientes" label="Clientes"      icon={Users}    cor={ACCENT} />
-        <NavItem href="/admin/posicoes"    label="Mapa Running"  icon={Map}      cor={VERDE}  />
+        <NavItem href="/recepcao/club"      label="Calendário"    icon={Calendar} cor={CYAN}   />
+        <NavItem href="/recepcao/clientes"  label="Clientes"      icon={Users}    cor={ACCENT} />
+        <NavItem href="/recepcao/posicoes"  label="Mapa Running"  icon={Map}      cor={VERDE}  />
       </nav>
       <div style={{ padding:'12px 10px', borderTop:'1px solid #ffffff10' }}>
         <button onClick={sair}
