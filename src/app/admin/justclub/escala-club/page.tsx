@@ -46,8 +46,15 @@ export default function AdminEscalaClubPage() {
     if (!loading && perfil && perfil.role !== 'admin' && perfil.role !== 'coordenadora') router.push('/')
   }, [perfil, loading])
 
-  useEffect(() => { if (perfil) carregarUnidadesECoaches() }, [perfil])
-  useEffect(() => { if (unidadeSel) carregarOcorrencias() }, [unidadeSel?.id])
+  // Carrega unidades uma vez quando o usuário entra (não refaz em re-renders do perfil)
+  useEffect(() => { if (perfil?.id) carregarUnidades() }, [perfil?.id])
+  // Quando muda a unidade, recarrega coaches dela e ocorrências
+  useEffect(() => {
+    if (unidadeSel?.id) {
+      carregarCoachesDaUnidade(unidadeSel.id)
+      carregarOcorrencias()
+    }
+  }, [unidadeSel?.id])
 
   // Próximos 6 fins de semana (12 datas)
   const proximosFDS = (() => {
@@ -67,15 +74,27 @@ export default function AdminEscalaClubPage() {
     return datas
   })()
 
-  async function carregarUnidadesECoaches() {
-    const [{ data: uns }, { data: cs }] = await Promise.all([
-      supabase.from('unidades').select('id, nome, tipo').eq('tipo', 'club').eq('ativo', true).order('nome'),
-      supabase.from('coaches').select('id, nome').eq('ativo', true).order('nome'),
-    ])
+  async function carregarUnidades() {
+    const { data: uns } = await supabase.from('unidades')
+      .select('id, nome, tipo').eq('tipo', 'club').eq('ativo', true).order('nome')
     setUnidades(uns || [])
-    setCoaches(cs || [])
-    if (uns && uns.length > 0) setUnidadeSel(uns[0])
+    // Só seta unidade inicial se ainda não houver uma selecionada
+    // (evita resetar a seleção do usuário em re-renders)
+    if (uns && uns.length > 0) {
+      setUnidadeSel(prev => prev ?? uns[0])
+    }
     setLoadingUnidades(false)
+  }
+
+  async function carregarCoachesDaUnidade(unidadeId: string) {
+    // Puxa só os coaches habilitados pra esta unidade (via coach_unidades)
+    const { data: cu } = await supabase.from('coach_unidades')
+      .select('coach_id').eq('unidade_id', unidadeId).eq('ativo', true)
+    const ids = (cu || []).map((u: any) => u.coach_id)
+    if (ids.length === 0) { setCoaches([]); return }
+    const { data: cs } = await supabase.from('coaches')
+      .select('id, nome').eq('ativo', true).in('id', ids).order('nome')
+    setCoaches(cs || [])
   }
 
   async function carregarOcorrencias() {
