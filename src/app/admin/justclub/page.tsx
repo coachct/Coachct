@@ -75,6 +75,12 @@ function dataFimPorMeses(meses: number): string {
   return dataLocalStr(d)
 }
 
+// Renderiza nome do coach na lista; quando vazio, mostra "Coach a definir" em vermelho
+function NomeCoach({ nome, ehLink }: { nome?: string | null; ehLink?: boolean }) {
+  if (nome && nome.trim()) return <span>{nome.split(' ')[0]}</span>
+  return <span className="text-red-600 font-semibold">Coach a definir</span>
+}
+
 export default function JustClubAdminPage() {
   const { perfil, loading } = useAuth()
   const router   = useRouter()
@@ -196,13 +202,14 @@ export default function JustClubAdminPage() {
     setEditando(null)
     const primeiroHorario = horariosParaUnidade(unidadeAtiva?.nome || '')[0] || '06:00'
     const capInicial = capacidadePorUnidadeTipo(unidadeAtiva?.nome || '', 'lift')
-    setForm({ ...FORM_VAZIO, horario: primeiroHorario, capacidade: capInicial, grupo_muscular_id: gruposAtivos[0]?.id||'', coach_id: coaches[0]?.id||'' })
+    // coach_id começa vazio = "Coach a definir" (opcional)
+    setForm({ ...FORM_VAZIO, horario: primeiroHorario, capacidade: capInicial, grupo_muscular_id: gruposAtivos[0]?.id||'', coach_id: '' })
     setFormReplicar(false); setFormMeses(1); setFormInicio(dataLocalStr(new Date()))
     setModalAberto(true)
   }
   function abrirEdicao(aula: any) {
     setEditando(aula)
-    setForm({ tipo: aula.tipo, grupo_muscular_id: aula.grupo_muscular_id, coach_id: aula.coach_id,
+    setForm({ tipo: aula.tipo, grupo_muscular_id: aula.grupo_muscular_id, coach_id: aula.coach_id || '',
       dia_semana: aula.dia_semana, horario: (aula.horario||'').slice(0,5),
       duracao_min: aula.duracao_min, capacidade: aula.capacidade })
     setModalAberto(true)
@@ -211,11 +218,12 @@ export default function JustClubAdminPage() {
   async function salvar() {
     if (!unidadeAtiva) return
     if (!form.grupo_muscular_id) { showMsg('Selecione o grupo muscular.'); return }
-    if (!form.coach_id)          { showMsg('Selecione o coach.');          return }
+    // coach é opcional — pode salvar sem (vai como NULL = "Coach a definir")
     setSalvando(true)
     const payload = {
       unidade_id: unidadeAtiva.id, tipo: form.tipo,
-      grupo_muscular_id: form.grupo_muscular_id, coach_id: form.coach_id,
+      grupo_muscular_id: form.grupo_muscular_id,
+      coach_id: form.coach_id || null,
       dia_semana: form.dia_semana, horario: form.horario+':00',
       duracao_min: form.duracao_min, capacidade: form.capacidade,
       so_mulheres: form.tipo === 'lift_for_girls',
@@ -540,7 +548,7 @@ export default function JustClubAdminPage() {
                           </div>
                           <div className="mt-1 flex items-center gap-3 text-xs text-gray-500 flex-wrap">
                             <span>🏋️ {aula.grupos_musculares?.nome||'—'}</span>
-                            <span>👤 {aula.coaches?.nome?.split(' ')[0]||'—'}</span>
+                            <span>👤 <NomeCoach nome={aula.coaches?.nome}/></span>
                             <span className="flex items-center gap-1"><Users size={10}/> {aula.capacidade} vagas</span>
                           </div>
                         </div>
@@ -588,7 +596,7 @@ export default function JustClubAdminPage() {
                                 <span className="font-mono text-sm font-bold text-gray-900 w-12 flex-shrink-0">{(aula.horario||'').slice(0,5)}</span>
                                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${tipoColor(aula.tipo)}`}>{tipoLabel(aula.tipo)}</span>
                                 <span className="text-xs text-gray-600 flex-1 truncate">{aula.grupos_musculares?.nome||'—'}</span>
-                                <span className="text-xs text-gray-400 flex-shrink-0">👤 {aula.coaches?.nome?.split(' ')[0]||'—'}</span>
+                                <span className="text-xs text-gray-400 flex-shrink-0">👤 <NomeCoach nome={aula.coaches?.nome}/></span>
                                 <span className="text-xs text-gray-400 flex-shrink-0 flex items-center gap-1"><Users size={10}/> {aula.capacidade}</span>
                                 <button onClick={()=>abrirEdicao(aula)} className="text-gray-400 hover:text-primary-600 flex-shrink-0"><Pencil size={13}/></button>
                                 <button onClick={()=>abrirExcluirAula(aula)} className="text-gray-400 hover:text-red-600 flex-shrink-0" title="Excluir"><Trash2 size={13}/></button>
@@ -647,7 +655,7 @@ export default function JustClubAdminPage() {
                                   <span className="font-mono text-sm font-bold text-gray-900 w-12 flex-shrink-0">{(oc.club_aulas?.horario||'').slice(0,5)}</span>
                                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${tipoColor(oc.club_aulas?.tipo||'')}`}>{tipoLabel(oc.club_aulas?.tipo||'')}</span>
                                   <span className="text-xs text-gray-600 flex-1 truncate">{oc.club_aulas?.grupos_musculares?.nome||'—'}</span>
-                                  <span className="text-xs text-gray-400 flex-shrink-0">👤 {oc.club_aulas?.coaches?.nome?.split(' ')[0]||'—'}</span>
+                                  <span className="text-xs text-gray-400 flex-shrink-0">👤 <NomeCoach nome={oc.club_aulas?.coaches?.nome}/></span>
                                   <span className="text-xs text-gray-400 flex-shrink-0 flex items-center gap-1"><Users size={10}/> {oc.club_aulas?.capacidade||'—'}</span>
                                   <button onClick={()=>abrirExcluirOcorrencia(oc)} className="text-gray-400 hover:text-red-600 flex-shrink-0" title="Excluir"><Trash2 size={13}/></button>
                                 </div>
@@ -750,15 +758,18 @@ export default function JustClubAdminPage() {
               </div>
 
               <div>
-                <label className="label">Coach responsável *</label>
+                <label className="label">Coach responsável</label>
                 {coaches.length===0 ? (
                   <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5 text-xs text-orange-700 flex items-center gap-2"><AlertCircle size={14}/> Nenhum coach para esta unidade. Configure em Coaches.</div>
                 ) : (
                   <select className="input" value={form.coach_id} onChange={e=>setForm(f=>({...f,coach_id:e.target.value}))}>
-                    <option value="">Selecione...</option>
+                    <option value="">⚠️ Coach a definir (escalar depois)</option>
                     {coaches.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}
                   </select>
                 )}
+                <p className="text-xs text-gray-400 mt-1">
+                  Pode deixar em branco para escalar depois pela "Escala Club" (ex: fins de semana).
+                </p>
               </div>
 
               <div>
