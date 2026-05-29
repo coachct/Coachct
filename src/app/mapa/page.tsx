@@ -80,6 +80,10 @@ function MapaPageInner() {
     if (perfil) carregarCliente()
   }, [perfil])
 
+  useEffect(() => {
+    if (cliente?.id && ocorrencia?.data) carregarSaldoDaOcorrencia(cliente.id, ocorrencia.data)
+  }, [cliente?.id, ocorrencia?.data])
+
   async function carregarTudo() {
     setLoading(true)
     const [{ data: oc }, { data: pos }, { data: tomadas }, { data: bloqOc }] = await Promise.all([
@@ -106,19 +110,32 @@ function MapaPageInner() {
     if (!perfil) return
     const { data } = await supabase.from('clientes').select('*').eq('user_id', perfil.id).maybeSingle()
     setCliente(data)
-    if (data && unidadeId) {
-      const agora = new Date()
-      const { data: s } = await supabase.rpc('saldo_creditos_cliente', {
-        p_cliente_id: data.id, p_mes: agora.getMonth()+1, p_ano: agora.getFullYear(), p_unidade_id: unidadeId,
-      })
-      setSaldo(s || {})
-    }
+  }
+
+  // Carrega o saldo do MÊS DA OCORRÊNCIA (pode ser o próximo mês, dentro da janela de 2 semanas)
+  async function carregarSaldoDaOcorrencia(clienteId: string, dataOc: string) {
+    if (!unidadeId || !dataOc) return
+    const d = new Date(dataOc + 'T12:00:00')
+    const { data: s } = await supabase.rpc('saldo_creditos_cliente', {
+      p_cliente_id: clienteId, p_mes: d.getMonth()+1, p_ano: d.getFullYear(), p_unidade_id: unidadeId,
+    })
+    setSaldo(s || {})
   }
 
   async function confirmarReserva() {
     if (!tipoCredito) { setErroModal('Selecione o plano.'); return }
     if (!posicaoSel || !cliente) return
     setConfirmando(true); setErroModal('')
+    // Revalida o saldo do mês da ocorrência antes de inserir (evita reserva sem crédito)
+    const d = new Date((ocorrencia?.data || '') + 'T12:00:00')
+    const { data: saldoAtual } = await supabase.rpc('saldo_creditos_cliente', {
+      p_cliente_id: cliente.id, p_mes: d.getMonth()+1, p_ano: d.getFullYear(), p_unidade_id: unidadeId,
+    })
+    if (!saldoAtual || !saldoAtual[tipoCredito] || saldoAtual[tipoCredito].disponivel <= 0) {
+      setSaldo(saldoAtual || {})
+      setErroModal('Você não tem crédito disponível para esta aula.')
+      setConfirmando(false); return
+    }
     const { error } = await supabase.from('club_reservas').insert({
       ocorrencia_id: ocId, cliente_id: cliente.id, tipo_credito: tipoCredito,
       posicao: posicaoSel, status: 'reservado',
