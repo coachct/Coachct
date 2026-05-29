@@ -13,6 +13,7 @@ function parsePlanoKey(key: string): { label: string; icon: string } {
   const lower = (key||'').toLowerCase()
   if (lower.startsWith('wellhub'))   return { label: 'Wellhub',   icon: '💜' }
   if (lower.startsWith('totalpass')) return { label: 'TotalPass', icon: '🔵' }
+  if (lower.startsWith('avulso') || lower.startsWith('credito')) return { label: 'Crédito Avulso', icon: '🎟️' }
   return { label: key, icon: '🎟️' }
 }
 
@@ -67,6 +68,8 @@ function MapaPageInner() {
   const [tipoCredito, setTipoCredito] = useState('')
   const [confirmando, setConfirmando] = useState(false)
   const [erroModal,   setErroModal]   = useState('')
+  // Reserva-extra: true quando o cliente já tem reserva ativa nesta ocorrência
+  const [jaReservouNaOc, setJaReservouNaOc] = useState(false)
 
   useEffect(() => {
     if (loadingAuth) return
@@ -83,6 +86,10 @@ function MapaPageInner() {
   useEffect(() => {
     if (cliente?.id && ocorrencia?.data) carregarSaldoDaOcorrencia(cliente.id, ocorrencia.data)
   }, [cliente?.id, ocorrencia?.data])
+
+  useEffect(() => {
+    if (cliente?.id && ocId) verificarReservaExistente(cliente.id)
+  }, [cliente?.id, ocId])
 
   async function carregarTudo() {
     setLoading(true)
@@ -112,6 +119,13 @@ function MapaPageInner() {
     setCliente(data)
   }
 
+  // Verifica se o cliente já tem reserva ativa nesta ocorrência → ativa modo "reserva extra" (só avulso)
+  async function verificarReservaExistente(clienteId: string) {
+    const { data } = await supabase.from('club_reservas')
+      .select('id').eq('ocorrencia_id', ocId).eq('cliente_id', clienteId).neq('status', 'cancelado')
+    setJaReservouNaOc((data || []).length > 0)
+  }
+
   // Carrega o saldo do MÊS DA OCORRÊNCIA (pode ser o próximo mês, dentro da janela de 2 semanas)
   async function carregarSaldoDaOcorrencia(clienteId: string, dataOc: string) {
     if (!unidadeId || !dataOc) return
@@ -120,6 +134,14 @@ function MapaPageInner() {
       p_cliente_id: clienteId, p_mes: d.getMonth()+1, p_ano: d.getFullYear(), p_unidade_id: unidadeId,
     })
     setSaldo(s || {})
+  }
+
+  function abrirModalPosicao(label: string) {
+    setPosicaoSel(label)
+    setErroModal('')
+    // Em reserva extra, pré-seleciona o crédito avulso
+    if (jaReservouNaOc) setTipoCredito(avulsoDisponiveis[0] || '')
+    setModalAberto(true)
   }
 
   async function confirmarReserva() {
@@ -140,11 +162,20 @@ function MapaPageInner() {
       ocorrencia_id: ocId, cliente_id: cliente.id, tipo_credito: tipoCredito,
       posicao: posicaoSel, status: 'reservado',
     })
-    if (error) { setErroModal('Erro ao reservar: '+error.message); setConfirmando(false); return }
+    if (error) {
+      const msg = error.message?.includes('já tem uma reserva')
+        ? 'Você já tem uma reserva nesta unidade neste dia com este plano. Cada plano permite apenas uma reserva por dia por unidade.'
+        : 'Erro ao reservar: '+error.message
+      setErroModal(msg); setConfirmando(false); return
+    }
     router.push('/minha-conta')
   }
 
   const planosDisponiveis = Object.entries(saldo).filter(([,v]:any) => v?.disponivel > 0).map(([k]) => k)
+  // Avulso disponível (crédito importado/legado)
+  const avulsoDisponiveis = planosDisponiveis.filter(p => p.startsWith('avulso'))
+  // Em reserva extra, só avulso é oferecido; senão, todos
+  const planosNoMapa = jaReservouNaOc ? avulsoDisponiveis : planosDisponiveis
 
   const aula    = ocorrencia?.club_aulas
   const horario = (aula?.horario||'').slice(0,5)
@@ -199,6 +230,12 @@ function MapaPageInner() {
           </div>
         </div>
 
+        {jaReservouNaOc && (
+          <div style={{ background:`${VERDE}10`, border:`1px solid ${VERDE}40`, borderRadius:12, padding:'0.75rem 1rem', marginBottom:'1.25rem', fontSize:12.5, color:VERDE, lineHeight:1.5, textAlign:'center' }}>
+            🎟️ Reserva extra — você já tem uma posição nesta aula. Escolha outra posição livre para marcar mais um treino com seu <strong>crédito avulso</strong>.
+          </div>
+        )}
+
         <div style={{ fontSize:12, color:'#444', marginBottom:'1.5rem', textAlign:'center', lineHeight:1.5 }}>
           Escolha a posição por onde deseja iniciar o treino.
         </div>
@@ -215,7 +252,7 @@ function MapaPageInner() {
                 const tomado = posicoesTomadas.includes(label)
                 return (
                   <button key={pos.id} className="pos-btn" disabled={tomado}
-                    onClick={() => { if (!tomado) { setPosicaoSel(label); setModalAberto(true) } }}
+                    onClick={() => { if (!tomado) abrirModalPosicao(label) }}
                     style={{ border:`1.5px solid ${s.borderColor}`, background:s.bg, borderRadius:8,
                       cursor:tomado?'not-allowed':'pointer', padding:'6px 0',
                       display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
@@ -239,7 +276,7 @@ function MapaPageInner() {
                 const tomado = posicoesTomadas.includes(label)
                 return (
                   <button key={pos.id} className="pos-btn" disabled={tomado}
-                    onClick={() => { if (!tomado) { setPosicaoSel(label); setModalAberto(true) } }}
+                    onClick={() => { if (!tomado) abrirModalPosicao(label) }}
                     style={{ border:`1.5px solid ${s.borderColor}`, background:s.bg, borderRadius:8,
                       cursor:tomado?'not-allowed':'pointer', padding:'6px 0',
                       display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
@@ -257,7 +294,7 @@ function MapaPageInner() {
                   const tomado = posicoesTomadas.includes(label)
                   return (
                     <button key={pos.id} className="pos-btn" disabled={tomado}
-                      onClick={() => { if (!tomado) { setPosicaoSel(label); setModalAberto(true) } }}
+                      onClick={() => { if (!tomado) abrirModalPosicao(label) }}
                       style={{ border:`1.5px solid ${s.borderColor}`, background:s.bg, borderRadius:8,
                         cursor:tomado?'not-allowed':'pointer', padding:'6px 0',
                         display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
@@ -288,7 +325,7 @@ function MapaPageInner() {
           <div style={{ background:'#111', border:'1px solid #2a2a2a', borderRadius:'20px 20px 16px 16px', width:'100%', maxWidth:480, padding:'1.5rem' }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1.25rem' }}>
               <div>
-                <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:20, color:'#fff', letterSpacing:1 }}>CONFIRMAR RESERVA</div>
+                <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:20, color:'#fff', letterSpacing:1 }}>{jaReservouNaOc ? 'RESERVA EXTRA' : 'CONFIRMAR RESERVA'}</div>
                 <div style={{ fontSize:13, color:'#555', marginTop:2 }}>
                   Posição <strong style={{ color:ACCENT, fontFamily:"'DM Mono', monospace" }}>{posicaoSel}</strong> · {horario} · {dataFmt}
                 </div>
@@ -299,10 +336,17 @@ function MapaPageInner() {
 
             <div style={{ marginBottom:'1.25rem' }}>
               <div style={{ fontSize:11, color:'#555', textTransform:'uppercase', letterSpacing:1, marginBottom:10 }}>Usar crédito de qual plano?</div>
-              {planosDisponiveis.length === 0 ? (
+              {jaReservouNaOc && planosNoMapa.length > 0 && (
+                <div style={{ background:`${VERDE}12`, border:`1px solid ${VERDE}44`, borderRadius:8, padding:'0.6rem 1rem', marginBottom:10, fontSize:12, color:VERDE, lineHeight:1.5 }}>
+                  🎟️ Reserva extra com <strong>crédito avulso</strong> — você pode marcar outra posição na mesma aula.
+                </div>
+              )}
+              {planosNoMapa.length === 0 ? (
                 <div style={{ background:'#0d0d0d', border:`1px solid ${AMARELO}33`, borderRadius:12, padding:'1.25rem' }}>
                   <div style={{ fontSize:14, color:'#fff', fontWeight:700, marginBottom:6 }}>
-                    Você ainda não tem um plano ativo nesta unidade
+                    {jaReservouNaOc
+                      ? 'Você não tem crédito avulso disponível nesta unidade'
+                      : 'Você ainda não tem um plano ativo nesta unidade'}
                   </div>
                   <div style={{ fontSize:13, color:'#aaa', lineHeight:1.6, marginBottom:'1.1rem' }}>
                     Para reservar, ative o seu app parceiro (Wellhub ou TotalPass) da unidade onde quer treinar, ou compre um pacote avulso.
@@ -316,7 +360,7 @@ function MapaPageInner() {
                     </button>
                   </div>
                 </div>
-              ) : planosDisponiveis.map(p => {
+              ) : planosNoMapa.map(p => {
                 const { label, icon } = parsePlanoKey(p); const info = saldo[p]
                 return (
                   <div key={p} onClick={() => setTipoCredito(p)}
@@ -351,11 +395,11 @@ function MapaPageInner() {
                   padding:'0.85rem', color:'#555', fontSize:14, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
                 Cancelar
               </button>
-              <button onClick={confirmarReserva} disabled={confirmando || planosDisponiveis.length === 0}
-                style={{ flex:2, background:planosDisponiveis.length===0?'#1a1a1a':ACCENT,
-                  color:planosDisponiveis.length===0?'#444':'#fff', border:'none', borderRadius:10,
+              <button onClick={confirmarReserva} disabled={confirmando || planosNoMapa.length === 0}
+                style={{ flex:2, background:planosNoMapa.length===0?'#1a1a1a':ACCENT,
+                  color:planosNoMapa.length===0?'#444':'#fff', border:'none', borderRadius:10,
                   padding:'0.85rem', fontWeight:600, fontSize:15,
-                  cursor:confirmando||planosDisponiveis.length===0?'default':'pointer',
+                  cursor:confirmando||planosNoMapa.length===0?'default':'pointer',
                   fontFamily:"'DM Sans', sans-serif", opacity:confirmando?0.7:1 }}>
                 {confirmando ? 'Confirmando...' : 'Confirmar reserva ✓'}
               </button>
