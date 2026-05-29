@@ -214,9 +214,16 @@ export default function LandingPage() {
 
           {/* Lift */}
           <div className="feature-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, overflow: 'hidden' as const, display: 'flex', flexDirection: 'column' as const }}>
-            <div style={{ aspectRatio: '16/10', overflow: 'hidden' as const, position: 'relative' as const }}>
-              <img src="/IMG_1912.jpg" alt="Lift" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              <div style={{ position: 'absolute' as const, inset: 0, background: 'linear-gradient(to top, #111 0%, transparent 50%)' }} />
+            <div style={{ aspectRatio: '9/16', overflow: 'hidden' as const, position: 'relative' as const, background: '#000' }}>
+              <video
+                src="/copy_255BA0C5-D05B-444C-84B6-06C09173C754%20mp4.mp4"
+                autoPlay
+                muted
+                loop
+                playsInline
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+              <div style={{ position: 'absolute' as const, inset: 0, background: 'linear-gradient(to top, #111 0%, transparent 30%)', pointerEvents: 'none' as const }} />
             </div>
             <div style={{ padding: '1.25rem 1.5rem 1.5rem' }}>
               <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', marginBottom: '0.5rem', letterSpacing: 1 }}>LIFT</div>
