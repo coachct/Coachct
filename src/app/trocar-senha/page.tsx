@@ -42,7 +42,7 @@ export default function TrocarSenhaPage() {
 
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
           <div onClick={() => router.push('/')} style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: '#fff', letterSpacing: 3, cursor: 'pointer', display: 'inline-block' }}>
-            JUST<span style={{ color: ACCENT }}>CT</span>
+            JUST <span style={{ color: ACCENT }}>CLUB & CT</span>
           </div>
           <div style={{ fontSize: 13, color: '#555', marginTop: 4 }}>Área do aluno</div>
         </div>
