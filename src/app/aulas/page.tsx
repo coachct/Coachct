@@ -510,8 +510,8 @@ function AulasPageInner() {
                 )
               })}
             </div>
-            <button onClick={() => { setSemanaOffset(o=>Math.min(3,o+1)); setDiaSel(0) }} disabled={semanaOffset>=3}
-              style={{ width:32, height:32, borderRadius:'50%', border:'1px solid #2a2a2a', background:'transparent', color:semanaOffset>=3?'#2a2a2a':'#666', fontSize:16, cursor:semanaOffset>=3?'default':'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>›</button>
+            <button onClick={() => { setSemanaOffset(o=>Math.min(1,o+1)); setDiaSel(0) }} disabled={semanaOffset>=1}
+              style={{ width:32, height:32, borderRadius:'50%', border:'1px solid #2a2a2a', background:'transparent', color:semanaOffset>=1?'#2a2a2a':'#666', fontSize:16, cursor:semanaOffset>=1?'default':'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>›</button>
           </div>
         ) : (
           /* DESKTOP: só navegação de semana (a grade já mostra os 7 dias) */
@@ -524,8 +524,8 @@ function AulasPageInner() {
               </div>
               <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:22, color:'#fff', letterSpacing:1 }}>{semanaLabel}</div>
             </div>
-            <button onClick={() => { setSemanaOffset(o=>Math.min(3,o+1)); setDiaSel(0) }} disabled={semanaOffset>=3}
-              style={{ width:40, height:40, borderRadius:'50%', border:`1px solid ${semanaOffset>=3?'#2a2a2a':'#444'}`, background:'transparent', color:semanaOffset>=3?'#333':'#ccc', fontSize:18, cursor:semanaOffset>=3?'default':'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>›</button>
+            <button onClick={() => { setSemanaOffset(o=>Math.min(1,o+1)); setDiaSel(0) }} disabled={semanaOffset>=1}
+              style={{ width:40, height:40, borderRadius:'50%', border:`1px solid ${semanaOffset>=1?'#2a2a2a':'#444'}`, background:'transparent', color:semanaOffset>=1?'#333':'#ccc', fontSize:18, cursor:semanaOffset>=1?'default':'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>›</button>
           </div>
         )}
 
