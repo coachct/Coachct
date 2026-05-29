@@ -251,7 +251,16 @@ export default function MinhaContaPage() {
   }
 
   async function carregarTodosSaldos(clienteId: string, cliPlanos: any[]) {
-    const uids = [...new Set(cliPlanos.map((cp:any) => cp.planos_disponiveis?.unidade_id).filter(Boolean))] as string[]
+    // Unidades dos planos parceiros (wellhub/totalpass) ativos
+    const uidsPlanos = cliPlanos.map((cp:any) => cp.planos_disponiveis?.unidade_id).filter(Boolean)
+    // Unidades onde a pessoa tem crédito avulso disponível (mesmo sem plano parceiro ativo)
+    const { data: avuls } = await supabase.from('creditos_avulsos')
+      .select('unidade_id')
+      .eq('cliente_id', clienteId)
+      .eq('usado', false)
+      .gte('validade', dataLocalStr(agora))
+    const uidsAvulso = (avuls||[]).map((a:any) => a.unidade_id).filter(Boolean)
+    const uids = [...new Set([...uidsPlanos, ...uidsAvulso])] as string[]
     if (!uids.length) { setSaldoAtual({}); setSaldoProximo({}); return }
     const [sa, sp] = await Promise.all([
       Promise.all(uids.map(uid => supabase.rpc('saldo_creditos_cliente',{p_cliente_id:clienteId,p_mes:mesAtual,p_ano:anoAtual,p_unidade_id:uid}))),
