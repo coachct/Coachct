@@ -181,6 +181,9 @@ export default function MinhaContaPage() {
     setCliente(cli)
     if (!cli) { setLoadingData(false); return }
 
+    // auto-cura: garante o crédito do mês corrente para os planos ativos (na unidade do plano)
+    await supabase.rpc('garantir_creditos_cliente', { p_cliente_id: cli.id, p_mes: mesAtual, p_ano: anoAtual })
+
     const hoje = dataLocalStr(agora)
     const [
       { data: ags },
@@ -316,6 +319,8 @@ export default function MinhaContaPage() {
         aceite_pendente: false, inicio: dataLocalStr(new Date()),
       })
       if (error) throw error
+      // cria o crédito do mês na unidade do plano (idempotente)
+      await supabase.rpc('garantir_creditos_cliente', { p_cliente_id: cliente.id, p_mes: mesAtual, p_ano: anoAtual })
       setModalAtivar(null)
       setModalSucesso({ plano: modalAtivar.plano })
       await loadDados()
