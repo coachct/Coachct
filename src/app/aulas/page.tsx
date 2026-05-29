@@ -343,6 +343,13 @@ function AulasPageInner() {
     if (oc.club_aulas?.so_mulheres && cliente?.sexo !== "F") { setModalGenero(true); return }
     abrirModalReserva(oc, true)
   }
+  // Reserva-extra de Running: leva ao mapa pra escolher outra posição (a tela /mapa oferece só avulso)
+  function reReservarRunning(oc: any) {
+    if (!user) { router.push(`/login?redirect=${encodeURIComponent("/aulas?unidade="+unidadeId)}`); return }
+    if (cliente?.bloqueado) return
+    if (precisaCartao) { setModalSemCartao(true); return }
+    router.push(`/mapa?ocorrencia=${oc.id}&unidade=${unidadeId}`)
+  }
   function tentarFila(oc: any) {
     if (!user) { router.push(`/login?redirect=${encodeURIComponent('/aulas?unidade='+unidadeId)}`); return }
     if (cliente?.bloqueado) return
@@ -634,6 +641,11 @@ function AulasPageInner() {
                                 + Reservar de novo
                               </button>
                             )}
+                            {aula?.tipo === 'running_funcional' && temAvulsoDisponivel && (
+                              <button onClick={() => reReservarRunning(oc)} style={{ width:'100%', marginTop:5, background:'transparent', color:VERDE, border:`1px solid ${VERDE}55`, borderRadius:8, padding:'4px', fontSize:9, fontWeight:700, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
+                                + Reservar outra posição
+                              </button>
+                            )}
                           </>
                         ) : naFila ? (
                           <div style={{ fontSize:10, color:AMARELO, fontWeight:700 }}>⏳ Na fila</div>
@@ -762,6 +774,20 @@ function AulasPageInner() {
                         cursor:'pointer', fontFamily:"'DM Sans', sans-serif", letterSpacing:0.3
                       }}>
                         + Reservar de novo (crédito avulso)
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Reserva-extra Running — vai ao mapa pra escolher outra posição */}
+                  {minhaRes && !naFila && isRunning && temAvulsoDisponivel && (
+                    <div style={{ padding: isMobile ? '0 1.25rem 1.25rem' : '0 1rem 1rem' }}>
+                      <button onClick={() => reReservarRunning(oc)} style={{
+                        width:'100%', background:'transparent', color:VERDE,
+                        border:`1.5px solid ${VERDE}55`, borderRadius:12,
+                        padding: isMobile ? '0.75rem' : '0.55rem', fontSize: isMobile ? 13 : 12, fontWeight:700,
+                        cursor:'pointer', fontFamily:"'DM Sans', sans-serif", letterSpacing:0.3
+                      }}>
+                        + Reservar outra posição
                       </button>
                     </div>
                   )}
