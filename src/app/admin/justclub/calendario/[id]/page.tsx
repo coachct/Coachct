@@ -26,6 +26,15 @@ function parsePlanoKey(key: string) {
   return { label: key, icon:'🎟️' }
 }
 
+// Nome do coach a exibir: prioridade pro coach escalado na ocorrência, senão o da grade
+function primeiroNomeCoachOc(oc: any): string | null {
+  const escalado = oc?.coach_escalado?.nome
+  if (escalado) return String(escalado).split(' ')[0]
+  const grade = oc?.club_aulas?.coaches?.nome
+  if (grade) return String(grade).split(' ')[0]
+  return null
+}
+
 function IconEsteira({ color }: { color: string }) {
   return (
     <svg width="100%" viewBox="0 0 56 48" style={{ display:'block' }}>
@@ -95,9 +104,10 @@ export default function RecepcaoClubDetalhe() {
 
   async function carregarDados() {
     setLoadingData(true)
+    // Inclui coach_escalado (FK coach_id da ocorrência) — prioridade sobre o coach da grade
     const { data: oc } = await supabase
       .from('club_ocorrencias')
-      .select('*, club_aulas(tipo, horario, capacidade, unidade_id, coaches(nome), grupos_musculares(nome), unidades(nome))')
+      .select('*, coach_escalado:coaches!coach_id(id, nome), club_aulas(tipo, horario, capacidade, unidade_id, coaches(nome), grupos_musculares(nome), unidades(nome))')
       .eq('id', ocId).maybeSingle()
     setOcorrencia(oc)
 
@@ -245,6 +255,7 @@ export default function RecepcaoClubDetalhe() {
   const faltas    = reservas.filter(r => r.status === 'falta').length
   const aguardando = reservas.filter(r => r.status === 'reservado').length
   const planosDisp = Object.entries(saldoCliente).filter(([,v]:any) => v?.disponivel > 0).map(([k]) => k)
+  const nomeCoachExibir = ocorrencia ? primeiroNomeCoachOc(ocorrencia) : null
 
   function badgeData() {
     if (isHoje)   return { label:'Hoje',               cor: VERDE }
@@ -426,7 +437,11 @@ export default function RecepcaoClubDetalhe() {
             </span>
           </div>
           <div style={{ fontSize:13, color:'#888' }}>
-            {aula?.grupos_musculares?.nome} · {aula?.coaches?.nome?.split(' ')[0]} ·{' '}
+            {aula?.grupos_musculares?.nome} ·{' '}
+            {nomeCoachExibir
+              ? nomeCoachExibir
+              : <span style={{ color:VERMELHO, fontWeight:700 }}>Coach a definir</span>}
+            {' · '}
             {ocorrencia?.data ? new Date(ocorrencia.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'}) : ''}
           </div>
         </div>
