@@ -389,7 +389,7 @@ function AulasPageInner() {
   function vagasInfo(oc: any) {
     const cap=oc.club_aulas?.capacidade||0; const usadas=reservasCont[oc.id]||0
     const isRunning=oc.club_aulas?.tipo==='running_funcional'
-    const efetivas = isRunning ? Math.max(0, cap - bloqueadasCount) : cap
+    const efetivas = isRunning ? Math.max(0, cap - bloqueadasCount) : Math.max(0, cap - (oc.vagas_bloqueadas||0))
     const livres=Math.max(0,efetivas-usadas)
     return { livres, lotado: livres<=0 }
   }
