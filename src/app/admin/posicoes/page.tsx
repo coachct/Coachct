@@ -46,7 +46,7 @@ export default function AdminPosicoesPage() {
   useEffect(() => {
     if (loading) return
     if (!perfil) { router.push('/'); return }
-    if (!['admin','recepcionista'].includes(perfil.role as string)) { router.push('/'); return }
+    if (!['admin','coordenadora','recepcao'].includes(perfil.role as string)) { router.push('/'); return }
     carregarUnidades()
   }, [loading, perfil])
 
