@@ -20,6 +20,7 @@ const ACCENT  = '#ff2d9b'
 const CYAN    = '#00e5ff'
 const AMARELO = '#ffaa00'
 const VERDE   = '#2ddd8b'
+const VERMELHO = '#ff4444'
 
 const DIAS_ABREV  = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB']
 const MESES_ABREV = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ']
@@ -47,6 +48,15 @@ function tipoColor(t: string) {
   if (t === 'lift')              return { bg: '#0a1520', border: '#00e5ff22', text: CYAN,  badge: '#00e5ff18' }
   if (t === 'lift_for_girls')   return { bg: '#150a15', border: '#ff2d9b22', text: ACCENT, badge: '#ff2d9b18' }
   return                               { bg: '#0a150a', border: '#2ddd8b22', text: VERDE,  badge: '#2ddd8b18' }
+}
+
+// Prioridade: coach escalado pontualmente na ocorrência > coach da grade > null
+function primeiroNomeCoachOc(oc: any): string | null {
+  const escalado = oc?.coach_escalado?.nome
+  if (escalado) return String(escalado).split(' ')[0]
+  const grade = oc?.club_aulas?.coaches?.nome
+  if (grade) return String(grade).split(' ')[0]
+  return null
 }
 
 function IconEsteira({ color }: { color: string }) {
@@ -170,9 +180,10 @@ function AulasPageInner() {
     const ids = (aulasIds || []).map((a: any) => a.id)
     if (!ids.length) { setOcorrenciasSemana({}); setLoadingSemana(false); return }
 
+    // Inclui coach_escalado (FK coach_id da ocorrência) — sobrescreve o coach da grade quando definido
     const { data: ocs } = await supabase
       .from('club_ocorrencias')
-      .select('*, club_aulas(id, tipo, horario, capacidade, duracao_min, so_mulheres, grupo_muscular_id, coaches(nome))')
+      .select('*, coach_escalado:coaches!coach_id(id, nome), club_aulas(id, tipo, horario, capacidade, duracao_min, so_mulheres, grupo_muscular_id, coaches(nome))')
       .in('aula_id', ids)
       .eq('status', 'ativa')
       .gte('data', dataInicio)
@@ -253,9 +264,10 @@ function AulasPageInner() {
     const ids = (aulasIds || []).map((a: any) => a.id)
     if (!ids.length) { setOcorrencias([]); setLoadingOcs(false); return }
 
+    // Inclui coach_escalado (FK coach_id da ocorrência) — sobrescreve o coach da grade quando definido
     const { data: ocs } = await supabase
       .from('club_ocorrencias')
-      .select('*, club_aulas(id, tipo, horario, capacidade, so_mulheres, grupo_muscular_id, coaches(nome))')
+      .select('*, coach_escalado:coaches!coach_id(id, nome), club_aulas(id, tipo, horario, capacidade, duracao_min, so_mulheres, grupo_muscular_id, coaches(nome))')
       .in('aula_id', ids).eq('data', data).eq('status', 'ativa')
 
     const ocsList = (ocs || []).sort((a: any, b: any) => (a.club_aulas?.horario||'').localeCompare(b.club_aulas?.horario||''))
@@ -564,7 +576,7 @@ function AulasPageInner() {
                     const minhaRes   = minhasReservas[oc.id]
                     const naFila     = filaCliente[oc.id]
                     const cores      = tipoColor(aula?.tipo||'')
-                    const nomeCoach  = aula?.coaches?.nome?.split(' ')[0]||'—'
+                    const nomeCoach  = primeiroNomeCoachOc(oc)
                     const duracao    = aula?.duracao_min||50
                     const poucasVagas = livres > 0 && livres <= 3
                     const borderColor = minhaRes ? CYAN+'55' : naFila ? AMARELO+'55' : cores.border
@@ -589,8 +601,8 @@ function AulasPageInner() {
                         )}
 
                         {/* Professor */}
-                        <div style={{ fontSize:10, color:'#aaa', marginBottom:6, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-                          👤 {nomeCoach}
+                        <div style={{ fontSize:10, color:nomeCoach?'#aaa':VERMELHO, fontWeight:nomeCoach?400:700, marginBottom:6, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                          👤 {nomeCoach || 'Coach a definir'}
                         </div>
 
                         {/* Status ou botão */}
@@ -642,7 +654,7 @@ function AulasPageInner() {
               const minhaRes=minhasReservas[oc.id]; const naFila=filaCliente[oc.id]
               const cores=tipoColor(aula?.tipo||'')
               const isRunning=aula?.tipo==='running_funcional'
-              const nomeCoach=aula?.coaches?.nome?.split(' ')[0]||'—'
+              const nomeCoach=primeiroNomeCoachOc(oc)
               const duracao=aula?.duracao_min||50
               const poucasVagas=livres>0&&livres<=3
               const borderColor=minhaRes?CYAN+'55':naFila?AMARELO+'55':cores.border
@@ -683,7 +695,9 @@ function AulasPageInner() {
                     {aula?.grupo_muscular_nome && (
                       <div style={{ fontSize: isMobile ? 13 : 11, color:'#888' }}>{aula.grupo_muscular_nome}</div>
                     )}
-                    <div style={{ fontSize: isMobile ? 13 : 11, color:'#666' }}>👤 {nomeCoach}</div>
+                    <div style={{ fontSize: isMobile ? 13 : 11, color: nomeCoach ? '#666' : VERMELHO, fontWeight: nomeCoach ? 400 : 700 }}>
+                      👤 {nomeCoach || 'Coach a definir'}
+                    </div>
                   </div>
 
                   {/* Botão de ação — full-width, só aparece se não tiver reservado/fila */}
