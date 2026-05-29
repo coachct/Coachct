@@ -8,6 +8,7 @@ const ACCENT = '#ff2d9b'
 const CYAN   = '#00e5ff'
 const VERDE  = '#2ddd8b'
 const AMARELO = '#ffaa00'
+const VERMELHO = '#ff4444'
 
 function dataLocalStr(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
@@ -22,6 +23,15 @@ function tipoColor(t: string) {
   if (t==='lift')             return CYAN
   if (t==='lift_for_girls')  return ACCENT
   return VERDE
+}
+
+// Prioridade: coach escalado pontualmente na ocorrência > coach da grade > null
+function primeiroNomeCoachOc(oc: any): string | null {
+  const escalado = oc?.coach_escalado?.nome
+  if (escalado) return String(escalado).split(' ')[0]
+  const grade = oc?.club_aulas?.coaches?.nome
+  if (grade) return String(grade).split(' ')[0]
+  return null
 }
 
 export default function RecepcaoClubPage() {
@@ -70,9 +80,10 @@ export default function RecepcaoClubPage() {
 
     if (!ids.length) { setOcorrencias([]); setLoadingOcs(false); return }
 
+    // Inclui coach_escalado (FK coach_id da ocorrência) — sobrescreve o coach da grade quando definido
     const { data: ocs } = await supabase
       .from('club_ocorrencias')
-      .select('*, club_aulas(tipo, horario, capacidade, coaches(nome), grupos_musculares(nome))')
+      .select('*, coach_escalado:coaches!coach_id(id, nome), club_aulas(tipo, horario, capacidade, duracao_min, coaches(nome), grupos_musculares(nome))')
       .in('aula_id', ids).eq('data', dataSel).eq('status', 'ativa')
 
     const ocsList = (ocs || []).sort((a: any, b: any) =>
@@ -185,6 +196,7 @@ export default function RecepcaoClubPage() {
                 const check = cont.presente
                 const total = cont.reservado + cont.presente + cont.falta
                 const cor   = tipoColor(aula?.tipo)
+                const nomeCoach = primeiroNomeCoachOc(oc)
 
                 return (
                   <div key={oc.id}
@@ -207,7 +219,10 @@ export default function RecepcaoClubPage() {
                         {aula?.grupos_musculares?.nome || '—'}
                       </div>
                       <div style={{ fontSize:12, color:'#888' }}>
-                        👤 {aula?.coaches?.nome?.split(' ')[0] || '—'} · {aula?.duracao_min || 50}min
+                        👤 {nomeCoach
+                              ? nomeCoach
+                              : <span style={{ color: VERMELHO, fontWeight:700 }}>Coach a definir</span>}
+                        {' · '}{aula?.duracao_min || 50}min
                       </div>
                     </div>
                     <div style={{ display:'flex', gap:'1.5rem', flexShrink:0, alignItems:'center' }}>
