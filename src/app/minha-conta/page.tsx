@@ -355,10 +355,17 @@ export default function MinhaContaPage() {
   async function abrirModalCancelar(item: typeof feedFuturo[0]) {
     const dataHora = new Date(`${item.data}T${item.horario}`)
     const diffHoras = (dataHora.getTime()-agora.getTime())/(1000*60*60)
+    const faltaTxt = diffHoras >= 1 ? `~${Math.floor(diffHoras)}h` : 'menos de 1h'
+    const multaTxt = item.tipo === 'ct' ? 'R$99,00' : 'R$49,90'
     let aviso = '', pode = true
-    if (diffHoras <= 3)       { pode=false; aviso='Não é possível cancelar com menos de 3h. Falta gera multa.' }
-    else if (diffHoras <= 12) { aviso='Dentro de 12h — verificando fila de espera...' }
-    else                      { aviso='Cancelamento com mais de 12h. Crédito devolvido integralmente.' }
+    if (diffHoras <= 3) {
+      pode = false
+      aviso = `Faltam ${faltaTxt} para o treino. Com menos de 3h o cancelamento não é permitido em nenhum caso. Se não comparecer, conta como falta e gera multa de ${multaTxt}.`
+    } else if (diffHoras <= 12) {
+      aviso = `Faltam ${faltaTxt}. Verificando fila de espera...`
+    } else {
+      aviso = `Faltam ${faltaTxt} para o treino. Cancelamento liberado — seu crédito volta integralmente.`
+    }
     if (pode && diffHoras <= 12) {
       let temFila = false
       if (item.tipo==='ct') {
@@ -368,8 +375,12 @@ export default function MinhaContaPage() {
         const {data:f} = await supabase.from('fila_espera').select('id').eq('ocorrencia_id',item.original.club_ocorrencias?.id).eq('status','aguardando').limit(1)
         temFila = (f||[]).length>0
       }
-      if (!temFila) { pode=false; aviso='Faltam menos de 12h e não há fila de espera. Cancelamento não permitido.' }
-      else aviso='Há fila de espera. Você pode cancelar e o crédito será devolvido.'
+      if (!temFila) {
+        pode = false
+        aviso = `Faltam ${faltaTxt}. Entre 3h e 12h o cancelamento só é permitido se houver alguém na fila de espera para este horário — e não há ninguém. Por isso não é possível cancelar agora. Se não comparecer, conta como falta e gera multa de ${multaTxt}.`
+      } else {
+        aviso = `Faltam ${faltaTxt}. Nessa faixa (3h–12h) o cancelamento só é liberado se houver alguém na fila de espera — e há. Você pode cancelar; o crédito volta e a vaga passa para o próximo da fila.`
+      }
     }
     setModalCancelar({...item, pode, aviso}); setErroCancelar('')
   }
