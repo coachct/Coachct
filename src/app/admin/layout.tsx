@@ -11,7 +11,7 @@ const nav = [
   { label: 'Permissões',              href: '/admin/permissoes' },
   { label: 'Faturamento & Margem',    href: '/admin/financeiro' },
   { label: 'Coaches',                 href: '/admin/coaches' },
-  { label: 'Escala',                  href: '/admin/escala' },
+  { label: 'Escala Coach CT',         href: '/admin/escala' },
   { label: '─ JustClub',             href: '/admin/justclub' },
   { label: 'Calendário Club',         href: '/admin/justclub/calendario' },
   { label: 'Escala Club',             href: '/admin/justclub/escala-club' },
