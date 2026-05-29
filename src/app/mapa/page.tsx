@@ -82,20 +82,23 @@ function MapaPageInner() {
 
   async function carregarTudo() {
     setLoading(true)
-    const [{ data: oc }, { data: pos }, { data: tomadas }] = await Promise.all([
+    const [{ data: oc }, { data: pos }, { data: tomadas }, { data: bloqOc }] = await Promise.all([
       supabase.from('club_ocorrencias')
         .select('*, club_aulas(tipo, horario, capacidade, coaches(nome), grupos_musculares(nome))')
         .eq('id', ocId).maybeSingle(),
       supabase.from('club_posicoes').select('*')
         .eq('unidade_id', unidadeId).eq('ativo', true).order('tipo').order('numero'),
       supabase.rpc('posicoes_tomadas', { p_ocorrencia_id: ocId }),
+      supabase.from('club_posicoes_bloqueios_ocorrencia')
+        .select('posicao').eq('ocorrencia_id', ocId),
     ])
     setOcorrencia(oc)
     setPosicoes(pos || [])
-    // ✅ Inclui posições bloqueadas como indisponíveis
+    // ✅ Inclui posições bloqueadas (globais + pontuais desta ocorrência) como indisponíveis
     const reservadas = (tomadas || []).map((t: any) => t.posicao).filter(Boolean)
-    const bloqueadas = (pos || []).filter((p: any) => p.bloqueado).map((p: any) => `${p.tipo}${String(p.numero).padStart(2,'0')}`)
-    setPosicoesTomadas([...reservadas, ...bloqueadas])
+    const bloqueadasGlobais = (pos || []).filter((p: any) => p.bloqueado).map((p: any) => `${p.tipo}${String(p.numero).padStart(2,'0')}`)
+    const bloqueadasPontual = (bloqOc || []).map((b: any) => b.posicao)
+    setPosicoesTomadas([...reservadas, ...bloqueadasGlobais, ...bloqueadasPontual])
     setLoading(false)
   }
 
