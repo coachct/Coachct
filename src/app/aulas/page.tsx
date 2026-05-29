@@ -137,6 +137,8 @@ function AulasPageInner() {
   const [filaAceite,     setFilaAceite]     = useState(false)
   const [modalGenero,    setModalGenero]    = useState(false)
   const [filaConfirmada, setFilaConfirmada] = useState<{ posicao: number; oc: any; data: string } | null>(null)
+  // Reserva-extra: quando true, o modal de reserva trabalha só com crédito avulso
+  const [modalSoAvulso,  setModalSoAvulso]  = useState(false)
 
   const diasSemana = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(); d.setDate(d.getDate() + semanaOffset * 7 + i); return d
@@ -333,15 +335,28 @@ function AulasPageInner() {
     if (oc.club_aulas?.tipo === "running_funcional") { router.push(`/mapa?ocorrencia=${oc.id}&unidade=${unidadeId}`); return }
     abrirModalReserva(oc)
   }
+  // Reserva-extra com crédito avulso (Lift / Lift for Girls). Running é tratado no /mapa.
+  function reReservarAvulso(oc: any) {
+    if (!user) { router.push(`/login?redirect=${encodeURIComponent("/aulas?unidade="+unidadeId)}`); return }
+    if (cliente?.bloqueado) return
+    if (precisaCartao) { setModalSemCartao(true); return }
+    if (oc.club_aulas?.so_mulheres && cliente?.sexo !== "F") { setModalGenero(true); return }
+    abrirModalReserva(oc, true)
+  }
   function tentarFila(oc: any) {
     if (!user) { router.push(`/login?redirect=${encodeURIComponent('/aulas?unidade='+unidadeId)}`); return }
     if (cliente?.bloqueado) return
     if (precisaCartao) { setModalSemCartao(true); return }
     setModalFila(oc); setTipoCredito(''); setFilaAceite(false); setErroModal('')
   }
-  async function abrirModalReserva(oc: any) {
-    setModalReserva(oc); setTipoCredito(''); setPosicaoSel(''); setErroModal('')
+  async function abrirModalReserva(oc: any, soAvulso: boolean = false) {
+    setModalReserva(oc); setPosicaoSel(''); setErroModal(''); setModalSoAvulso(soAvulso)
+    // Em modo só-avulso, pré-seleciona o crédito avulso disponível
+    setTipoCredito(soAvulso ? (avulsoDisponiveis[0] || '') : '')
     if (oc.club_aulas?.tipo === 'running_funcional') await carregarPosicoes(oc.id)
+  }
+  function fecharModalReserva() {
+    setModalReserva(null); setModalSoAvulso(false); setErroModal('')
   }
   async function confirmarReserva() {
     if (!tipoCredito) { setErroModal('Selecione o plano para usar.'); return }
@@ -357,7 +372,7 @@ function AulasPageInner() {
         : 'Erro ao reservar: ' + error.message
       setErroModal(msg); setConfirmando(false); return
     }
-    setConfirmando(false); setModalReserva(null)
+    setConfirmando(false); setModalReserva(null); setModalSoAvulso(false)
     router.push('/minha-conta')
   }
   async function confirmarFila() {
@@ -386,6 +401,11 @@ function AulasPageInner() {
     return true
   })
   const planosDisponiveis = Object.entries(saldoParaData()).filter(([,v]: [string,any]) => v?.disponivel > 0).map(([k]) => k)
+  // Avulso disponível (crédito importado/legado) — habilita a reserva-extra no mesmo dia
+  const avulsoDisponiveis = planosDisponiveis.filter(p => p.startsWith('avulso'))
+  const temAvulsoDisponivel = avulsoDisponiveis.length > 0
+  // Planos oferecidos no modal: só-avulso quando for reserva-extra; senão todos
+  const planosNoModal = modalSoAvulso ? avulsoDisponiveis : planosDisponiveis
   function vagasInfo(oc: any) {
     const cap=oc.club_aulas?.capacidade||0; const usadas=reservasCont[oc.id]||0
     const isRunning=oc.club_aulas?.tipo==='running_funcional'
@@ -607,7 +627,14 @@ function AulasPageInner() {
 
                         {/* Status ou botão */}
                         {minhaRes ? (
-                          <div style={{ fontSize:10, color:CYAN, fontWeight:700 }}>✓ Reservado</div>
+                          <>
+                            <div style={{ fontSize:10, color:CYAN, fontWeight:700 }}>✓ Reservado</div>
+                            {aula?.tipo !== 'running_funcional' && temAvulsoDisponivel && (
+                              <button onClick={() => reReservarAvulso(oc)} style={{ width:'100%', marginTop:5, background:'transparent', color:VERDE, border:`1px solid ${VERDE}55`, borderRadius:8, padding:'4px', fontSize:9, fontWeight:700, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
+                                + Reservar de novo
+                              </button>
+                            )}
+                          </>
                         ) : naFila ? (
                           <div style={{ fontSize:10, color:AMARELO, fontWeight:700 }}>⏳ Na fila</div>
                         ) : (
@@ -724,6 +751,20 @@ function AulasPageInner() {
                       )}
                     </div>
                   )}
+
+                  {/* Reserva-extra com avulso — só Lift/LFG já reservado e com avulso disponível */}
+                  {minhaRes && !naFila && !isRunning && temAvulsoDisponivel && (
+                    <div style={{ padding: isMobile ? '0 1.25rem 1.25rem' : '0 1rem 1rem' }}>
+                      <button onClick={() => reReservarAvulso(oc)} style={{
+                        width:'100%', background:'transparent', color:VERDE,
+                        border:`1.5px solid ${VERDE}55`, borderRadius:12,
+                        padding: isMobile ? '0.75rem' : '0.55rem', fontSize: isMobile ? 13 : 12, fontWeight:700,
+                        cursor:'pointer', fontFamily:"'DM Sans', sans-serif", letterSpacing:0.3
+                      }}>
+                        + Reservar de novo (crédito avulso)
+                      </button>
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -754,24 +795,31 @@ function AulasPageInner() {
             <div style={{ padding:'1.5rem 1.5rem 1rem', borderBottom:'1px solid #1a1a1a' }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
                 <div>
-                  <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:22, color:'#fff', letterSpacing:1 }}>CONFIRMAR RESERVA</div>
+                  <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:22, color:'#fff', letterSpacing:1 }}>{modalSoAvulso ? 'RESERVA EXTRA' : 'CONFIRMAR RESERVA'}</div>
                   <div style={{ fontSize:13, color:'#555', marginTop:3 }}>{tipoLabel(modalReserva.club_aulas?.tipo)} · {(modalReserva.club_aulas?.horario||'').slice(0,5)} · {unidade?.nome}</div>
                 </div>
-                <button onClick={() => setModalReserva(null)} style={{ background:'transparent', border:'none', color:'#555', fontSize:20, cursor:'pointer', padding:'4px 8px' }}>✕</button>
+                <button onClick={fecharModalReserva} style={{ background:'transparent', border:'none', color:'#555', fontSize:20, cursor:'pointer', padding:'4px 8px' }}>✕</button>
               </div>
             </div>
             <div style={{ padding:'1.25rem 1.5rem' }}>
               <div style={{ marginBottom:'1.5rem' }}>
                 <div style={{ fontSize:11, color:'#555', textTransform:'uppercase', letterSpacing:1, marginBottom:10 }}>Usar crédito de qual plano?</div>
+                {modalSoAvulso && (
+                  <div style={{ background:`${VERDE}12`, border:`1px solid ${VERDE}44`, borderRadius:8, padding:'0.6rem 1rem', marginBottom:10, fontSize:12, color:VERDE, lineHeight:1.5 }}>
+                    🎟️ Reserva extra com <strong>crédito avulso</strong> — você pode marcar mais de uma aula no mesmo dia.
+                  </div>
+                )}
                 {dataSelEhProximoMes && (
                   <div style={{ background:'#1a1000', border:`1px solid ${AMARELO}44`, borderRadius:8, padding:'0.6rem 1rem', marginBottom:10, fontSize:12, color:AMARELO }}>
                     📅 Estes créditos são de <strong>{nomeMesProximo}</strong>
                   </div>
                 )}
-                {planosDisponiveis.length===0 ? (
+                {planosNoModal.length===0 ? (
                   <div style={{ background:'#0d0d0d', border:`1px solid ${AMARELO}33`, borderRadius:12, padding:'1.25rem' }}>
                     <div style={{ fontSize:14, color:'#fff', fontWeight:700, marginBottom:6 }}>
-                      Você ainda não tem um plano ativo {dataSelEhProximoMes ? `para ${nomeMesProximo}` : 'nesta unidade'}
+                      {modalSoAvulso
+                        ? 'Você não tem crédito avulso disponível nesta unidade'
+                        : `Você ainda não tem um plano ativo ${dataSelEhProximoMes ? `para ${nomeMesProximo}` : 'nesta unidade'}`}
                     </div>
                     <div style={{ fontSize:13, color:'#aaa', lineHeight:1.6, marginBottom:'1.1rem' }}>
                       Para reservar, ative o seu app parceiro (Wellhub ou TotalPass) da unidade onde quer treinar, ou compre um pacote avulso.
@@ -785,7 +833,7 @@ function AulasPageInner() {
                       </button>
                     </div>
                   </div>
-                ) : planosDisponiveis.map(p => {
+                ) : planosNoModal.map(p => {
                   const {label,icon}=parsePlanoKey(p); const info=saldoParaData()[p]
                   return (
                     <div key={p} onClick={() => setTipoCredito(p)}
@@ -853,9 +901,9 @@ function AulasPageInner() {
               </div>
               {erroModal && <div style={{ background:'#ff2d9b15', border:'1px solid #ff2d9b44', borderRadius:8, padding:'0.6rem 1rem', fontSize:13, color:ACCENT, marginBottom:'1rem' }}>{erroModal}</div>}
               <div style={{ display:'flex', gap:8 }}>
-                <button onClick={() => setModalReserva(null)} style={{ flex:1, background:'transparent', border:'1px solid #2a2a2a', borderRadius:10, padding:'0.85rem', color:'#555', fontSize:14, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>Cancelar</button>
-                <button onClick={confirmarReserva} disabled={confirmando||planosDisponiveis.length===0}
-                  style={{ flex:2, background:planosDisponiveis.length===0?'#1a1a1a':ACCENT, color:planosDisponiveis.length===0?'#444':'#fff', border:'none', borderRadius:10, padding:'0.85rem', fontWeight:600, fontSize:15, cursor:confirmando||planosDisponiveis.length===0?'default':'pointer', fontFamily:"'DM Sans', sans-serif", opacity:confirmando?0.7:1 }}>
+                <button onClick={fecharModalReserva} style={{ flex:1, background:'transparent', border:'1px solid #2a2a2a', borderRadius:10, padding:'0.85rem', color:'#555', fontSize:14, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>Cancelar</button>
+                <button onClick={confirmarReserva} disabled={confirmando||planosNoModal.length===0}
+                  style={{ flex:2, background:planosNoModal.length===0?'#1a1a1a':ACCENT, color:planosNoModal.length===0?'#444':'#fff', border:'none', borderRadius:10, padding:'0.85rem', fontWeight:600, fontSize:15, cursor:confirmando||planosNoModal.length===0?'default':'pointer', fontFamily:"'DM Sans', sans-serif", opacity:confirmando?0.7:1 }}>
                   {confirmando?'Confirmando...':'Confirmar reserva ✓'}
                 </button>
               </div>
