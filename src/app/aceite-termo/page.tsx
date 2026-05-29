@@ -17,8 +17,6 @@ function AceitePageContent() {
   const [erro, setErro] = useState<string | null>(null)
   const [sucesso, setSucesso] = useState(false)
   const [dados, setDados] = useState<any>(null)
-  const [nomeDigitado, setNomeDigitado] = useState('')
-  const [scrollLido, setScrollLido] = useState(false)
   const [checkboxLi, setCheckboxLi] = useState(false)
 
   useEffect(() => {
@@ -64,23 +62,10 @@ function AceitePageContent() {
     setLoading(false)
   }
 
-  function handleScroll(e: React.UIEvent<HTMLDivElement>) {
-    const el = e.currentTarget
-    const lido = el.scrollHeight - el.scrollTop - el.clientHeight < 50
-    if (lido && !scrollLido) setScrollLido(true)
-  }
-
   async function aceitar() {
     if (!dados) return
-    const nomeCliente = (dados.cliente as any)?.nome?.trim().toLowerCase() || ''
-    const nomeInput = nomeDigitado.trim().toLowerCase()
-
-    if (nomeInput.length < 3) {
-      setErro('Digite seu nome completo.')
-      return
-    }
-    if (nomeInput !== nomeCliente) {
-      setErro('O nome digitado não confere com o cadastro. Confirme seu nome completo exatamente como foi cadastrado.')
+    if (!checkboxLi) {
+      setErro('Marque que leu e concorda com o termo para continuar.')
       return
     }
 
@@ -90,12 +75,12 @@ function AceitePageContent() {
     try {
       const tipoPlano = (dados.plano as any)?.subtipo?.includes('totalpass') ? 'totalpass' : 'wellhub'
 
-      // Insere o aceite
+      // Insere o aceite (nome vindo do cadastro automaticamente)
       const { error: errAceite } = await supabase.from('termos_aceites').insert({
         cliente_id: (dados.cliente as any).id,
         cliente_plano_id: dados.id,
         tipo_plano: tipoPlano,
-        nome_digitado: nomeDigitado.trim(),
+        nome_digitado: (dados.cliente as any)?.nome || '',
         cpf_confirmado: (dados.cliente as any).cpf,
         user_agent: navigator.userAgent,
         modo_aceite: 'link_email',
@@ -192,55 +177,23 @@ function AceitePageContent() {
           </div>
 
           {/* Texto do contrato */}
-          <div onScroll={handleScroll} style={{ maxHeight: 480, overflow: 'auto', padding: '2rem', fontSize: 14, color: '#aaa', lineHeight: 1.8, whiteSpace: 'pre-wrap' as const }}>
+          <div style={{ maxHeight: 480, overflow: 'auto', padding: '2rem', fontSize: 14, color: '#aaa', lineHeight: 1.8, whiteSpace: 'pre-wrap' as const }}>
             {TEXTO_TERMO_WELLHUB_TOTALPASS}
           </div>
-
-          {!scrollLido && (
-            <div style={{ padding: '0.75rem 2rem', background: `${ACCENT}10`, borderTop: `1px solid ${ACCENT}30`, fontSize: 12, color: ACCENT, textAlign: 'center' as const }}>
-              ↓ role até o final para liberar o aceite
-            </div>
-          )}
 
           {/* Aceite */}
           <div style={{ padding: '2rem', borderTop: '1px solid #1e1e1e' }}>
 
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12, cursor: scrollLido ? 'pointer' : 'not-allowed', marginBottom: '1.5rem', opacity: scrollLido ? 1 : 0.5 }}>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12, cursor: 'pointer', marginBottom: '1.5rem' }}>
               <input
                 type="checkbox"
                 checked={checkboxLi}
                 onChange={e => setCheckboxLi(e.target.checked)}
-                disabled={!scrollLido}
-                style={{ marginTop: 3, width: 18, height: 18, accentColor: ACCENT, cursor: scrollLido ? 'pointer' : 'not-allowed' }}
+                style={{ marginTop: 3, width: 18, height: 18, accentColor: ACCENT, cursor: 'pointer' }}
               />
               <span style={{ fontSize: 14, color: '#ccc', lineHeight: 1.6 }}>
                 Declaro que li e concordo integralmente com todas as cláusulas deste Termo de Adesão Wellhub / TotalPass.
               </span>
-            </label>
-
-            <label style={{ display: 'block', marginBottom: '1.5rem' }}>
-              <div style={{ fontSize: 12, color: '#666', textTransform: 'uppercase' as const, letterSpacing: 1.5, marginBottom: 8, fontFamily: "'DM Mono', monospace" }}>
-                Digite seu nome completo para assinar
-              </div>
-              <input
-                type="text"
-                value={nomeDigitado}
-                onChange={e => setNomeDigitado(e.target.value)}
-                disabled={!checkboxLi || !scrollLido}
-                placeholder={(dados.cliente as any)?.nome || 'Nome completo'}
-                style={{
-                  width: '100%',
-                  background: '#080808',
-                  border: '1.5px solid #2a2a2a',
-                  borderRadius: 8,
-                  padding: '0.85rem 1rem',
-                  fontSize: 15,
-                  color: '#fff',
-                  fontFamily: "'DM Sans', sans-serif",
-                  outline: 'none',
-                  opacity: (checkboxLi && scrollLido) ? 1 : 0.5,
-                }}
-              />
             </label>
 
             {erro && (
@@ -251,17 +204,17 @@ function AceitePageContent() {
 
             <button
               onClick={aceitar}
-              disabled={!scrollLido || !checkboxLi || !nomeDigitado.trim() || enviando}
+              disabled={!checkboxLi || enviando}
               style={{
                 width: '100%',
-                background: (scrollLido && checkboxLi && nomeDigitado.trim() && !enviando) ? ACCENT : '#2a2a2a',
+                background: (checkboxLi && !enviando) ? ACCENT : '#2a2a2a',
                 color: '#fff',
                 border: 'none',
                 borderRadius: 8,
                 padding: '1rem',
                 fontWeight: 700,
                 fontSize: 15,
-                cursor: (scrollLido && checkboxLi && nomeDigitado.trim() && !enviando) ? 'pointer' : 'not-allowed',
+                cursor: (checkboxLi && !enviando) ? 'pointer' : 'not-allowed',
                 fontFamily: "'DM Sans', sans-serif",
                 letterSpacing: 0.5,
                 transition: 'opacity .2s',
