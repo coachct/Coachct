@@ -345,6 +345,13 @@ export default function MinhaContaPage() {
     setNovaSenha(''); setConfirmaSenha('')
   }
 
+  // ── Gênero (necessário para aulas exclusivas, ex: Lift for Girls) ──
+  async function salvarGenero(valor: 'F' | 'M') {
+    if (!cliente || cliente.sexo === valor) return
+    const { error } = await supabase.from('clientes').update({ sexo: valor }).eq('id', cliente.id)
+    if (!error) setCliente({ ...cliente, sexo: valor })
+  }
+
   async function abrirModalCancelar(item: typeof feedFuturo[0]) {
     const dataHora = new Date(`${item.data}T${item.horario}`)
     const diffHoras = (dataHora.getTime()-agora.getTime())/(1000*60*60)
@@ -793,6 +800,23 @@ export default function MinhaContaPage() {
               <span style={{fontSize:13,color:'#888'}}>{item.value}</span>
             </div>
           ))}
+
+          {/* Gênero — libera aulas exclusivas (ex: Lift for Girls) */}
+          <div style={{padding:'0.75rem 0',borderBottom:'1px solid #181818'}}>
+            <div style={{fontSize:13,color:'#444',marginBottom:8}}>Gênero</div>
+            <div style={{display:'flex',gap:8}}>
+              {([['F','Feminino'],['M','Masculino']] as const).map(([val,label])=>{
+                const ativo = cliente?.sexo === val
+                return (
+                  <button key={val} onClick={()=>salvarGenero(val)} style={{flex:1,background:ativo?`${ACCENT}18`:'transparent',border:`1px solid ${ativo?ACCENT:'#2a2a2a'}`,color:ativo?ACCENT:'#888',borderRadius:10,padding:'0.6rem',fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:"'DM Sans', sans-serif",transition:'all .15s'}}>
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+            <div style={{fontSize:11,color:'#555',marginTop:6,lineHeight:1.5}}>Necessário para aulas exclusivas, como a Lift for Girls.</div>
+          </div>
+
           <button onClick={abrirModalSenha} style={{width:'100%',marginTop:'1rem',background:'transparent',border:`1px solid ${ACCENT}44`,borderRadius:10,padding:'0.7rem',fontSize:13,color:ACCENT,fontWeight:600,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
             🔑 Alterar senha
           </button>
