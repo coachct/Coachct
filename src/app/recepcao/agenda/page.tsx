@@ -60,6 +60,24 @@ export default function RecepcaoAgendaPage() {
     }
   }, [perfil, loading])
 
+  // Recepção de unidade club não usa a agenda do CT — manda pro calendário do club
+  useEffect(() => {
+    if (perfil?.role !== ('recepcao' as any)) return
+    if (!unidadeAtiva?.id) return
+    let cancelado = false
+    async function checarTipoUnidade() {
+      let tipo = (unidadeAtiva as any)?.tipo
+      if (!tipo) {
+        const { data: u } = await supabase
+          .from('unidades').select('tipo').eq('id', unidadeAtiva!.id).maybeSingle()
+        tipo = u?.tipo
+      }
+      if (!cancelado && tipo === 'club') router.replace('/recepcao/club')
+    }
+    checarTipoUnidade()
+    return () => { cancelado = true }
+  }, [perfil?.role, unidadeAtiva?.id])
+
   useEffect(() => {
     if (perfil && unidadeAtiva) loadData()
   }, [data, perfil, unidadeAtiva?.id])
