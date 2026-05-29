@@ -250,12 +250,9 @@ export default function AgendarPage() {
     const anoProximo = mesAtual === 12 ? anoAtual + 1 : anoAtual
     const { data: atual } = await supabase.rpc('saldo_creditos_cliente', { p_cliente_id: clienteId, p_mes: mesAtual, p_ano: anoAtual, p_unidade_id: unidadeId })
     setSaldoMesAtual(atual || {})
-    if (janelaProximoMesAberta) {
-      const { data: proximo } = await supabase.rpc('saldo_creditos_cliente', { p_cliente_id: clienteId, p_mes: mesProximo, p_ano: anoProximo, p_unidade_id: unidadeId })
-      setSaldoMesProximo(proximo || {})
-    } else {
-      setSaldoMesProximo({})
-    }
+    // Carrega sempre o saldo do próximo mês (a agenda de 14 dias pode alcançar o próximo mês)
+    const { data: proximo } = await supabase.rpc('saldo_creditos_cliente', { p_cliente_id: clienteId, p_mes: mesProximo, p_ano: anoProximo, p_unidade_id: unidadeId })
+    setSaldoMesProximo(proximo || {})
     // ── FIX: sinaliza fim do carregamento de saldos ───────────────────────
     setLoadingSaldos(false)
     // ──────────────────────────────────────────────────────────────────────
