@@ -237,7 +237,7 @@ export default function LandingPage() {
           <div className="feature-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, overflow: 'hidden' as const, display: 'flex', flexDirection: 'column' as const }}>
             <div style={{ aspectRatio: '9/16', overflow: 'hidden' as const, position: 'relative' as const, background: '#000' }}>
               <video
-                src="/Video%20Lift%20for%20girls%20MP4.mp4"
+                src="/lift%20for%20girls%202%20mp4.mp4"
                 autoPlay
                 muted
                 loop
