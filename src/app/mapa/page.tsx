@@ -144,7 +144,19 @@ function MapaPageInner() {
     setModalAberto(true)
   }
 
-  async function confirmarReserva() {
+  // Recarrega só as posições ocupadas (sem full-reload) — usado ao "reservar outra"
+  async function recarregarPosicoesTomadas() {
+    const [{ data: tomadas }, { data: bloqOc }] = await Promise.all([
+      supabase.rpc('posicoes_tomadas', { p_ocorrencia_id: ocId }),
+      supabase.from('club_posicoes_bloqueios_ocorrencia').select('posicao').eq('ocorrencia_id', ocId),
+    ])
+    const reservadas = (tomadas || []).map((t: any) => t.posicao).filter(Boolean)
+    const bloqueadasGlobais = posicoes.filter((p: any) => p.bloqueado).map((p: any) => `${p.tipo}${String(p.numero).padStart(2,'0')}`)
+    const bloqueadasPontual = (bloqOc || []).map((b: any) => b.posicao)
+    setPosicoesTomadas([...reservadas, ...bloqueadasGlobais, ...bloqueadasPontual])
+  }
+
+  async function confirmarReserva(continuar: boolean = false) {
     if (!tipoCredito) { setErroModal('Selecione o plano.'); return }
     if (!posicaoSel || !cliente) return
     setConfirmando(true); setErroModal('')
@@ -167,6 +179,17 @@ function MapaPageInner() {
         ? 'Você já tem uma reserva nesta unidade neste dia com este plano. Cada plano permite apenas uma reserva por dia por unidade.'
         : 'Erro ao reservar: '+error.message
       setErroModal(msg); setConfirmando(false); return
+    }
+    if (continuar) {
+      // Reserva feita, mas fica na mesma tela pra escolher outra posição
+      setConfirmando(false)
+      setModalAberto(false)
+      setPosicaoSel('')
+      setTipoCredito('')
+      setJaReservouNaOc(true)                                        // a partir daqui o seletor fica só-avulso
+      await recarregarPosicoesTomadas()                             // a posição recém-reservada vira ocupada
+      await carregarSaldoDaOcorrencia(cliente.id, ocorrencia?.data) // atualiza o saldo avulso
+      return
     }
     router.push('/minha-conta')
   }
@@ -389,19 +412,29 @@ function MapaPageInner() {
                 padding:'0.6rem 1rem', fontSize:13, color:ACCENT, marginBottom:'1rem' }}>{erroModal}</div>
             )}
 
-            <div style={{ display:'flex', gap:8 }}>
-              <button onClick={() => { setModalAberto(false); setPosicaoSel('') }}
-                style={{ flex:1, background:'transparent', border:'1px solid #2a2a2a', borderRadius:10,
-                  padding:'0.85rem', color:'#555', fontSize:14, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
-                Cancelar
-              </button>
-              <button onClick={confirmarReserva} disabled={confirmando || planosNoMapa.length === 0}
-                style={{ flex:2, background:planosNoMapa.length===0?'#1a1a1a':ACCENT,
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              <button onClick={() => confirmarReserva(false)} disabled={confirmando || planosNoMapa.length === 0}
+                style={{ width:'100%', background:planosNoMapa.length===0?'#1a1a1a':ACCENT,
                   color:planosNoMapa.length===0?'#444':'#fff', border:'none', borderRadius:10,
                   padding:'0.85rem', fontWeight:600, fontSize:15,
                   cursor:confirmando||planosNoMapa.length===0?'default':'pointer',
                   fontFamily:"'DM Sans', sans-serif", opacity:confirmando?0.7:1 }}>
                 {confirmando ? 'Confirmando...' : 'Confirmar reserva ✓'}
+              </button>
+              {avulsoDisponiveis.length > 0 && (
+                <button onClick={() => confirmarReserva(true)} disabled={confirmando || planosNoMapa.length === 0}
+                  style={{ width:'100%', background:'transparent', color:VERDE,
+                    border:`1.5px solid ${VERDE}55`, borderRadius:10,
+                    padding:'0.8rem', fontWeight:700, fontSize:14,
+                    cursor:confirmando||planosNoMapa.length===0?'default':'pointer',
+                    fontFamily:"'DM Sans', sans-serif", opacity:confirmando?0.7:1 }}>
+                  + Reservar e escolher outra posição
+                </button>
+              )}
+              <button onClick={() => { setModalAberto(false); setPosicaoSel('') }}
+                style={{ width:'100%', background:'transparent', border:'none', borderRadius:10,
+                  padding:'0.4rem', color:'#555', fontSize:13, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
+                Cancelar
               </button>
             </div>
           </div>
