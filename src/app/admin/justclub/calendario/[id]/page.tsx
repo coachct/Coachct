@@ -94,6 +94,10 @@ export default function RecepcaoClubDetalhe() {
   const [posicaoSel,      setPosicaoSel]      = useState('')
   const [etapa,           setEtapa]           = useState<'busca'|'mapa'|'credito'>('busca')
 
+  // NOVO: bloqueios pontuais (só dessa ocorrência)
+  const [posicoesBloqueadasPontual, setPosicoesBloqueadasPontual] = useState<string[]>([])
+  const [salvandoBloqueio,          setSalvandoBloqueio]          = useState<string | null>(null)
+
   // Troca de posição
   const [trocandoReserva, setTrocandoReserva] = useState<any>(null)
   const [salvandoTroca,   setSalvandoTroca]   = useState(false)
@@ -123,6 +127,12 @@ export default function RecepcaoClubDetalhe() {
       sorted.filter((r: any) => ['reservado','presente'].includes(r.status) && r.posicao)
             .map((r: any) => r.posicao)
     )
+
+    // NOVO: carrega bloqueios pontuais desta ocorrência
+    const { data: bloq } = await supabase
+      .from('club_posicoes_bloqueios_ocorrencia')
+      .select('posicao').eq('ocorrencia_id', ocId)
+    setPosicoesBloqueadasPontual((bloq || []).map((b: any) => b.posicao))
 
     if (oc?.club_aulas?.tipo === 'running_funcional' && oc?.club_aulas?.unidade_id) {
       const { data: pos } = await supabase.from('club_posicoes').select('*')
@@ -155,6 +165,42 @@ export default function RecepcaoClubDetalhe() {
     await carregarDados()
     setSalvandoTroca(false)
     showMsg('✅ Posição alterada!')
+  }
+
+  // NOVO: bloqueia/desbloqueia posição APENAS nesta ocorrência
+  async function toggleBloqueioPontual(label: string) {
+    // Se posição tem reserva ativa, não permite bloquear direto — usuário deve trocar antes
+    const reservaAqui = reservas.find((r:any) =>
+      r.posicao === label && ['reservado','presente'].includes(r.status))
+    if (reservaAqui) {
+      const nome = reservaAqui.clientes?.nome?.split(' ')[0] || 'cliente'
+      showMsg(`⚠️ ${nome} está na ${label}. Use "Trocar" antes de bloquear.`)
+      return
+    }
+    setSalvandoBloqueio(label)
+    const jaBloqueada = posicoesBloqueadasPontual.includes(label)
+    if (jaBloqueada) {
+      const { error } = await supabase
+        .from('club_posicoes_bloqueios_ocorrencia')
+        .delete()
+        .eq('ocorrencia_id', ocId)
+        .eq('posicao', label)
+      if (error) { showMsg('Erro: '+error.message); setSalvandoBloqueio(null); return }
+      setPosicoesBloqueadasPontual(prev => prev.filter(p => p !== label))
+      showMsg(`✅ Posição ${label} desbloqueada`)
+    } else {
+      const { error } = await supabase
+        .from('club_posicoes_bloqueios_ocorrencia')
+        .insert({
+          ocorrencia_id: ocId,
+          posicao: label,
+          criado_por: perfil?.id || null,
+        })
+      if (error) { showMsg('Erro: '+error.message); setSalvandoBloqueio(null); return }
+      setPosicoesBloqueadasPontual(prev => [...prev, label])
+      showMsg(`🚫 Posição ${label} bloqueada nesta aula`)
+    }
+    setSalvandoBloqueio(null)
   }
 
   async function buscarCliente() {
@@ -269,42 +315,54 @@ export default function RecepcaoClubDetalhe() {
   const posF_par = posicoes.filter((p:any) => p.tipo==='F' && p.numero%2===0).sort((a:any,b:any) => b.numero-a.numero)
 
   // Mapa compartilhado — usado tanto na visão geral quanto no walk-in
-  // modo: 'view' = somente visualizar | 'walkin' = selecionar nova posição | 'troca' = trocar posição de cliente
+  // modo: 'view' = visualizar e bloquear/desbloquear | 'walkin' = selecionar nova posição | 'troca' = trocar posição de cliente
   function MapaPosicoes({ modo }: { modo: 'view' | 'walkin' | 'troca' }) {
     const posicaoAtualTroca = trocandoReserva?.posicao
 
     function estadoPos(label: string) {
       const reserva = reservas.find((r:any) => r.posicao === label && ['reservado','presente'].includes(r.status))
       const tomado  = !!reserva
+      const bloqueadaPontual = posicoesBloqueadasPontual.includes(label)
       const ehTrocando = posicaoAtualTroca === label
 
       if (modo === 'view') {
-        if (!tomado) return { bg:`${ACCENT}15`, border:ACCENT, icon:ACCENT, cursor:'default', nome: null, atual: false }
+        if (bloqueadaPontual) return { bg:`${VERMELHO}15`, border:VERMELHO, icon:VERMELHO, cursor:'pointer',
+          nome:null, atual:false, bloqueada:true }
+        if (!tomado) return { bg:`${ACCENT}15`, border:ACCENT, icon:ACCENT, cursor:'pointer',
+          nome:null, atual:false, bloqueada:false }
         return { bg:'#e5e5e5', border:'#bbb', icon:'#bbb', cursor:'default',
-          nome: reserva?.clientes?.nome?.split(' ')[0] || '?', atual: false }
+          nome: reserva?.clientes?.nome?.split(' ')[0] || '?', atual:false, bloqueada:false }
       }
       if (modo === 'walkin') {
-        if (label === posicaoSel) return { bg:`${ACCENT}15`, border:ACCENT, icon:ACCENT, cursor:'pointer', nome:null, atual:false }
-        if (tomado) return { bg:'#f3f4f6', border:'#d1d5db', icon:'#d1d5db', cursor:'not-allowed', nome:null, atual:false }
-        return { bg:'#fff', border:'#e5e7eb', icon:'#aaa', cursor:'pointer', nome:null, atual:false }
+        if (label === posicaoSel) return { bg:`${ACCENT}15`, border:ACCENT, icon:ACCENT, cursor:'pointer', nome:null, atual:false, bloqueada:false }
+        if (bloqueadaPontual) return { bg:`${VERMELHO}15`, border:VERMELHO, icon:VERMELHO, cursor:'not-allowed', nome:null, atual:false, bloqueada:true }
+        if (tomado) return { bg:'#f3f4f6', border:'#d1d5db', icon:'#d1d5db', cursor:'not-allowed', nome:null, atual:false, bloqueada:false }
+        return { bg:'#fff', border:'#e5e7eb', icon:'#aaa', cursor:'pointer', nome:null, atual:false, bloqueada:false }
       }
       // modo troca
       if (ehTrocando) return { bg:`${AMARELO}15`, border:AMARELO, icon:AMARELO, cursor:'default',
-        nome: reserva?.clientes?.nome?.split(' ')[0] || '?', atual: true }
+        nome: reserva?.clientes?.nome?.split(' ')[0] || '?', atual:true, bloqueada:false }
+      if (bloqueadaPontual) return { bg:`${VERMELHO}15`, border:VERMELHO, icon:VERMELHO, cursor:'not-allowed',
+        nome:null, atual:false, bloqueada:true }
       if (tomado) return { bg:'#f3f4f6', border:'#d1d5db', icon:'#d1d5db', cursor:'not-allowed',
-        nome: reserva?.clientes?.nome?.split(' ')[0] || '?', atual: false }
-      return { bg:'#f0fff4', border:VERDE, icon:VERDE, cursor:'pointer', nome:null, atual:false }
+        nome: reserva?.clientes?.nome?.split(' ')[0] || '?', atual:false, bloqueada:false }
+      return { bg:'#f0fff4', border:VERDE, icon:VERDE, cursor:'pointer', nome:null, atual:false, bloqueada:false }
     }
 
     function handleClick(label: string) {
-      if (modo === 'view') return
+      if (modo === 'view') {
+        toggleBloqueioPontual(label)
+        return
+      }
       if (modo === 'walkin') {
-        if (!posicoesTomadas.includes(label)) setPosicaoSel(label)
+        if (posicoesTomadas.includes(label)) return
+        if (posicoesBloqueadasPontual.includes(label)) return
+        setPosicaoSel(label)
       }
       if (modo === 'troca') {
         if (label === posicaoAtualTroca) return // mesma posição, sem mudança
-        const tomadaPorOutro = posicoesTomadas.includes(label)
-        if (tomadaPorOutro) return // posição de outro cliente
+        if (posicoesTomadas.includes(label)) return // posição de outro cliente
+        if (posicoesBloqueadasPontual.includes(label)) return // bloqueada pontual
         confirmarTrocaPosicao(label)
       }
     }
@@ -312,16 +370,27 @@ export default function RecepcaoClubDetalhe() {
     function PosBtn({ label, tipo }: { label: string; tipo: 'R'|'F' }) {
       const s = estadoPos(label)
       const tomado = posicoesTomadas.includes(label)
-      const clicavel = modo !== 'view' && (!tomado || (modo === 'troca' && label === posicaoAtualTroca))
+      const bloqueadaPontual = posicoesBloqueadasPontual.includes(label)
+      const salvandoEssa = salvandoBloqueio === label
+
+      // disabled:
+      // - view: nunca desabilitado quando livre/bloqueada (clica pra toggle); só quando ocupada
+      // - walkin/troca: desabilitado se tomado por outro ou bloqueada
+      let disabled = false
+      if (modo === 'view') disabled = tomado || salvandoEssa
+      else if (modo === 'walkin') disabled = (tomado || bloqueadaPontual) && label !== posicaoSel
+      else if (modo === 'troca') disabled = (tomado && label !== posicaoAtualTroca) || bloqueadaPontual
+
       return (
         <button
-          disabled={modo !== 'view' && tomado && !(modo === 'troca' && !tomado)}
+          disabled={disabled}
           onClick={() => handleClick(label)}
-          title={s.nome ? s.nome : label}
+          title={bloqueadaPontual ? `${label} bloqueada — clique para desbloquear` : (s.nome ? s.nome : label)}
           style={{ border:`1.5px solid ${s.border}`, background:s.bg, borderRadius:8,
-            cursor: clicavel ? 'pointer' : s.cursor,
+            cursor: disabled ? 'not-allowed' : s.cursor,
             padding:'4px 0', display:'flex', flexDirection:'column', alignItems:'center', gap:2,
-            position:'relative', minWidth:0 }}>
+            position:'relative', minWidth:0,
+            opacity: salvandoEssa ? 0.5 : 1 }}>
           <div style={{ width:'65%', maxWidth:28 }}>
             {tipo === 'R' ? <IconEsteira color={s.icon}/> : <IconHaltere color={s.icon}/>}
           </div>
@@ -335,6 +404,10 @@ export default function RecepcaoClubDetalhe() {
             <span style={{ fontSize:7, fontFamily:"'DM Mono', monospace", fontWeight:700,
               color:s.icon, lineHeight:1 }}>{label}</span>
           )}
+          {s.bloqueada && (
+            <span style={{ position:'absolute', top:1, right:2, fontSize:10, fontWeight:900,
+              color:VERMELHO, lineHeight:1 }}>✕</span>
+          )}
           {s.atual && (
             <span style={{ position:'absolute', top:-4, right:-4, background:AMARELO,
               borderRadius:'50%', width:8, height:8 }}/>
@@ -346,6 +419,11 @@ export default function RecepcaoClubDetalhe() {
     return (
       <div style={{ background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:12,
         padding:'0.85rem 0.75rem' }}>
+        {modo === 'view' && (
+          <div style={{ fontSize:11, color:'#888', textAlign:'center', marginBottom:8, lineHeight:1.5 }}>
+            💡 Clique numa posição livre para bloquear nesta aula. Posição com cliente: use "Trocar" antes.
+          </div>
+        )}
         {posR.length > 0 && (
           <div style={{ marginBottom:'1rem' }}>
             <div style={{ fontSize:9, color:'#aaa', letterSpacing:2, textAlign:'center', marginBottom:6 }}>ESTEIRAS</div>
@@ -384,8 +462,9 @@ export default function RecepcaoClubDetalhe() {
         {/* Legenda */}
         <div style={{ display:'flex', gap:10, marginTop:10, justifyContent:'center', flexWrap:'wrap' }}>
           {modo === 'view' && [
-            ['#f9fafb','#e5e7eb','Livre'],
-            [`${ACCENT}10`,ACCENT,'Ocupado'],
+            [`${ACCENT}15`,ACCENT,'Livre'],
+            ['#e5e5e5','#bbb','Com cliente'],
+            [`${VERMELHO}15`,VERMELHO,'Bloqueada nesta aula'],
           ].map(([bg,brd,txt]) => (
             <span key={txt} style={{ fontSize:9, color:brd, display:'flex', alignItems:'center', gap:3 }}>
               <span style={{ width:8, height:8, background:bg, border:`1.5px solid ${brd}`, borderRadius:2, display:'inline-block' }}/>
@@ -396,6 +475,7 @@ export default function RecepcaoClubDetalhe() {
             [`${AMARELO}15`,AMARELO,'Posição atual'],
             ['#f0fff4',VERDE,'Disponível'],
             ['#f3f4f6','#d1d5db','Ocupado'],
+            [`${VERMELHO}15`,VERMELHO,'Bloqueada'],
           ].map(([bg,brd,txt]) => (
             <span key={txt} style={{ fontSize:9, color:brd, display:'flex', alignItems:'center', gap:3 }}>
               <span style={{ width:8, height:8, background:bg, border:`1.5px solid ${brd}`, borderRadius:2, display:'inline-block' }}/>
