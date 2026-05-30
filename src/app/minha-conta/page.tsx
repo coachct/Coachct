@@ -91,6 +91,7 @@ Ao ativar seu plano e confirmar o aceite abaixo, você declara ter lido, compree
 
 function parsePlanoKey(key: string): { label: string; icon: string } {
   const lower = (key||'').toLowerCase()
+  if (lower === 'avulso_importado') return { label: 'Crédito Avulso · todos os Clubs', icon: '🎟️' }
   let tipo = '', icon = '🏋️', slugUnidade = ''
   if (lower.startsWith('coach_ct_pro'))      { tipo = 'Coach CT Pro'; icon = '🏆'; slugUnidade = key.substring('coach_ct_pro_'.length) }
   else if (lower.startsWith('wellhub'))      { tipo = 'Wellhub'; icon = '💜'; slugUnidade = key.split('_').slice(1).join('_') }
