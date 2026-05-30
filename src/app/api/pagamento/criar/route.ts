@@ -212,10 +212,13 @@ export async function POST(req: NextRequest) {
         p_vendido_por: null,
         p_unidade_id: pagamento.unidade_id,
         p_observacao: 'Venda online via Pagar.me',
+        p_desconto_percentual: 0,
       })
 
       if (errVenda) {
         console.error('Erro ao registrar venda (cartão):', errVenda)
+      } else if (venda && venda.sucesso === false) {
+        console.error('registrar_venda retornou sucesso=false (cartão):', venda)
       } else {
         console.log('✅ Venda registrada (cartão). Venda ID:', venda?.venda_id)
         updateData.venda_id = venda?.venda_id || null
