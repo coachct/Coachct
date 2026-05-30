@@ -7,7 +7,7 @@ const nav = [
   { label: 'Unidades',                href: '/admin/unidades' },
   { label: 'Planos',                  href: '/admin/planos' },
   { label: 'Produtos',                href: '/admin/produtos' },
-  { label: 'Vendas Online',           href: '/admin/vendas' },
+  { label: 'Vendas',                  href: '/admin/vendas' },
   { label: 'Permissões',              href: '/admin/permissoes' },
   { label: 'Faturamento & Margem',    href: '/admin/financeiro' },
   { label: 'Coaches',                 href: '/admin/coaches' },
