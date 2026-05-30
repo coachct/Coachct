@@ -23,7 +23,7 @@ function gerarSenhaAleatoria(): string {
 }
 
 // Busca o usuário de auth pelo email percorrendo TODAS as páginas.
-// O listUsts() padrão só traz a 1ª página (~50 contas) — quem está fora
+// O listUsers() padrão só traz a 1ª página (~50 contas) — quem está fora
 // dela não era encontrado, e a rota retornava "sucesso" sem enviar email.
 async function acharUsuarioAuthPorEmail(supabase: any, emailLimpo: string): Promise<any | null> {
   const perPage = 1000
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
     // então não usamos .maybeSingle() — pegamos o que tiver user_id de preferência.
     const { data: clientesMatch } = await supabase
       .from('clientes')
-      .select('id, nome, email, user_id')
+      .select('id, nome, email, cpf, user_id')
       .ilike('email', emailLimpo)
       .limit(5)
 
@@ -78,8 +78,8 @@ export async function POST(req: NextRequest) {
       null
 
     // Descobre o id do usuário de auth.
-    // 1º) direto pela coluna clientes.user_id (canônica — preenchida pelo criar-acesso)
-    // 2º) fallback: varre todas as páginas do listUsers pelo email
+    // 1o) direto pela coluna clientes.user_id (canônica — preenchida pelo criar-acesso)
+    // 2o) fallback: varre todas as páginas do listUsers pelo email
     let userId: string | null = clienteComUser?.user_id || null
     let nomeParaEmail: string = String(clienteComUser?.nome || '')
 
@@ -93,24 +93,52 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Por segurança, sempre retorna sucesso mesmo se o email não existir
-    // (evita que alguém descubra quais emails estão cadastrados).
-    // Agora isso só acontece após uma busca COMPLETA — usuário real sempre é achado.
-    if (!userId) {
-      return NextResponse.json({ sucesso: true, email_enviado: true })
-    }
-
     const senhaProvisoria = gerarSenhaAleatoria()
 
-    // Redefine a senha do usuário existente
-    const { error: errUpdate } = await supabase.auth.admin.updateUserById(userId, {
-      password: senhaProvisoria,
-    })
+    if (userId) {
+      // Caso 1: usuário de auth já existe -> apenas redefine a senha
+      const { error: errUpdate } = await supabase.auth.admin.updateUserById(userId, {
+        password: senhaProvisoria,
+      })
+      if (errUpdate) {
+        return NextResponse.json({
+          error: 'Erro ao redefinir senha: ' + errUpdate.message
+        }, { status: 500 })
+      }
+    } else if (clienteComUser) {
+      // Caso 2: cliente CONHECIDO (legado) com email, mas SEM conta de auth.
+      // Cria a conta agora com a senha provisória (mesma lógica do criar-acesso)
+      // e vincula o user_id. Sem isso, o "esqueci minha senha" não onboarda o legado.
+      const { data: novoUser, error: errAuth } = await supabase.auth.admin.createUser({
+        email: emailLimpo,
+        password: senhaProvisoria,
+        email_confirm: true,
+        user_metadata: {
+          nome: clienteComUser.nome,
+          cpf: clienteComUser.cpf,
+          role: 'cliente',
+        },
+      })
 
-    if (errUpdate) {
-      return NextResponse.json({
-        error: 'Erro ao redefinir senha: ' + errUpdate.message
-      }, { status: 500 })
+      if (errAuth || !novoUser?.user) {
+        return NextResponse.json({
+          error: 'Erro ao criar acesso: ' + (errAuth?.message || 'desconhecido')
+        }, { status: 500 })
+      }
+
+      userId = novoUser.user.id
+      if (!nomeParaEmail) nomeParaEmail = String(clienteComUser.nome || '')
+
+      // Vincula o acesso ao cadastro do cliente (não bloqueia o fluxo se falhar —
+      // o importante é que a conta já existe e a senha já foi setada)
+      await supabase
+        .from('clientes')
+        .update({ user_id: userId })
+        .eq('id', clienteComUser.id)
+    } else {
+      // Caso 3: email não pertence a nenhum cliente conhecido.
+      // Por segurança, retorna sucesso sem revelar que o email não existe.
+      return NextResponse.json({ sucesso: true, email_enviado: true })
     }
 
     const primeiroNome = nomeParaEmail.split(' ')[0] || 'cliente'
