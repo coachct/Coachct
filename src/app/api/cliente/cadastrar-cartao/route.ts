@@ -16,6 +16,24 @@ function getAuthHeader() {
   return `Basic ${credentials}`
 }
 
+// Validação real de CPF (11 dígitos + dígitos verificadores)
+function cpfValido(valor: string): boolean {
+  const c = (valor || '').replace(/\D/g, '')
+  if (c.length !== 11) return false
+  if (/^(\d)\1{10}$/.test(c)) return false // todos os dígitos iguais
+  let soma = 0
+  for (let i = 0; i < 9; i++) soma += parseInt(c[i]) * (10 - i)
+  let d1 = (soma * 10) % 11
+  if (d1 === 10) d1 = 0
+  if (d1 !== parseInt(c[9])) return false
+  soma = 0
+  for (let i = 0; i < 10; i++) soma += parseInt(c[i]) * (11 - i)
+  let d2 = (soma * 10) % 11
+  if (d2 === 10) d2 = 0
+  if (d2 !== parseInt(c[10])) return false
+  return true
+}
+
 export async function POST(req: NextRequest) {
   try {
     const authHeader = req.headers.get('authorization') || ''
@@ -30,7 +48,7 @@ export async function POST(req: NextRequest) {
     if (errCliente || !cliente) return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 })
 
     const body = await req.json()
-    const { numero, nome, cvv, mes, ano } = body
+    const { numero, nome, cvv, mes, ano, cpf: cpfBody } = body
 
     if (!numero || !nome || !cvv || !mes || !ano)
       return NextResponse.json({ error: 'Dados do cartão incompletos' }, { status: 400 })
@@ -49,7 +67,28 @@ export async function POST(req: NextRequest) {
     if (anoNum < new Date().getFullYear() || anoNum > new Date().getFullYear() + 20)
       return NextResponse.json({ error: 'Ano inválido' }, { status: 400 })
 
-    const cpfLimpo = (cliente.cpf || '').replace(/\D/g, '')
+    // ── CPF efetivo: usa o do cadastro se for válido; senão, o informado no form ──
+    const cpfCadastro  = (cliente.cpf || '').replace(/\D/g, '')
+    const cpfInformado = (cpfBody || '').replace(/\D/g, '')
+    let cpfEfetivo = ''
+    if (cpfValido(cpfCadastro))       cpfEfetivo = cpfCadastro
+    else if (cpfValido(cpfInformado)) cpfEfetivo = cpfInformado
+
+    if (!cpfEfetivo) {
+      // Sem CPF válido em nenhum dos dois — nem chama o Pagar.me
+      return NextResponse.json({
+        error: cpfCadastro
+          ? 'O CPF do seu cadastro está inválido. Informe um CPF válido para cadastrar o cartão.'
+          : 'Para cadastrar o cartão, informe um CPF válido.',
+        precisa_cpf: true,
+      }, { status: 400 })
+    }
+
+    // Se o cadastro não tinha CPF válido e o cliente informou um agora, salva pra resolver de vez
+    if (!cpfValido(cpfCadastro) && cpfEfetivo === cpfInformado) {
+      await supabase.from('clientes').update({ cpf: cpfEfetivo }).eq('id', cliente.id)
+    }
+
     const telLimpo = (cliente.telefone || '').replace(/\D/g, '')
 
     let pagarmeCustomerId = cliente.pagarme_customer_id
@@ -59,7 +98,7 @@ export async function POST(req: NextRequest) {
         name: cliente.nome,
         email: cliente.email,
         type: 'individual',
-        document: cpfLimpo,
+        document: cpfEfetivo,
         document_type: 'CPF',
       }
 
@@ -87,7 +126,15 @@ export async function POST(req: NextRequest) {
           erro: customerData.message || 'Erro ao criar customer',
           request_payload: { customer: customerPayload }, response_payload: customerData, operado_por: user.id,
         })
-        return NextResponse.json({ error: 'Erro ao registrar cliente na operadora de cartão', detalhes: customerData.message }, { status: 400 })
+        // Mensagem por causa: se o erro é de documento, orienta sobre o CPF
+        const erroDocumento = !!customerData?.errors?.document
+        return NextResponse.json({
+          error: erroDocumento
+            ? 'Não foi possível validar seu CPF. Confira o número informado ou atualize seu cadastro com a recepção.'
+            : 'Erro ao registrar seus dados na operadora de cartão. Confira seus dados de cadastro ou tente novamente.',
+          detalhes: customerData.message,
+          precisa_cpf: erroDocumento,
+        }, { status: 400 })
       }
 
       pagarmeCustomerId = customerData.id
