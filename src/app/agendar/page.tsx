@@ -22,6 +22,12 @@ function dentroDaJanelaProximoMes(): boolean {
   return ultimoDiaMes - hoje.getDate() <= 7
 }
 
+// Converte um Date para "AAAA-MM-DD" usando componentes LOCAIS.
+// Evita o pulo de dia que o toISOString() causa após as 21h em SP (UTC-3).
+function dataLocalStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 const CONTRATO = `CONTRATO DE ADESÃO — COACH CT / JUST CT
 
 1. OBJETO
@@ -265,8 +271,8 @@ export default function AgendarPage() {
       const dataSel = diasSemana[diaSel]
       if (!dataSel) { setHorarios([]); setLoadingHorarios(false); return }
       const diaSem = dataSel.getDay()
-      const dataStr = dataSel.toISOString().split('T')[0]
-      const hoje = new Date().toISOString().split('T')[0]
+      const dataStr = dataLocalStr(dataSel)
+      const hoje = dataLocalStr(new Date())
       const agora = new Date()
       const horaAtual = `${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}`
       const isDiaDe = dataStr === hoje
@@ -408,14 +414,14 @@ export default function AgendarPage() {
   }
 
   function abrirModalReserva(hora: string, vagas: number) {
-    const dataStr = diasSemana[diaSel].toISOString().split('T')[0]
+    const dataStr = dataLocalStr(diasSemana[diaSel])
     setModalSlot({ data: dataStr, hora, vagas })
     setTipoCredito(''); setCoachEscolhido(''); setCoachesDisponiveis([]); setErroModal('')
     if (!contratoAssinado) setMostrarContrato(true)
   }
 
   function abrirModalFila(hora: string) {
-    const dataStr = diasSemana[diaSel].toISOString().split('T')[0]
+    const dataStr = dataLocalStr(diasSemana[diaSel])
     setModalFila({ data: dataStr, hora })
     setTipoFilaCredito(''); setErroFila(''); setFilaAceite(false)
     setNotifFila(cliente?.notificacao_preferida || 'whatsapp')
