@@ -25,6 +25,8 @@ export default function CadastrarCartaoPage() {
   const [cvv, setCvv] = useState('')
   const [mes, setMes] = useState('')
   const [ano, setAno] = useState('')
+  const [cpf, setCpf] = useState('')
+  const [mostrarCpf, setMostrarCpf] = useState(false)
 
   useEffect(() => {
     if (loadingAuth) return
@@ -58,6 +60,13 @@ export default function CadastrarCartaoPage() {
       .replace(/(\d{4})(\d)/, '$1 $2')
   }
 
+  function formatarCpf(v: string) {
+    return v.replace(/\D/g, '').slice(0, 11)
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d{1,2})$/, '$1-$2')
+  }
+
   async function salvar(e: React.FormEvent) {
     e.preventDefault()
     setErro('')
@@ -72,6 +81,9 @@ export default function CadastrarCartaoPage() {
     const anoAtual = new Date().getFullYear()
     if (anoNum < anoAtual || anoNum > anoAtual + 20) { setErro('Ano inválido.'); return }
     if (cvv.length < 3) { setErro('CVV inválido.'); return }
+
+    const cpfLimpo = cpf.replace(/\D/g, '')
+    if (mostrarCampoCpf && cpfLimpo.length !== 11) { setErro('Digite um CPF válido (11 dígitos).'); return }
 
     setSalvando(true)
 
@@ -95,6 +107,7 @@ export default function CadastrarCartaoPage() {
           cvv,
           mes,
           ano,
+          cpf: cpfLimpo,
         }),
       })
 
@@ -102,6 +115,7 @@ export default function CadastrarCartaoPage() {
 
       if (!res.ok) {
         setErro(data.error || 'Erro ao cadastrar cartão.')
+        if (data.precisa_cpf) setMostrarCpf(true)
         setSalvando(false)
         return
       }
@@ -115,6 +129,7 @@ export default function CadastrarCartaoPage() {
       setCvv('')
       setMes('')
       setAno('')
+      setCpf('')
     } catch (err) {
       setErro('Erro de conexão. Tente novamente.')
     }
@@ -132,6 +147,11 @@ export default function CadastrarCartaoPage() {
   }
 
   const cartaoSalvo = cliente?.pagarme_card_id && cliente?.pagarme_card_last4
+
+  // CPF: campo aparece só se o cadastro estiver sem CPF válido, ou se a API pedir (precisa_cpf)
+  const cpfCadastroLimpo = (cliente?.cpf || '').replace(/\D/g, '')
+  const semCpfCadastro = !!cliente && cpfCadastroLimpo.length !== 11
+  const mostrarCampoCpf = semCpfCadastro || mostrarCpf
 
   // Lógica de exibição após sucesso
   const pendenciasResolvidas = resultadoPendencias?.havia > 0 && resultadoPendencias?.cliente_desbloqueado
@@ -264,6 +284,18 @@ export default function CadastrarCartaoPage() {
           <div style={card}>
             <form onSubmit={salvar}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+
+                {/* CPF — aparece só quando o cadastro está sem CPF válido (ou a API pediu) */}
+                {mostrarCampoCpf && (
+                  <div>
+                    <label style={labelStyle}>CPF</label>
+                    <input style={inputStyle} type="text" inputMode="numeric" placeholder="000.000.000-00" value={cpf} onChange={e => setCpf(formatarCpf(e.target.value))} />
+                    <div style={{ fontSize: 12, color: '#888', marginTop: 6, lineHeight: 1.5 }}>
+                      Seu cadastro está sem CPF. Informe-o para validar o cartão.
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <label style={labelStyle}>Número do cartão</label>
                   <input style={inputStyle} type="text" inputMode="numeric" placeholder="0000 0000 0000 0000" value={numero} onChange={e => setNumero(formatarCartao(e.target.value))} />
