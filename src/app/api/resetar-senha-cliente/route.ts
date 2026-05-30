@@ -22,6 +22,24 @@ function gerarSenhaAleatoria(): string {
   return senha
 }
 
+// Busca o usuário de auth pelo email percorrendo TODAS as páginas.
+// O listUsts() padrão só traz a 1ª página (~50 contas) — quem está fora
+// dela não era encontrado, e a rota retornava "sucesso" sem enviar email.
+async function acharUsuarioAuthPorEmail(supabase: any, emailLimpo: string): Promise<any | null> {
+  const perPage = 1000
+  let page = 1
+  while (page <= 50) { // teto de segurança: 50.000 contas
+    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage })
+    if (error) throw error
+    const users: any[] = (data?.users as any[]) || []
+    const found = users.find((u: any) => String(u?.email || '').toLowerCase() === emailLimpo)
+    if (found) return found
+    if (users.length < perPage) return null // chegou na última página
+    page++
+  }
+  return null
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { email } = await req.json()
@@ -46,32 +64,46 @@ export async function POST(req: NextRequest) {
       { auth: { autoRefreshToken: false, persistSession: false } }
     )
 
-    // Busca o cliente pelo email para pegar o nome (para personalizar o email)
-    const { data: cliente } = await supabase
+    // Busca o(s) cliente(s) pelo email. Pode haver duplicidade (clientes legados),
+    // então não usamos .maybeSingle() — pegamos o que tiver user_id de preferência.
+    const { data: clientesMatch } = await supabase
       .from('clientes')
-      .select('id, nome, email')
+      .select('id, nome, email, user_id')
       .ilike('email', emailLimpo)
-      .maybeSingle()
+      .limit(5)
 
-    // Busca o usuário de auth correspondente ao email
-    const { data: listaUsers, error: errList } = await supabase.auth.admin.listUsers()
-    if (errList) {
-      return NextResponse.json({ error: 'Erro ao verificar email.' }, { status: 500 })
+    const clienteComUser =
+      (clientesMatch || []).find((c: any) => c.user_id) ||
+      (clientesMatch || [])[0] ||
+      null
+
+    // Descobre o id do usuário de auth.
+    // 1º) direto pela coluna clientes.user_id (canônica — preenchida pelo criar-acesso)
+    // 2º) fallback: varre todas as páginas do listUsers pelo email
+    let userId: string | null = clienteComUser?.user_id || null
+    let nomeParaEmail: string = String(clienteComUser?.nome || '')
+
+    if (!userId) {
+      const usuarioAuth = await acharUsuarioAuthPorEmail(supabase, emailLimpo)
+      if (usuarioAuth) {
+        userId = usuarioAuth.id
+        if (!nomeParaEmail) {
+          nomeParaEmail = String(usuarioAuth?.user_metadata?.nome || '')
+        }
+      }
     }
 
-    const usuarios: any[] = (listaUsers?.users as any[]) || []
-    const usuario = usuarios.find((u: any) => String(u?.email || '').toLowerCase() === emailLimpo)
-
     // Por segurança, sempre retorna sucesso mesmo se o email não existir
-    // (evita que alguém descubra quais emails estão cadastrados)
-    if (!usuario) {
+    // (evita que alguém descubra quais emails estão cadastrados).
+    // Agora isso só acontece após uma busca COMPLETA — usuário real sempre é achado.
+    if (!userId) {
       return NextResponse.json({ sucesso: true, email_enviado: true })
     }
 
     const senhaProvisoria = gerarSenhaAleatoria()
 
     // Redefine a senha do usuário existente
-    const { error: errUpdate } = await supabase.auth.admin.updateUserById(usuario.id, {
+    const { error: errUpdate } = await supabase.auth.admin.updateUserById(userId, {
       password: senhaProvisoria,
     })
 
@@ -81,7 +113,7 @@ export async function POST(req: NextRequest) {
       }, { status: 500 })
     }
 
-    const primeiroNome = String(cliente?.nome || '').split(' ')[0] || 'cliente'
+    const primeiroNome = nomeParaEmail.split(' ')[0] || 'cliente'
     const linkLogin = `${BASE_URL}/login`
 
     const html = `
