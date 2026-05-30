@@ -33,7 +33,7 @@ function CheckoutContent() {
   const [cliente, setCliente] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [etapa, setEtapa] = useState<Etapa>('auth')
-  const [metodo, setMetodo] = useState<MetodoPagamento>('pix')
+  const [metodo, setMetodo] = useState<MetodoPagamento>('cartao')
   const [parcelas, setParcelas] = useState(1)
   const [erro, setErro] = useState('')
 
@@ -453,7 +453,6 @@ function CheckoutContent() {
                 <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>Forma de pagamento</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {[
-                    { key: 'pix' as MetodoPagamento, label: 'PIX', icon: '⚡', desc: 'Aprovação imediata · sem taxas' },
                     { key: 'cartao' as MetodoPagamento, label: 'Cartão de crédito', icon: '💳', desc: maxParcelas > 1 ? `À vista ou em até ${maxParcelas}x` : 'À vista' },
                   ].map(m => (
                     <div key={m.key} onClick={() => { setMetodo(m.key); setParcelas(1); setErro('') }} className="metodo-card-h"
