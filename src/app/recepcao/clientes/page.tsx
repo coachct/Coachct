@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
 import { useRouter } from 'next/navigation'
-import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap, Gift, CalendarClock, Edit2 } from 'lucide-react'
+import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap, Gift, CalendarClock, Edit2, KeyRound, Copy } from 'lucide-react'
 import UnidadeSelector from '@/components/UnidadeSelector'
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
@@ -100,6 +100,12 @@ export default function RecepcaoClientesPage() {
   const [criando, setCriando] = useState(false)
   const [erroCriar, setErroCriar] = useState('')
 
+  // ── Gerar senha provisória ──
+  const [modalSenhaProvisoria, setModalSenhaProvisoria] = useState<{ nome: string; email: string | null; senha: string; acao: string } | null>(null)
+  const [gerandoSenha, setGerandoSenha] = useState(false)
+  const [erroGerarSenha, setErroGerarSenha] = useState('')
+  const [senhaCopiada, setSenhaCopiada] = useState(false)
+
   const [modalVenda, setModalVenda] = useState(false)
   const [produtosDisp, setProdutosDisp] = useState<any[]>([])
   const [formVenda, setFormVenda] = useState({
@@ -166,6 +172,7 @@ export default function RecepcaoClientesPage() {
     setVendas([])
     setModalSlot(null)
     setTipoCredito('')
+    setErroGerarSenha('')
     setDataSel(dataLocalStr(new Date()))
     await Promise.all([
       carregarSaldo(cliente.id),
@@ -424,6 +431,36 @@ export default function RecepcaoClientesPage() {
     setCriando(false)
   }
 
+  // ─── Gerar senha provisória (cria acesso se não houver, ou redefine) ───────
+  async function gerarSenhaProvisoria() {
+    if (!clienteSel) return
+    setGerandoSenha(true); setErroGerarSenha('')
+    try {
+      const { data: sessao } = await supabase.auth.getSession()
+      const token = sessao?.session?.access_token
+      if (!token) { setErroGerarSenha('Sessão expirada. Recarregue a página e entre novamente.'); setGerandoSenha(false); return }
+      const res = await fetch('/api/gerar-senha-provisoria', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ cliente_id: clienteSel.id }),
+      })
+      const result = await res.json()
+      if (!res.ok) { setErroGerarSenha(result.error || 'Erro ao gerar senha provisória.'); setGerandoSenha(false); return }
+      // Atualiza o cliente selecionado (ex.: passou a ter acesso)
+      const { data: cliAtualizado } = await supabase.from('clientes').select('*').eq('id', clienteSel.id).maybeSingle()
+      if (cliAtualizado) setClienteSel(cliAtualizado)
+      setSenhaCopiada(false)
+      setModalSenhaProvisoria({ nome: result.nome, email: result.email ?? null, senha: result.senha_provisoria, acao: result.acao })
+    } catch (e: any) { setErroGerarSenha('Erro: ' + (e.message || 'desconhecido')) }
+    finally { setGerandoSenha(false) }
+  }
+
+  async function copiarSenhaProvisoria() {
+    if (!modalSenhaProvisoria) return
+    try { await navigator.clipboard.writeText(modalSenhaProvisoria.senha); setSenhaCopiada(true); setTimeout(() => setSenhaCopiada(false), 3000) }
+    catch (e) { alert('Não foi possível copiar. Selecione e copie manualmente.') }
+  }
+
   async function abrirVenda() {
     if (!unidadeAtiva) return
     const { data } = await supabase.from('produtos').select('*').eq('ativo', true)
@@ -568,6 +605,8 @@ export default function RecepcaoClientesPage() {
   const valorOriginal = formVenda.quantidade * formVenda.valor_unitario
   const valorTotalComDesconto = valorOriginal * (1 - formVenda.desconto_percentual / 100)
   const ehAcesso = produtoSelecionado?.subtipo === 'acesso'
+
+  const clienteTemAcesso = !!clienteSel?.user_id
 
   // Club: datas rápidas
   const dataHoje = dataLocalStr(new Date())
@@ -809,6 +848,16 @@ export default function RecepcaoClientesPage() {
                         )}
                       </div>
                     ))}
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t border-gray-100">
+                    <button onClick={gerarSenhaProvisoria} disabled={gerandoSenha} className="btn btn-sm gap-1 bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50">
+                      <KeyRound size={12} /> {gerandoSenha ? 'Gerando...' : 'Gerar senha provisória'}
+                    </button>
+                    <div className="text-xs text-gray-400 mt-2 leading-relaxed">
+                      Gera uma senha na hora para passar ao cliente (quando o email não chega). {clienteTemAcesso ? 'Redefine a senha atual do cliente.' : 'Cria o acesso — precisa de email cadastrado.'}
+                    </div>
+                    {erroGerarSenha && <div className="bg-red-50 border border-red-200 rounded-lg p-2 mt-2 text-xs text-red-700">{erroGerarSenha}</div>}
                   </div>
                 </div>
               </div>
@@ -1506,6 +1555,30 @@ export default function RecepcaoClientesPage() {
                 {criando?'Cadastrando...':'Cadastrar'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL Senha provisória ─── */}
+      {modalSenhaProvisoria && (
+        <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="font-bold text-gray-900 flex items-center gap-2"><KeyRound size={18} className="text-primary-600" /> {modalSenhaProvisoria.acao === 'senha_redefinida' ? 'Senha redefinida' : 'Acesso criado'}</div>
+              <button onClick={() => setModalSenhaProvisoria(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs text-blue-800 leading-relaxed">
+              Passe esta senha provisória para <strong>{modalSenhaProvisoria.nome}</strong>. O cliente entra com ela e depois troca em <strong>Minha Conta &rarr; Alterar senha</strong>.
+            </div>
+            <div className="bg-gray-900 rounded-xl p-4 mb-3">
+              <div className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-2">Senha provisória</div>
+              <div className="font-mono text-2xl text-primary-300 font-bold tracking-wider mb-2 break-all">{modalSenhaProvisoria.senha}</div>
+              {modalSenhaProvisoria.email && <div className="text-xs text-gray-400">Email: <span className="text-white font-mono">{modalSenhaProvisoria.email}</span></div>}
+            </div>
+            <button onClick={copiarSenhaProvisoria} className={`w-full btn gap-1 mb-2 ${senhaCopiada ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+              {senhaCopiada ? <><Check size={14} /> Copiada!</> : <><Copy size={14} /> Copiar senha</>}
+            </button>
+            <button onClick={() => setModalSenhaProvisoria(null)} className="w-full btn bg-primary-600 text-white hover:bg-primary-700">Entendi</button>
           </div>
         </div>
       )}
