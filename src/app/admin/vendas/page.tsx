@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ShoppingBag, CreditCard, Zap, CheckCircle, XCircle, Clock, Banknote, Store, Globe } from 'lucide-react'
+import { ShoppingBag, CreditCard, Zap, CheckCircle, XCircle, Clock, Banknote, Store, Globe, Trash2 } from 'lucide-react'
 
 type VendaUnificada = {
   id: string
@@ -87,6 +87,7 @@ export default function AdminVendasPage() {
     let qOnline = supabase
       .from('pagamentos_pendentes')
       .select('*, clientes(nome, email), produtos(nome, subtipo)')
+      .is('excluido_em', null)
       .order('created_at', { ascending: false })
       .limit(200)
     if (inicio) qOnline = qOnline.gte('created_at', inicio.toISOString())
@@ -98,6 +99,7 @@ export default function AdminVendasPage() {
     let qBalcao = supabase
       .from('vendas')
       .select('*')
+      .is('excluido_em', null)
       .order('vendido_em', { ascending: false })
       .limit(200)
     if (inicio) qBalcao = qBalcao.gte('vendido_em', inicio.toISOString())
@@ -170,6 +172,25 @@ export default function AdminVendasPage() {
 
     setVendas(unificado)
     setLoadingData(false)
+  }
+
+  async function excluirVenda(v: VendaUnificada) {
+    if (!confirm(
+      `Excluir a venda de ${v.cliente_nome} (${formatarValor(v.valor_total)})?\n\n` +
+      `Ela sai da lista e da soma. Não estorna créditos/plano já gerados.`
+    )) return
+
+    const tabela = v.origem === 'site' ? 'pagamentos_pendentes' : 'vendas'
+    const { error } = await supabase
+      .from(tabela)
+      .update({ excluido_em: new Date().toISOString(), excluido_por: perfil?.id })
+      .eq('id', v.id)
+
+    if (error) {
+      alert('Não foi possível excluir: ' + error.message)
+      return
+    }
+    setVendas(prev => prev.filter(x => x.id !== v.id))
   }
 
   function formatarValor(v: number) {
@@ -381,6 +402,13 @@ export default function AdminVendasPage() {
                       <div className="text-xs text-gray-400">{v.cliente_email}</div>
                     )}
                   </div>
+                  <button
+                    onClick={() => excluirVenda(v)}
+                    title="Excluir venda"
+                    className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-gray-300 hover:text-red-600 hover:bg-red-50 transition-colors"
+                  >
+                    <Trash2 size={15} />
+                  </button>
                 </div>
               )
             })}
