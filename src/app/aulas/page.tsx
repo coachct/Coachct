@@ -33,6 +33,7 @@ function parsePlanoKey(key: string): { label: string; icon: string } {
   const lower = (key||'').toLowerCase()
   if (lower.startsWith('wellhub'))    return { label: 'Wellhub',       icon: '💜' }
   if (lower.startsWith('totalpass')) return { label: 'TotalPass',     icon: '🔵' }
+  if (lower === 'avulso_importado') return { label: 'Crédito Avulso · todos os Clubs', icon: '🎟️' }
   if (lower.startsWith('avulso') || lower.startsWith('credito')) return { label: 'Crédito Avulso', icon: '🎟️' }
   return { label: key, icon: '🏋️' }
 }
