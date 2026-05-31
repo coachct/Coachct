@@ -1,9 +1,10 @@
 'use client'
+
 import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
-import { Calendar, Users, LogOut, Map } from 'lucide-react'
+import { Calendar, Users, LogOut, Map, Dumbbell } from 'lucide-react'
 
 const ACCENT = '#ff2d9b'
 const CYAN   = '#00e5ff'
@@ -73,8 +74,9 @@ export default function SidebarRecepcao() {
       <nav style={{ flex:1, padding:'16px 10px', display:'flex', flexDirection:'column', gap:4 }}>
         {tipo === 'ct' && (
           <>
-            <NavItem href="/recepcao/agenda"    label="Agenda"   icon={Calendar} cor={CYAN}   />
-            <NavItem href="/recepcao/clientes"  label="Clientes" icon={Users}    cor={ACCENT} />
+            <NavItem href="/recepcao/agenda"           label="Agenda"           icon={Calendar} cor={CYAN}   />
+            <NavItem href="/recepcao/clientes"         label="Clientes"         icon={Users}    cor={ACCENT} />
+            <NavItem href="/recepcao/musculacao-livre" label="Musculação Livre" icon={Dumbbell} cor={VERDE}  />
           </>
         )}
         {tipo === 'club' && (
