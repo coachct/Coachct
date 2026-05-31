@@ -132,12 +132,22 @@ export default function RecepcaoClubDetalhe() {
       .channel(`recepcao_club_oc_${ocId}`)
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'club_reservas', filter: `ocorrencia_id=eq.${ocId}` },
-        () => carregarDados())
+        () => carregarDados(true))
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'club_ocorrencias', filter: `id=eq.${ocId}` },
-        () => carregarDados())
+        () => carregarDados(true))
       .subscribe()
     return () => { supabase.removeChannel(canal) }
+  }, [ocId])
+
+  // Rede de segurança: rebusca silenciosa a cada 10s (só com a aba visível) e ao focar a aba.
+  // Garante sincronizar mesmo se o realtime falhar/cair no aparelho (ex.: INSERT de walk-in).
+  useEffect(() => {
+    if (!ocId) return
+    const tick = () => { if (document.visibilityState === 'visible') carregarDados(true) }
+    const intervalo = setInterval(tick, 10000)
+    document.addEventListener('visibilitychange', tick)
+    return () => { clearInterval(intervalo); document.removeEventListener('visibilitychange', tick) }
   }, [ocId])
 
   // Carrega aulas vizinhas do mesmo dia/unidade para navegar (‹ / ›)
@@ -161,8 +171,8 @@ export default function RecepcaoClubDetalhe() {
     setNavNext(idx >= 0 && idx < ordenadas.length - 1 ? ordenadas[idx + 1].id : null)
   }
 
-  async function carregarDados() {
-    setLoadingData(true)
+  async function carregarDados(silent = false) {
+    if (!silent) setLoadingData(true)
     // Inclui coach_escalado (FK coach_id da ocorrência) — prioridade sobre o coach da grade
     const { data: oc } = await supabase
       .from('club_ocorrencias')
@@ -196,7 +206,7 @@ export default function RecepcaoClubDetalhe() {
         .eq('ativo', true).order('tipo').order('numero')
       setPosicoes(pos || [])
     }
-    setLoadingData(false)
+    if (!silent) setLoadingData(false)
   }
 
   const hoje     = dataLocalStr(new Date())
