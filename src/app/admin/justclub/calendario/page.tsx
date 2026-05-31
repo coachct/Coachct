@@ -117,7 +117,12 @@ export default function AdminCalendarioClubPage() {
 
   return (
     <div style={{ padding:'2rem', fontFamily:"'DM Sans', sans-serif", maxWidth:900 }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');`}</style>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+        @media (max-width: 640px) {
+          .aula-card { flex-wrap: wrap; gap: 0.85rem !important; padding: 1.1rem 1.15rem !important; }
+          .aula-stats { width: 100%; justify-content: space-between; gap: 0 !important; }
+        }
+      `}</style>
 
       {/* Header */}
       <div style={{ marginBottom:'1.5rem' }}>
@@ -181,6 +186,7 @@ export default function AdminCalendarioClubPage() {
 
             return (
               <div key={oc.id}
+                className="aula-card"
                 onClick={() => router.push(`/admin/justclub/calendario/${oc.id}`)}
                 style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:16,
                   padding:'1.25rem 1.5rem', cursor:'pointer', transition:'all .15s',
@@ -209,7 +215,7 @@ export default function AdminCalendarioClubPage() {
                   </div>
                 </div>
 
-                <div style={{ display:'flex', gap:'1.5rem', flexShrink:0, alignItems:'center' }}>
+                <div className="aula-stats" style={{ display:'flex', gap:'1.5rem', flexShrink:0, alignItems:'center' }}>
                   <div style={{ textAlign:'center' }}>
                     <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:28, color:'#111', lineHeight:1 }}>{total}</div>
                     <div style={{ fontSize:10, color:'#aaa', textTransform:'uppercase', letterSpacing:0.5 }}>reservas</div>
