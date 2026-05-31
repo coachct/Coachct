@@ -1,3 +1,4 @@
+'use client'
 import SidebarLayout from '@/components/layout/SidebarLayout'
 import { Dumbbell, Footprints, Users, ShoppingCart, BarChart3, UserCog, BookOpen, Settings } from 'lucide-react'
 
