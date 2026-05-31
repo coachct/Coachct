@@ -119,14 +119,20 @@ export default function RecepcaoAgendaPage() {
     const escalaFds = ehFds || !!feriado
     setUsaEscalaFds(escalaFds)
     if (escalaFds) {
-      // FDS/feriado: lê a escala do dia já com o nome do coach (mesmo join usado no coach_horarios).
+      // FDS/feriado: a escala vem do escala_fds. ATENÇÃO: escala_fds.coach_id guarda o
+      // user_id do coach, não o coaches.id — por isso a busca em coaches é por user_id.
       const { data: esc } = await supabase.from('escala_fds')
-        .select('coach_id, coaches(id, nome)')
+        .select('coach_id')
         .eq('unidade_id', unidadeAtiva.id)
         .eq('data', data)
-      const coachesEscala = (esc || [])
-        .filter((e: any) => e.coaches)
-        .map((e: any) => ({ coaches: { id: e.coaches.id, nome: e.coaches.nome } }))
+      const userIds = Array.from(new Set((esc || []).map((e: any) => e.coach_id).filter(Boolean)))
+      let coachesEscala: any[] = []
+      if (userIds.length > 0) {
+        const { data: cs } = await supabase.from('coaches')
+          .select('id, nome')
+          .in('user_id', userIds)
+        coachesEscala = (cs || []).map((c: any) => ({ coaches: { id: c.id, nome: c.nome } }))
+      }
       setCoachesFds(coachesEscala)
     } else {
       setCoachesFds([])
