@@ -55,6 +55,20 @@ export default function RecepcaoClubPage() {
     if (unidadeSel) carregarOcorrencias()
   }, [unidadeSel, dataSel])
 
+  // Realtime: recarrega os contadores do dia quando reservas/ocorrências mudam
+  // (sem filtro de dia no servidor — refaz a busca do dia selecionado, com pequeno debounce)
+  useEffect(() => {
+    if (!unidadeSel) return
+    let t: any = null
+    const recarregar = () => { clearTimeout(t); t = setTimeout(() => carregarOcorrencias(), 250) }
+    const canal = supabase
+      .channel(`recepcao_club_lista_${unidadeSel.id}_${dataSel}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'club_reservas' }, recarregar)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'club_ocorrencias' }, recarregar)
+      .subscribe()
+    return () => { clearTimeout(t); supabase.removeChannel(canal) }
+  }, [unidadeSel?.id, dataSel])
+
   async function carregarUnidades() {
     const { data: pu } = await supabase
       .from('perfil_unidades')
@@ -199,11 +213,12 @@ export default function RecepcaoClubPage() {
                 const nomeCoach = primeiroNomeCoachOc(oc)
 
                 return (
-                  <div key={oc.id}
+                  <button key={oc.id} type="button"
                     onClick={() => router.push(`/recepcao/club/${oc.id}`)}
                     style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:16,
                       padding:'1.25rem 1.5rem', cursor:'pointer', transition:'all .15s',
-                      display:'flex', alignItems:'center', gap:'1.5rem' }}
+                      display:'flex', alignItems:'center', gap:'1.5rem',
+                      width:'100%', textAlign:'left', font:'inherit', appearance:'none', WebkitAppearance:'none' }}
                     onMouseEnter={e => (e.currentTarget.style.borderColor = cor)}
                     onMouseLeave={e => (e.currentTarget.style.borderColor = '#e5e7eb')}>
                     <div style={{ fontFamily:"'DM Mono', monospace", fontSize:24, fontWeight:700,
@@ -242,7 +257,7 @@ export default function RecepcaoClubPage() {
                       </div>
                       <div style={{ fontSize:18, color:'#ccc' }}>›</div>
                     </div>
-                  </div>
+                  </button>
                 )
               })}
             </div>
