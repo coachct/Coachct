@@ -521,7 +521,13 @@ export default function RecepcaoClubDetalhe() {
 
   return (
     <div style={{ padding:'2rem', fontFamily:"'DM Sans', sans-serif", maxWidth:900 }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');`}</style>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+        @media (max-width: 640px) {
+          .aluno-row { flex-wrap: wrap !important; }
+          .aluno-acoes { display: flex !important; width: 100%; align-items: center; justify-content: flex-end; gap: 0.55rem; }
+          .aluno-acoes > div:first-child { margin-right: auto; }
+        }
+      `}</style>
 
       {/* Header */}
       <div style={{ display:'flex', alignItems:'center', gap:'1rem', marginBottom:'1.5rem' }}>
@@ -709,7 +715,7 @@ export default function RecepcaoClubDetalhe() {
               const isReservado = r.status === 'reservado'
 
               return (
-                <div key={r.id} style={{ display:'flex', alignItems:'center', gap:'1rem', padding:'0.85rem 1.5rem',
+                <div key={r.id} className="aluno-row" style={{ display:'flex', alignItems:'center', gap:'1rem', padding:'0.85rem 1.5rem',
                   borderBottom: i < reservas.length - 1 ? '1px solid #f3f4f6' : 'none',
                   background: isPresente ? '#f0fdf4' : isFalta ? '#fff5f5' : '#fff' }}>
                   <div style={{ width:28, height:28, borderRadius:'50%', background:'#f3f4f6',
@@ -731,6 +737,7 @@ export default function RecepcaoClubDetalhe() {
                       )}
                     </div>
                   </div>
+                  <div className="aluno-acoes" style={{ display:'contents' }}>
                   <div style={{ flexShrink:0, marginRight:4 }}>
                     {isPresente  && <span style={{ fontSize:11, fontWeight:700, color:VERDE }}>✓ PRESENTE</span>}
                     {isFalta     && <span style={{ fontSize:11, fontWeight:700, color:VERMELHO }}>✗ FALTA</span>}
@@ -777,6 +784,7 @@ export default function RecepcaoClubDetalhe() {
                     cursor:'pointer', flexShrink:0, fontFamily:"'DM Sans', sans-serif" }}>
                     Cancelar
                   </button>
+                  </div>
 
                 </div>
               )
