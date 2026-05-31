@@ -106,15 +106,60 @@ export default function RecepcaoClubDetalhe() {
   const [vagasBloqueadas, setVagasBloqueadas] = useState(0)
   const [salvandoVagas,   setSalvandoVagas]   = useState(false)
 
+  // Navegação entre aulas do dia (‹ anterior / próxima ›)
+  const [navPrev, setNavPrev] = useState<string | null>(null)
+  const [navNext, setNavNext] = useState<string | null>(null)
+
   const isRunning = ocorrencia?.club_aulas?.tipo === 'running_funcional'
 
-  useEffect(() => { if (ocId) carregarDados() }, [ocId])
+  useEffect(() => {
+    if (!ocId) return
+    carregarDados()
+    // Ao trocar de aula (‹ / ›), limpa o estado de walk-in/troca da aula anterior
+    resetWalkin(); setTrocandoReserva(null); setBuscaTexto(''); setResultados([])
+  }, [ocId])
 
   // Busca instantânea de cliente no walk-in (nome, CPF, email ou telefone)
   useEffect(() => {
     if (buscaTexto.trim().length >= 2) buscarCliente()
     else setResultados([])
   }, [buscaTexto])
+
+  // Realtime: recarrega quando reservas/ocorrência mudam em qualquer tablet
+  useEffect(() => {
+    if (!ocId) return
+    const canal = supabase
+      .channel(`recepcao_club_oc_${ocId}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'club_reservas', filter: `ocorrencia_id=eq.${ocId}` },
+        () => carregarDados())
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'club_ocorrencias', filter: `id=eq.${ocId}` },
+        () => carregarDados())
+      .subscribe()
+    return () => { supabase.removeChannel(canal) }
+  }, [ocId])
+
+  // Carrega aulas vizinhas do mesmo dia/unidade para navegar (‹ / ›)
+  useEffect(() => {
+    if (ocorrencia?.id && ocorrencia?.club_aulas?.unidade_id && ocorrencia?.data) carregarVizinhos()
+  }, [ocorrencia?.id])
+
+  async function carregarVizinhos() {
+    const uid = ocorrencia.club_aulas.unidade_id
+    const { data: aulasIds } = await supabase.from('club_aulas').select('id')
+      .eq('unidade_id', uid).eq('ativo', true)
+    const ids = (aulasIds || []).map((a: any) => a.id)
+    if (!ids.length) { setNavPrev(null); setNavNext(null); return }
+    const { data: ocs } = await supabase.from('club_ocorrencias')
+      .select('id, club_aulas(horario)')
+      .in('aula_id', ids).eq('data', ocorrencia.data).eq('status', 'ativa')
+    const ordenadas = (ocs || []).sort((a: any, b: any) =>
+      (a.club_aulas?.horario || '').localeCompare(b.club_aulas?.horario || ''))
+    const idx = ordenadas.findIndex((o: any) => o.id === ocorrencia.id)
+    setNavPrev(idx > 0 ? ordenadas[idx - 1].id : null)
+    setNavNext(idx >= 0 && idx < ordenadas.length - 1 ? ordenadas[idx + 1].id : null)
+  }
 
   async function carregarDados() {
     setLoadingData(true)
@@ -555,6 +600,24 @@ export default function RecepcaoClubDetalhe() {
             {' · '}
             {ocorrencia?.data ? new Date(ocorrencia.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'}) : ''}
           </div>
+        </div>
+
+        {/* Navegação entre aulas do dia */}
+        <div style={{ display:'flex', gap:8, flexShrink:0 }}>
+          <button onClick={() => navPrev && router.push(`/recepcao/club/${navPrev}`)} disabled={!navPrev}
+            title="Aula anterior"
+            style={{ background:'#f3f4f6', border:'none', borderRadius:8, padding:'0.55rem 0.9rem',
+              cursor: navPrev ? 'pointer' : 'default', opacity: navPrev ? 1 : 0.4,
+              fontSize:13, fontWeight:600, color:'#555', fontFamily:"'DM Sans', sans-serif", whiteSpace:'nowrap' }}>
+            ‹ Anterior
+          </button>
+          <button onClick={() => navNext && router.push(`/recepcao/club/${navNext}`)} disabled={!navNext}
+            title="Próxima aula"
+            style={{ background:'#f3f4f6', border:'none', borderRadius:8, padding:'0.55rem 0.9rem',
+              cursor: navNext ? 'pointer' : 'default', opacity: navNext ? 1 : 0.4,
+              fontSize:13, fontWeight:600, color:'#555', fontFamily:"'DM Sans', sans-serif", whiteSpace:'nowrap' }}>
+            Próxima ›
+          </button>
         </div>
       </div>
 
