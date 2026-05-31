@@ -29,7 +29,10 @@ export default function RecepcaoMusculacaoLivrePage() {
   const [clientes, setClientes] = useState<any[]>([])
   const [totalEncontrados, setTotalEncontrados] = useState(0)
   const [loadingClientes, setLoadingClientes] = useState(false)
-  const [registrandoId, setRegistrandoId] = useState<string | null>(null)
+
+  // Confirmação
+  const [clienteConfirmar, setClienteConfirmar] = useState<any>(null)
+  const [registrando, setRegistrando] = useState(false)
   const [erro, setErro] = useState('')
 
   // ─── Guarda de acesso (recepção/admin) ───
@@ -95,21 +98,24 @@ export default function RecepcaoMusculacaoLivrePage() {
     setBusca('')
     setClientes([])
     setTotalEncontrados(0)
+    setClienteConfirmar(null)
     setErro('')
   }
 
-  async function registrar(cliente: any) {
-    setRegistrandoId(cliente.id)
+  async function confirmarRegistro() {
+    if (!clienteConfirmar) return
+    setRegistrando(true)
     setErro('')
-    const { error } = await supabase.rpc('registrar_acesso_livre_ct', { p_cliente_id: cliente.id })
-    setRegistrandoId(null)
+    const { error } = await supabase.rpc('registrar_acesso_livre_ct', { p_cliente_id: clienteConfirmar.id })
+    setRegistrando(false)
     if (error) {
       const msg = error.message || ''
-      if (msg.includes('SEM_CREDITO')) setErro(`${cliente.nome} está sem saldo avulso disponível.`)
+      if (msg.includes('SEM_CREDITO')) setErro(`${clienteConfirmar.nome} está sem saldo avulso disponível.`)
       else if (msg.includes('NAO_AUTORIZADO')) setErro('Você não tem permissão para registrar.')
       else setErro('Erro ao registrar: ' + msg)
       return
     }
+    setClienteConfirmar(null)
     setModalAberto(false)
     await carregarAcessos()
   }
@@ -182,7 +188,7 @@ export default function RecepcaoMusculacaoLivrePage() {
         )}
       </div>
 
-      {/* ─── MODAL Registrar walk-in ─── */}
+      {/* ─── MODAL Registrar walk-in (busca) ─── */}
       {modalAberto && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
@@ -202,12 +208,6 @@ export default function RecepcaoMusculacaoLivrePage() {
                 value={busca} onChange={e => setBusca(e.target.value)} autoFocus />
             </div>
 
-            {erro && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-sm text-red-600 flex items-start gap-2">
-                <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />{erro}
-              </div>
-            )}
-
             {busca.trim().length < 2 ? (
               <div className="text-center py-10">
                 <Search size={28} className="mx-auto text-gray-200 mb-2" />
@@ -226,8 +226,8 @@ export default function RecepcaoMusculacaoLivrePage() {
             ) : (
               <div className="space-y-2">
                 {clientes.map(c => (
-                  <button key={c.id} onClick={() => registrar(c)} disabled={registrandoId === c.id}
-                    className="w-full card flex items-center gap-3 text-left hover:border-emerald-300 transition-all disabled:opacity-60">
+                  <button key={c.id} onClick={() => { setClienteConfirmar(c); setErro('') }}
+                    className="w-full card flex items-center gap-3 text-left hover:border-emerald-300 transition-all">
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-700 text-white text-sm font-bold flex items-center justify-center flex-shrink-0">
                       {c.nome?.slice(0,2).toUpperCase()}
                     </div>
@@ -240,13 +240,59 @@ export default function RecepcaoMusculacaoLivrePage() {
                         </span>
                       </div>
                     </div>
-                    {registrandoId === c.id
-                      ? <div className="w-5 h-5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-                      : <ChevronRight size={14} className="text-gray-300 flex-shrink-0" />}
+                    <ChevronRight size={14} className="text-gray-300 flex-shrink-0" />
                   </button>
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL Confirmação ─── */}
+      {clienteConfirmar && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-end sm:items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="font-bold text-gray-900 flex items-center gap-2">
+                <Dumbbell size={18} className="text-emerald-600" /> Confirmar walk-in
+              </div>
+              <button onClick={() => { setClienteConfirmar(null); setErro('') }} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-4 flex items-center gap-3">
+              <div className="w-11 h-11 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 text-white text-sm font-bold flex items-center justify-center flex-shrink-0">
+                {clienteConfirmar.nome?.slice(0,2).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-gray-900 truncate">{clienteConfirmar.nome}</div>
+                <div className="text-xs text-gray-500 mt-0.5">
+                  {clienteConfirmar.cpf && <span className="font-mono">{clienteConfirmar.cpf}</span>}
+                  <span className="ml-1 text-emerald-600 font-medium">
+                    · {clienteConfirmar.saldo} crédito{clienteConfirmar.saldo !== 1 ? 's' : ''} disponível{clienteConfirmar.saldo !== 1 ? 'eis' : ''}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="text-sm text-gray-600 mb-4">
+              Registrar a entrada de <strong>{clienteConfirmar.nome}</strong> hoje? Isso <strong>desconta 1 crédito avulso</strong>.
+            </div>
+
+            {erro && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-sm text-red-600 flex items-start gap-2">
+                <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />{erro}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button onClick={() => { setClienteConfirmar(null); setErro('') }} disabled={registrando}
+                className="btn flex-1 text-gray-500 border border-gray-200">Cancelar</button>
+              <button onClick={confirmarRegistro} disabled={registrando}
+                className="btn flex-1 gap-1 bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60">
+                <Check size={14} /> {registrando ? 'Registrando...' : 'Confirmar'}
+              </button>
+            </div>
           </div>
         </div>
       )}
