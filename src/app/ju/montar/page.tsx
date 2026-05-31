@@ -122,6 +122,12 @@ export default function JuMontarPage() {
     setExExpandido(null)
   }
 
+  function fecharEdicao() {
+    setEditandoId(null)
+    setExsEdit([])
+    setExExpandido(null)
+  }
+
   async function salvarEdicao() {
     if (!editandoId) return
     setSaving(true)
@@ -467,7 +473,7 @@ export default function JuMontarPage() {
               <div key={t.id}>
                 <div
                   className={`card p-3 cursor-pointer transition-all ${editandoId === t.id ? 'border-primary-400 ring-1 ring-primary-200' : 'hover:border-gray-200'}`}
-                  onClick={() => abrirEdicao(t)}>
+                  onClick={() => editandoId === t.id ? fecharEdicao() : abrirEdicao(t)}>
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-sm text-gray-900 truncate">{t.nome}</div>
