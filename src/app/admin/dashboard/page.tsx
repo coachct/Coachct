@@ -24,6 +24,16 @@ function tipoLabelClub(t: string) {
   return t || '—'
 }
 
+// Rótulo curto da unidade para os cards do header (CT / Club VO / Club PI)
+function labelCurtoUnidade(u: { nome: string; tipo: string }) {
+  if (u.tipo === 'ct') return 'CT'
+  const n = (u.nome || '').toLowerCase()
+  if (n.includes('olím') || n.includes('olim') || n.includes('vila')) return 'Club VO'
+  if (n.includes('pinhe') || n.includes('pinh')) return 'Club PI'
+  return u.nome
+}
+const ORDEM_UNIDADES = ['CT', 'Club VO', 'Club PI']
+
 export default function AdminDashboard() {
   const [coaches, setCoaches] = useState<Coach[]>([])
   const [aulas, setAulas] = useState<Aula[]>([])
@@ -222,6 +232,9 @@ export default function AdminDashboard() {
 
   const unidadeAtual = unidades.find(u => u.id === unidadeSelecionada)
   const isClub = unidadeAtual?.tipo === 'club'
+  const unidadesOrdenadas = [...unidades].sort(
+    (a, b) => ORDEM_UNIDADES.indexOf(labelCurtoUnidade(a)) - ORDEM_UNIDADES.indexOf(labelCurtoUnidade(b))
+  )
 
   return (
     <div>
@@ -229,17 +242,23 @@ export default function AdminDashboard() {
       <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
         <PageHeader title="Dashboard" subtitle={mesNome.charAt(0).toUpperCase() + mesNome.slice(1)} />
         {unidades.length > 0 && (
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Unidade</label>
-            <select
-              value={unidadeSelecionada}
-              onChange={(e) => setUnidadeSelecionada(e.target.value)}
-              className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400"
-            >
-              {unidades.map(u => (
-                <option key={u.id} value={u.id}>{u.nome}</option>
-              ))}
-            </select>
+          <div className="flex gap-2 flex-wrap">
+            {unidadesOrdenadas.map(u => {
+              const ativo = unidadeSelecionada === u.id
+              return (
+                <button
+                  key={u.id}
+                  onClick={() => setUnidadeSelecionada(u.id)}
+                  className={`px-5 py-2.5 rounded-xl border text-sm font-semibold transition-colors ${
+                    ativo
+                      ? 'bg-primary-500 text-white border-primary-500 shadow-sm'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300 hover:text-primary-700'
+                  }`}
+                >
+                  {labelCurtoUnidade(u)}
+                </button>
+              )
+            })}
           </div>
         )}
       </div>
