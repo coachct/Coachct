@@ -495,41 +495,46 @@ export default function RecepcaoAgendaPage() {
                             </div>
                           </div>
 
-                          {ag.status !== 'realizado' && ag.status !== 'falta' && (
-                            <div className="mt-3 flex flex-wrap gap-2">
-                              {!ag.coach_id && coachesLivres.length > 0 && (
-                                <select className="input input-sm text-xs flex-1" defaultValue=""
-                                  onChange={e => { if (e.target.value) alocarCoach(ag.id, e.target.value) }}
-                                  disabled={alocandoId === ag.id}>
-                                  <option value="">Alocar coach...</option>
-                                  {coachesLivres.map(c => (
-                                    <option key={c.coaches?.id} value={c.coaches?.id}>{c.coaches?.nome}</option>
-                                  ))}
-                                </select>
-                              )}
-                              {ag.coach_id && (
-                                <select className="input input-sm text-xs flex-1" value={ag.coach_id}
-                                  onChange={e => alocarCoach(ag.id, e.target.value)}
-                                  disabled={alocandoId === ag.id}>
-                                  {coachesHorario.map(c => (
-                                    <option key={c.coaches?.id} value={c.coaches?.id}>{c.coaches?.nome}</option>
-                                  ))}
-                                </select>
-                              )}
-                              <button onClick={() => marcarPresenca(ag.id)}
-                                className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
-                                <CheckCircle size={12} /> Presença
-                              </button>
-                              <button onClick={() => marcarFalta(ag.id)}
-                                className="btn btn-sm gap-1 text-orange-600 hover:bg-orange-50">
-                                <XCircle size={12} /> Falta
-                              </button>
-                              <button onClick={() => cancelarAgendamento(ag.id)}
-                                className="btn btn-sm text-red-400 hover:bg-red-50">
-                                Cancelar
-                              </button>
-                            </div>
-                          )}
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {/* Seletor de coach — sempre disponível, inclusive após Presença/Falta */}
+                            {!ag.coach_id && coachesLivres.length > 0 && (
+                              <select className="input input-sm text-xs flex-1" defaultValue=""
+                                onChange={e => { if (e.target.value) alocarCoach(ag.id, e.target.value) }}
+                                disabled={alocandoId === ag.id}>
+                                <option value="">Alocar coach...</option>
+                                {coachesLivres.map(c => (
+                                  <option key={c.coaches?.id} value={c.coaches?.id}>{c.coaches?.nome}</option>
+                                ))}
+                              </select>
+                            )}
+                            {ag.coach_id && (
+                              <select className="input input-sm text-xs flex-1" value={ag.coach_id}
+                                onChange={e => alocarCoach(ag.id, e.target.value)}
+                                disabled={alocandoId === ag.id}>
+                                {coachesHorario.map(c => (
+                                  <option key={c.coaches?.id} value={c.coaches?.id}>{c.coaches?.nome}</option>
+                                ))}
+                              </select>
+                            )}
+
+                            {/* Presença / Falta / Cancelar — só enquanto não realizado/falta */}
+                            {ag.status !== 'realizado' && ag.status !== 'falta' && (
+                              <>
+                                <button onClick={() => marcarPresenca(ag.id)}
+                                  className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
+                                  <CheckCircle size={12} /> Presença
+                                </button>
+                                <button onClick={() => marcarFalta(ag.id)}
+                                  className="btn btn-sm gap-1 text-orange-600 hover:bg-orange-50">
+                                  <XCircle size={12} /> Falta
+                                </button>
+                                <button onClick={() => cancelarAgendamento(ag.id)}
+                                  className="btn btn-sm text-red-400 hover:bg-red-50">
+                                  Cancelar
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </div>
                       )
                     })}
