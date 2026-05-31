@@ -710,7 +710,11 @@ function DashboardClub({ unidadeId, unidadeNome }: { unidadeId: string; unidadeN
               {detalhe.aulas.map((a: any) => {
                 const pct = a.capacidade > 0 ? Math.round((a.reservas / a.capacidade) * 100) : 0
                 return (
-                  <div key={a.id} className="flex items-center gap-3 px-4 py-3 rounded-xl border bg-gray-50 border-gray-100">
+                  <Link
+                    key={a.id}
+                    href={`/admin/justclub/calendario/${a.id}`}
+                    className="flex items-center gap-3 px-4 py-3 rounded-xl border bg-gray-50 border-gray-100 hover:bg-gray-100 hover:border-gray-200 transition-colors cursor-pointer"
+                  >
                     <div className="text-center flex-shrink-0 w-14">
                       <div className="text-sm font-bold text-gray-700">{a.horario}</div>
                     </div>
@@ -736,7 +740,7 @@ function DashboardClub({ unidadeId, unidadeNome }: { unidadeId: string; unidadeN
                         />
                       </div>
                     </div>
-                  </div>
+                  </Link>
                 )
               })}
             </div>
