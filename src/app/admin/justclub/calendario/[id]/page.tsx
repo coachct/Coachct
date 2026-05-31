@@ -154,12 +154,13 @@ export default function RecepcaoClubDetalhe() {
   const isFuturo = dataAula > hoje
   const isPassado = dataAula < hoje
 
-  async function marcarStatus(reservaId: string, status: 'presente' | 'falta') {
+  async function marcarStatus(reservaId: string, status: 'presente' | 'falta' | 'reservado') {
+    if (status === 'falta' && !confirm('Marcar falta? Essa falta vai para o relatório de no-show.')) return
     setAtualizando(reservaId)
     await supabase.from('club_reservas').update({ status }).eq('id', reservaId)
     await carregarDados()
     setAtualizando(null)
-    showMsg(status === 'presente' ? '✅ Presença marcada!' : '❌ Falta registrada')
+    showMsg(status === 'presente' ? '✅ Presença marcada!' : status === 'falta' ? '❌ Falta registrada' : '↩️ Marcação removida')
   }
 
   async function confirmarTrocaPosicao(novaPosicao: string) {
@@ -746,24 +747,25 @@ export default function RecepcaoClubDetalhe() {
                     </button>
                   )}
 
-                  {!isFalta && (
-                    <div style={{ display:'flex', gap:6, flexShrink:0 }}>
-                      <button onClick={() => marcarStatus(r.id, 'presente')} disabled={isPresente||atualizando===r.id}
-                        style={{ padding:'0.35rem 0.75rem', borderRadius:8, border:`1.5px solid ${isPresente?VERDE:'#e5e7eb'}`,
-                          background:isPresente?VERDE:'#fff', color:isPresente?'#fff':'#555',
-                          fontSize:12, fontWeight:600, cursor:isPresente?'default':'pointer',
-                          opacity:atualizando===r.id?0.5:1, fontFamily:"'DM Sans', sans-serif" }}>
-                        ✓
-                      </button>
-                      <button onClick={() => marcarStatus(r.id, 'falta')} disabled={isFalta||atualizando===r.id}
-                        style={{ padding:'0.35rem 0.75rem', borderRadius:8, border:`1.5px solid ${isFalta?VERMELHO:'#e5e7eb'}`,
-                          background:isFalta?VERMELHO:'#fff', color:isFalta?'#fff':'#888',
-                          fontSize:12, fontWeight:600, cursor:isFalta?'default':'pointer',
-                          opacity:atualizando===r.id?0.5:1, fontFamily:"'DM Sans', sans-serif" }}>
-                        ✗
-                      </button>
-                    </div>
-                  )}
+                  {/* Presença / Falta — livre, com toggle (clicar no ativo desmarca; falta pede confirmação) */}
+                  <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                    <button onClick={() => marcarStatus(r.id, isPresente ? 'reservado' : 'presente')} disabled={atualizando===r.id}
+                      title={isPresente ? 'Clique para desmarcar' : 'Marcar presença'}
+                      style={{ padding:'0.35rem 0.75rem', borderRadius:8, border:`1.5px solid ${isPresente?VERDE:'#e5e7eb'}`,
+                        background:isPresente?VERDE:'#fff', color:isPresente?'#fff':'#555',
+                        fontSize:12, fontWeight:600, cursor:atualizando===r.id?'default':'pointer',
+                        opacity:atualizando===r.id?0.5:1, fontFamily:"'DM Sans', sans-serif" }}>
+                      ✓
+                    </button>
+                    <button onClick={() => marcarStatus(r.id, isFalta ? 'reservado' : 'falta')} disabled={atualizando===r.id}
+                      title={isFalta ? 'Clique para desmarcar' : 'Marcar falta'}
+                      style={{ padding:'0.35rem 0.75rem', borderRadius:8, border:`1.5px solid ${isFalta?VERMELHO:'#e5e7eb'}`,
+                        background:isFalta?VERMELHO:'#fff', color:isFalta?'#fff':'#888',
+                        fontSize:12, fontWeight:600, cursor:atualizando===r.id?'default':'pointer',
+                        opacity:atualizando===r.id?0.5:1, fontFamily:"'DM Sans', sans-serif" }}>
+                      ✗
+                    </button>
+                  </div>
 
                   {/* Cancelar reserva — exclusivo admin */}
                   <button onClick={async () => {
