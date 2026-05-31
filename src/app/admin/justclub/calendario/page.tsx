@@ -119,8 +119,12 @@ export default function AdminCalendarioClubPage() {
     <div style={{ padding:'2rem', fontFamily:"'DM Sans', sans-serif", maxWidth:900 }}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
         @media (max-width: 640px) {
-          .aula-card { flex-wrap: wrap; gap: 0.85rem !important; padding: 1.1rem 1.15rem !important; }
-          .aula-stats { width: 100%; justify-content: space-between; gap: 0 !important; }
+          .aula-card { flex-wrap: wrap; gap: 0.5rem 0.75rem !important; padding: 1.05rem 1.15rem !important; }
+          .aula-card > div:first-child { width: 78px !important; }
+          .aula-stats { width: 100%; gap: 0 !important; margin-top: 0.5rem; padding-top: 0.85rem; border-top: 1px solid #eee; }
+          .aula-stats > div { flex: 1; }
+          .aula-stats > div:last-child { display: none; }
+          .aula-stats > div > div:first-child { font-size: 22px !important; }
         }
       `}</style>
 
