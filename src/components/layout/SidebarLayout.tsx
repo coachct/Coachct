@@ -4,10 +4,15 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
-import { Menu, X, LogOut, Home } from 'lucide-react'
+import { Menu, X, LogOut, Home, ChevronDown } from 'lucide-react'
 import { dashboardDoRole, Role } from '@/lib/auth-redirect'
 
-interface NavItem { label: string; href: string }
+interface NavItem {
+  label: string
+  href?: string
+  icon?: React.ElementType
+  children?: NavItem[]
+}
 
 interface SidebarLayoutProps {
   children: React.ReactNode
@@ -41,6 +46,23 @@ export default function SidebarLayout({ children, navItems, role, rolesPermitido
   const { user, perfil, signOut, loading } = useAuth()
   const [open, setOpen] = useState(false)
 
+  function rotaAtiva(href?: string) {
+    if (!href) return false
+    return pathname === href || pathname.startsWith(href + '/')
+  }
+
+  // Abre por padrão o grupo que contém a rota atual
+  const [openGroups, setOpenGroups] = useState<string[]>(() => {
+    const ativos: string[] = []
+    for (const it of navItems) {
+      if (it.children?.some(c => rotaAtiva(c.href))) ativos.push(it.label)
+    }
+    return ativos
+  })
+  function toggleGroup(label: string) {
+    setOpenGroups(prev => prev.includes(label) ? prev.filter(l => l !== label) : [...prev, label])
+  }
+
   // PROTEÇÃO DE ROTA
   useEffect(() => {
     if (loading) return
@@ -69,6 +91,68 @@ export default function SidebarLayout({ children, navItems, role, rolesPermitido
     )
   }
 
+  // Link "folha" — usado para itens sem submenu (e pelos perfis que mandam lista plana)
+  const NavLeaf = ({ item }: { item: NavItem }) => {
+    const Icon = item.icon
+    return (
+      <Link
+        href={item.href || '#'}
+        onClick={() => setOpen(false)}
+        className={cn(
+          'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors',
+          rotaAtiva(item.href)
+            ? 'bg-primary-50 text-primary-800 font-medium border-l-2 border-primary-400 rounded-l-none'
+            : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+        )}
+      >
+        {Icon && <Icon size={15} className="flex-shrink-0" />}
+        {item.label}
+      </Link>
+    )
+  }
+
+  // Grupo — cabeçalho com ícone e fonte maior + subitens recolhíveis
+  const NavGroup = ({ item }: { item: NavItem }) => {
+    const Icon = item.icon
+    const filhos = item.children || []
+    const isOpen = openGroups.includes(item.label)
+    const filhoAtivo = filhos.some(c => rotaAtiva(c.href))
+    return (
+      <div>
+        <button
+          onClick={() => toggleGroup(item.label)}
+          className={cn(
+            'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[15px] font-semibold transition-colors',
+            filhoAtivo ? 'text-primary-800' : 'text-gray-700 hover:bg-gray-50'
+          )}
+        >
+          {Icon && <Icon size={17} className="flex-shrink-0" />}
+          <span className="flex-1 text-left">{item.label}</span>
+          <ChevronDown size={14} className={cn('flex-shrink-0 text-gray-400 transition-transform', isOpen ? '' : '-rotate-90')} />
+        </button>
+        {isOpen && (
+          <div className="mt-0.5 mb-1.5 space-y-0.5">
+            {filhos.map(c => (
+              <Link
+                key={c.href}
+                href={c.href || '#'}
+                onClick={() => setOpen(false)}
+                className={cn(
+                  'flex items-center gap-3 pl-11 pr-3 py-2 rounded-lg text-[13px] transition-colors',
+                  rotaAtiva(c.href)
+                    ? 'bg-primary-50 text-primary-800 font-medium border-l-2 border-primary-400 rounded-l-none'
+                    : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+                )}
+              >
+                {c.label}
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   const NavLinks = () => (
     <nav className="px-2 py-4 space-y-0.5">
       <Link
@@ -85,19 +169,9 @@ export default function SidebarLayout({ children, navItems, role, rolesPermitido
         Dashboard
       </Link>
       {navItems.filter(item => item.href !== home).map(item => (
-        <Link
-          key={item.href}
-          href={item.href}
-          onClick={() => setOpen(false)}
-          className={cn(
-            'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors',
-            pathname === item.href || pathname.startsWith(item.href + '/')
-              ? 'bg-primary-50 text-primary-800 font-medium border-l-2 border-primary-400 rounded-l-none'
-              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
-          )}
-        >
-          {item.label}
-        </Link>
+        item.children && item.children.length > 0
+          ? <NavGroup key={item.label} item={item} />
+          : <NavLeaf key={item.href || item.label} item={item} />
       ))}
     </nav>
   )
