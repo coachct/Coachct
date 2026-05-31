@@ -30,6 +30,8 @@ export default function RecepcaoAgendaPage() {
   const [data, setData] = useState(() => new Date().toISOString().split('T')[0])
   const [agendamentos, setAgendamentos] = useState<any[]>([])
   const [coaches, setCoaches] = useState<any[]>([])
+  const [coachesFds, setCoachesFds] = useState<any[]>([])
+  const [usaEscalaFds, setUsaEscalaFds] = useState(false)
   const [bloqueios, setBloqueios] = useState<any[]>([])
   const [loadingData, setLoadingData] = useState(true)
   const [alocandoId, setAlocandoId] = useState<string | null>(null)
@@ -86,8 +88,9 @@ export default function RecepcaoAgendaPage() {
     if (!unidadeAtiva) return
     if (manter_scroll) scrollRef.current = window.scrollY
     const diaSem = new Date(data + 'T12:00:00').getDay()
+    const ehFds = diaSem === 0 || diaSem === 6
 
-    const [{ data: ags }, { data: coachs }, { data: bloqs }] = await Promise.all([
+    const [{ data: ags }, { data: coachs }, { data: bloqs }, { data: feriado }] = await Promise.all([
       supabase.from('agendamentos')
         .select('*, clientes(nome, cpf, telefone)')
         .eq('data', data)
@@ -103,7 +106,35 @@ export default function RecepcaoAgendaPage() {
         .eq('data', data)
         .eq('unidade_id', unidadeAtiva.id)
         .eq('ativo', true),
+      supabase.from('feriados')
+        .select('id')
+        .eq('unidade_id', unidadeAtiva.id)
+        .eq('data', data)
+        .eq('ativo', true)
+        .maybeSingle(),
     ])
+
+    // Fim de semana ou feriado: no CT a escala não vem de coach_horarios, e sim de escala_fds
+    // (um coach escalado cobre o dia inteiro). Carrega esses coaches para o seletor.
+    const escalaFds = ehFds || !!feriado
+    setUsaEscalaFds(escalaFds)
+    if (escalaFds) {
+      const { data: esc } = await supabase.from('escala_fds')
+        .select('coach_id')
+        .eq('unidade_id', unidadeAtiva.id)
+        .eq('data', data)
+      const ids = Array.from(new Set((esc || []).map((e: any) => e.coach_id).filter(Boolean)))
+      let coachesEscala: any[] = []
+      if (ids.length > 0) {
+        const { data: cs } = await supabase.from('coaches')
+          .select('id, nome')
+          .in('id', ids)
+        coachesEscala = (cs || []).map((c: any) => ({ coaches: { id: c.id, nome: c.nome } }))
+      }
+      setCoachesFds(coachesEscala)
+    } else {
+      setCoachesFds([])
+    }
 
     setAgendamentos(ags || [])
     setCoaches(coachs || [])
@@ -460,7 +491,7 @@ export default function RecepcaoAgendaPage() {
                   <div className="space-y-3">
                     {(agendamentosFiltrados || agendamentosAtivos).map(ag => {
                       const horario = norm(ag.horario)
-                      const coachesHorario = coachesPorHorario(horario)
+                      const coachesHorario = usaEscalaFds ? coachesFds : coachesPorHorario(horario)
                       const ags = agendamentosPorHorario(horario).filter(a => a.status !== 'cancelado')
                       const coachesLivres = coachesHorario.filter(
                         c => !ags.some(a => a.id !== ag.id && a.coach_id === c.coaches?.id)
