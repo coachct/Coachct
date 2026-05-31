@@ -367,6 +367,79 @@ export default function JuMontarPage() {
     )
   }
 
+  // Editor extraído pra ser renderizado em dois lugares: inline no mobile (abaixo do
+  // card selecionado) e na coluna da direita no desktop. Só chamar quando há editandoId.
+  function renderEditor() {
+    return (
+      <div className="card">
+        <div className="flex items-center gap-3 mb-4 flex-wrap">
+          <input className="text-base font-semibold text-gray-900 border-none outline-none bg-transparent flex-1 min-w-0"
+            value={nomeEdit} onChange={e => setNomeEdit(e.target.value)} placeholder="Nome do treino..." />
+          <input className="text-xs text-gray-400 border-none outline-none bg-transparent flex-1 min-w-0"
+            value={descEdit} onChange={e => setDescEdit(e.target.value)} placeholder="Grupos musculares..." />
+          <div className="flex gap-2 flex-shrink-0">
+            <button onClick={salvarEdicao} disabled={saving} className="btn btn-primary btn-sm gap-1">
+              <Save size={12} />{saving ? 'Salvando...' : 'Salvar'}
+            </button>
+            <button onClick={() => setModalPublicar(editandoId)} className="btn btn-sm gap-1 text-primary-600 border-primary-200">
+              <Calendar size={12} />Publicar
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="w-full md:w-52 flex-shrink-0">
+            <div className="bg-gray-50 rounded-xl p-3">
+              <div className="text-xs font-semibold text-gray-500 mb-2">Adicionar exercício</div>
+              <div className="flex flex-wrap gap-1 mb-2">
+                <button onClick={() => setCatFiltro('todos')}
+                  className={`px-2 py-0.5 rounded-full text-xs border ${catFiltro==='todos'?'bg-blue-100 text-blue-700 border-blue-300':'text-gray-500 border-gray-200'}`}>
+                  Todos
+                </button>
+                {categorias.map(c => (
+                  <button key={c.id} onClick={() => setCatFiltro(c.id)}
+                    className={`px-2 py-0.5 rounded-full text-xs border ${catFiltro===c.id?'bg-blue-100 text-blue-700 border-blue-300':'text-gray-500 border-gray-200'}`}>
+                    {c.nome}
+                  </button>
+                ))}
+              </div>
+              <div className="max-h-72 overflow-y-auto divide-y divide-gray-100">
+                {exsFiltrados.map(ex => {
+                  const ja = exsEdit.find(e => e.id === ex.id)
+                  return (
+                    <div key={ex.id} className="py-1.5 flex items-center gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium text-gray-800 truncate">{ex.nome}</div>
+                        {ex.numero_maquina && <div className="text-xs text-blue-500">{ex.numero_maquina}</div>}
+                      </div>
+                      <button onClick={() => !ja && addEx(ex)} disabled={!!ja}
+                        className={`w-5 h-5 rounded-full border flex items-center justify-center text-xs flex-shrink-0 ${ja?'bg-primary-100 border-primary-300 text-primary-600 cursor-default':'border-primary-200 text-primary-600 hover:bg-primary-50'}`}>
+                        {ja ? '✓' : '+'}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-1 min-w-0">
+            {exsEdit.length === 0 ? (
+              <div className="text-sm text-gray-400 text-center py-8 italic">← Adicione exercícios da biblioteca</div>
+            ) : (
+              <div className="space-y-2">
+                {renderExercicios()}
+                <div className="text-xs text-gray-400 pt-2 italic">
+                  💡 Use ↑↓ para reordenar · 🔗 para conjugar · Salvar para confirmar
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (loading) return <Spinner />
 
   return (
@@ -391,99 +464,43 @@ export default function JuMontarPage() {
           <div className="space-y-2">
             {treinos.length === 0 && <EmptyState message="Nenhum treino criado ainda." />}
             {treinos.map(t => (
-              <div key={t.id}
-                className={`card p-3 cursor-pointer transition-all ${editandoId === t.id ? 'border-primary-400 ring-1 ring-primary-200' : 'hover:border-gray-200'}`}
-                onClick={() => abrirEdicao(t)}>
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm text-gray-900 truncate">{t.nome}</div>
-                    {t.descricao && <div className="text-xs text-gray-400 truncate">{t.descricao}</div>}
-                    <div className="text-xs text-gray-400 mt-0.5">{(t.treino_exercicios?.length || 0)} exercícios</div>
-                  </div>
-                  <div className="flex gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
-                    <button onClick={() => setModalPublicar(t.id)} className="btn btn-sm p-1.5 text-primary-600" title="Publicar"><Calendar size={13} /></button>
-                    <button onClick={() => duplicar(t)} className="btn btn-sm p-1.5 text-gray-400" title="Duplicar"><Copy size={13} /></button>
-                    <button onClick={() => deletarTreino(t.id)} className="btn btn-sm p-1.5 text-red-400 hover:bg-red-50" title="Remover"><X size={13} /></button>
+              <div key={t.id}>
+                <div
+                  className={`card p-3 cursor-pointer transition-all ${editandoId === t.id ? 'border-primary-400 ring-1 ring-primary-200' : 'hover:border-gray-200'}`}
+                  onClick={() => abrirEdicao(t)}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm text-gray-900 truncate">{t.nome}</div>
+                      {t.descricao && <div className="text-xs text-gray-400 truncate">{t.descricao}</div>}
+                      <div className="text-xs text-gray-400 mt-0.5">{(t.treino_exercicios?.length || 0)} exercícios</div>
+                    </div>
+                    <div className="flex gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                      <button onClick={() => setModalPublicar(t.id)} className="btn btn-sm p-1.5 text-primary-600" title="Publicar"><Calendar size={13} /></button>
+                      <button onClick={() => duplicar(t)} className="btn btn-sm p-1.5 text-gray-400" title="Duplicar"><Copy size={13} /></button>
+                      <button onClick={() => deletarTreino(t.id)} className="btn btn-sm p-1.5 text-red-400 hover:bg-red-50" title="Remover"><X size={13} /></button>
+                    </div>
                   </div>
                 </div>
+
+                {/* Mobile: editor abre inline, logo abaixo do card selecionado */}
+                {editandoId === t.id && (
+                  <div className="md:hidden mt-2">
+                    {renderEditor()}
+                  </div>
+                )}
               </div>
             ))}
           </div>
         </div>
 
-        {/* Editor */}
-        <div className="flex-1 min-w-0">
+        {/* Editor — desktop (coluna à direita) */}
+        <div className="flex-1 min-w-0 hidden md:block">
           {!editandoId ? (
             <div className="card flex items-center justify-center py-16 text-gray-400 text-sm italic">
               ← Selecione um treino para editar ou crie um novo
             </div>
           ) : (
-            <div className="card">
-              <div className="flex items-center gap-3 mb-4 flex-wrap">
-                <input className="text-base font-semibold text-gray-900 border-none outline-none bg-transparent flex-1 min-w-0"
-                  value={nomeEdit} onChange={e => setNomeEdit(e.target.value)} placeholder="Nome do treino..." />
-                <input className="text-xs text-gray-400 border-none outline-none bg-transparent flex-1 min-w-0"
-                  value={descEdit} onChange={e => setDescEdit(e.target.value)} placeholder="Grupos musculares..." />
-                <div className="flex gap-2 flex-shrink-0">
-                  <button onClick={salvarEdicao} disabled={saving} className="btn btn-primary btn-sm gap-1">
-                    <Save size={12} />{saving ? 'Salvando...' : 'Salvar'}
-                  </button>
-                  <button onClick={() => setModalPublicar(editandoId)} className="btn btn-sm gap-1 text-primary-600 border-primary-200">
-                    <Calendar size={12} />Publicar
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex flex-col md:flex-row gap-4">
-                <div className="w-full md:w-52 flex-shrink-0">
-                  <div className="bg-gray-50 rounded-xl p-3">
-                    <div className="text-xs font-semibold text-gray-500 mb-2">Adicionar exercício</div>
-                    <div className="flex flex-wrap gap-1 mb-2">
-                      <button onClick={() => setCatFiltro('todos')}
-                        className={`px-2 py-0.5 rounded-full text-xs border ${catFiltro==='todos'?'bg-blue-100 text-blue-700 border-blue-300':'text-gray-500 border-gray-200'}`}>
-                        Todos
-                      </button>
-                      {categorias.map(c => (
-                        <button key={c.id} onClick={() => setCatFiltro(c.id)}
-                          className={`px-2 py-0.5 rounded-full text-xs border ${catFiltro===c.id?'bg-blue-100 text-blue-700 border-blue-300':'text-gray-500 border-gray-200'}`}>
-                          {c.nome}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="max-h-72 overflow-y-auto divide-y divide-gray-100">
-                      {exsFiltrados.map(ex => {
-                        const ja = exsEdit.find(e => e.id === ex.id)
-                        return (
-                          <div key={ex.id} className="py-1.5 flex items-center gap-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="text-xs font-medium text-gray-800 truncate">{ex.nome}</div>
-                              {ex.numero_maquina && <div className="text-xs text-blue-500">{ex.numero_maquina}</div>}
-                            </div>
-                            <button onClick={() => !ja && addEx(ex)} disabled={!!ja}
-                              className={`w-5 h-5 rounded-full border flex items-center justify-center text-xs flex-shrink-0 ${ja?'bg-primary-100 border-primary-300 text-primary-600 cursor-default':'border-primary-200 text-primary-600 hover:bg-primary-50'}`}>
-                              {ja ? '✓' : '+'}
-                            </button>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  {exsEdit.length === 0 ? (
-                    <div className="text-sm text-gray-400 text-center py-8 italic">← Adicione exercícios da biblioteca</div>
-                  ) : (
-                    <div className="space-y-2">
-                      {renderExercicios()}
-                      <div className="text-xs text-gray-400 pt-2 italic">
-                        💡 Use ↑↓ para reordenar · 🔗 para conjugar · Salvar para confirmar
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+            renderEditor()
           )}
         </div>
       </div>
