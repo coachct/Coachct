@@ -60,13 +60,23 @@ export default function RecepcaoClubPage() {
   useEffect(() => {
     if (!unidadeSel) return
     let t: any = null
-    const recarregar = () => { clearTimeout(t); t = setTimeout(() => carregarOcorrencias(), 250) }
+    const recarregar = () => { clearTimeout(t); t = setTimeout(() => carregarOcorrencias(true), 250) }
     const canal = supabase
       .channel(`recepcao_club_lista_${unidadeSel.id}_${dataSel}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'club_reservas' }, recarregar)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'club_ocorrencias' }, recarregar)
       .subscribe()
     return () => { clearTimeout(t); supabase.removeChannel(canal) }
+  }, [unidadeSel?.id, dataSel])
+
+  // Rede de segurança: rebusca silenciosa a cada 10s (só com a aba visível) e ao focar a aba.
+  // Garante sincronizar mesmo se o realtime falhar/cair no aparelho (ex.: INSERT de walk-in).
+  useEffect(() => {
+    if (!unidadeSel) return
+    const tick = () => { if (document.visibilityState === 'visible') carregarOcorrencias(true) }
+    const intervalo = setInterval(tick, 10000)
+    document.addEventListener('visibilitychange', tick)
+    return () => { clearInterval(intervalo); document.removeEventListener('visibilitychange', tick) }
   }, [unidadeSel?.id, dataSel])
 
   async function carregarUnidades() {
@@ -84,15 +94,15 @@ export default function RecepcaoClubPage() {
     setLoadingUnidades(false)
   }
 
-  async function carregarOcorrencias() {
+  async function carregarOcorrencias(silent = false) {
     if (!unidadeSel) return
-    setLoadingOcs(true)
+    if (!silent) setLoadingOcs(true)
 
     const { data: aulasIds } = await supabase
       .from('club_aulas').select('id').eq('unidade_id', unidadeSel.id).eq('ativo', true)
     const ids = (aulasIds || []).map((a: any) => a.id)
 
-    if (!ids.length) { setOcorrencias([]); setLoadingOcs(false); return }
+    if (!ids.length) { setOcorrencias([]); if (!silent) setLoadingOcs(false); return }
 
     // Inclui coach_escalado (FK coach_id da ocorrência) — sobrescreve o coach da grade quando definido
     const { data: ocs } = await supabase
@@ -121,7 +131,7 @@ export default function RecepcaoClubPage() {
       }
       setContagens(cont)
     }
-    setLoadingOcs(false)
+    if (!silent) setLoadingOcs(false)
   }
 
   const hoje   = dataLocalStr(new Date())
