@@ -110,6 +110,12 @@ export default function RecepcaoClubDetalhe() {
 
   useEffect(() => { if (ocId) carregarDados() }, [ocId])
 
+  // Busca instantânea de cliente no walk-in (nome, CPF, email ou telefone)
+  useEffect(() => {
+    if (buscaTexto.trim().length >= 2) buscarCliente()
+    else setResultados([])
+  }, [buscaTexto])
+
   async function carregarDados() {
     setLoadingData(true)
     // Inclui coach_escalado (FK coach_id da ocorrência) — prioridade sobre o coach da grade
@@ -228,10 +234,11 @@ export default function RecepcaoClubDetalhe() {
   }
 
   async function buscarCliente() {
-    if (!buscaTexto.trim()) return
+    const termo = buscaTexto.trim()
+    if (termo.length < 2) { setResultados([]); return }
     setBuscando(true)
-    const { data } = await supabase.from('clientes').select('id, nome, email, telefone')
-      .or(`nome.ilike.%${buscaTexto}%,email.ilike.%${buscaTexto}%,telefone.ilike.%${buscaTexto}%`)
+    const { data } = await supabase.from('clientes').select('id, nome, email, telefone, cpf')
+      .or(`nome.ilike.%${termo}%,cpf.ilike.%${termo}%,email.ilike.%${termo}%,telefone.ilike.%${termo}%`)
       .limit(5)
     setResultados(data || [])
     setBuscando(false)
@@ -789,17 +796,19 @@ export default function RecepcaoClubDetalhe() {
 
             {etapa === 'busca' && (
               <>
-                <div style={{ display:'flex', gap:8, marginBottom:8 }}>
+                <div style={{ marginBottom:8 }}>
                   <input value={buscaTexto} onChange={e => setBuscaTexto(e.target.value)}
-                    onKeyDown={e => e.key==='Enter' && buscarCliente()}
-                    placeholder="Buscar por nome, email ou telefone..."
-                    style={{ flex:1, border:'1px solid #e5e7eb', borderRadius:8, padding:'0.65rem 1rem',
+                    placeholder="Buscar por nome, CPF, email ou telefone..."
+                    style={{ width:'100%', boxSizing:'border-box', border:'1px solid #e5e7eb', borderRadius:8, padding:'0.65rem 1rem',
                       fontSize:13, color:'#111', fontFamily:"'DM Sans', sans-serif", outline:'none' }}/>
-                  <button onClick={buscarCliente} disabled={buscando}
-                    style={{ background:ACCENT, color:'#fff', border:'none', borderRadius:8,
-                      padding:'0.65rem 1.25rem', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
-                    {buscando?'...':'Buscar'}
-                  </button>
+                  {buscando && (
+                    <div style={{ fontSize:11, color:'#aaa', marginTop:6 }}>Buscando...</div>
+                  )}
+                  {!buscando && buscaTexto.trim().length >= 2 && resultados.length === 0 && (
+                    <div style={{ fontSize:12, color:'#aaa', marginTop:8, textAlign:'center' }}>
+                      Nenhum cliente encontrado para "{buscaTexto.trim()}".
+                    </div>
+                  )}
                 </div>
                 {resultados.length > 0 && (
                   <div style={{ border:'1px solid #e5e7eb', borderRadius:8, overflow:'hidden' }}>
