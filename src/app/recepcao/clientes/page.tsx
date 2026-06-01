@@ -15,6 +15,8 @@ const statusConfig: Record<string, { label: string; color: string }> = {
   realizado:  { label: 'Realizado',  color: 'bg-gray-100 text-gray-600' },
   cancelado:  { label: 'Cancelado',  color: 'bg-red-100 text-red-600' },
   falta:      { label: 'Falta',      color: 'bg-orange-100 text-orange-700' },
+  reservado:  { label: 'Reservado',  color: 'bg-blue-100 text-blue-700' },
+  presente:   { label: 'Presente',   color: 'bg-green-100 text-green-700' },
 }
 
 const FORMAS_PAGAMENTO = [
@@ -195,9 +197,36 @@ export default function RecepcaoClientesPage() {
   }
 
   async function carregarHistorico(clienteId: string) {
-    const { data } = await supabase.from('agendamentos').select('*, unidades(nome)')
-      .eq('cliente_id', clienteId).order('data', { ascending: false }).limit(50)
-    setHistorico(data || [])
+    // CT (agendamentos) — já vem de todas as unidades — + Club (club_reservas), mescla
+    const [{ data: ags }, { data: reservasClub }] = await Promise.all([
+      supabase.from('agendamentos').select('*, unidades(nome)')
+        .eq('cliente_id', clienteId).order('data', { ascending: false }).limit(50),
+      supabase.from('club_reservas')
+        .select('id, status, posicao, tipo_credito, club_ocorrencias(data, club_aulas(tipo, horario, unidade_id))')
+        .eq('cliente_id', clienteId).limit(100),
+    ])
+
+    const ctItens = (ags || []).map((a: any) => ({ ...a, origem: 'ct' }))
+
+    const clubItens = (reservasClub || [])
+      .filter((r: any) => r.club_ocorrencias?.data)
+      .map((r: any) => {
+        const oc = r.club_ocorrencias
+        const aula = oc?.club_aulas
+        const uniNome = todasUnidades.find((u: any) => u.id === aula?.unidade_id)?.nome || null
+        return {
+          id: r.id,
+          origem: 'club',
+          data: oc?.data,
+          horario: aula?.horario || null,
+          status: r.status,
+          unidades: uniNome ? { nome: uniNome } : null,
+          tipo_credito: tipoLabelClub(aula?.tipo),
+          posicao: r.posicao || null,
+        }
+      })
+
+    setHistorico([...ctItens, ...clubItens])
   }
 
   async function carregarVendas(clienteId: string) {
@@ -568,10 +597,10 @@ export default function RecepcaoClientesPage() {
 
   const hoje = new Date().toISOString().split('T')[0]
   const agendamentosFuturos = historico
-    .filter(a => a.data >= hoje && ['agendado','confirmado'].includes(a.status))
+    .filter(a => a.data >= hoje && ['agendado','confirmado','reservado'].includes(a.status))
     .sort((a,b) => a.data.localeCompare(b.data))
   const agendamentosPassados = historico
-    .filter(a => a.data < hoje || ['realizado','falta','cancelado'].includes(a.status))
+    .filter(a => a.data < hoje || ['realizado','falta','cancelado','presente'].includes(a.status))
     .sort((a,b) => b.data.localeCompare(a.data))
 
   const abas = [
@@ -1068,10 +1097,6 @@ export default function RecepcaoClientesPage() {
                             </div>
                             <div className="text-xs text-gray-400 mt-0.5">{ag.tipo_credito}</div>
                           </div>
-                          <button onClick={() => cancelarAgendamento(ag.id)} disabled={cancelandoId===ag.id}
-                            className="btn btn-sm gap-1 text-red-500 hover:bg-red-50 flex-shrink-0">
-                            <X size={12} /> {cancelandoId===ag.id ? 'Cancelando...' : 'Cancelar'}
-                          </button>
                         </div>
                       </div>
                     ))}
