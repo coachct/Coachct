@@ -10,7 +10,9 @@ const ACCENT = '#ff2d9b'
 const CYAN   = '#00e5ff'
 const VERDE  = '#2ddd8b'
 
-export default function SidebarRecepcao() {
+export default function SidebarRecepcao({ open = false, onClose }: {
+  open?: boolean; onClose?: () => void
+}) {
   const router   = useRouter()
   const pathname = usePathname()
   const supabase = createClient()
@@ -38,6 +40,7 @@ export default function SidebarRecepcao() {
   }, [perfil?.id])
 
   async function sair() {
+    onClose?.()
     await supabase.auth.signOut()
     router.push('/equipe')
   }
@@ -47,7 +50,7 @@ export default function SidebarRecepcao() {
   }) {
     const ativo = pathname === href || pathname.startsWith(href + '/')
     return (
-      <button onClick={() => router.push(href)}
+      <button onClick={() => { router.push(href); onClose?.() }}
         style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderRadius:10,
           background: ativo ? `${cor}20` : 'transparent', border:'none', cursor:'pointer',
           width:'100%', transition:'background .15s' }}>
@@ -62,7 +65,8 @@ export default function SidebarRecepcao() {
   }
 
   return (
-    <div style={{ width:200, background:'#0f0f1a', display:'flex', flexDirection:'column',
+    <div className={`recepcao-sidebar${open ? ' aberto' : ''}`}
+      style={{ width:200, background:'#0f0f1a', display:'flex', flexDirection:'column',
       position:'fixed', top:0, left:0, bottom:0, zIndex:50 }}>
       <div style={{ padding:'24px 20px 20px', borderBottom:'1px solid #ffffff10' }}>
         <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:22, color:'#fff', letterSpacing:2 }}>
