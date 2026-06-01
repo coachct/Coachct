@@ -6,6 +6,7 @@ import { useUnidade } from '@/hooks/useUnidade'
 import { createClient } from '@/lib/supabase'
 import { dashboardDoRole } from '@/lib/auth-redirect'
 import SiteHeader from '@/components/SiteHeader'
+import ModalTelefone from '@/components/ModalTelefone'
 
 const ACCENT  = '#ff2d9b'
 const CYAN    = '#00e5ff'
@@ -26,6 +27,12 @@ function dentroDaJanelaProximoMes(): boolean {
 // Evita o pulo de dia que o toISOString() causa após as 21h em SP (UTC-3).
 function dataLocalStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// Telefone válido = DDD + número (10 ou 11 dígitos)
+function telefoneValido(tel: any): boolean {
+  const d = String(tel || '').replace(/\D/g, '')
+  return d.length >= 10 && d.length <= 11
 }
 
 const CONTRATO = `CONTRATO DE ADESÃO — COACH CT / JUST CT
@@ -187,6 +194,9 @@ export default function AgendarPage() {
   const [modalSemPlano, setModalSemPlano] = useState(false)
   const [modalSemCartao, setModalSemCartao] = useState(false)
   const [cobrancasPendentes, setCobrancasPendentes] = useState<any[]>([])
+  // Modal de telefone (Pagar.me exige telefone no customer para cobrar multa)
+  const [modalTelefone, setModalTelefone] = useState(false)
+  const [pendingReserva, setPendingReserva] = useState<(() => void) | null>(null)
 
   const janelaProximoMesAberta = dentroDaJanelaProximoMes()
   const temCoachCtProAtivo = Object.entries(saldoMesAtual).some(([c, i]: [string, any]) => c.startsWith('coach_ct_pro_') && i?.disponivel > 0)
@@ -196,6 +206,8 @@ export default function AgendarPage() {
     (k.startsWith('wellhub_') || k.startsWith('totalpass_')) && v?.disponivel > 0
   )
   const precisaCartao = !!cliente && temPlanoParceiroAtivo && !cliente?.pagarme_card_id
+  // Gate de telefone: já tem cartão (customer no Pagar.me existe) mas está sem telefone válido
+  const precisaTelefone = () => !!cliente?.pagarme_card_id && !telefoneValido(cliente?.telefone)
   const clienteBloqueado = !!cliente?.bloqueado
   const temCobrancaPendente = cobrancasPendentes.length > 0
 
@@ -397,19 +409,21 @@ export default function AgendarPage() {
     Object.keys(saldoMesProximo).length === 0
   // ──────────────────────────────────────────────────────────────────────────
 
-  function tentarAgendar(hora: string, vagas: number) {
+  function tentarAgendar(hora: string, vagas: number, skipTel: boolean = false) {
     if (!user) { router.push('/login'); return }
     if (clienteBloqueado) return
     if (semPlanoAtivo) { setModalSemPlano(true); return }
     if (precisaCartao) { setModalSemCartao(true); return }
+    if (!skipTel && precisaTelefone()) { setPendingReserva(() => () => tentarAgendar(hora, vagas, true)); setModalTelefone(true); return }
     abrirModalReserva(hora, vagas)
   }
 
-  function tentarFila(hora: string) {
+  function tentarFila(hora: string, skipTel: boolean = false) {
     if (!user) { router.push('/login'); return }
     if (clienteBloqueado) return
     if (semPlanoAtivo) { setModalSemPlano(true); return }
     if (precisaCartao) { setModalSemCartao(true); return }
+    if (!skipTel && precisaTelefone()) { setPendingReserva(() => () => tentarFila(hora, true)); setModalTelefone(true); return }
     abrirModalFila(hora)
   }
 
@@ -1015,6 +1029,18 @@ export default function AgendarPage() {
           </div>
         </div>
       )}
+
+      <ModalTelefone
+        aberto={modalTelefone}
+        onFechar={() => { setModalTelefone(false); setPendingReserva(null) }}
+        onSucesso={(tel) => {
+          setCliente((prev: any) => prev ? { ...prev, telefone: tel } : prev)
+          setModalTelefone(false)
+          const acao = pendingReserva
+          setPendingReserva(null)
+          if (acao) acao()
+        }}
+      />
     </div>
   )
 }
