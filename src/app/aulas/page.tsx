@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
 import SiteHeader from '@/components/SiteHeader'
+import ModalTelefone from '@/components/ModalTelefone'
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(true)
@@ -27,6 +28,12 @@ const MESES_ABREV = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT'
 
 function dataLocalStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
+// Telefone válido = DDD + número (10 ou 11 dígitos)
+function telefoneValido(tel: any): boolean {
+  const d = String(tel || '').replace(/\D/g, '')
+  return d.length >= 10 && d.length <= 11
 }
 
 function parsePlanoKey(key: string): { label: string; icon: string } {
@@ -140,6 +147,9 @@ function AulasPageInner() {
   const [filaConfirmada, setFilaConfirmada] = useState<{ posicao: number; oc: any; data: string } | null>(null)
   // Reserva-extra: quando true, o modal de reserva trabalha só com crédito avulso
   const [modalSoAvulso,  setModalSoAvulso]  = useState(false)
+  // Modal de telefone (Pagar.me exige telefone no customer para cobrar multa)
+  const [modalTelefone,  setModalTelefone]  = useState(false)
+  const [pendingReserva, setPendingReserva] = useState<(() => void) | null>(null)
 
   const diasSemana = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(); d.setDate(d.getDate() + semanaOffset * 7 + i); return d
@@ -158,6 +168,8 @@ function AulasPageInner() {
   const temPlanoParceiroAtivo = Object.entries(saldo).some(([k, v]: any) => !k.startsWith('avulso') && v?.disponivel > 0) ||
     Object.entries(saldoProximo).some(([k, v]: any) => !k.startsWith('avulso') && v?.disponivel > 0)
   const precisaCartao = !!cliente && temPlanoParceiroAtivo && !cliente?.pagarme_card_id
+  // Gate de telefone: já tem cartão (customer no Pagar.me existe) mas está sem telefone válido
+  const precisaTelefone = () => !!cliente?.pagarme_card_id && !telefoneValido(cliente?.telefone)
 
   function saldoParaData() { return dataSelEhProximoMes ? saldoProximo : saldo }
 
@@ -328,33 +340,37 @@ function AulasPageInner() {
     setPosicoesTomadas([...reservadas, ...bloqueadas])
   }
 
-  function tentarReservar(oc: any) {
+  function tentarReservar(oc: any, skipTel: boolean = false) {
     if (!user) { router.push(`/login?redirect=${encodeURIComponent("/aulas?unidade="+unidadeId)}`); return }
     if (cliente?.bloqueado) return
     if (precisaCartao) { setModalSemCartao(true); return }
+    if (!skipTel && precisaTelefone()) { setPendingReserva(() => () => tentarReservar(oc, true)); setModalTelefone(true); return }
     if (oc.club_aulas?.so_mulheres && cliente?.sexo !== "F") { setModalGenero(true); return }
     if (oc.club_aulas?.tipo === "running_funcional") { router.push(`/mapa?ocorrencia=${oc.id}&unidade=${unidadeId}`); return }
     abrirModalReserva(oc)
   }
   // Reserva-extra com crédito avulso (Lift / Lift for Girls). Running é tratado no /mapa.
-  function reReservarAvulso(oc: any) {
+  function reReservarAvulso(oc: any, skipTel: boolean = false) {
     if (!user) { router.push(`/login?redirect=${encodeURIComponent("/aulas?unidade="+unidadeId)}`); return }
     if (cliente?.bloqueado) return
     if (precisaCartao) { setModalSemCartao(true); return }
+    if (!skipTel && precisaTelefone()) { setPendingReserva(() => () => reReservarAvulso(oc, true)); setModalTelefone(true); return }
     if (oc.club_aulas?.so_mulheres && cliente?.sexo !== "F") { setModalGenero(true); return }
     abrirModalReserva(oc, true)
   }
   // Reserva-extra de Running: leva ao mapa pra escolher outra posição (a tela /mapa oferece só avulso)
-  function reReservarRunning(oc: any) {
+  function reReservarRunning(oc: any, skipTel: boolean = false) {
     if (!user) { router.push(`/login?redirect=${encodeURIComponent("/aulas?unidade="+unidadeId)}`); return }
     if (cliente?.bloqueado) return
     if (precisaCartao) { setModalSemCartao(true); return }
+    if (!skipTel && precisaTelefone()) { setPendingReserva(() => () => reReservarRunning(oc, true)); setModalTelefone(true); return }
     router.push(`/mapa?ocorrencia=${oc.id}&unidade=${unidadeId}`)
   }
-  function tentarFila(oc: any) {
+  function tentarFila(oc: any, skipTel: boolean = false) {
     if (!user) { router.push(`/login?redirect=${encodeURIComponent('/aulas?unidade='+unidadeId)}`); return }
     if (cliente?.bloqueado) return
     if (precisaCartao) { setModalSemCartao(true); return }
+    if (!skipTel && precisaTelefone()) { setPendingReserva(() => () => tentarFila(oc, true)); setModalTelefone(true); return }
     setModalFila(oc); setTipoCredito(''); setFilaAceite(false); setErroModal('')
   }
   async function abrirModalReserva(oc: any, soAvulso: boolean = false) {
@@ -1048,6 +1064,18 @@ function AulasPageInner() {
           </div>
         </div>
       )}
+
+      <ModalTelefone
+        aberto={modalTelefone}
+        onFechar={() => { setModalTelefone(false); setPendingReserva(null) }}
+        onSucesso={(tel) => {
+          setCliente((prev: any) => prev ? { ...prev, telefone: tel } : prev)
+          setModalTelefone(false)
+          const acao = pendingReserva
+          setPendingReserva(null)
+          if (acao) acao()
+        }}
+      />
     </div>
   )
 }
