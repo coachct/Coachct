@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import {
   Plus, Save, X, Calendar, List, AlertCircle,
   Pencil, Power, Users, Clock, ChevronDown, ChevronUp,
-  Tag, RefreshCw, CheckCircle, CalendarDays, Filter, Trash2
+  Tag, RefreshCw, CheckCircle, CalendarDays, Filter, Trash2, CalendarX
 } from 'lucide-react'
 
 const DIAS_ABREV = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
@@ -62,6 +62,10 @@ function capacidadePorUnidadeTipo(nomeUnidade: string, tipo: string): number {
 function dataLocalStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
+function formatarDataPT(dataStr: string): string {
+  const d = new Date(dataStr + 'T12:00:00')
+  return d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
+}
 function gerarDatas(diaSemana: number, dataInicio: string, dataFim: string): string[] {
   const datas: string[] = []
   const fim = new Date(dataFim + 'T12:00:00')
@@ -98,7 +102,7 @@ export default function JustClubAdminPage() {
   const [loadingOcs,  setLoadingOcs]  = useState(false)
   const [msg,         setMsg]         = useState('')
 
-  const [abaAtiva, setAbaAtiva] = useState<'lista' | 'grade' | 'calendario' | 'grupos'>('lista')
+  const [abaAtiva, setAbaAtiva] = useState<'lista' | 'grade' | 'calendario' | 'grupos' | 'feriados'>('lista')
   const [filtroTipo,  setFiltroTipo]  = useState('todos')
   const [filtroCoach, setFiltroCoach] = useState('todos')
   const [diasCalendario, setDiasCalendario] = useState<7|15|30>(7)
@@ -129,6 +133,18 @@ export default function JustClubAdminPage() {
   const [excluindo,      setExcluindo]      = useState(false)
   const [infoReservas,   setInfoReservas]   = useState<{ ocorrencia: number; recorrencia: number; proximaData?: string } | null>(null)
 
+  // NOVO: Feriados
+  const [feriados,         setFeriados]         = useState<any[]>([])
+  const [aulasFeriado,     setAulasFeriado]     = useState<any[]>([]) // club_aulas com feriado_id (desta unidade)
+  const [loadingFeriados,  setLoadingFeriados]  = useState(false)
+  const [modalNovoFeriado, setModalNovoFeriado] = useState(false)
+  const [novoFeriadoData,  setNovoFeriadoData]  = useState('')
+  const [novoFeriadoDesc,  setNovoFeriadoDesc]  = useState('')
+  const [salvandoFeriado,  setSalvandoFeriado]  = useState(false)
+  const [erroFeriado,      setErroFeriado]      = useState('')
+  const [feriadoCtx,       setFeriadoCtx]       = useState<any | null>(null) // quando set, o modal de aula está em "modo feriado"
+  const [removendoFeriado, setRemovendoFeriado] = useState<string | null>(null)
+
   useEffect(() => {
     if (!loading && perfil && perfil.role !== 'admin' && perfil.role !== 'coordenadora') router.push('/')
   }, [perfil, loading])
@@ -141,6 +157,9 @@ export default function JustClubAdminPage() {
   useEffect(() => {
     if (unidadeAtiva && abaAtiva === 'calendario') carregarOcorrencias(diasCalendario)
   }, [unidadeAtiva?.id, diasCalendario, abaAtiva])
+  useEffect(() => {
+    if (unidadeAtiva && abaAtiva === 'feriados') carregarFeriados()
+  }, [unidadeAtiva?.id, abaAtiva])
 
   async function carregarUnidades() {
     setLoadingUnidades(true)
@@ -163,9 +182,10 @@ export default function JustClubAdminPage() {
   async function carregarAulas() {
     if (!unidadeAtiva) return
     setLoadingData(true)
+    // Só a grade fixa regular (aulas de feriado têm feriado_id e ficam na aba Feriados)
     const { data } = await supabase.from('club_aulas')
       .select('*, coaches(id, nome), grupos_musculares(nome)')
-      .eq('unidade_id', unidadeAtiva.id).order('dia_semana').order('horario')
+      .eq('unidade_id', unidadeAtiva.id).is('feriado_id', null).order('dia_semana').order('horario')
     setAulas(data || [])
     setLoadingData(false)
   }
@@ -184,6 +204,157 @@ export default function JustClubAdminPage() {
     setLoadingOcs(false)
   }
 
+  // ===== FERIADOS =====
+
+  async function carregarFeriados() {
+    if (!unidadeAtiva) return
+    setLoadingFeriados(true)
+    const hoje = dataLocalStr(new Date())
+    const { data: fer } = await supabase.from('feriados')
+      .select('*').eq('unidade_id', unidadeAtiva.id).gte('data', hoje).order('data')
+    setFeriados(fer || [])
+    const ferIds = (fer || []).map((f: any) => f.id)
+    if (ferIds.length) {
+      const { data: af } = await supabase.from('club_aulas')
+        .select('*, coaches(id, nome), grupos_musculares(nome)')
+        .in('feriado_id', ferIds).order('horario')
+      setAulasFeriado(af || [])
+    } else {
+      setAulasFeriado([])
+    }
+    setLoadingFeriados(false)
+  }
+
+  // IDs das aulas regulares (grade fixa) desta unidade
+  async function idsAulasRegulares(): Promise<string[]> {
+    if (!unidadeAtiva) return []
+    const { data } = await supabase.from('club_aulas').select('id')
+      .eq('unidade_id', unidadeAtiva.id).is('feriado_id', null)
+    return (data || []).map((a: any) => a.id)
+  }
+
+  // Cancela as ocorrências regulares de uma data (+ reservas)
+  async function cancelarOcorrenciasRegularesDoDia(data: string) {
+    const ids = await idsAulasRegulares()
+    if (!ids.length) return
+    const { data: ocs } = await supabase.from('club_ocorrencias')
+      .select('id').in('aula_id', ids).eq('data', data).eq('status', 'ativa')
+    const ocIds = (ocs || []).map((o: any) => o.id)
+    if (!ocIds.length) return
+    await supabase.from('club_reservas')
+      .update({ status: 'cancelado', cancelado_em: new Date().toISOString() })
+      .in('ocorrencia_id', ocIds).neq('status', 'cancelado')
+    await supabase.from('club_ocorrencias').update({ status: 'cancelada' }).in('id', ocIds)
+  }
+
+  async function criarFeriado() {
+    if (!novoFeriadoData) { setErroFeriado('Selecione a data.'); return }
+    if (!novoFeriadoDesc.trim()) { setErroFeriado('Descreva o feriado.'); return }
+    if (!unidadeAtiva) return
+
+    // Conta reservas regulares do dia que serão canceladas
+    const idsReg = await idsAulasRegulares()
+    let reservasNoDia = 0
+    if (idsReg.length) {
+      const { data: ocsDia } = await supabase.from('club_ocorrencias')
+        .select('id').in('aula_id', idsReg).eq('data', novoFeriadoData).eq('status', 'ativa')
+      const ocIds = (ocsDia || []).map((o: any) => o.id)
+      if (ocIds.length) {
+        const { count } = await supabase.from('club_reservas').select('*', { count: 'exact', head: true })
+          .in('ocorrencia_id', ocIds).neq('status', 'cancelado')
+        reservasNoDia = count || 0
+      }
+    }
+    const aviso = reservasNoDia > 0 ? `\n\nAtenção: ${reservasNoDia} reserva(s) desse dia serão canceladas.` : ''
+    if (!confirm(`Marcar ${novoFeriadoData} como feriado vai cancelar as aulas regulares desse dia.${aviso}\n\nContinuar?`)) return
+
+    setSalvandoFeriado(true); setErroFeriado('')
+    const { data: novoFer, error } = await supabase.from('feriados').insert({
+      unidade_id: unidadeAtiva.id,
+      data: novoFeriadoData,
+      descricao: novoFeriadoDesc.trim(),
+      ativo: true,
+    }).select('id').maybeSingle()
+
+    if (error) {
+      if (error.code === '23505') setErroFeriado('Já existe feriado nesta data.')
+      else setErroFeriado('Erro ao criar feriado.')
+      setSalvandoFeriado(false)
+      return
+    }
+
+    // Cancela as ocorrências regulares do dia
+    await cancelarOcorrenciasRegularesDoDia(novoFeriadoData)
+
+    setModalNovoFeriado(false)
+    setNovoFeriadoData(''); setNovoFeriadoDesc('')
+    setSalvandoFeriado(false)
+    await carregarFeriados()
+    showMsg('Feriado criado. Aulas regulares do dia canceladas.')
+  }
+
+  async function removerFeriado(feriado: any) {
+    if (!confirm(`Remover o feriado de ${feriado.data}?\n\nAs aulas do feriado serão apagadas e as aulas regulares desse dia voltam a valer.`)) return
+    setRemovendoFeriado(feriado.id)
+
+    // 1) Aulas do feriado: cancela reservas, apaga ocorrências, apaga aulas
+    const { data: af } = await supabase.from('club_aulas').select('id').eq('feriado_id', feriado.id)
+    const aulaIds = (af || []).map((a: any) => a.id)
+    if (aulaIds.length) {
+      const { data: ocs } = await supabase.from('club_ocorrencias').select('id').in('aula_id', aulaIds)
+      const ocIds = (ocs || []).map((o: any) => o.id)
+      if (ocIds.length) {
+        await supabase.from('club_reservas')
+          .update({ status: 'cancelado', cancelado_em: new Date().toISOString() })
+          .in('ocorrencia_id', ocIds).neq('status', 'cancelado')
+        await supabase.from('club_ocorrencias').delete().in('id', ocIds)
+      }
+      await supabase.from('club_aulas').delete().in('id', aulaIds)
+    }
+
+    // 2) Reativa as ocorrências regulares do dia
+    const idsReg = await idsAulasRegulares()
+    if (idsReg.length) {
+      await supabase.from('club_ocorrencias').update({ status: 'ativa' })
+        .in('aula_id', idsReg).eq('data', feriado.data).eq('status', 'cancelada')
+    }
+
+    // 3) Apaga o feriado
+    await supabase.from('feriados').delete().eq('id', feriado.id)
+
+    setRemovendoFeriado(null)
+    await carregarFeriados()
+    showMsg('Feriado removido. Aulas regulares do dia reativadas.')
+  }
+
+  async function removerAulaFeriado(aula: any) {
+    if (!confirm(`Remover a aula ${tipoLabel(aula.tipo)} ${(aula.horario||'').slice(0,5)} deste feriado?`)) return
+    const { data: ocs } = await supabase.from('club_ocorrencias').select('id').eq('aula_id', aula.id)
+    const ocIds = (ocs || []).map((o: any) => o.id)
+    if (ocIds.length) {
+      await supabase.from('club_reservas')
+        .update({ status: 'cancelado', cancelado_em: new Date().toISOString() })
+        .in('ocorrencia_id', ocIds).neq('status', 'cancelado')
+      await supabase.from('club_ocorrencias').delete().in('id', ocIds)
+    }
+    await supabase.from('club_aulas').delete().eq('id', aula.id)
+    await carregarFeriados()
+    showMsg('Aula do feriado removida.')
+  }
+
+  function abrirNovaAulaFeriado(feriado: any) {
+    setEditando(null)
+    setFeriadoCtx(feriado)
+    const weekday = new Date(feriado.data + 'T12:00:00').getDay()
+    const primeiroHorario = horariosParaUnidade(unidadeAtiva?.nome || '')[0] || '06:00'
+    const capInicial = capacidadePorUnidadeTipo(unidadeAtiva?.nome || '', 'lift')
+    setForm({ ...FORM_VAZIO, dia_semana: weekday, horario: primeiroHorario, capacidade: capInicial, grupo_muscular_id: gruposAtivos[0]?.id || '', coach_id: '' })
+    setFormReplicar(false)
+    setModalAberto(true)
+  }
+
+  // ===== /FERIADOS =====
+
   function aplicarFiltros(lista: any[]): any[] {
     return lista.filter(a => {
       const matchTipo  = filtroTipo  === 'todos' || a.tipo === filtroTipo
@@ -200,6 +371,7 @@ export default function JustClubAdminPage() {
 
   function abrirNovaAula() {
     setEditando(null)
+    setFeriadoCtx(null)
     const primeiroHorario = horariosParaUnidade(unidadeAtiva?.nome || '')[0] || '06:00'
     const capInicial = capacidadePorUnidadeTipo(unidadeAtiva?.nome || '', 'lift')
     // coach_id começa vazio = "Coach a definir" (opcional)
@@ -209,6 +381,7 @@ export default function JustClubAdminPage() {
   }
   function abrirEdicao(aula: any) {
     setEditando(aula)
+    setFeriadoCtx(null)
     setForm({ tipo: aula.tipo, grupo_muscular_id: aula.grupo_muscular_id, coach_id: aula.coach_id || '',
       dia_semana: aula.dia_semana, horario: (aula.horario||'').slice(0,5),
       duracao_min: aula.duracao_min, capacidade: aula.capacidade })
@@ -220,6 +393,29 @@ export default function JustClubAdminPage() {
     if (!form.grupo_muscular_id) { showMsg('Selecione o grupo muscular.'); return }
     // coach é opcional — pode salvar sem (vai como NULL = "Coach a definir")
     setSalvando(true)
+
+    // MODO FERIADO: cria aula avulsa (feriado_id) + 1 ocorrência na data do feriado, sem recorrência
+    if (feriadoCtx) {
+      const payload = {
+        unidade_id: unidadeAtiva.id, tipo: form.tipo,
+        grupo_muscular_id: form.grupo_muscular_id,
+        coach_id: form.coach_id || null,
+        dia_semana: form.dia_semana, horario: form.horario+':00',
+        duracao_min: form.duracao_min, capacidade: form.capacidade,
+        so_mulheres: form.tipo === 'lift_for_girls',
+        ativo: true, feriado_id: feriadoCtx.id,
+      }
+      const { data: nova, error } = await supabase.from('club_aulas').insert(payload).select('id').maybeSingle()
+      if (error) { showMsg('Erro: '+error.message); setSalvando(false); return }
+      const { error: errOc } = await supabase.from('club_ocorrencias')
+        .insert({ aula_id: nova?.id, data: feriadoCtx.data, status: 'ativa' })
+      if (errOc) { showMsg('Erro: '+errOc.message); setSalvando(false); return }
+      setSalvando(false); setModalAberto(false); setFeriadoCtx(null)
+      await carregarFeriados()
+      showMsg('Aula do feriado criada!')
+      return
+    }
+
     const payload = {
       unidade_id: unidadeAtiva.id, tipo: form.tipo,
       grupo_muscular_id: form.grupo_muscular_id,
@@ -461,24 +657,25 @@ export default function JustClubAdminPage() {
           )}
 
           <div className="flex items-center gap-2 mb-3 flex-wrap">
-            {(['lista','grade','calendario','grupos'] as const).map(aba => {
+            {(['lista','grade','calendario','grupos','feriados'] as const).map(aba => {
               const cfg = {
                 lista:      { label: 'Lista',         icon: <List size={14}/> },
                 grade:      { label: 'Grade semanal', icon: <Calendar size={14}/> },
                 calendario: { label: 'Calendário',    icon: <CalendarDays size={14}/> },
                 grupos:     { label: 'Grupos',        icon: <Tag size={14}/> },
+                feriados:   { label: 'Feriados',      icon: <CalendarX size={14}/> },
               }
-              const count = aba==='lista'?aulas.filter(a=>a.ativo).length:aba==='grupos'?gruposAtivos.length:aba==='calendario'?ocsFiltered.length:0
+              const count = aba==='lista'?aulas.filter(a=>a.ativo).length:aba==='grupos'?gruposAtivos.length:aba==='calendario'?ocsFiltered.length:aba==='feriados'?feriados.length:0
               return (
                 <button key={aba}
-                  onClick={() => { setAbaAtiva(aba); if (aba==='calendario') carregarOcorrencias(diasCalendario) }}
+                  onClick={() => { setAbaAtiva(aba); if (aba==='calendario') carregarOcorrencias(diasCalendario); if (aba==='feriados') carregarFeriados() }}
                   className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${abaAtiva===aba?'bg-primary-600 text-white':'bg-white border border-gray-200 text-gray-600 hover:border-primary-300'}`}>
                   {cfg[aba].icon} {cfg[aba].label}
                   {count > 0 && <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${abaAtiva===aba?'bg-white text-primary-600':'bg-primary-100 text-primary-700'}`}>{count}</span>}
                 </button>
               )
             })}
-            {abaAtiva!=='grupos' && (
+            {abaAtiva!=='grupos' && abaAtiva!=='feriados' && (
               <button onClick={abrirNovaAula}
                 className="ml-auto flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-primary-600 text-white hover:bg-primary-700 transition-all">
                 <Plus size={14}/> Nova aula
@@ -486,7 +683,7 @@ export default function JustClubAdminPage() {
             )}
           </div>
 
-          {abaAtiva!=='grupos' && (
+          {abaAtiva!=='grupos' && abaAtiva!=='feriados' && (
             <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 mb-4 flex items-center gap-3 flex-wrap">
               <Filter size={13} className="text-gray-400 flex-shrink-0"/>
               <div className="flex gap-1.5 flex-wrap">
@@ -713,6 +910,79 @@ export default function JustClubAdminPage() {
                   </div>
                 </div>
               )}
+
+              {abaAtiva==='feriados' && (
+                <div>
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 mb-4 text-xs text-blue-700">
+                    💡 Marcar uma data como feriado <strong>cancela as aulas regulares</strong> desse dia. Em seguida você cadastra aqui as <strong>aulas específicas</strong> do feriado (data única, sem recorrência). Remover o feriado <strong>reativa</strong> as aulas regulares do dia.
+                  </div>
+
+                  <div className="mb-4">
+                    <button onClick={()=>{ setModalNovoFeriado(true); setNovoFeriadoData(''); setNovoFeriadoDesc(''); setErroFeriado('') }}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-primary-600 text-white hover:bg-primary-700">
+                      <Plus size={14}/> Novo feriado
+                    </button>
+                  </div>
+
+                  {loadingFeriados ? (
+                    <div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-4 border-primary-400 border-t-transparent rounded-full animate-spin"/></div>
+                  ) : feriados.length===0 ? (
+                    <div className="card text-center py-14">
+                      <CalendarX size={32} className="text-gray-300 mx-auto mb-3"/>
+                      <p className="text-gray-400 text-sm">Nenhum feriado cadastrado para {unidadeAtiva.nome}.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {feriados.map(f => {
+                        const d = new Date(f.data+'T12:00:00')
+                        const aulasDoFeriado = aulasFeriado.filter(a=>a.feriado_id===f.id)
+                          .sort((a,b)=>(a.horario||'').localeCompare(b.horario||''))
+                        return (
+                          <div key={f.id} className="card" style={{ borderColor:'#fed7aa' }}>
+                            <div className="flex items-start gap-3 mb-3">
+                              <div className="text-center flex-shrink-0 w-14">
+                                <div style={{ fontSize:24, fontWeight:700, lineHeight:1, color:'#f97316' }}>{d.getDate()}</div>
+                                <div className="text-xs text-gray-400 uppercase mt-0.5">{d.toLocaleDateString('pt-BR',{month:'short'})}</div>
+                              </div>
+                              <div className="flex-1">
+                                <div className="text-sm font-medium text-gray-900">{f.descricao}</div>
+                                <div className="text-xs text-gray-400 mt-0.5 capitalize">{DIAS_FULL[d.getDay()]}</div>
+                                <div style={{ fontSize:11, fontWeight:600, marginTop:4, color:'#ea580c' }}>● Feriado ativo · grade regular cancelada</div>
+                              </div>
+                              <button onClick={()=>removerFeriado(f)} disabled={removendoFeriado===f.id}
+                                className="btn btn-sm gap-1 text-red-600 hover:bg-red-50 border border-red-200 flex-shrink-0" title="Remover feriado">
+                                <Trash2 size={12}/> {removendoFeriado===f.id?'Removendo...':'Remover'}
+                              </button>
+                            </div>
+
+                            {aulasDoFeriado.length===0 ? (
+                              <div className="text-center text-xs text-gray-400 py-2 mb-2">Nenhuma aula cadastrada para este feriado ainda.</div>
+                            ) : (
+                              <div className="space-y-1.5 mb-3">
+                                {aulasDoFeriado.map(a => (
+                                  <div key={a.id} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5">
+                                    <span className="font-mono text-sm font-bold text-gray-900 w-12 flex-shrink-0">{(a.horario||'').slice(0,5)}</span>
+                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${tipoColor(a.tipo)}`}>{tipoLabel(a.tipo)}</span>
+                                    <span className="text-xs text-gray-600 flex-1 truncate">{a.grupos_musculares?.nome||'—'}</span>
+                                    <span className="text-xs text-gray-400 flex-shrink-0">👤 <NomeCoach nome={a.coaches?.nome}/></span>
+                                    <span className="text-xs text-gray-400 flex-shrink-0 flex items-center gap-1"><Users size={10}/> {a.capacidade}</span>
+                                    <button onClick={()=>removerAulaFeriado(a)} className="text-gray-400 hover:text-red-600 flex-shrink-0" title="Remover aula"><Trash2 size={13}/></button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            <button onClick={()=>abrirNovaAulaFeriado(f)}
+                              className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border border-dashed border-primary-300 text-primary-700 hover:bg-primary-50">
+                              <Plus size={14}/> Adicionar aula do feriado
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>
@@ -722,10 +992,20 @@ export default function JustClubAdminPage() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md max-h-[92vh] flex flex-col shadow-xl">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
-              <div><h2 className="font-semibold text-gray-900">{editando?'Editar aula':'Nova aula'}</h2><p className="text-xs text-gray-400 mt-0.5">{unidadeAtiva?.nome}</p></div>
-              <button onClick={()=>{setModalAberto(false);setEditando(null)}} className="text-gray-400 hover:text-gray-600 p-1"><X size={18}/></button>
+              <div>
+                <h2 className="font-semibold text-gray-900">{editando?'Editar aula':feriadoCtx?'Nova aula do feriado':'Nova aula'}</h2>
+                <p className="text-xs text-gray-400 mt-0.5">{feriadoCtx ? `Feriado · ${formatarDataPT(feriadoCtx.data)}` : unidadeAtiva?.nome}</p>
+              </div>
+              <button onClick={()=>{setModalAberto(false);setEditando(null);setFeriadoCtx(null)}} className="text-gray-400 hover:text-gray-600 p-1"><X size={18}/></button>
             </div>
             <div className="px-6 py-4 space-y-5 overflow-y-auto flex-1">
+
+              {feriadoCtx && (
+                <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5 text-xs text-orange-800 flex items-start gap-2">
+                  <CalendarX size={14} className="mt-0.5 flex-shrink-0"/>
+                  <span>Esta aula acontece <strong>só nesta data</strong> ({formatarDataPT(feriadoCtx.data)}), sem recorrência.</span>
+                </div>
+              )}
 
               <div>
                 <label className="label">Tipo de aula *</label>
@@ -772,17 +1052,19 @@ export default function JustClubAdminPage() {
                 </p>
               </div>
 
-              <div>
-                <label className="label">Dia da semana *</label>
-                <div className="grid grid-cols-7 gap-1">
-                  {DIAS_ABREV.map((d,i)=>(
-                    <button key={i} type="button" onClick={()=>setForm(f=>({...f,dia_semana:i}))}
-                      className={`py-2 rounded-xl text-xs font-medium transition-all ${form.dia_semana===i?'bg-primary-600 text-white':'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                      {d}
-                    </button>
-                  ))}
+              {!feriadoCtx && (
+                <div>
+                  <label className="label">Dia da semana *</label>
+                  <div className="grid grid-cols-7 gap-1">
+                    {DIAS_ABREV.map((d,i)=>(
+                      <button key={i} type="button" onClick={()=>setForm(f=>({...f,dia_semana:i}))}
+                        className={`py-2 rounded-xl text-xs font-medium transition-all ${form.dia_semana===i?'bg-primary-600 text-white':'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                        {d}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div>
                 <label className="label">Horário *</label>
@@ -827,7 +1109,7 @@ export default function JustClubAdminPage() {
                 </div>
               </div>
 
-              {!editando && (
+              {!editando && !feriadoCtx && (
                 <div className="border border-gray-200 rounded-xl overflow-hidden">
                   <button type="button" onClick={()=>setFormReplicar(r=>!r)}
                     className={`w-full flex items-center gap-3 px-4 py-3 transition-colors ${formReplicar?'bg-cyan-50':'bg-gray-50 hover:bg-gray-100'}`}>
@@ -863,9 +1145,9 @@ export default function JustClubAdminPage() {
               )}
             </div>
             <div className="px-6 py-4 border-t border-gray-100 flex gap-2 flex-shrink-0">
-              <button onClick={()=>{setModalAberto(false);setEditando(null)}} className="btn flex-1 text-gray-500 border border-gray-200">Cancelar</button>
+              <button onClick={()=>{setModalAberto(false);setEditando(null);setFeriadoCtx(null)}} className="btn flex-1 text-gray-500 border border-gray-200">Cancelar</button>
               <button onClick={salvar} disabled={salvando} className="btn flex-1 bg-primary-600 text-white hover:bg-primary-700 gap-1 disabled:opacity-60">
-                <Save size={13}/> {salvando?'Salvando...':editando?'Atualizar aula':'Criar aula'}
+                <Save size={13}/> {salvando?'Salvando...':editando?'Atualizar aula':feriadoCtx?'Criar aula do feriado':'Criar aula'}
               </button>
             </div>
           </div>
@@ -994,6 +1276,42 @@ export default function JustClubAdminPage() {
                 className="btn w-full text-gray-500 border border-gray-200">
                 Cancelar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL NOVO FERIADO */}
+      {modalNovoFeriado && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-xl">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h2 className="font-semibold text-gray-900 flex items-center gap-2"><CalendarX size={16} className="text-orange-600"/> Novo feriado</h2>
+              <button onClick={()=>{setModalNovoFeriado(false);setNovoFeriadoData('');setNovoFeriadoDesc('');setErroFeriado('')}} className="text-gray-400 hover:text-gray-600 p-1"><X size={18}/></button>
+            </div>
+            <div className="px-6 py-4 space-y-4">
+              <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5 text-xs text-orange-800">
+                Ao criar, as aulas regulares dessa data serão <strong>canceladas</strong>. Depois cadastre as aulas específicas do dia.
+              </div>
+              <div>
+                <label className="label">Data</label>
+                <input type="date" className="input" value={novoFeriadoData} onChange={e=>setNovoFeriadoData(e.target.value)}/>
+              </div>
+              <div>
+                <label className="label">Descrição</label>
+                <input type="text" className="input" placeholder="Ex: Corpus Christi" value={novoFeriadoDesc} onChange={e=>setNovoFeriadoDesc(e.target.value)}/>
+              </div>
+              {erroFeriado && (
+                <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">{erroFeriado}</div>
+              )}
+              <div className="flex gap-2">
+                <button onClick={()=>{setModalNovoFeriado(false);setNovoFeriadoData('');setNovoFeriadoDesc('');setErroFeriado('')}}
+                  className="btn flex-1 text-gray-500 border border-gray-200">Cancelar</button>
+                <button onClick={criarFeriado} disabled={salvandoFeriado}
+                  className="btn flex-1 bg-primary-600 text-white hover:bg-primary-700 gap-1 disabled:opacity-60">
+                  {salvandoFeriado?'Salvando...':'Criar feriado'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
