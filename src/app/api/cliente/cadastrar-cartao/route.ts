@@ -34,6 +34,23 @@ function cpfValido(valor: string): boolean {
   return true
 }
 
+// Telefone válido = DDD + número (10 ou 11 dígitos)
+function telValido(valor: string): boolean {
+  const t = (valor || '').replace(/\D/g, '')
+  return t.length >= 10 && t.length <= 11
+}
+
+// Monta o objeto phones do Pagar.me a partir de um telefone só com dígitos
+function montarPhones(telLimpo: string) {
+  return {
+    mobile_phone: {
+      country_code: '55',
+      area_code: telLimpo.slice(0, 2),
+      number: telLimpo.slice(2),
+    }
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const authHeader = req.headers.get('authorization') || ''
@@ -48,7 +65,7 @@ export async function POST(req: NextRequest) {
     if (errCliente || !cliente) return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 })
 
     const body = await req.json()
-    const { numero, nome, cvv, mes, ano, cpf: cpfBody } = body
+    const { numero, nome, cvv, mes, ano, cpf: cpfBody, telefone: telBody } = body
 
     if (!numero || !nome || !cvv || !mes || !ano)
       return NextResponse.json({ error: 'Dados do cartão incompletos' }, { status: 400 })
@@ -89,27 +106,37 @@ export async function POST(req: NextRequest) {
       await supabase.from('clientes').update({ cpf: cpfEfetivo }).eq('id', cliente.id)
     }
 
-    const telLimpo = (cliente.telefone || '').replace(/\D/g, '')
+    // ── Telefone efetivo: usa o do cadastro se for válido; senão, o informado no form ──
+    const telCadastro  = (cliente.telefone || '').replace(/\D/g, '')
+    const telInformado = (telBody || '').replace(/\D/g, '')
+    let telEfetivo = ''
+    if (telValido(telCadastro))       telEfetivo = telCadastro
+    else if (telValido(telInformado)) telEfetivo = telInformado
 
+    // Se o cadastro não tinha telefone válido e o cliente informou um agora, salva pra resolver de vez
+    if (!telValido(telCadastro) && telEfetivo && telEfetivo === telInformado) {
+      await supabase.from('clientes').update({ telefone: telEfetivo }).eq('id', cliente.id)
+    }
+
+    const customerJaExistia = !!cliente.pagarme_customer_id
     let pagarmeCustomerId = cliente.pagarme_customer_id
 
     if (!pagarmeCustomerId) {
+      // Pagar.me PSP exige telefone no customer — não criamos um customer sem telefone
+      if (!telEfetivo) {
+        return NextResponse.json({
+          error: 'Para cadastrar o cartão, informe um telefone com DDD.',
+          precisa_telefone: true,
+        }, { status: 400 })
+      }
+
       const customerPayload: any = {
         name: cliente.nome,
         email: cliente.email,
         type: 'individual',
         document: cpfEfetivo,
         document_type: 'CPF',
-      }
-
-      if (telLimpo.length >= 10) {
-        customerPayload.phones = {
-          mobile_phone: {
-            country_code: '55',
-            area_code: telLimpo.slice(0, 2),
-            number: telLimpo.slice(2),
-          }
-        }
+        phones: montarPhones(telEfetivo),
       }
 
       const customerResp = await fetch(`${PAGARME_API_URL}/customers`, {
@@ -139,6 +166,18 @@ export async function POST(req: NextRequest) {
 
       pagarmeCustomerId = customerData.id
       await supabase.from('clientes').update({ pagarme_customer_id: pagarmeCustomerId }).eq('id', cliente.id)
+    } else if (telEfetivo && !telValido(telCadastro)) {
+      // Customer já existia e o cadastro estava sem telefone — atualiza o phones no Pagar.me.
+      // Não-crítico: se falhar, o fluxo do cartão segue e o telefone fica salvo pra retry.
+      try {
+        await fetch(`${PAGARME_API_URL}/customers/${pagarmeCustomerId}`, {
+          method: 'PUT',
+          headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phones: montarPhones(telEfetivo) }),
+        })
+      } catch (e) {
+        console.warn('Falha ao atualizar telefone do customer existente (não crítico):', e)
+      }
     }
 
     const cardPayload = {
