@@ -1,7 +1,6 @@
 'use client'
 import SidebarLayout from '@/components/layout/SidebarLayout'
 import { Dumbbell, Footprints, Users, ShoppingCart, BarChart3, UserCog, BookOpen, Settings } from 'lucide-react'
-
 const nav = [
   {
     label: 'Coach CT',
@@ -16,8 +15,9 @@ const nav = [
     label: 'JustClub',
     icon: Footprints,
     children: [
-      { label: 'Calendário Club', href: '/admin/justclub/calendario' },
-      { label: 'Escala Club',     href: '/admin/justclub/escala-club' },
+      { label: 'Cadastrar Aulas',  href: '/admin/justclub' },
+      { label: 'Calendário Club',  href: '/admin/justclub/calendario' },
+      { label: 'Escala Club',      href: '/admin/justclub/escala-club' },
       { label: 'Mapa de Posições', href: '/admin/posicoes' },
     ],
   },
@@ -77,7 +77,6 @@ const nav = [
     ],
   },
 ]
-
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <SidebarLayout navItems={nav} role="admin" rolesPermitidos={['admin', 'coordenadora']}>
