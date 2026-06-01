@@ -78,7 +78,7 @@ export default function AdminAgendaPage() {
   })
 
   useEffect(() => {
-    if (!loading && perfil?.role !== 'admin') router.push('/')
+    if (!loading && perfil && perfil.role !== 'admin' && perfil.role !== 'coordenadora') router.push('/')
   }, [perfil, loading])
 
   // 🔧 Carrega coaches indexados por user_id (igual à tela de Escala)
