@@ -4,10 +4,17 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
 import SiteHeader from '@/components/SiteHeader'
+import ModalTelefone from '@/components/ModalTelefone'
 
 const ACCENT  = '#ff2d9b'
 const VERDE   = '#2ddd8b'
 const AMARELO = '#ffaa00'
+
+// Telefone válido = DDD + número (10 ou 11 dígitos)
+function telefoneValido(tel: any): boolean {
+  const d = String(tel || '').replace(/\D/g, '')
+  return d.length >= 10 && d.length <= 11
+}
 
 function parsePlanoKey(key: string): { label: string; icon: string } {
   const lower = (key||'').toLowerCase()
@@ -70,6 +77,12 @@ function MapaPageInner() {
   const [erroModal,   setErroModal]   = useState('')
   // Reserva-extra: true quando o cliente já tem reserva ativa nesta ocorrência
   const [jaReservouNaOc, setJaReservouNaOc] = useState(false)
+  // Modal de telefone (Pagar.me exige telefone no customer para cobrar multa)
+  const [modalTelefone,  setModalTelefone]  = useState(false)
+  const [pendingReserva, setPendingReserva] = useState<(() => void) | null>(null)
+
+  // Gate de telefone: já tem cartão (customer no Pagar.me existe) mas está sem telefone válido
+  const precisaTelefone = () => !!cliente?.pagarme_card_id && !telefoneValido(cliente?.telefone)
 
   useEffect(() => {
     if (loadingAuth) return
@@ -136,7 +149,9 @@ function MapaPageInner() {
     setSaldo(s || {})
   }
 
-  function abrirModalPosicao(label: string) {
+  function abrirModalPosicao(label: string, skipTel: boolean = false) {
+    // Gate de telefone antes de abrir o modal de confirmação da posição
+    if (!skipTel && precisaTelefone()) { setPendingReserva(() => () => abrirModalPosicao(label, true)); setModalTelefone(true); return }
     setPosicaoSel(label)
     setErroModal('')
     // Em reserva extra, pré-seleciona o crédito avulso
@@ -440,6 +455,18 @@ function MapaPageInner() {
           </div>
         </div>
       )}
+
+      <ModalTelefone
+        aberto={modalTelefone}
+        onFechar={() => { setModalTelefone(false); setPendingReserva(null) }}
+        onSucesso={(tel) => {
+          setCliente((prev: any) => prev ? { ...prev, telefone: tel } : prev)
+          setModalTelefone(false)
+          const acao = pendingReserva
+          setPendingReserva(null)
+          if (acao) acao()
+        }}
+      />
     </div>
   )
 }
