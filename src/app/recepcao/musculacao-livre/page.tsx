@@ -9,6 +9,13 @@ import { Dumbbell, Search, X, Plus, Clock, AlertCircle, Check, ChevronRight } fr
 // Musculação Livre é sempre na unidade Just CT
 const CT_UNIDADE_ID = 'c28bf4bb-56f8-44ff-818a-c7836e58bcef'
 
+// Origem da entrada (badge na lista). Avulso = crédito nosso; demais = agregador.
+const ORIGENS: Record<string, { label: string; classe: string }> = {
+  cliente:   { label: 'Crédito',   classe: 'bg-blue-100 text-blue-700' },
+  wellhub:   { label: 'Wellhub',   classe: 'bg-purple-100 text-purple-700' },
+  totalpass: { label: 'TotalPass', classe: 'bg-teal-100 text-teal-700' },
+}
+
 function dataLocalStr(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
@@ -49,13 +56,50 @@ export default function RecepcaoMusculacaoLivrePage() {
 
   async function carregarAcessos() {
     setLoadingAcessos(true)
-    const { data } = await supabase.from('acessos_livres_ct')
+
+    // 1) Avulsos (crédito nosso) — tabela acessos_livres_ct
+    const { data: avulsos } = await supabase.from('acessos_livres_ct')
       .select('*, clientes(nome, cpf)')
       .eq('unidade_id', CT_UNIDADE_ID)
       .eq('data', hoje)
       .is('cancelado_em', null)
       .order('criado_em', { ascending: false })
-    setAcessos(data || [])
+
+    // 2) Agregadores (Wellhub/TotalPass) — tabela entradas_walkin, do dia (fuso SP)
+    const { data: agregadores } = await supabase.from('entradas_walkin')
+      .select('id, origem, id_externo, produto, recebido_em, clientes(nome, cpf)')
+      .eq('unidade_id', CT_UNIDADE_ID)
+      .gte('recebido_em', `${hoje}T00:00:00-03:00`)
+      .order('recebido_em', { ascending: false })
+
+    // Normaliza tudo num formato único pra lista
+    const itensAvulso = (avulsos || []).map((a: any) => ({
+      id: a.id,
+      origem: 'cliente',
+      nome: a.clientes?.nome || 'Cliente removido',
+      cpf: a.clientes?.cpf || null,
+      produto: null,
+      hora: a.criado_em,
+    }))
+
+    const itensAgregador = (agregadores || []).map((r: any) => {
+      const c = Array.isArray(r.clientes) ? r.clientes[0] : r.clientes
+      const label = ORIGENS[r.origem]?.label || r.origem
+      return {
+        id: r.id,
+        origem: r.origem,
+        nome: c?.nome || (r.id_externo ? `${label} · ${r.id_externo}` : label),
+        cpf: c?.cpf || null,
+        produto: r.produto || null,
+        hora: r.recebido_em,
+      }
+    })
+
+    const merged = [...itensAvulso, ...itensAgregador].sort(
+      (a, b) => new Date(b.hora).getTime() - new Date(a.hora).getTime()
+    )
+
+    setAcessos(merged)
     setLoadingAcessos(false)
   }
 
@@ -169,21 +213,32 @@ export default function RecepcaoMusculacaoLivrePage() {
           </div>
         ) : (
           <div className="space-y-2">
-            {acessos.map(a => (
-              <div key={a.id} className="card flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 text-white text-sm font-bold flex items-center justify-center flex-shrink-0">
-                  {a.clientes?.nome?.slice(0,2).toUpperCase() || '—'}
+            {acessos.map(a => {
+              const origem = ORIGENS[a.origem] || { label: a.origem, classe: 'bg-gray-100 text-gray-600' }
+              return (
+                <div key={a.id} className="card flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 text-white text-sm font-bold flex items-center justify-center flex-shrink-0">
+                    {a.nome?.slice(0,2).toUpperCase() || '—'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-gray-900 truncate">{a.nome}</div>
+                    {(a.cpf || a.produto) && (
+                      <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                        {a.cpf && <span className="font-mono">{a.cpf}</span>}
+                        {a.produto && <span>{a.produto}</span>}
+                      </div>
+                    )}
+                  </div>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${origem.classe}`}>
+                    {origem.label}
+                  </span>
+                  <div className="flex items-center gap-1 text-xs text-gray-400 flex-shrink-0">
+                    <Clock size={12} />
+                    {new Date(a.hora).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' })}
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-gray-900 truncate">{a.clientes?.nome || 'Cliente removido'}</div>
-                  {a.clientes?.cpf && <div className="text-xs text-gray-500 font-mono mt-0.5">{a.clientes.cpf}</div>}
-                </div>
-                <div className="flex items-center gap-1 text-xs text-gray-400 flex-shrink-0">
-                  <Clock size={12} />
-                  {new Date(a.criado_em).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' })}
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
