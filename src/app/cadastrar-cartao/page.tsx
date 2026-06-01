@@ -27,6 +27,8 @@ export default function CadastrarCartaoPage() {
   const [ano, setAno] = useState('')
   const [cpf, setCpf] = useState('')
   const [mostrarCpf, setMostrarCpf] = useState(false)
+  const [telefone, setTelefone] = useState('')
+  const [mostrarTelefone, setMostrarTelefone] = useState(false)
 
   useEffect(() => {
     if (loadingAuth) return
@@ -67,6 +69,14 @@ export default function CadastrarCartaoPage() {
       .replace(/(\d{3})(\d{1,2})$/, '$1-$2')
   }
 
+  function formatarTelefone(v: string) {
+    const d = v.replace(/\D/g, '').slice(0, 11)
+    if (d.length <= 2)  return d.length ? `(${d}` : d
+    if (d.length <= 6)  return `(${d.slice(0, 2)}) ${d.slice(2)}`
+    if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`
+    return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`
+  }
+
   async function salvar(e: React.FormEvent) {
     e.preventDefault()
     setErro('')
@@ -84,6 +94,9 @@ export default function CadastrarCartaoPage() {
 
     const cpfLimpo = cpf.replace(/\D/g, '')
     if (mostrarCampoCpf && cpfLimpo.length !== 11) { setErro('Digite um CPF válido (11 dígitos).'); return }
+
+    const telLimpo = telefone.replace(/\D/g, '')
+    if (mostrarCampoTelefone && (telLimpo.length < 10 || telLimpo.length > 11)) { setErro('Digite um telefone válido com DDD (10 ou 11 dígitos).'); return }
 
     setSalvando(true)
 
@@ -108,6 +121,7 @@ export default function CadastrarCartaoPage() {
           mes,
           ano,
           cpf: cpfLimpo,
+          telefone: telLimpo,
         }),
       })
 
@@ -116,6 +130,7 @@ export default function CadastrarCartaoPage() {
       if (!res.ok) {
         setErro(data.error || 'Erro ao cadastrar cartão.')
         if (data.precisa_cpf) setMostrarCpf(true)
+        if (data.precisa_telefone) setMostrarTelefone(true)
         setSalvando(false)
         return
       }
@@ -130,6 +145,7 @@ export default function CadastrarCartaoPage() {
       setMes('')
       setAno('')
       setCpf('')
+      setTelefone('')
     } catch (err) {
       setErro('Erro de conexão. Tente novamente.')
     }
@@ -152,6 +168,11 @@ export default function CadastrarCartaoPage() {
   const cpfCadastroLimpo = (cliente?.cpf || '').replace(/\D/g, '')
   const semCpfCadastro = !!cliente && cpfCadastroLimpo.length !== 11
   const mostrarCampoCpf = semCpfCadastro || mostrarCpf
+
+  // Telefone: campo aparece só se o cadastro estiver sem telefone válido, ou se a API pedir (precisa_telefone)
+  const telCadastroLimpo = (cliente?.telefone || '').replace(/\D/g, '')
+  const semTelefoneCadastro = !!cliente && (telCadastroLimpo.length < 10 || telCadastroLimpo.length > 11)
+  const mostrarCampoTelefone = semTelefoneCadastro || mostrarTelefone
 
   // Lógica de exibição após sucesso
   const pendenciasResolvidas = resultadoPendencias?.havia > 0 && resultadoPendencias?.cliente_desbloqueado
@@ -292,6 +313,17 @@ export default function CadastrarCartaoPage() {
                     <input style={inputStyle} type="text" inputMode="numeric" placeholder="000.000.000-00" value={cpf} onChange={e => setCpf(formatarCpf(e.target.value))} />
                     <div style={{ fontSize: 12, color: '#888', marginTop: 6, lineHeight: 1.5 }}>
                       Seu cadastro está sem CPF. Informe-o para validar o cartão.
+                    </div>
+                  </div>
+                )}
+
+                {/* Telefone — aparece só quando o cadastro está sem telefone válido (ou a API pediu) */}
+                {mostrarCampoTelefone && (
+                  <div>
+                    <label style={labelStyle}>Telefone com DDD</label>
+                    <input style={inputStyle} type="tel" inputMode="numeric" placeholder="(11) 99999-9999" value={telefone} onChange={e => setTelefone(formatarTelefone(e.target.value))} />
+                    <div style={{ fontSize: 12, color: '#888', marginTop: 6, lineHeight: 1.5 }}>
+                      Seu cadastro está sem telefone. Informe-o para validar o cartão.
                     </div>
                   </div>
                 )}
