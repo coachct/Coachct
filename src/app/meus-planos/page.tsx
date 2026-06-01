@@ -29,9 +29,7 @@ export default function MeusPlanosPage() {
   const [loadingData, setLoadingData] = useState(true)
 
   const [modalPlano, setModalPlano] = useState<any>(null)
-  const [nomeAceite, setNomeAceite] = useState('')
   const [aceiteCheck, setAceiteCheck] = useState(false)
-  const [scrollLido, setScrollLido] = useState(false)
   const [ativando, setAtivando] = useState(false)
   const [erroAtivacao, setErroAtivacao] = useState('')
   const [planoAtivadoSucesso, setPlanoAtivadoSucesso] = useState<any>(null)
@@ -74,30 +72,13 @@ export default function MeusPlanosPage() {
 
   function abrirModalPlano(plano: any) {
     setModalPlano(plano)
-    setNomeAceite('')
     setAceiteCheck(false)
-    setScrollLido(false)
     setErroAtivacao('')
     setPlanoAtivadoSucesso(null)
   }
 
-  function handleScroll(e: React.UIEvent<HTMLPreElement>) {
-    const el = e.currentTarget
-    const lido = el.scrollHeight - el.scrollTop - el.clientHeight < 50
-    if (lido && !scrollLido) setScrollLido(true)
-  }
-
   async function ativarPlano() {
-    if (!scrollLido) { setErroAtivacao('Role até o final do termo antes de aceitar.'); return }
     if (!aceiteCheck) { setErroAtivacao('Você precisa aceitar os termos para continuar.'); return }
-    if (!nomeAceite.trim()) { setErroAtivacao('Digite seu nome completo para confirmar o aceite.'); return }
-
-    const nomeCliente = (cliente?.nome || '').trim().toLowerCase()
-    const nomeInput = nomeAceite.trim().toLowerCase()
-    if (nomeInput !== nomeCliente) {
-      setErroAtivacao('O nome digitado não confere com o cadastro. Digite exatamente como foi cadastrado.')
-      return
-    }
     if (!modalPlano || !cliente) return
 
     setAtivando(true)
@@ -140,7 +121,7 @@ export default function MeusPlanosPage() {
         cliente_id: cliente.id,
         cliente_plano_id: cliPlanoId,
         tipo_plano: tipoPlano,
-        nome_digitado: nomeAceite.trim(),
+        nome_digitado: cliente.nome || '',
         cpf_confirmado: cliente.cpf,
         user_agent: navigator.userAgent,
         modo_aceite: 'online',
@@ -201,8 +182,7 @@ export default function MeusPlanosPage() {
   const planosWellhub = planosDisponiveis.filter(p => p.tipo === 'wellhub')
   const planosTotalPass = planosDisponiveis.filter(p => p.tipo === 'totalpass')
 
-  const nomeBate = nomeAceite.trim().toLowerCase() === (cliente?.nome || '').trim().toLowerCase()
-  const podeAtivar = scrollLido && aceiteCheck && nomeAceite.trim() && nomeBate
+  const podeAtivar = aceiteCheck
 
   // Verifica se cliente já tem cartão (vai influenciar o CTA da tela de sucesso)
   const jaTemCartao = !!cliente?.pagarme_card_id
@@ -326,25 +306,12 @@ export default function MeusPlanosPage() {
 
             <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.5rem' }}>
               <div style={{ fontSize: 11, color: ACCENT, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 8 }}>📄 Termo de Adesão — Wellhub / TotalPass</div>
-              <pre onScroll={handleScroll} style={{ fontSize: 12, color: '#888', lineHeight: 1.8, whiteSpace: 'pre-wrap', fontFamily: "'DM Sans', sans-serif", maxHeight: 280, overflow: 'auto', border: '1px solid #222', borderRadius: 8, padding: '1rem', background: '#0a0a0a' }}>{TEXTO_TERMO_WELLHUB_TOTALPASS}</pre>
-
-              {!scrollLido && (
-                <div style={{ marginTop: 8, padding: '0.5rem', background: `${ACCENT}10`, border: `1px solid ${ACCENT}30`, borderRadius: 6, fontSize: 11, color: ACCENT, textAlign: 'center' as const }}>
-                  ↓ role até o final do termo para liberar o aceite
-                </div>
-              )}
+              <pre style={{ fontSize: 12, color: '#888', lineHeight: 1.8, whiteSpace: 'pre-wrap', fontFamily: "'DM Sans', sans-serif", maxHeight: 280, overflow: 'auto', border: '1px solid #222', borderRadius: 8, padding: '1rem', background: '#0a0a0a' }}>{TEXTO_TERMO_WELLHUB_TOTALPASS}</pre>
             </div>
 
             <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid #222' }}>
-              <div style={{ marginBottom: '1rem' }}>
-                <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>Digite seu nome completo para confirmar o aceite:</div>
-                <input type="text" value={nomeAceite} onChange={e => setNomeAceite(e.target.value)} placeholder={cliente?.nome || 'Nome Sobrenome'}
-                  disabled={!scrollLido}
-                  style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${nomeBate && nomeAceite.length > 3 ? ACCENT + '66' : '#333'}`, borderRadius: 8, padding: '0.65rem 1rem', color: '#fff', fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', opacity: scrollLido ? 1 : 0.5 }} />
-              </div>
-
-              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: scrollLido ? 'pointer' : 'not-allowed', marginBottom: '1rem', opacity: scrollLido ? 1 : 0.5 }}>
-                <input type="checkbox" checked={aceiteCheck} onChange={e => setAceiteCheck(e.target.checked)} disabled={!scrollLido} style={{ marginTop: 3, accentColor: ACCENT, width: 16, height: 16, flexShrink: 0 }} />
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer', marginBottom: '1rem' }}>
+                <input type="checkbox" checked={aceiteCheck} onChange={e => setAceiteCheck(e.target.checked)} style={{ marginTop: 3, accentColor: ACCENT, width: 16, height: 16, flexShrink: 0 }} />
                 <span style={{ fontSize: 13, color: '#aaa', lineHeight: 1.5 }}>Li e aceito integralmente o Termo de Adesão Just CT — Wellhub / TotalPass, incluindo as regras de agendamento, cancelamento, multa por no-show e conduta nas dependências da academia.</span>
               </label>
 
