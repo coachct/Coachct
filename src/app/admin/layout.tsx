@@ -51,7 +51,11 @@ const nav = [
     label: 'Financeiro & Relatórios',
     icon: BarChart3,
     children: [
-      { label: 'Faturamento & Margem', href: '/admin/financeiro' },
+      { label: 'Visão Geral',          href: '/admin/financeiro' },
+      { label: 'Receitas',             href: '/admin/financeiro/receitas' },
+      { label: 'Contas a Pagar',       href: '/admin/financeiro/contas-a-pagar' },
+      { label: 'Recorrentes',          href: '/admin/financeiro/recorrentes' },
+      { label: 'Fornecedores',         href: '/admin/financeiro/fornecedores' },
       { label: 'Pagamentos',           href: '/admin/relatorios/pagamentos' },
       { label: 'Custo × Retorno',      href: '/admin/relatorios/custo' },
       { label: 'Analytics de Coaches', href: '/admin/analytics' },
