@@ -754,8 +754,10 @@ export default function AdminClientesPage() {
   }
 
   const saldosPorUnidade: Record<string, any[]> = {}
+  const saldosGlobais: any[] = []
   for (const [key, info] of Object.entries(saldoMes)) {
-    const uid = (info as any).unidade_id; if (!uid) continue
+    const uid = (info as any).unidade_id
+    if (!uid) { saldosGlobais.push({ key, ...info as any }); continue }
     if (!saldosPorUnidade[uid]) saldosPorUnidade[uid] = []
     saldosPorUnidade[uid].push({ key, ...info as any })
   }
@@ -1004,7 +1006,7 @@ export default function AdminClientesPage() {
                   </div>
                 )}
 
-                {Object.keys(saldosPorUnidade).length > 0 && (
+                {(Object.keys(saldosPorUnidade).length > 0 || saldosGlobais.length > 0) && (
                   <div className="card">
                     <div className="flex items-center gap-2 mb-3"><Zap size={16} className="text-primary-600" /><div className="text-sm font-semibold text-gray-900">Créditos disponíveis</div><span className="text-xs text-gray-400">· este mês</span></div>
                     <div className="space-y-3">
@@ -1029,6 +1031,23 @@ export default function AdminClientesPage() {
                           </div>
                         )
                       })}
+                      {saldosGlobais.length > 0 && (
+                        <div className="border border-gray-100 rounded-xl p-3 bg-gray-50">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-700">Club</span>
+                            <span className="text-xs font-semibold text-gray-700">{saldosGlobais[0]?.unidade_nome || 'Todas as unidades'}</span>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2">
+                            {saldosGlobais.map((s: any) => (
+                              <div key={s.key} className="bg-white rounded-lg p-2 text-center border border-gray-100">
+                                <div className={`text-2xl font-bold ${s.disponivel === 0 ? 'text-gray-300' : s.disponivel <= 2 ? 'text-orange-500' : 'text-primary-600'}`}>{s.disponivel}</div>
+                                <div className="text-xs text-gray-500 capitalize mt-0.5 truncate">{s.tipo_plano}</div>
+                                <div className="text-xs text-gray-400 mt-0.5">de {s.total}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
