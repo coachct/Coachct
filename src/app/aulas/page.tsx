@@ -167,9 +167,10 @@ function AulasPageInner() {
 
   const temPlanoParceiroAtivo = Object.entries(saldo).some(([k, v]: any) => !k.startsWith('avulso') && v?.disponivel > 0) ||
     Object.entries(saldoProximo).some(([k, v]: any) => !k.startsWith('avulso') && v?.disponivel > 0)
-  const precisaCartao = !!cliente && temPlanoParceiroAtivo && !cliente?.pagarme_card_id
+  // ClassPass: conta proxy do agregador — nunca exige cartão nem telefone
+  const precisaCartao = !!cliente && temPlanoParceiroAtivo && !cliente?.pagarme_card_id && !cliente?.is_classpass
   // Gate de telefone: já tem cartão (customer no Pagar.me existe) mas está sem telefone válido
-  const precisaTelefone = () => !!cliente?.pagarme_card_id && !telefoneValido(cliente?.telefone)
+  const precisaTelefone = () => !cliente?.is_classpass && !!cliente?.pagarme_card_id && !telefoneValido(cliente?.telefone)
 
   function saldoParaData() { return dataSelEhProximoMes ? saldoProximo : saldo }
 
@@ -375,8 +376,8 @@ function AulasPageInner() {
   }
   async function abrirModalReserva(oc: any, soAvulso: boolean = false) {
     setModalReserva(oc); setPosicaoSel(''); setErroModal(''); setModalSoAvulso(soAvulso)
-    // Em modo só-avulso, pré-seleciona o crédito avulso disponível
-    setTipoCredito(soAvulso ? (avulsoDisponiveis[0] || '') : '')
+    // ClassPass usa crédito fixo 'classpass'; em modo só-avulso pré-seleciona o avulso disponível
+    setTipoCredito(cliente?.is_classpass ? 'classpass' : (soAvulso ? (avulsoDisponiveis[0] || '') : ''))
     if (oc.club_aulas?.tipo === 'running_funcional') await carregarPosicoes(oc.id)
   }
   function fecharModalReserva() {
@@ -397,7 +398,9 @@ function AulasPageInner() {
       setErroModal(msg); setConfirmando(false); return
     }
     setConfirmando(false); setModalReserva(null); setModalSoAvulso(false)
-    router.push('/minha-conta')
+    // ClassPass reserva em sequência (empilha): mantém na página e recarrega; clientes normais vão pra minha-conta
+    if (cliente?.is_classpass) { await carregarOcorrencias(dataSelStr) }
+    else { router.push('/minha-conta') }
   }
   async function confirmarFila() {
     if (!tipoCredito) { setErroModal('Selecione o plano para usar.'); return }
@@ -757,7 +760,7 @@ function AulasPageInner() {
                   </div>
 
                   {/* Botão de ação — full-width, só aparece se não tiver reservado/fila */}
-                  {!minhaRes && !naFila && (
+                  {(!minhaRes || cliente?.is_classpass) && !naFila && (
                     <div style={{ padding: isMobile ? '0 1.25rem 1.25rem' : '0 1rem 1rem' }}>
                       {lotado ? (
                         <button onClick={() => tentarFila(oc)} style={{
@@ -857,7 +860,15 @@ function AulasPageInner() {
                     📅 Estes créditos são de <strong>{nomeMesProximo}</strong>
                   </div>
                 )}
-                {planosNoModal.length===0 ? (
+                {cliente?.is_classpass ? (
+                  <div style={{ background:`${ACCENT}12`, border:`1px solid ${ACCENT}44`, borderRadius:12, padding:'1rem 1.25rem', display:'flex', alignItems:'center', gap:'0.75rem' }}>
+                    <span style={{ fontSize:22 }}>♾️</span>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:14, fontWeight:700, color:'#fff' }}>ClassPass</div>
+                      <div style={{ fontSize:12, color:'#aaa', marginTop:2 }}>Reservas ilimitadas — sem consumo de crédito</div>
+                    </div>
+                  </div>
+                ) : planosNoModal.length===0 ? (
                   <div style={{ background:'#0d0d0d', border:`1px solid ${AMARELO}33`, borderRadius:12, padding:'1.25rem' }}>
                     <div style={{ fontSize:14, color:'#fff', fontWeight:700, marginBottom:6 }}>
                       {modalSoAvulso
