@@ -50,20 +50,33 @@ export async function POST(req: NextRequest) {
     let pagarmeAtualizado = false
 
     if (customerId) {
-      const phonesPayload = {
+      // Pagar.me v5 exige o customer completo no PUT (não aceita atualização só de phones —
+      // retorna "The name field is required."). Espelha o payload do POST de criação que
+      // funciona (name/email/type/document + phones).
+      const cpfLimpo = String(cliente.cpf || '').replace(/\D/g, '')
+
+      const customerPayload: any = {
+        name: cliente.nome,
+        email: cliente.email,
+        type: 'individual',
         phones: {
           mobile_phone: {
             country_code: '55',
             area_code: telLimpo.slice(0, 2),
             number: telLimpo.slice(2),
           }
-        }
+        },
+      }
+      // Inclui document só quando há CPF válido (evita enviar document vazio)
+      if (cpfLimpo.length === 11) {
+        customerPayload.document = cpfLimpo
+        customerPayload.document_type = 'CPF'
       }
 
       const resp = await fetch(`${PAGARME_API_URL}/customers/${customerId}`, {
         method: 'PUT',
         headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
-        body: JSON.stringify(phonesPayload),
+        body: JSON.stringify(customerPayload),
       })
       const respData = await resp.json()
 
@@ -76,7 +89,7 @@ export async function POST(req: NextRequest) {
         sucesso: resp.ok,
         motivo: resp.ok ? 'Telefone atualizado no customer Pagar.me' : null,
         erro: resp.ok ? null : (respData?.message || 'Erro ao atualizar telefone no Pagar.me'),
-        request_payload: phonesPayload,
+        request_payload: customerPayload,
         response_payload: respData,
         operado_por: user.id,
       })
