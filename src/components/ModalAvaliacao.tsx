@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
 
@@ -48,6 +49,7 @@ export default function ModalAvaliacao() {
   const { perfil, loading } = useAuth()
   const supabase = createClient()
 
+  const [montado, setMontado] = useState(false)
   const [pendente, setPendente] = useState<any>(null)
   const [aberto, setAberto] = useState(false)
   const [carregado, setCarregado] = useState(false)
@@ -60,6 +62,8 @@ export default function ModalAvaliacao() {
 
   const [enviando, setEnviando] = useState(false)
   const [erro, setErro] = useState('')
+
+  useEffect(() => { setMontado(true) }, [])
 
   useEffect(() => {
     if (loading || carregado) return
@@ -130,7 +134,7 @@ export default function ModalAvaliacao() {
     enviarAcao({ action: 'optout' })
   }
 
-  if (!aberto || !pendente) return null
+  if (!montado || !aberto || !pendente) return null
 
   const temAlgo = notaAula != null || notaProf != null || notaMusica != null || notaAmb != null || comentario.trim().length > 0
 
@@ -141,11 +145,11 @@ export default function ModalAvaliacao() {
     </div>
   )
 
-  return (
+  const overlay = (
     <div
       style={{
-        position: 'fixed', inset: 0, zIndex: 1000,
-        background: 'rgba(0,0,0,.78)', backdropFilter: 'blur(4px)',
+        position: 'fixed', inset: 0, zIndex: 9999,
+        background: 'rgba(0,0,0,.82)', backdropFilter: 'blur(4px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem',
       }}
     >
@@ -238,4 +242,6 @@ export default function ModalAvaliacao() {
       </div>
     </div>
   )
+
+  return createPortal(overlay, document.body)
 }
