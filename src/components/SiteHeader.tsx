@@ -1,6 +1,7 @@
 'use client'
 import { useRouter, usePathname } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import ModalAvaliacao from './ModalAvaliacao'
 const ACCENT = '#ff2d9b'
 export default function SiteHeader() {
   const { perfil, loading } = useAuth()
@@ -85,6 +86,7 @@ export default function SiteHeader() {
           Agendar Treino
         </button>
       </div>
+      <ModalAvaliacao />
     </nav>
   )
 }
