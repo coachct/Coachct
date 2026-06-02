@@ -5,6 +5,28 @@ const PAGARME_API_KEY    = process.env.PAGARME_API_KEY!
 const PAGARME_BASE       = 'https://api.pagar.me/core/v5'
 const PRODUTO_MULTA_CLUB_ID = '196ac99d-9b0e-45de-b418-471e45e22db3'
 
+// Telefone válido = DDD + número (10 ou 11 dígitos)
+function telValido(valor: string): boolean {
+  const t = (valor || '').replace(/\D/g, '')
+  return t.length >= 10 && t.length <= 11
+}
+
+// Monta o objeto phones do Pagar.me a partir de um telefone só com dígitos
+function montarPhones(telLimpo: string) {
+  return {
+    mobile_phone: {
+      country_code: '55',
+      area_code: telLimpo.slice(0, 2),
+      number: telLimpo.slice(2),
+    }
+  }
+}
+
+function getAuthHeader() {
+  const credentials = Buffer.from(`${PAGARME_API_KEY}:`).toString('base64')
+  return `Basic ${credentials}`
+}
+
 export async function POST(req: NextRequest) {
   try {
     const authHeader = req.headers.get('authorization')
@@ -54,7 +76,7 @@ export async function POST(req: NextRequest) {
     // Busca cliente
     const { data: cliente, error: errCli } = await supabase
       .from('clientes')
-      .select('id, nome, cpf, email, pagarme_customer_id, pagarme_card_id, pagarme_card_last4, pagarme_card_brand')
+      .select('id, nome, cpf, email, telefone, pagarme_customer_id, pagarme_card_id, pagarme_card_last4, pagarme_card_brand')
       .eq('id', reserva.cliente_id)
       .maybeSingle()
 
@@ -70,6 +92,32 @@ export async function POST(req: NextRequest) {
       .ilike('observacao', `%${reserva_id}%`).maybeSingle()
     if (vendaExistente)
       return NextResponse.json({ error: 'Esta falta já foi cobrada anteriormente' }, { status: 400 })
+
+    // ── Garante telefone no customer do Pagar.me (requisito do PSP — evita o erro 412) ──
+    // Customers criados antes do fix de telefone podem existir no Pagar.me sem phone.
+    // A cobrança é o melhor momento pra corrigir isso, sem depender do cliente reabrir cadastro.
+    const telCliente = (cliente.telefone || '').replace(/\D/g, '')
+    if (!telValido(telCliente)) {
+      return NextResponse.json({
+        error: 'Cliente sem telefone válido no cadastro. Atualize o telefone (com DDD) na recepção antes de cobrar.',
+        precisa_telefone: true,
+      }, { status: 400 })
+    }
+    // Empurra o telefone pro customer no Pagar.me. Best-effort: se o PUT falhar, segue
+    // pra cobrança mesmo assim (a própria order vai acusar caso realmente falte telefone lá).
+    try {
+      const putTelResp = await fetch(`${PAGARME_BASE}/customers/${cliente.pagarme_customer_id}`, {
+        method: 'PUT',
+        headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phones: montarPhones(telCliente) }),
+      })
+      if (!putTelResp.ok) {
+        const putTelData = await putTelResp.json().catch(() => null)
+        console.warn('Falha ao atualizar telefone do customer (segue para cobrança):', JSON.stringify(putTelData))
+      }
+    } catch (e) {
+      console.warn('Erro ao atualizar telefone do customer (não crítico):', e)
+    }
 
     const valorCentavos = Math.round(Number(valor) * 100)
 
