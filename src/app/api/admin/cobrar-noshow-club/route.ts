@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
           card_id: cliente.pagarme_card_id,
           operation_type: 'auth_and_capture',
           installments: 1,
-          statement_descriptor: 'JUSTCLUB MULTA',
+          statement_descriptor: 'JUSTCLUBMULTA',
         },
       }],
     }
