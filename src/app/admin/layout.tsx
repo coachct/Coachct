@@ -1,6 +1,6 @@
 'use client'
 import SidebarLayout from '@/components/layout/SidebarLayout'
-import { Dumbbell, Footprints, Users, ShoppingCart, BarChart3, UserCog, BookOpen, Settings } from 'lucide-react'
+import { Dumbbell, Footprints, Clock, Users, ShoppingCart, BarChart3, UserCog, BookOpen, Settings } from 'lucide-react'
 const nav = [
   {
     label: 'Coach CT',
@@ -19,6 +19,13 @@ const nav = [
       { label: 'Calendário Club',  href: '/admin/justclub/calendario' },
       { label: 'Escala Club',      href: '/admin/justclub/escala-club' },
       { label: 'Mapa de Posições', href: '/admin/posicoes' },
+    ],
+  },
+  {
+    label: 'Fila de espera',
+    icon: Clock,
+    children: [
+      { label: 'Fila de espera', href: '/admin/fila-espera' },
     ],
   },
   {
