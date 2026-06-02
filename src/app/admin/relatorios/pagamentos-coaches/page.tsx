@@ -158,7 +158,9 @@ export default function PagamentosCoachesPage() {
   async function lancarDespesa() {
     if (!coachSel || !unidadeSel || totalAulas === 0) return
     setLancando(true)
-    const { error } = await supabase.from('coach_pagamentos').insert({
+
+    // 1) Registro do pagamento do coach (inalterado)
+    const { data: pag, error } = await supabase.from('coach_pagamentos').insert({
       coach_id:       coachSel.id,
       unidade_id:     unidadeSel.id,
       periodo_inicio: inicio,
@@ -168,9 +170,41 @@ export default function PagamentosCoachesPage() {
       valor_total:    totalFinal,
       status:         'pendente',
       observacao:     `${coachSel.nome} — ${totalAulas} aulas em ${unidadeSel.nome} (${formatarData(inicio)} a ${formatarData(fim)})${incluirFixo ? ` + fixo R$ ${salarioFixo.toFixed(2).replace('.', ',')}` : ''}`,
+    }).select('id').maybeSingle()
+
+    if (error) { setLancando(false); showMsg('Erro: ' + error.message); return }
+
+    // 2) Reflete no financeiro como despesa (origem=coach)
+    // competência = mês trabalhado (do início do período); vencimento = dia 01 do mês seguinte
+    const [iy, im] = inicio.split('-').map(Number)
+    const competencia = `${iy}-${String(im).padStart(2, '0')}-01`
+    const proxAno = im === 12 ? iy + 1 : iy
+    const proxMes = im === 12 ? 1 : im + 1
+    const vencimento = `${proxAno}-${String(proxMes).padStart(2, '0')}-01`
+
+    const { data: catCoach } = await supabase.from('categorias_despesa')
+      .select('id').eq('nome', 'Coaches').maybeSingle()
+
+    const { error: errDesp } = await supabase.from('despesas').insert({
+      unidade_id:         unidadeSel.id,
+      categoria_id:       catCoach?.id || null,
+      descricao:          `Pagamento ${coachSel.nome} — ${totalAulas} aulas (${formatarData(inicio)} a ${formatarData(fim)})`,
+      valor:              totalFinal,
+      competencia,
+      vencimento,
+      pago:               false,
+      origem:             'coach',
+      coach_pagamento_id: pag?.id || null,
     })
+
     setLancando(false)
-    if (error) { showMsg('Erro: ' + error.message); return }
+
+    if (errDesp) {
+      setLancado(true)
+      showMsg('⚠️ Pagamento registrado, mas falhou ao lançar no financeiro: ' + errDesp.message)
+      return
+    }
+
     setLancado(true)
     showMsg(`✅ Despesa de R$ ${totalFinal.toFixed(2).replace('.', ',')} lançada com sucesso!`)
   }
