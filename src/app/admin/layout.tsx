@@ -55,6 +55,7 @@ const nav = [
       { label: 'Receitas',             href: '/admin/financeiro/receitas' },
       { label: 'Contas a Pagar',       href: '/admin/financeiro/contas-a-pagar' },
       { label: 'Recorrentes',          href: '/admin/financeiro/recorrentes' },
+      { label: 'Funcionários',         href: '/admin/financeiro/funcionarios' },
       { label: 'Fornecedores',         href: '/admin/financeiro/fornecedores' },
       { label: 'Pagamentos',           href: '/admin/relatorios/pagamentos' },
       { label: 'Custo × Retorno',      href: '/admin/relatorios/custo' },
