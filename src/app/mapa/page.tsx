@@ -81,8 +81,8 @@ function MapaPageInner() {
   const [modalTelefone,  setModalTelefone]  = useState(false)
   const [pendingReserva, setPendingReserva] = useState<(() => void) | null>(null)
 
-  // Gate de telefone: já tem cartão (customer no Pagar.me existe) mas está sem telefone válido
-  const precisaTelefone = () => !!cliente?.pagarme_card_id && !telefoneValido(cliente?.telefone)
+  // Gate de telefone: já tem cartão (customer no Pagar.me existe) mas está sem telefone válido. ClassPass nunca exige.
+  const precisaTelefone = () => !cliente?.is_classpass && !!cliente?.pagarme_card_id && !telefoneValido(cliente?.telefone)
 
   useEffect(() => {
     if (loadingAuth) return
@@ -154,8 +154,9 @@ function MapaPageInner() {
     if (!skipTel && precisaTelefone()) { setPendingReserva(() => () => abrirModalPosicao(label, true)); setModalTelefone(true); return }
     setPosicaoSel(label)
     setErroModal('')
-    // Em reserva extra, pré-seleciona o crédito avulso
-    if (jaReservouNaOc) setTipoCredito(avulsoDisponiveis[0] || '')
+    // ClassPass usa crédito fixo 'classpass'; em reserva extra (avulso) pré-seleciona o avulso
+    if (cliente?.is_classpass) setTipoCredito('classpass')
+    else if (jaReservouNaOc) setTipoCredito(avulsoDisponiveis[0] || '')
     setModalAberto(true)
   }
 
@@ -175,15 +176,17 @@ function MapaPageInner() {
     if (!tipoCredito) { setErroModal('Selecione o plano.'); return }
     if (!posicaoSel || !cliente) return
     setConfirmando(true); setErroModal('')
-    // Revalida o saldo do mês da ocorrência antes de inserir (evita reserva sem crédito)
-    const d = new Date((ocorrencia?.data || '') + 'T12:00:00')
-    const { data: saldoAtual } = await supabase.rpc('saldo_creditos_cliente', {
-      p_cliente_id: cliente.id, p_mes: d.getMonth()+1, p_ano: d.getFullYear(), p_unidade_id: unidadeId,
-    })
-    if (!saldoAtual || !saldoAtual[tipoCredito] || saldoAtual[tipoCredito].disponivel <= 0) {
-      setSaldo(saldoAtual || {})
-      setErroModal('Você não tem crédito disponível para esta aula.')
-      setConfirmando(false); return
+    // ClassPass: ilimitado, sem checagem de saldo. Clientes normais revalidam o saldo do mês da ocorrência antes de inserir.
+    if (!cliente.is_classpass) {
+      const d = new Date((ocorrencia?.data || '') + 'T12:00:00')
+      const { data: saldoAtual } = await supabase.rpc('saldo_creditos_cliente', {
+        p_cliente_id: cliente.id, p_mes: d.getMonth()+1, p_ano: d.getFullYear(), p_unidade_id: unidadeId,
+      })
+      if (!saldoAtual || !saldoAtual[tipoCredito] || saldoAtual[tipoCredito].disponivel <= 0) {
+        setSaldo(saldoAtual || {})
+        setErroModal('Você não tem crédito disponível para esta aula.')
+        setConfirmando(false); return
+      }
     }
     const { error } = await supabase.from('club_reservas').insert({
       ocorrencia_id: ocId, cliente_id: cliente.id, tipo_credito: tipoCredito,
@@ -214,6 +217,8 @@ function MapaPageInner() {
   const avulsoDisponiveis = planosDisponiveis.filter(p => p.startsWith('avulso'))
   // Em reserva extra, só avulso é oferecido; senão, todos
   const planosNoMapa = jaReservouNaOc ? avulsoDisponiveis : planosDisponiveis
+  // ClassPass nunca fica "sem plano" (crédito ilimitado)
+  const semPlano = !cliente?.is_classpass && planosNoMapa.length === 0
 
   const aula    = ocorrencia?.club_aulas
   const horario = (aula?.horario||'').slice(0,5)
@@ -379,7 +384,15 @@ function MapaPageInner() {
                   🎟️ Reserva extra com <strong>crédito avulso</strong> — você pode marcar outra posição na mesma aula.
                 </div>
               )}
-              {planosNoMapa.length === 0 ? (
+              {cliente?.is_classpass ? (
+                <div style={{ background:`${ACCENT}12`, border:`1px solid ${ACCENT}44`, borderRadius:12, padding:'1rem 1.25rem', display:'flex', alignItems:'center', gap:'0.75rem' }}>
+                  <span style={{ fontSize:22 }}>♾️</span>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:14, fontWeight:700, color:'#fff' }}>ClassPass</div>
+                    <div style={{ fontSize:12, color:'#aaa', marginTop:2 }}>Reservas ilimitadas — sem consumo de crédito</div>
+                  </div>
+                </div>
+              ) : planosNoMapa.length === 0 ? (
                 <div style={{ background:'#0d0d0d', border:`1px solid ${AMARELO}33`, borderRadius:12, padding:'1.25rem' }}>
                   <div style={{ fontSize:14, color:'#fff', fontWeight:700, marginBottom:6 }}>
                     {jaReservouNaOc
@@ -428,20 +441,20 @@ function MapaPageInner() {
             )}
 
             <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-              <button onClick={() => confirmarReserva(false)} disabled={confirmando || planosNoMapa.length === 0}
-                style={{ width:'100%', background:planosNoMapa.length===0?'#1a1a1a':ACCENT,
-                  color:planosNoMapa.length===0?'#444':'#fff', border:'none', borderRadius:10,
+              <button onClick={() => confirmarReserva(false)} disabled={confirmando || semPlano}
+                style={{ width:'100%', background:semPlano?'#1a1a1a':ACCENT,
+                  color:semPlano?'#444':'#fff', border:'none', borderRadius:10,
                   padding:'0.85rem', fontWeight:600, fontSize:15,
-                  cursor:confirmando||planosNoMapa.length===0?'default':'pointer',
+                  cursor:confirmando||semPlano?'default':'pointer',
                   fontFamily:"'DM Sans', sans-serif", opacity:confirmando?0.7:1 }}>
                 {confirmando ? 'Confirmando...' : 'Confirmar reserva ✓'}
               </button>
-              {avulsoDisponiveis.length > 0 && (
-                <button onClick={() => confirmarReserva(true)} disabled={confirmando || planosNoMapa.length === 0}
+              {(avulsoDisponiveis.length > 0 || cliente?.is_classpass) && (
+                <button onClick={() => confirmarReserva(true)} disabled={confirmando || semPlano}
                   style={{ width:'100%', background:'transparent', color:VERDE,
                     border:`1.5px solid ${VERDE}55`, borderRadius:10,
                     padding:'0.8rem', fontWeight:700, fontSize:14,
-                    cursor:confirmando||planosNoMapa.length===0?'default':'pointer',
+                    cursor:confirmando||semPlano?'default':'pointer',
                     fontFamily:"'DM Sans', sans-serif", opacity:confirmando?0.7:1 }}>
                   + Reservar e escolher outra posição
                 </button>
