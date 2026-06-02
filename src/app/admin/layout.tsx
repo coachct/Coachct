@@ -35,6 +35,7 @@ const nav = [
       { label: 'Clientes',            href: '/admin/clientes' },
       { label: 'Importar Clientes',   href: '/admin/importar' },
       { label: 'Frequência de alunos', href: '/admin/relatorios/frequencia' },
+      { label: 'Avaliações de aula',  href: '/admin/avaliacoes' },
       { label: 'Cobrança No-Show',    href: '/admin/cobranca-noshow' },
     ],
   },
