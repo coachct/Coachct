@@ -77,12 +77,12 @@ export default function ModalTelefone({
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: '#000000dd', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: '100dvh', background: '#000000dd', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', overflowY: 'auto', WebkitOverflowScrolling: 'touch' as const }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&display=swap');
         .mt-input:focus { outline: none; border-color: ${ACCENT} !important; }
       `}</style>
-      <div style={{ background: '#111', border: `1.5px solid ${ACCENT}55`, borderRadius: 20, width: '100%', maxWidth: 420, padding: '1.5rem', fontFamily: "'DM Sans', sans-serif" }}>
+      <div style={{ background: '#111', border: `1.5px solid ${ACCENT}55`, borderRadius: 20, width: '100%', maxWidth: 420, maxHeight: '90dvh', overflowY: 'auto', margin: 'auto', padding: '1.5rem', fontFamily: "'DM Sans', sans-serif" }}>
         <div style={{ fontSize: 36, marginBottom: '0.75rem', textAlign: 'center' }}>📱</div>
         <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', marginBottom: 8, textAlign: 'center', letterSpacing: 1 }}>
           FALTA SÓ SEU TELEFONE
