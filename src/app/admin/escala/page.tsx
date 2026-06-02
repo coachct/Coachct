@@ -63,8 +63,16 @@ export default function AdminEscalaPage() {
     const dataLimite = new Date()
     dataLimite.setMonth(dataLimite.getMonth() + 3)
 
-    const [{ data: coaches }, { data: esc }, { data: fer }] = await Promise.all([
-      supabase.from('coaches').select('id, nome, user_id').eq('ativo', true).order('nome'),
+    // Coaches habilitados NESTA unidade (via coach_unidades) — mesma fonte do cadastro de coach.
+    // Sem este filtro a lista trazia TODOS os coaches, inclusive os exclusivos de outra unidade.
+    const { data: cu } = await supabase.from('coach_unidades')
+      .select('coach_id').eq('unidade_id', unidadeAtiva.id).eq('ativo', true)
+    const coachIds = (cu || []).map((u: any) => u.coach_id)
+    const { data: coaches } = coachIds.length
+      ? await supabase.from('coaches').select('id, nome, user_id').eq('ativo', true).in('id', coachIds).order('nome')
+      : { data: [] as any[] }
+
+    const [{ data: esc }, { data: fer }] = await Promise.all([
       supabase.from('escala_fds')
         .select('*')
         .eq('unidade_id', unidadeAtiva.id)
