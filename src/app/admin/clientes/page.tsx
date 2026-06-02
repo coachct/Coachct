@@ -25,6 +25,7 @@ const statusConfig: Record<string, { label: string; color: string }> = {
   cancelado:  { label: 'Cancelado',  color: 'bg-red-100 text-red-600' },
   falta:      { label: 'Falta',      color: 'bg-orange-100 text-orange-700' },
   reservado:  { label: 'Reservado',  color: 'bg-blue-100 text-blue-700' },
+  presente:   { label: 'Presente',   color: 'bg-green-100 text-green-700' },
 }
 
 const FORMAS_PAGAMENTO = [
@@ -731,6 +732,11 @@ export default function AdminClientesPage() {
     return data && data >= hoje && ['reservado','confirmado'].includes(cr.status)
   }).sort((a, b) => (a.club_ocorrencias?.data || '').localeCompare(b.club_ocorrencias?.data || ''))
 
+  const clubReservasPassadas = clubReservas.filter(cr => {
+    const data = cr.club_ocorrencias?.data
+    return (data && data < hoje) || ['presente','falta','realizado'].includes(cr.status)
+  }).sort((a, b) => (b.club_ocorrencias?.data || '').localeCompare(a.club_ocorrencias?.data || ''))
+
   const totalFuturos = agendamentosFuturos.length + clubReservasFuturas.length
 
   const abas = [
@@ -1321,7 +1327,7 @@ export default function AdminClientesPage() {
             {aba === 'historico' && (
               <div>
                 <div className="text-sm font-semibold text-gray-900 mb-4">Histórico de treinos</div>
-                {agendamentosPassados.length === 0 ? (
+                {(agendamentosPassados.length === 0 && clubReservasPassadas.length === 0) ? (
                   <div className="card text-center py-12 text-gray-400 text-sm">Nenhum histórico encontrado.</div>
                 ) : (
                   <div className="space-y-2">
@@ -1342,6 +1348,29 @@ export default function AdminClientesPage() {
                         </div>
                       </div>
                     ))}
+                    {clubReservasPassadas.map(cr => {
+                      const oc = cr.club_ocorrencias
+                      const aula = oc?.club_aulas
+                      const data = oc?.data || ''
+                      return (
+                        <div key={cr.id} className={`card flex items-center gap-3 border-l-4 ${cr.status === 'presente' ? 'border-l-green-400' : cr.status === 'falta' ? 'border-l-orange-400' : 'border-l-purple-200'}`}>
+                          <div className={`w-10 h-10 rounded-xl flex flex-col items-center justify-center flex-shrink-0 ${cr.status === 'presente' ? 'bg-green-50' : cr.status === 'falta' ? 'bg-orange-50' : 'bg-purple-50'}`}>
+                            <div className={`text-sm font-bold leading-none ${cr.status === 'presente' ? 'text-green-700' : cr.status === 'falta' ? 'text-orange-700' : 'text-purple-700'}`}>{data ? new Date(data + 'T12:00:00').getDate() : '—'}</div>
+                            <div className={`text-xs uppercase ${cr.status === 'presente' ? 'text-green-500' : cr.status === 'falta' ? 'text-orange-500' : 'text-purple-500'}`}>{data ? new Date(data + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' }) : ''}</div>
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">Club</span>
+                              <span className="text-sm font-medium text-gray-700 capitalize">{data ? new Date(data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long' }) : '—'}</span>
+                              <span className="font-mono text-xs text-gray-400">{(aula?.horario || '').slice(0,5)}</span>
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${statusConfig[cr.status]?.color || 'bg-gray-100 text-gray-600'}`}>{statusConfig[cr.status]?.label || cr.status}</span>
+                              {aula?.unidades?.nome && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{aula.unidades.nome}</span>}
+                            </div>
+                            <div className="text-xs text-gray-400 mt-0.5">{aula?.tipo} · {cr.tipo_credito}</div>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
               </div>
