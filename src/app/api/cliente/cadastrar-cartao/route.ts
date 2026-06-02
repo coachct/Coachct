@@ -180,6 +180,34 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ── Limpa TODOS os cartões antigos do customer ANTES de criar o novo ──
+    // O sistema só mantém 1 cartão por cliente. Cada POST /cards cria um objeto
+    // cartão no Pagar.me mesmo quando a verificação falha, e isso conta pro limite
+    // de 30 por customer. Apagar tudo antes de criar evita que o cliente se
+    // auto-bloqueie no teto de 30 após várias tentativas. Best-effort: se a
+    // listagem ou algum delete falhar, o fluxo do cartão segue normalmente.
+    try {
+      const listaResp = await fetch(`${PAGARME_API_URL}/customers/${pagarmeCustomerId}/cards?size=100`, {
+        method: 'GET',
+        headers: { 'Authorization': getAuthHeader() },
+      })
+      const listaData = await listaResp.json()
+      if (listaResp.ok && Array.isArray(listaData?.data)) {
+        for (const c of listaData.data) {
+          try {
+            await fetch(`${PAGARME_API_URL}/customers/${pagarmeCustomerId}/cards/${c.id}`, {
+              method: 'DELETE',
+              headers: { 'Authorization': getAuthHeader() },
+            })
+          } catch (e) {
+            console.warn('Falha ao remover cartão antigo (não crítico):', c.id, e)
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Falha ao listar cartões antigos do customer (não crítico):', e)
+    }
+
     const cardPayload = {
       number: numeroLimpo,
       holder_name: String(nome).trim(),
@@ -210,26 +238,22 @@ export async function POST(req: NextRequest) {
         request_payload: { ...cardPayload, number: '****' + numeroLimpo.slice(-4), cvv: '***' },
         response_payload: cardData, operado_por: user.id,
       })
+      // Mensagem amigável por causa. "verification failed" = o banco emissor recusou
+      // a autorização de validação (ZeroDollar) — não adianta o cliente repetir o
+      // mesmo cartão, então orientamos a trocar de cartão / falar com o banco.
       let mensagemErro = 'Cartão recusado. Verifique os dados ou tente outro cartão.'
-      if (cardData.errors?.length > 0) mensagemErro = cardData.errors[0].message || mensagemErro
-      else if (cardData.message) mensagemErro = cardData.message
+      const rawErro = (cardData.errors?.[0]?.message || cardData.message || '').toString()
+      if (/verification failed/i.test(rawErro)) {
+        mensagemErro = 'Seu banco não autorizou a validação do cartão. Tente outro cartão ou entre em contato com seu banco.'
+      } else if (rawErro) {
+        mensagemErro = rawErro
+      }
       return NextResponse.json({ error: mensagemErro }, { status: 400 })
     }
 
     const cardId = cardData.id
     const last4 = cardData.last_four_digits || numeroLimpo.slice(-4)
     const brand = (cardData.brand || '').toLowerCase()
-
-    if (cliente.pagarme_card_id && cliente.pagarme_card_id !== cardId) {
-      try {
-        await fetch(`${PAGARME_API_URL}/customers/${pagarmeCustomerId}/cards/${cliente.pagarme_card_id}`, {
-          method: 'DELETE',
-          headers: { 'Authorization': getAuthHeader() },
-        })
-      } catch (e) {
-        console.warn('Falha ao remover cartão antigo (não crítico):', e)
-      }
-    }
 
     await supabase.from('clientes').update({
       pagarme_card_id: cardId,
