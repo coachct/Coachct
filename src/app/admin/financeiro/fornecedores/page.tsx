@@ -15,6 +15,9 @@ import {
 
 const supabase = createClient()
 
+const GRUPOS_CATEGORIA = ['Pessoal', 'Custo Fixo', 'Variável', 'Impostos', 'Outros']
+const NOVA_CATEGORIA = '__nova__'
+
 type Categoria = {
   id: string
   nome: string
@@ -66,6 +69,10 @@ export default function FornecedoresPage() {
   const [editando, setEditando] = useState<Fornecedor | null>(null)
   const [form, setForm] = useState<FormState>(FORM_VAZIO)
 
+  // ---- criação de categoria nova na hora ----
+  const [novaCatNome, setNovaCatNome] = useState('')
+  const [novaCatGrupo, setNovaCatGrupo] = useState('Outros')
+
   async function carregar() {
     setCarregando(true)
     setErro(null)
@@ -112,9 +119,15 @@ export default function FornecedoresPage() {
     )
   }, [fornecedores, busca])
 
+  function resetNovaCategoria() {
+    setNovaCatNome('')
+    setNovaCatGrupo('Outros')
+  }
+
   function abrirNovo() {
     setEditando(null)
     setForm(FORM_VAZIO)
+    resetNovaCategoria()
     setErro(null)
     setModalAberto(true)
   }
@@ -129,6 +142,7 @@ export default function FornecedoresPage() {
       contato: f.contato || '',
       observacao: f.observacao || '',
     })
+    resetNovaCategoria()
     setErro(null)
     setModalAberto(true)
   }
@@ -138,6 +152,35 @@ export default function FornecedoresPage() {
     setModalAberto(false)
     setEditando(null)
     setForm(FORM_VAZIO)
+    resetNovaCategoria()
+  }
+
+  // resolve a categoria a usar: existente, nova criada/encontrada, ou nenhuma
+  async function resolverCategoriaId(): Promise<{ id: string | null } | { erro: string }> {
+    if (form.categoria_padrao_id !== NOVA_CATEGORIA) {
+      return { id: form.categoria_padrao_id || null }
+    }
+
+    const nome = novaCatNome.trim()
+    if (!nome) return { erro: 'Informe o nome da nova categoria.' }
+
+    // reaproveita se já existir uma com o mesmo nome
+    const { data: existente } = await supabase
+      .from('categorias_despesa')
+      .select('id')
+      .ilike('nome', nome)
+      .maybeSingle()
+
+    if (existente?.id) return { id: existente.id }
+
+    const { data: nova, error } = await supabase
+      .from('categorias_despesa')
+      .insert({ nome, grupo: novaCatGrupo, ordem: 200 })
+      .select('id')
+      .maybeSingle()
+
+    if (error || !nova) return { erro: 'Erro ao criar a categoria.' }
+    return { id: nova.id }
   }
 
   async function salvar() {
@@ -149,11 +192,18 @@ export default function FornecedoresPage() {
     setSalvando(true)
     setErro(null)
 
+    const cat = await resolverCategoriaId()
+    if ('erro' in cat) {
+      setErro(cat.erro)
+      setSalvando(false)
+      return
+    }
+
     const payload = {
       nome: form.nome.trim(),
       documento: form.documento.trim() || null,
       tipo: form.tipo || null,
-      categoria_padrao_id: form.categoria_padrao_id || null,
+      categoria_padrao_id: cat.id,
       contato: form.contato.trim() || null,
       observacao: form.observacao.trim() || null,
     }
@@ -188,6 +238,8 @@ export default function FornecedoresPage() {
       )
     }
   }
+
+  const criandoCategoria = form.categoria_padrao_id === NOVA_CATEGORIA
 
   return (
     <div className="min-h-screen bg-[#f3f4f6] px-4 py-6 sm:px-8">
@@ -331,8 +383,8 @@ export default function FornecedoresPage() {
 
       {/* Modal */}
       {modalAberto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6">
+          <div className="max-h-full w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-xl">
             <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
               <h2 className="text-lg font-bold text-gray-900">
                 {editando ? 'Editar fornecedor' : 'Novo fornecedor'}
@@ -414,10 +466,48 @@ export default function FornecedoresPage() {
                       {c.nome} ({c.grupo})
                     </option>
                   ))}
+                  <option value={NOVA_CATEGORIA}>+ Criar nova categoria</option>
                 </select>
-                <p className="mt-1 text-xs text-gray-400">
-                  Usada como sugestão ao lançar uma despesa desse fornecedor.
-                </p>
+
+                {criandoCategoria ? (
+                  <div className="mt-3 grid grid-cols-2 gap-3 rounded-xl border border-[#ff2d9b]/30 bg-[#ff2d9b]/5 p-3">
+                    <div className="col-span-2">
+                      <label className="mb-1 block text-xs font-medium text-gray-600">
+                        Nome da nova categoria
+                      </label>
+                      <input
+                        type="text"
+                        value={novaCatNome}
+                        onChange={(e) => setNovaCatNome(e.target.value)}
+                        placeholder="Ex.: Software / Assinaturas"
+                        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="mb-1 block text-xs font-medium text-gray-600">
+                        Grupo (para o DRE)
+                      </label>
+                      <select
+                        value={novaCatGrupo}
+                        onChange={(e) => setNovaCatGrupo(e.target.value)}
+                        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20"
+                      >
+                        {GRUPOS_CATEGORIA.map((g) => (
+                          <option key={g} value={g}>
+                            {g}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <p className="col-span-2 text-xs text-gray-400">
+                      A categoria é criada ao salvar e passa a aparecer em todo o financeiro.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="mt-1 text-xs text-gray-400">
+                    Usada como sugestão ao lançar uma despesa desse fornecedor.
+                  </p>
+                )}
               </div>
 
               <div>
