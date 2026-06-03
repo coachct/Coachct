@@ -5,6 +5,46 @@ const PAGARME_API_KEY = process.env.PAGARME_API_KEY!
 const PAGARME_BASE = 'https://api.pagar.me/core/v5'
 const PRODUTO_MULTA_ID = '7a0e93e1-98b0-4125-a993-7a688e8e34bb'
 
+// Telefone válido = DDD + número (10 ou 11 dígitos)
+function telValido(valor: string): boolean {
+  const t = (valor || '').replace(/\D/g, '')
+  return t.length >= 10 && t.length <= 11
+}
+
+// Validação real de CPF (11 dígitos + dígitos verificadores)
+function cpfValido(valor: string): boolean {
+  const c = (valor || '').replace(/\D/g, '')
+  if (c.length !== 11) return false
+  if (/^(\d)\1{10}$/.test(c)) return false
+  let soma = 0
+  for (let i = 0; i < 9; i++) soma += parseInt(c[i]) * (10 - i)
+  let d1 = (soma * 10) % 11
+  if (d1 === 10) d1 = 0
+  if (d1 !== parseInt(c[9])) return false
+  soma = 0
+  for (let i = 0; i < 10; i++) soma += parseInt(c[i]) * (11 - i)
+  let d2 = (soma * 10) % 11
+  if (d2 === 10) d2 = 0
+  if (d2 !== parseInt(c[10])) return false
+  return true
+}
+
+// Monta o objeto phones do Pagar.me a partir de um telefone só com dígitos
+function montarPhones(telLimpo: string) {
+  return {
+    mobile_phone: {
+      country_code: '55',
+      area_code: telLimpo.slice(0, 2),
+      number: telLimpo.slice(2),
+    }
+  }
+}
+
+function getAuthHeader() {
+  const credentials = Buffer.from(`${PAGARME_API_KEY}:`).toString('base64')
+  return `Basic ${credentials}`
+}
+
 export async function POST(req: NextRequest) {
   try {
     const authHeader = req.headers.get('authorization')
@@ -37,7 +77,7 @@ export async function POST(req: NextRequest) {
     if (ag.status !== 'falta') return NextResponse.json({ error: 'Agendamento não está marcado como falta' }, { status: 400 })
 
     const { data: cliente, error: errCli } = await supabase
-      .from('clientes').select('id, nome, cpf, email, pagarme_customer_id, pagarme_card_id, pagarme_card_last4, pagarme_card_brand')
+      .from('clientes').select('id, nome, cpf, email, telefone, pagarme_customer_id, pagarme_card_id, pagarme_card_last4, pagarme_card_brand')
       .eq('id', ag.cliente_id).maybeSingle()
     if (errCli || !cliente) return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 })
     if (!cliente.pagarme_customer_id || !cliente.pagarme_card_id)
@@ -47,6 +87,63 @@ export async function POST(req: NextRequest) {
       .from('vendas').select('id').eq('cliente_id', cliente.id).eq('produto_id', PRODUTO_MULTA_ID)
       .ilike('observacao', `%${agendamento_id}%`).maybeSingle()
     if (vendaExistente) return NextResponse.json({ error: 'Esta falta já foi cobrada anteriormente' }, { status: 400 })
+
+    // ── Garante CUSTOMER COMPLETO no Pagar.me antes de cobrar (telefone + CPF) ──
+    // Customers criados antes dos fixes podem existir sem phone e/ou sem document.
+    // O update de customer exige o objeto COMPLETO — PUT parcial é recusado silenciosamente.
+    // Então mandamos a mesma forma da CRIAÇÃO (que funciona): name, email, type, document, phones.
+    const telCliente = (cliente.telefone || '').replace(/\D/g, '')
+    if (!telValido(telCliente)) {
+      return NextResponse.json({
+        error: 'Cliente sem telefone válido no cadastro. Atualize o telefone (com DDD) na recepção antes de cobrar.',
+        precisa_telefone: true,
+      }, { status: 400 })
+    }
+
+    const cpfCliente = (cliente.cpf || '').replace(/\D/g, '')
+    if (!cpfValido(cpfCliente)) {
+      return NextResponse.json({
+        error: 'Cliente sem CPF válido no cadastro. Atualize o CPF na recepção antes de cobrar.',
+        precisa_cpf: true,
+      }, { status: 400 })
+    }
+
+    const updateCustomerPayload: any = {
+      name: cliente.nome,
+      email: cliente.email,
+      type: 'individual',
+      document: cpfCliente,
+      document_type: 'CPF',
+      phones: montarPhones(telCliente),
+    }
+
+    const putTelResp = await fetch(`${PAGARME_BASE}/customers/${cliente.pagarme_customer_id}`, {
+      method: 'PUT',
+      headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(updateCustomerPayload),
+    })
+    const putTelData = await putTelResp.json().catch(() => null)
+
+    // Loga o resultado do PUT — pra nunca mais ficarmos cegos sobre essa etapa
+    await supabase.from('cartoes_log').insert({
+      cliente_id: cliente.id, operacao: 'atualizar_dados_cobranca',
+      pagarme_customer_id: cliente.pagarme_customer_id,
+      sucesso: putTelResp.ok,
+      motivo: `Atualização de dados (telefone+CPF) antes da cobrança de multa (agendamento ${agendamento_id})`,
+      erro: !putTelResp.ok ? JSON.stringify(putTelData) : null,
+      request_payload: { ...updateCustomerPayload, document: '***' },
+      response_payload: putTelData, operado_por: perfil.id,
+    })
+
+    // Se não conseguiu atualizar o customer, para aqui com o motivo real (em vez de seguir e tomar erro)
+    if (!putTelResp.ok) {
+      const putErr = putTelData?.errors
+        ? JSON.stringify(putTelData.errors)
+        : (putTelData?.message || 'erro desconhecido')
+      return NextResponse.json({
+        error: `Não foi possível atualizar os dados do cliente no Pagar.me antes de cobrar (${putErr}). Confira os dados do cliente e tente novamente.`,
+      }, { status: 400 })
+    }
 
     const valorCentavos = Math.round(Number(valor) * 100)
     const horarioFmt = (ag.horario || '').slice(0, 5)
