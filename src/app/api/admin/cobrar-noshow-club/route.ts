@@ -11,6 +11,24 @@ function telValido(valor: string): boolean {
   return t.length >= 10 && t.length <= 11
 }
 
+// Validação real de CPF (11 dígitos + dígitos verificadores)
+function cpfValido(valor: string): boolean {
+  const c = (valor || '').replace(/\D/g, '')
+  if (c.length !== 11) return false
+  if (/^(\d)\1{10}$/.test(c)) return false
+  let soma = 0
+  for (let i = 0; i < 9; i++) soma += parseInt(c[i]) * (10 - i)
+  let d1 = (soma * 10) % 11
+  if (d1 === 10) d1 = 0
+  if (d1 !== parseInt(c[9])) return false
+  soma = 0
+  for (let i = 0; i < 10; i++) soma += parseInt(c[i]) * (11 - i)
+  let d2 = (soma * 10) % 11
+  if (d2 === 10) d2 = 0
+  if (d2 !== parseInt(c[10])) return false
+  return true
+}
+
 // Monta o objeto phones do Pagar.me a partir de um telefone só com dígitos
 function montarPhones(telLimpo: string) {
   return {
@@ -93,11 +111,10 @@ export async function POST(req: NextRequest) {
     if (vendaExistente)
       return NextResponse.json({ error: 'Esta falta já foi cobrada anteriormente' }, { status: 400 })
 
-    // ── Garante telefone no customer do Pagar.me (requisito do PSP — evita o erro 412) ──
-    // Customers criados antes do fix de telefone existem no Pagar.me sem phone.
-    // IMPORTANTE: o update de customer no Pagar.me exige o objeto COMPLETO — um PUT só com
-    // { phones } é recusado silenciosamente (o customer nem é tocado). Por isso mandamos a
-    // mesma forma usada na CRIAÇÃO (que funciona): name, email, type, document, phones.
+    // ── Garante CUSTOMER COMPLETO no Pagar.me antes de cobrar (telefone + CPF) ──
+    // Customers criados antes dos fixes podem existir sem phone e/ou sem document.
+    // O update de customer exige o objeto COMPLETO — PUT parcial é recusado silenciosamente.
+    // Então mandamos a mesma forma da CRIAÇÃO (que funciona): name, email, type, document, phones.
     const telCliente = (cliente.telefone || '').replace(/\D/g, '')
     if (!telValido(telCliente)) {
       return NextResponse.json({
@@ -107,15 +124,20 @@ export async function POST(req: NextRequest) {
     }
 
     const cpfCliente = (cliente.cpf || '').replace(/\D/g, '')
+    if (!cpfValido(cpfCliente)) {
+      return NextResponse.json({
+        error: 'Cliente sem CPF válido no cadastro. Atualize o CPF na recepção antes de cobrar.',
+        precisa_cpf: true,
+      }, { status: 400 })
+    }
+
     const updateCustomerPayload: any = {
       name: cliente.nome,
       email: cliente.email,
       type: 'individual',
+      document: cpfCliente,
+      document_type: 'CPF',
       phones: montarPhones(telCliente),
-    }
-    if (cpfCliente.length === 11) {
-      updateCustomerPayload.document = cpfCliente
-      updateCustomerPayload.document_type = 'CPF'
     }
 
     const putTelResp = await fetch(`${PAGARME_BASE}/customers/${cliente.pagarme_customer_id}`, {
@@ -127,22 +149,22 @@ export async function POST(req: NextRequest) {
 
     // Loga o resultado do PUT — pra nunca mais ficarmos cegos sobre essa etapa
     await supabase.from('cartoes_log').insert({
-      cliente_id: cliente.id, operacao: 'atualizar_telefone_cobranca',
+      cliente_id: cliente.id, operacao: 'atualizar_dados_cobranca',
       pagarme_customer_id: cliente.pagarme_customer_id,
       sucesso: putTelResp.ok,
-      motivo: `Atualização de telefone antes da cobrança de multa (reserva ${reserva_id})`,
+      motivo: `Atualização de dados (telefone+CPF) antes da cobrança de multa (reserva ${reserva_id})`,
       erro: !putTelResp.ok ? JSON.stringify(putTelData) : null,
-      request_payload: { ...updateCustomerPayload, document: updateCustomerPayload.document ? '***' : undefined },
+      request_payload: { ...updateCustomerPayload, document: '***' },
       response_payload: putTelData, operado_por: perfil.id,
     })
 
-    // Se não conseguiu registrar o telefone, para aqui com o motivo real (em vez de seguir e tomar 412)
+    // Se não conseguiu atualizar o customer, para aqui com o motivo real (em vez de seguir e tomar erro)
     if (!putTelResp.ok) {
       const putErr = putTelData?.errors
         ? JSON.stringify(putTelData.errors)
         : (putTelData?.message || 'erro desconhecido')
       return NextResponse.json({
-        error: `Não foi possível registrar o telefone do cliente no Pagar.me antes de cobrar (${putErr}). Confira os dados do cliente e tente novamente.`,
+        error: `Não foi possível atualizar os dados do cliente no Pagar.me antes de cobrar (${putErr}). Confira os dados do cliente e tente novamente.`,
       }, { status: 400 })
     }
 
