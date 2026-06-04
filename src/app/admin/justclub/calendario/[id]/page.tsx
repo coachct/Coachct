@@ -23,6 +23,7 @@ function parsePlanoKey(key: string) {
   const lower = (key||'').toLowerCase()
   if (lower.startsWith('wellhub'))   return { label:'Wellhub',  icon:'💜' }
   if (lower.startsWith('totalpass')) return { label:'TotalPass', icon:'🔵' }
+  if (lower.startsWith('avulso'))    return { label:'Avulso',   icon:'🎟️' }
   return { label: key, icon:'🎟️' }
 }
 
@@ -935,7 +936,7 @@ export default function RecepcaoClubDetalhe() {
                             style={{ padding:'0.5rem 1rem', borderRadius:10, border:`1.5px solid ${tipoCredito===p?ACCENT:'#e5e7eb'}`,
                               background:tipoCredito===p?`${ACCENT}10`:'#fff', cursor:'pointer',
                               fontSize:13, fontWeight:600, color:tipoCredito===p?ACCENT:'#555', fontFamily:"'DM Sans', sans-serif" }}>
-                            {icon} {label} <span style={{ fontSize:11, opacity:0.7 }}>({info?.disponivel} restantes)</span>
+                            {icon} {info?.nome_pacote || label} <span style={{ fontSize:11, opacity:0.7 }}>({info?.disponivel} restantes)</span>
                           </button>
                         )
                       })}
