@@ -516,6 +516,7 @@ function DashboardClub({ unidadeId, unidadeNome }: { unidadeId: string; unidadeN
       .select('id, data, vagas_bloqueadas, coach_escalado:coaches!coach_id(nome), club_aulas!inner(tipo, horario, capacidade, unidade_id, coaches(nome), grupos_musculares(nome))')
       .eq('data', dataStr)
       .eq('club_aulas.unidade_id', unidadeId)
+      .eq('status', 'ativa')
 
     const ocList = ocs || []
     const ocIds = ocList.map((o: any) => o.id)
