@@ -58,6 +58,8 @@ export default function AdminAgendaPage() {
   const [abaAtiva, setAbaAtiva] = useState<'agendamentos' | 'grade'>('agendamentos')
   // 🔧 Mapa user_id → { id: coaches.id, nome } — igual à tela de Escala
   const [coachMap, setCoachMap] = useState<Record<string, { id: string; nome: string }>>({})
+  // 🔧 Mapa coaches.id → nome (TODOS os coaches, inclusive inativos) — fonte do nome exibido no card
+  const [coachNomeMap, setCoachNomeMap] = useState<Record<string, string>>({})
 
   const [modalBloqueio, setModalBloqueio] = useState<{ horario: string; vagasLivres: number; bloqueiosAtivos: any[] } | null>(null)
   const [qtdBloquear, setQtdBloquear] = useState(1)
@@ -84,12 +86,15 @@ export default function AdminAgendaPage() {
   // 🔧 Carrega coaches indexados por user_id (igual à tela de Escala)
   useEffect(() => {
     async function carregarCoaches() {
-      const { data: lista } = await supabase.from('coaches').select('id, nome, user_id').eq('ativo', true)
+      const { data: lista } = await supabase.from('coaches').select('id, nome, user_id, ativo')
       const mapa: Record<string, { id: string; nome: string }> = {}
+      const mapaNome: Record<string, string> = {}
       for (const c of (lista || [])) {
-        if (c.user_id) mapa[c.user_id] = { id: c.id, nome: c.nome }
+        if (c.id) mapaNome[c.id] = c.nome
+        if (c.ativo && c.user_id) mapa[c.user_id] = { id: c.id, nome: c.nome }
       }
       setCoachMap(mapa)
+      setCoachNomeMap(mapaNome)
     }
     if (perfil) carregarCoaches()
   }, [perfil])
@@ -383,7 +388,7 @@ export default function AdminAgendaPage() {
                       const coachesHorario = coachesPorHorario(horario)
                       const ags = agendamentosPorHorario(horario).filter(a => a.status !== 'cancelado')
                       const coachesLivres = coachesHorario.filter(c => !ags.some(a => a.id !== ag.id && a.coach_id === c.coaches?.id))
-                      const coachNome = coachesHorario.find(c => c.coaches?.id === ag.coach_id)?.coaches?.nome
+                      const coachNome = ag.coach_id ? (coachNomeMap[ag.coach_id] || null) : null
                       const { label: planoLabel, icon: planoIcon } = parsePlanoKey(ag.tipo_credito || '')
                       return (
                         <div key={ag.id} className={`card border-l-4 ${ag.status === 'realizado' ? 'border-l-gray-300' : ag.status === 'falta' ? 'border-l-orange-400' : ag.coach_id ? 'border-l-green-400' : 'border-l-blue-400'}`}>
