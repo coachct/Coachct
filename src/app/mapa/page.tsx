@@ -420,7 +420,7 @@ function MapaPageInner() {
                       gap:'0.75rem', marginBottom:8, transition:'all .15s' }}>
                     <span style={{ fontSize:20 }}>{icon}</span>
                     <div style={{ flex:1 }}>
-                      <div style={{ fontSize:14, fontWeight:600, color:tipoCredito===p?'#fff':'#888' }}>{label}</div>
+                      <div style={{ fontSize:14, fontWeight:600, color:tipoCredito===p?'#fff':'#888' }}>{info?.nome_pacote || label}</div>
                       {info && <div style={{ fontSize:11, color:'#555', marginTop:2 }}>{info.disponivel} crédito{info.disponivel!==1?'s':''} restante{info.disponivel!==1?'s':''}</div>}
                     </div>
                     <div style={{ width:16, height:16, borderRadius:'50%', border:`2px solid ${tipoCredito===p?ACCENT:'#444'}`,
