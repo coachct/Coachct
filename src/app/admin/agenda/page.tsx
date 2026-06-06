@@ -192,10 +192,17 @@ export default function AdminAgendaPage() {
   async function alocarCoach(agendamentoId: string, coachId: string) {
     setAlocandoId(agendamentoId)
     const { data: agAtual } = await supabase.from('agendamentos').select('status').eq('id', agendamentoId).maybeSingle()
-    await supabase.from('agendamentos').update({
-      coach_id: coachId, alocado_em: new Date().toISOString(), alocado_por: perfil?.id, status: 'confirmado'
-    }).eq('id', agendamentoId)
-    if (agAtual?.status === 'realizado') await criarNotificacaoCoach(agendamentoId, coachId)
+    if (!coachId) {
+      // 🔧 Desalocar — deixar sem coach (mantém status, não notifica coach)
+      await supabase.from('agendamentos').update({
+        coach_id: null, alocado_em: null, alocado_por: null
+      }).eq('id', agendamentoId)
+    } else {
+      await supabase.from('agendamentos').update({
+        coach_id: coachId, alocado_em: new Date().toISOString(), alocado_por: perfil?.id, status: 'confirmado'
+      }).eq('id', agendamentoId)
+      if (agAtual?.status === 'realizado') await criarNotificacaoCoach(agendamentoId, coachId)
+    }
     await loadData(true)
     setAlocandoId(null)
   }
@@ -423,6 +430,7 @@ export default function AdminAgendaPage() {
                                 <select className="input input-sm text-xs flex-1" value={ag.coach_id}
                                   onChange={e => alocarCoach(ag.id, e.target.value)} disabled={alocandoId === ag.id}>
                                   {coachesHorario.map(c => <option key={c.coaches?.id} value={c.coaches?.id}>{c.coaches?.nome}</option>)}
+                                  <option value="">— Sem coach —</option>
                                 </select>
                               )}
                               <button onClick={() => marcarPresenca(ag.id)} className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
