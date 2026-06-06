@@ -194,15 +194,24 @@ export default function RecepcaoAgendaPage() {
       .eq('id', agendamentoId)
       .maybeSingle()
 
-    await supabase.from('agendamentos').update({
-      coach_id: coachId,
-      alocado_em: new Date().toISOString(),
-      alocado_por: perfil?.id,
-      status: 'confirmado'
-    }).eq('id', agendamentoId)
+    if (!coachId) {
+      // 🔧 Desalocar — deixar sem coach (mantém status, não notifica coach)
+      await supabase.from('agendamentos').update({
+        coach_id: null,
+        alocado_em: null,
+        alocado_por: null
+      }).eq('id', agendamentoId)
+    } else {
+      await supabase.from('agendamentos').update({
+        coach_id: coachId,
+        alocado_em: new Date().toISOString(),
+        alocado_por: perfil?.id,
+        status: 'confirmado'
+      }).eq('id', agendamentoId)
 
-    if (agAtual?.status === 'realizado') {
-      await criarNotificacaoCoach(agendamentoId, coachId)
+      if (agAtual?.status === 'realizado') {
+        await criarNotificacaoCoach(agendamentoId, coachId)
+      }
     }
 
     await loadData(true)
@@ -547,6 +556,7 @@ export default function RecepcaoAgendaPage() {
                                 {coachesHorario.map(c => (
                                   <option key={c.coaches?.id} value={c.coaches?.id}>{c.coaches?.nome}</option>
                                 ))}
+                                <option value="">— Sem coach —</option>
                               </select>
                             )}
 
