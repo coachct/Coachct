@@ -60,23 +60,29 @@ function CoachTreinoPageInner() {
   const [loadingInsights, setLoadingInsights] = useState(false)
 
   const finalizandoRef = useRef(false)
+  const coachCarregadoRef = useRef(false)
+  const abriuClienteRef = useRef(false)
 
   const supabase = createClient()
   const now = new Date()
   const mesNome = now.toLocaleDateString('pt-BR', { month: 'long' })
 
   useEffect(() => {
-    if (perfil?.id) loadCoach()
+    if (perfil?.id && !coachCarregadoRef.current) {
+      coachCarregadoRef.current = true
+      loadCoach()
+    }
     const timeout = setTimeout(() => setLoading(false), 5000)
     return () => {
       clearTimeout(timeout)
       if (timerRef.current) clearInterval(timerRef.current)
     }
-  }, [perfil])
+  }, [perfil?.id])
 
   // Se veio com cliente_id na URL, busca o cliente e vai direto pra escolha de treino
   useEffect(() => {
-    if (!coach || !clienteIdQuery) return
+    if (!coach || !clienteIdQuery || abriuClienteRef.current) return
+    abriuClienteRef.current = true
     abrirClienteDireto(clienteIdQuery)
   }, [coach, clienteIdQuery])
 
