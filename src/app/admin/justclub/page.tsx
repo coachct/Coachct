@@ -426,9 +426,37 @@ export default function JustClubAdminPage() {
       ativo: true,
     }
     let aulaId = editando?.id
+    // Detecta mudança de dia da semana numa edição — único campo que deixa ocorrências órfãs.
+    // Number() nos dois lados evita falso positivo caso o form guarde o dia como string.
+    const diaMudou = !!editando && Number(editando.dia_semana) !== Number(form.dia_semana)
     if (editando) {
       const { error } = await supabase.from('club_aulas').update(payload).eq('id', editando.id)
       if (error) { showMsg('Erro: '+error.message); setSalvando(false); return }
+
+      // Dia da semana mudou: reconcilia as ocorrências futuras para o novo dia.
+      // As ocorrências guardam apenas a DATA; ao mudar o dia da grade, as futuras continuariam
+      // no dia antigo e contando pro coach no dia errado. Aqui elas são movidas para o dia novo.
+      if (diaMudou && aulaId) {
+        const hoje = dataLocalStr(new Date())
+        const { data: futuras } = await supabase.from('club_ocorrencias')
+          .select('id, data').eq('aula_id', aulaId).gte('data', hoje)
+        const futIds = (futuras || []).map((o: any) => o.id)
+        if (futIds.length) {
+          // Horizonte = última data futura existente (mantém o alcance que a recorrência já tinha)
+          const horizonte = (futuras || []).reduce((max: string, o: any) => (o.data > max ? o.data : max), hoje)
+          // Derruba reservas futuras e apaga as ocorrências do dia antigo
+          await supabase.from('club_reservas')
+            .update({ status: 'cancelado', cancelado_em: new Date().toISOString() })
+            .in('ocorrencia_id', futIds).neq('status', 'cancelado')
+          await supabase.from('club_ocorrencias').delete().in('id', futIds)
+          // Regenera as ocorrências futuras já no dia novo, do próximo dia válido até o horizonte
+          const novasDatas = gerarDatas(form.dia_semana, hoje, horizonte)
+          if (novasDatas.length > 0) {
+            await supabase.from('club_ocorrencias')
+              .insert(novasDatas.map(data => ({ aula_id: aulaId, data, status: 'ativa' })))
+          }
+        }
+      }
     } else {
       const { data: nova, error } = await supabase.from('club_aulas').insert(payload).select('id').maybeSingle()
       if (error) { showMsg('Erro: '+error.message); setSalvando(false); return }
@@ -438,7 +466,11 @@ export default function JustClubAdminPage() {
       const datas = gerarDatas(form.dia_semana, formInicio, dataFimPorMeses(formMeses))
       if (datas.length > 0) await supabase.from('club_ocorrencias').insert(datas.map(data => ({ aula_id: aulaId, data, status: 'ativa' })))
       showMsg(`Aula criada e ${datas.length} ocorrência${datas.length!==1?'s':''} gerada${datas.length!==1?'s':''}!`)
-    } else { showMsg(editando?'Aula atualizada!':'Aula criada!') }
+    } else if (editando) {
+      showMsg(diaMudou ? 'Aula atualizada — ocorrências futuras movidas para o novo dia.' : 'Aula atualizada!')
+    } else {
+      showMsg('Aula criada!')
+    }
     setSalvando(false); setModalAberto(false); setEditando(null)
     await carregarAulas()
     if (abaAtiva==='calendario') carregarOcorrencias(diasCalendario)
