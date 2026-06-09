@@ -200,6 +200,13 @@ export default function AdminClientesPage() {
   const [ajustandoVencimento, setAjustandoVencimento] = useState(false)
   const [erroVencimento, setErroVencimento] = useState('')
 
+  const [avulsosPacotes, setAvulsosPacotes] = useState<any[]>([])
+  const [modalValidadeAvulso, setModalValidadeAvulso] = useState<any>(null)
+  const [novaValidadeAvulso, setNovaValidadeAvulso] = useState('')
+  const [salvandoAvulso, setSalvandoAvulso] = useState(false)
+  const [cancelandoAvulso, setCancelandoAvulso] = useState(false)
+  const [erroAvulso, setErroAvulso] = useState('')
+
   const [fotoUrl, setFotoUrl] = useState<string | null>(null)
   const [modalFoto, setModalFoto] = useState(false)
   const [streamCam, setStreamCam] = useState<MediaStream | null>(null)
@@ -252,6 +259,7 @@ export default function AdminClientesPage() {
     await Promise.all([
       carregarSaldo(cliente.id), carregarHistorico(cliente.id), carregarClubReservas(cliente.id),
       carregarVendas(cliente.id), carregarPlanosCliente(cliente.id), carregarFotoUrl(cliente),
+      carregarAvulsos(cliente.id),
     ])
   }
 
@@ -303,6 +311,34 @@ export default function AdminClientesPage() {
       produtos(id, nome, subtipo, unidade_id, unidades(id, nome, tipo), dias_validade)
     `).eq('cliente_id', clienteId).order('contrato_aceito_em', { ascending: false })
     setPlanosCliente(data || [])
+  }
+
+  async function carregarAvulsos(clienteId: string) {
+    const { data } = await supabase.from('creditos_avulsos')
+      .select('id, tipo, unidade_id, usado, validade, observacao, unidades(nome, tipo)')
+      .eq('cliente_id', clienteId)
+    const linhas = data || []
+    const grupos: Record<string, any> = {}
+    for (const c of linhas) {
+      const chave = `${c.observacao || ''}|${c.validade || ''}|${c.unidade_id || 'global'}|${c.tipo || ''}`
+      if (!grupos[chave]) {
+        grupos[chave] = {
+          chave,
+          observacao: c.observacao ?? null,
+          validade: c.validade ?? null,
+          unidade_id: c.unidade_id ?? null,
+          tipo: c.tipo ?? null,
+          unidade_nome: (c.unidades as any)?.nome ?? null,
+          unidade_tipo: (c.unidades as any)?.tipo ?? null,
+          total: 0, usados: 0, disponiveis: 0,
+        }
+      }
+      grupos[chave].total++
+      if (c.usado) grupos[chave].usados++
+      else grupos[chave].disponiveis++
+    }
+    const lista = Object.values(grupos).sort((a: any, b: any) => (a.validade || '').localeCompare(b.validade || ''))
+    setAvulsosPacotes(lista)
   }
 
   async function recarregarClienteSel() {
@@ -628,6 +664,44 @@ export default function AdminClientesPage() {
     setAjustandoVencimento(false)
     if (error) { setErroVencimento('Erro ao salvar: ' + error.message); return }
     setModalVencimento(null); await carregarPlanosCliente(clienteSel.id)
+  }
+
+  function abrirValidadeAvulso(pac: any) { setModalValidadeAvulso(pac); setNovaValidadeAvulso(pac.validade || ''); setErroAvulso('') }
+
+  function filtroPacoteAvulso(query: any, pac: any) {
+    let q = query.eq('cliente_id', clienteSel.id).eq('tipo', pac.tipo)
+    q = pac.observacao === null ? q.is('observacao', null) : q.eq('observacao', pac.observacao)
+    q = pac.validade === null ? q.is('validade', null) : q.eq('validade', pac.validade)
+    q = pac.unidade_id === null ? q.is('unidade_id', null) : q.eq('unidade_id', pac.unidade_id)
+    return q
+  }
+
+  async function salvarValidadeAvulso() {
+    if (!modalValidadeAvulso) return
+    if (!novaValidadeAvulso) { setErroAvulso('Informe uma data válida.'); return }
+    setSalvandoAvulso(true); setErroAvulso('')
+    const { error } = await filtroPacoteAvulso(
+      supabase.from('creditos_avulsos').update({ validade: novaValidadeAvulso }),
+      modalValidadeAvulso
+    )
+    setSalvandoAvulso(false)
+    if (error) { setErroAvulso('Erro ao salvar: ' + error.message); return }
+    setModalValidadeAvulso(null)
+    await Promise.all([carregarAvulsos(clienteSel.id), carregarSaldo(clienteSel.id)])
+  }
+
+  async function cancelarCreditosNaoUsados() {
+    if (!modalValidadeAvulso) return
+    const ontem = new Date(); ontem.setDate(ontem.getDate() - 1)
+    setCancelandoAvulso(true); setErroAvulso('')
+    const { error } = await filtroPacoteAvulso(
+      supabase.from('creditos_avulsos').update({ validade: dataLocalStr(ontem) }).eq('usado', false),
+      modalValidadeAvulso
+    )
+    setCancelandoAvulso(false)
+    if (error) { setErroAvulso('Erro ao cancelar: ' + error.message); return }
+    setModalValidadeAvulso(null)
+    await Promise.all([carregarAvulsos(clienteSel.id), carregarSaldo(clienteSel.id)])
   }
 
   async function cancelarAgendamento(agId: string) {
@@ -1207,6 +1281,43 @@ export default function AdminClientesPage() {
                     </div>
                   )}
                 </div>
+
+                <div>
+                  <div className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2 flex items-center gap-2"><Package size={12} /> Créditos avulsos / Pacotes</div>
+                  {avulsosPacotes.length === 0 ? (
+                    <div className="card text-center py-6 text-gray-400 text-sm">Nenhum crédito avulso.</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {avulsosPacotes.map(pac => {
+                        const venc = pac.validade ? new Date(pac.validade + 'T12:00:00') : null
+                        const vigente = venc ? venc >= new Date(new Date().toDateString()) : true
+                        return (
+                          <div key={pac.chave} className={`card border-l-4 ${pac.disponiveis > 0 && vigente ? 'border-l-blue-400' : 'border-l-gray-300 opacity-70'}`}>
+                            <div className="flex items-start gap-3">
+                              <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center flex-shrink-0"><Package size={18} /></div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-semibold text-gray-900">{pac.observacao || 'Créditos avulsos'}</span>
+                                  {!vigente && <span className="text-xs px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">Vencido</span>}
+                                  {pac.unidade_nome
+                                    ? <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">{pac.unidade_nome}</span>
+                                    : <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">Todas as unidades</span>}
+                                </div>
+                                <div className="text-xs text-gray-500 mt-1 space-y-0.5">
+                                  <div>Validade: <strong className={vigente ? 'text-blue-700' : 'text-red-600'}>{pac.validade ? formatarBR(pac.validade) : '—'}</strong></div>
+                                  <div><span className="font-bold text-blue-600">{pac.disponiveis}</span> disponíveis<span className="text-gray-400"> · {pac.usados} usados · {pac.total} no total</span></div>
+                                </div>
+                              </div>
+                              <div className="flex flex-col gap-1">
+                                <button onClick={() => abrirValidadeAvulso(pac)} className="btn btn-sm gap-1 text-blue-700 hover:bg-blue-50"><Edit2 size={11} /> Validade</button>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -1702,6 +1813,55 @@ export default function AdminClientesPage() {
                 <Check size={12} /> {ajustandoVencimento ? 'Salvando...' : 'Salvar'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {modalValidadeAvulso && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <div className="font-bold text-gray-900 flex items-center gap-2"><Package size={18} className="text-blue-600" /> Validade do pacote</div>
+                <div className="text-xs text-gray-400 mt-0.5">{modalValidadeAvulso.observacao || 'Créditos avulsos'}{modalValidadeAvulso.unidade_nome ? ` · ${modalValidadeAvulso.unidade_nome}` : ' · todas as unidades'}</div>
+              </div>
+              <button onClick={() => setModalValidadeAvulso(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              <div className="bg-blue-50 rounded-lg p-2 text-center border border-blue-100">
+                <div className="text-2xl font-bold text-blue-600">{modalValidadeAvulso.disponiveis}</div>
+                <div className="text-xs text-gray-500 mt-0.5">disponíveis</div>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-2 text-center border border-gray-100">
+                <div className="text-2xl font-bold text-gray-400">{modalValidadeAvulso.usados}</div>
+                <div className="text-xs text-gray-500 mt-0.5">usados</div>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-2 text-center border border-gray-100">
+                <div className="text-2xl font-bold text-gray-700">{modalValidadeAvulso.total}</div>
+                <div className="text-xs text-gray-500 mt-0.5">total</div>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block font-medium">Nova data de validade</label>
+              <input type="date" className="input w-full" value={novaValidadeAvulso} onChange={e => setNovaValidadeAvulso(e.target.value)} />
+              <div className="text-xs text-gray-400 mt-1">Validade atual: {modalValidadeAvulso.validade ? formatarBR(modalValidadeAvulso.validade) : '—'}</div>
+              <div className="text-xs text-gray-400 mt-0.5">Aplica a todos os {modalValidadeAvulso.total} créditos do pacote (usados e não usados).</div>
+            </div>
+            {erroAvulso && <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-3 text-sm text-red-600 flex items-start gap-2"><AlertCircle size={14} className="mt-0.5 flex-shrink-0" />{erroAvulso}</div>}
+            <div className="flex gap-2 mt-6">
+              <button onClick={() => setModalValidadeAvulso(null)} className="btn flex-1 text-gray-500 border border-gray-200">Fechar</button>
+              <button onClick={salvarValidadeAvulso} disabled={salvandoAvulso || cancelandoAvulso} className="btn flex-1 bg-blue-500 text-white hover:bg-blue-600 gap-1 disabled:opacity-50">
+                <Check size={12} /> {salvandoAvulso ? 'Salvando...' : 'Salvar validade'}
+              </button>
+            </div>
+            {modalValidadeAvulso.disponiveis > 0 && (
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <button onClick={cancelarCreditosNaoUsados} disabled={salvandoAvulso || cancelandoAvulso} className="btn btn-sm gap-1 text-red-500 hover:bg-red-50 w-full justify-center disabled:opacity-50">
+                  <Trash2 size={12} /> {cancelandoAvulso ? 'Cancelando...' : `Cancelar ${modalValidadeAvulso.disponiveis} créditos não usados`}
+                </button>
+                <div className="text-xs text-gray-400 mt-1 text-center leading-relaxed">Marca só os não usados como vencidos (validade = ontem). Reaparecem como pacote vencido — reversível ajustando a validade de novo.</div>
+              </div>
+            )}
           </div>
         </div>
       )}
