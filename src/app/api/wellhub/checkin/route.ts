@@ -4,17 +4,21 @@
 // Recebe a notificação de check-in, valida a assinatura, grava em
 // entradas_walkin com status 'recebido' e responde 200 rápido (SLA ~1s).
 //
-// A chamada de /access/v1/validate (que gera o pagamento) NÃO está aqui —
-// vem num arquivo separado, depois deste testado.
+// Após gravar, dispara a validação (validarCheckin) em segundo plano via
+// waitUntil — responde 200 rápido e valida o ticket logo em seguida (Etapa 1).
 //
-// >>> 2 pontos pra ajustar com dados reais (procure por "AJUSTAR" abaixo):
-//   1. GYM_MAP  -> o gym_id da unidade CT no Wellhub (quando você tiver à mão)
-//   2. extrair() -> os nomes dos campos dentro do payload, que só dá pra
-//      confirmar vendo um payload real do sandbox do Wellhub.
+// Notas de implementação (confirmadas via doc do sandbox Wellhub):
+//   - Payload é ANINHADO em event_data (user / gym / product / timestamp).
+//   - Check-in NÃO tem event_id (só booking tem); a chave de idempotência
+//     usada aqui é unique_token:timestamp.
+//   - A URL é única para todos os eventos (checkin + booking); este handler
+//     só processa event_type === 'checkin' e ignora o resto com 200.
 
 import { NextRequest, NextResponse } from 'next/server';
+import { waitUntil } from '@vercel/functions';
 import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
+import { validarCheckin } from '@/lib/wellhub/validar-checkin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -26,16 +30,15 @@ export const dynamic = 'force-dynamic';
 // UUID da unidade CT no nosso banco
 const UNIDADE_CT = 'c28bf4bb-56f8-44ff-818a-c7836e58bcef';
 
-// AJUSTAR: mapeia o gym_id do Wellhub -> unidade_id nosso.
-// Hoje só CT. Quando vier o gym_id real do Wellhub da unidade CT,
-// descomente a linha e troque 'GYM_ID_CT_AQUI' por ele.
+// Mapeia o gym_id do Wellhub -> unidade_id nosso.
+// Hoje só temos a unidade CT, nos dois ambientes do Wellhub.
 const GYM_MAP: Record<string, string> = {
-  // 'GYM_ID_CT_AQUI': UNIDADE_CT,
+  '465': UNIDADE_CT,    // sandbox
+  '542542': UNIDADE_CT, // produção
 };
 
-// Enquanto o GYM_MAP estiver vazio, como só temos CT, qualquer check-in
-// cai na unidade CT. Quando entrar uma segunda unidade, preencher o GYM_MAP
-// e remover esse fallback.
+// Fallback: enquanto só existe CT, qualquer gym_id não mapeado cai na CT.
+// Quando entrar uma segunda unidade, preencher o GYM_MAP e remover o fallback.
 function resolverUnidade(gymId: string | null): string {
   if (gymId && GYM_MAP[gymId]) return GYM_MAP[gymId];
   return UNIDADE_CT;
@@ -63,35 +66,43 @@ function assinaturaValida(rawBody: string, header: string | null): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Extração de campos do payload (AJUSTAR com payload real do sandbox)
+// Extração de campos do payload de check-in
+//
+// Formato real (event_data aninhado):
+//   {
+//     "event_type": "checkin",
+//     "event_data": {
+//       "user": { "unique_token", "first_name", "last_name", "email", "phone_number" },
+//       "location": { "lat", "lon" },
+//       "gym": { "id", "title", "product": { "id", "description" } },
+//       "timestamp": <unix>
+//     }
+//   }
 // ---------------------------------------------------------------------------
 function extrair(payload: any) {
-  // AJUSTAR: confirmar os nomes reais ao ver um payload do sandbox.
-  // Deixei várias chaves possíveis como fallback pra facilitar o teste.
-  const gympassId =
-    payload?.gympass_id ??
-    payload?.gpw_id ??
-    payload?.unique_token ??
-    payload?.user?.id ??
-    null;
+  const d = payload?.event_data ?? {};
 
-  const eventoId =
-    payload?.event_id ??
-    payload?.checkin_id ??
-    payload?.id ??
-    null;
+  // unique_token (13 dígitos) é o mesmo valor que o validate pede como gympass_id.
+  const gympassId: string | null = d?.user?.unique_token ?? null;
 
-  const gymId =
-    payload?.gym_id ??
-    payload?.gym?.id ??
-    null;
+  const gymId: string | null = d?.gym?.id != null ? String(d.gym.id) : null;
 
-  const produto =
-    payload?.product ??
-    payload?.product_name ??
-    null;
+  const p = d?.gym?.product;
+  const produtoId: string | null = p?.id != null ? String(p.id) : null;
+  const produtoDescricao: string | null = p?.description ?? null;
+  // produto: "id — descrição" pra ficar legível na listagem (o payload completo
+  // fica salvo em raw de qualquer forma).
+  const produto: string | null =
+    p?.id != null ? `${p.id} — ${p.description ?? ''}`.trim() : (p?.description ?? null);
 
-  return { gympassId, eventoId, gymId, produto };
+  const timestamp: number | null = d?.timestamp ?? null;
+
+  // Check-in não traz event_id. Idempotência por unique_token:timestamp —
+  // reentrega do mesmo evento gera a mesma chave.
+  const eventoId: string | null =
+    gympassId && timestamp != null ? `${gympassId}:${timestamp}` : null;
+
+  return { gympassId, eventoId, gymId, produto, produtoId, produtoDescricao };
 }
 
 // ---------------------------------------------------------------------------
@@ -115,12 +126,19 @@ export async function POST(req: NextRequest) {
     return new NextResponse('payload invalido', { status: 400 });
   }
 
-  const { gympassId, eventoId, gymId, produto } = extrair(payload);
+  // 3a. URL única recebe todos os eventos (checkin + booking). Aqui só
+  // tratamos check-in; o resto é reconhecido com 200 e ignorado.
+  if (payload?.event_type !== 'checkin') {
+    return new NextResponse(null, { status: 200 });
+  }
+
+  const { gympassId, eventoId, gymId, produto, produtoId, produtoDescricao } =
+    extrair(payload);
 
   if (!gympassId) {
     // Sem id do usuário não dá pra registrar. Loga e responde 200 mesmo assim
     // pra não entrar em loop de retry do Wellhub.
-    console.error('[wellhub/checkin] payload sem gympass_id:', rawBody);
+    console.error('[wellhub/checkin] payload sem unique_token:', rawBody);
     return new NextResponse(null, { status: 200 });
   }
 
@@ -142,18 +160,24 @@ export async function POST(req: NextRequest) {
 
   // 5. Grava. Idempotência garantida pelo índice único (origem, evento_id):
   //    reentrega do mesmo evento devolve 23505 e a gente trata como sucesso.
-  const { error } = await supabase.from('entradas_walkin').insert({
-    unidade_id: unidadeId,
-    origem: 'wellhub',
-    id_externo: String(gympassId),
-    evento_id: eventoId ? String(eventoId) : null,
-    produto: produto ?? null,
-    status: 'recebido',
-    raw: payload,
-  });
+  //    .select('id') devolve o id da linha criada, usado na validação.
+  const { data: inserida, error } = await supabase
+    .from('entradas_walkin')
+    .insert({
+      unidade_id: unidadeId,
+      origem: 'wellhub',
+      id_externo: String(gympassId),
+      evento_id: eventoId ? String(eventoId) : null,
+      produto: produto ?? null,
+      status: 'recebido',
+      raw: payload,
+    })
+    .select('id')
+    .single();
 
   if (error) {
-    // 23505 = violação de unique -> evento já processado, tudo certo.
+    // 23505 = violação de unique -> evento já processado (reentrega).
+    //   NÃO revalida: o validate é uso único e a entrada já existe.
     if ((error as any).code === '23505') {
       return new NextResponse(null, { status: 200 });
     }
@@ -161,6 +185,19 @@ export async function POST(req: NextRequest) {
     return new NextResponse('erro ao gravar', { status: 500 });
   }
 
-  // 6. 200 rápido (sem corpo)
+  // 6. Dispara a validação em segundo plano (Etapa 1): responde 200 já e
+  //    valida logo em seguida. waitUntil garante a execução pós-resposta.
+  if (inserida?.id) {
+    waitUntil(
+      validarCheckin({
+        entradaId: inserida.id,
+        gympassId,
+        produtoId,
+        produtoDescricao,
+      })
+    );
+  }
+
+  // 7. 200 rápido (sem corpo)
   return new NextResponse(null, { status: 200 });
 }
