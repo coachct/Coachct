@@ -16,8 +16,8 @@ const DADOS_UNIDADES: Record<string, {
   bairro: string
 }> = {
   'Just CT': {
-    endereco: 'Rua Fiandeiras, 392 — Vila Olímpia, São Paulo',
-    bairro: 'Vila Olímpia',
+    endereco: 'Rua Fiandeiras, 392 — Itaim Bibi, São Paulo',
+    bairro: 'Itaim Bibi',
     horariosFixos: { semana: 'Seg a Sex · 05:30 às 21:00', fds: 'Sáb, Dom e Feriados · 08:00 às 13:00' },
     aulas: 'Coach CT · Musculação livre',
   },
@@ -184,7 +184,7 @@ export default function LandingPage() {
             {[
               { val: '1×1', label: 'Personal exclusivo' },
               { val: '100%', label: 'Horário flexível' },
-              { val: 'Vila\nOlímpia', label: 'Rua Fiandeiras, 392' },
+              { val: 'Itaim\nBibi', label: 'Rua Fiandeiras, 392' },
             ].map((s2, i) => (
               <div key={i} style={{ borderLeft: `2px solid ${ACCENT}`, paddingLeft: '1rem' }}>
                 <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: i === 2 ? 28 : 40, color: '#fff', lineHeight: 1, whiteSpace: 'pre-line' }}>{s2.val}</div>

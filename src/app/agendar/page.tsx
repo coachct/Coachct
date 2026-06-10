@@ -13,6 +13,13 @@ const CYAN    = '#00e5ff'
 const AMARELO = '#ffaa00'
 const VERMELHO = '#ff4444'
 
+// Endereço fixo por nome de unidade (mesma fonte usada na home)
+const ENDERECOS_UNIDADES: Record<string, string> = {
+  'Just CT': 'Rua Fiandeiras, 392 — Itaim Bibi, São Paulo',
+  'JustClub Vila Olímpia': 'Av. Dr. Cardoso de Melo, 1337 — Vila Olímpia, São Paulo',
+  'JustClub Pinheiros': 'Rua Deputado Lacerda Franco, 342 — Pinheiros, São Paulo',
+}
+
 const DIAS_SEMANA  = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const HORARIOS_FDS = ['08:00', '09:00', '10:00', '11:00', '12:00']
 const JANELA_DIAS  = 14
@@ -139,6 +146,12 @@ function CardUnidade({ unidade, onClick }: { unidade: any; onClick: () => void }
         <div style={{ fontSize: 13, color: '#555', marginTop: 2 }}>
           {isClub ? 'Aulas coletivas · Lift · Running + Funcional' : 'Personal training · Treino individual com coach'}
         </div>
+        {ENDERECOS_UNIDADES[unidade.nome] && (
+          <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginTop: 8, fontSize: 12, color: '#666', lineHeight: 1.4 }}>
+            <span style={{ flexShrink: 0 }}>📍</span>
+            <span>{ENDERECOS_UNIDADES[unidade.nome]}</span>
+          </div>
+        )}
       </div>
 
       <div style={{
@@ -575,7 +588,8 @@ export default function AgendarPage() {
             </div>
 
             {unidadesPermitidas.length > 1 && (
-              <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <>
+              <div style={{ display: 'flex', gap: 8, marginBottom: unidadeAtiva && ENDERECOS_UNIDADES[unidadeAtiva.nome] ? 10 : '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
                 <span style={{ fontSize: 11, color: '#444', textTransform: 'uppercase', letterSpacing: 1 }}>Unidade:</span>
                 {unidadesPermitidas.map(u => {
                   const ativa = unidadeAtiva?.id === u.id
@@ -608,6 +622,13 @@ export default function AgendarPage() {
                   ← Voltar
                 </button>
               </div>
+              {unidadeAtiva && ENDERECOS_UNIDADES[unidadeAtiva.nome] && (
+                <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginBottom: '1.5rem', fontSize: 13, color: '#777', lineHeight: 1.4 }}>
+                  <span style={{ flexShrink: 0 }}>📍</span>
+                  <span>{ENDERECOS_UNIDADES[unidadeAtiva.nome]}</span>
+                </div>
+              )}
+              </>
             )}
 
             {unidadesPermitidas.length === 1 && unidadeAtiva && (
@@ -615,6 +636,12 @@ export default function AgendarPage() {
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: `${ACCENT}15`, border: `1px solid ${ACCENT}44`, borderRadius: 8, padding: '0.35rem 0.85rem' }}>
                   <span style={{ fontSize: 12, color: ACCENT, fontWeight: 600 }}>{unidadeAtiva.nome}</span>
                 </div>
+                {ENDERECOS_UNIDADES[unidadeAtiva.nome] && (
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginTop: 8, fontSize: 13, color: '#777', lineHeight: 1.4 }}>
+                    <span style={{ flexShrink: 0 }}>📍</span>
+                    <span>{ENDERECOS_UNIDADES[unidadeAtiva.nome]}</span>
+                  </div>
+                )}
               </div>
             )}
 
