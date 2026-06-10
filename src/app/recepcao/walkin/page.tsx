@@ -52,6 +52,7 @@ type Entrada = {
   recebido_em: string
   cliente_id: string | null
   clientes: any
+  raw: any
 }
 
 function nomeCliente(r: Entrada): string | null {
@@ -71,7 +72,7 @@ export default function RecepcaoWalkIn() {
   const buscar = useCallback(async () => {
     let query = supabase
       .from('entradas_walkin')
-      .select('id, origem, status, id_externo, produto, recebido_em, cliente_id, clientes(nome)')
+      .select('id, origem, status, id_externo, produto, recebido_em, cliente_id, raw, clientes(nome)')
       .eq('unidade_id', UNIDADE_CT)
       .gte('recebido_em', inicioHojeSP())
       .order('recebido_em', { ascending: false })
@@ -87,12 +88,15 @@ export default function RecepcaoWalkIn() {
   useEffect(() => {
     setCarregando(true)
     buscar()
-    const intervalo = setInterval(buscar, 10000)
+    // Atualiza a cada 3s — garante o "quase instantâneo" pra recepção, sem
+    // depender de config de Realtime/RLS. É a fonte confiável de atualização.
+    const intervalo = setInterval(buscar, 3000)
     const aoFocar = () => buscar()
     window.addEventListener('focus', aoFocar)
 
-    // Tempo real: recarrega na hora quando uma entrada entra ou muda de status
-    // (ex.: recebido -> validado). O intervalo acima fica como rede de segurança.
+    // Realtime (bônus): atualiza no instante do evento SE a tabela estiver
+    // liberada pro postgres_changes. Pode não disparar dependendo da config —
+    // por isso o poll de 3s acima é a garantia.
     const canal = supabase
       .channel('recepcao_walkin')
       .on(
@@ -112,6 +116,10 @@ export default function RecepcaoWalkIn() {
   function nomeExibicao(r: Entrada): string {
     const nome = nomeCliente(r)
     if (nome) return nome
+    // Sem cliente vinculado (ex.: Wellhub): usa o nome que veio no payload.
+    const u = r.raw?.event_data?.user
+    const nomePayload = [u?.first_name, u?.last_name].filter(Boolean).join(' ').trim()
+    if (nomePayload) return nomePayload
     const label = ORIGENS[r.origem]?.label ?? r.origem
     return r.id_externo ? `${label} · ${r.id_externo}` : label
   }
