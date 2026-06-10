@@ -51,7 +51,7 @@ export default function RecepcaoAgendaPage() {
   const [loadingData, setLoadingData] = useState(true)
   const [alocandoId, setAlocandoId] = useState<string | null>(null)
   const [busca, setBusca] = useState('')
-  const [abaAtiva, setAbaAtiva] = useState<'agendamentos' | 'grade' | 'recepcao'>('agendamentos')
+  const [abaAtiva, setAbaAtiva] = useState<'agendamentos' | 'grade' | 'recepcao'>('recepcao')
   // 🔧 Relógio interno da aba Próximos Treinos: dispara a regra de "sumir 15 min após o horário"
   const [agora, setAgora] = useState<Date>(() => new Date())
 
@@ -492,6 +492,22 @@ export default function RecepcaoAgendaPage() {
         </div>
 
         <div className="flex gap-2 mb-5">
+          <button onClick={() => setAbaAtiva('recepcao')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+              abaAtiva === 'recepcao'
+                ? 'bg-primary-600 text-white'
+                : 'bg-white border border-gray-200 text-gray-600 hover:border-primary-300'
+            }`}>
+            <Tv size={14} />
+            Próximos Treinos
+            {ehHoje && pendentesRecepcao.length > 0 && (
+              <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${
+                abaAtiva === 'recepcao' ? 'bg-white text-orange-600' : 'bg-orange-100 text-orange-700'
+              }`}>
+                {pendentesRecepcao.length}
+              </span>
+            )}
+          </button>
           <button onClick={() => setAbaAtiva('agendamentos')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
               abaAtiva === 'agendamentos'
@@ -516,22 +532,6 @@ export default function RecepcaoAgendaPage() {
             }`}>
             <Calendar size={14} />
             Grade do dia
-          </button>
-          <button onClick={() => setAbaAtiva('recepcao')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-              abaAtiva === 'recepcao'
-                ? 'bg-primary-600 text-white'
-                : 'bg-white border border-gray-200 text-gray-600 hover:border-primary-300'
-            }`}>
-            <Tv size={14} />
-            Próximos Treinos
-            {ehHoje && pendentesRecepcao.length > 0 && (
-              <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${
-                abaAtiva === 'recepcao' ? 'bg-white text-orange-600' : 'bg-orange-100 text-orange-700'
-              }`}>
-                {pendentesRecepcao.length}
-              </span>
-            )}
           </button>
         </div>
 
