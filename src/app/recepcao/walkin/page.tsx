@@ -90,11 +90,24 @@ export default function RecepcaoWalkIn() {
     const intervalo = setInterval(buscar, 10000)
     const aoFocar = () => buscar()
     window.addEventListener('focus', aoFocar)
+
+    // Tempo real: recarrega na hora quando uma entrada entra ou muda de status
+    // (ex.: recebido -> validado). O intervalo acima fica como rede de segurança.
+    const canal = supabase
+      .channel('recepcao_walkin')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'entradas_walkin' },
+        () => buscar()
+      )
+      .subscribe()
+
     return () => {
       clearInterval(intervalo)
       window.removeEventListener('focus', aoFocar)
+      supabase.removeChannel(canal)
     }
-  }, [buscar])
+  }, [buscar, supabase])
 
   function nomeExibicao(r: Entrada): string {
     const nome = nomeCliente(r)
