@@ -579,10 +579,10 @@ export default function ContasAPagarPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
+              <table className="w-full text-left text-[13px] leading-5">
                 <thead>
                   <tr className="border-b border-gray-100 text-xs uppercase tracking-wide text-gray-400">
-                    <th className="px-3 py-3">
+                    <th className="px-2 py-3">
                       <input
                         type="checkbox"
                         checked={todasSelecionadas}
@@ -592,16 +592,16 @@ export default function ContasAPagarPage() {
                         title="Selecionar todas em aberto"
                       />
                     </th>
-                    <th className="px-3 py-3 font-medium">Descrição</th>
-                    <th className="px-3 py-3 font-medium">Fornecedor</th>
-                    <th className="px-3 py-3 font-medium">Unidade</th>
-                    <th className="px-3 py-3 font-medium">Categoria</th>
-                    <th className="px-3 py-3 font-medium">Origem</th>
-                    <th className="px-3 py-3 font-medium">Compet.</th>
-                    <th className="px-3 py-3 font-medium">Venc.</th>
-                    <th className="px-3 py-3 font-medium">Status</th>
-                    <th className="px-3 py-3 text-right font-medium">Valor</th>
-                    <th className="px-3 py-3 text-right font-medium">Ações</th>
+                    <th className="px-2 py-3 font-medium">Descrição</th>
+                    <th className="px-2 py-3 font-medium">Fornecedor</th>
+                    <th className="px-2 py-3 font-medium">Unidade</th>
+                    <th className="px-2 py-3 font-medium">Categoria</th>
+                    <th className="hidden px-2 py-3 font-medium 2xl:table-cell">Origem</th>
+                    <th className="px-2 py-3 font-medium">Compet.</th>
+                    <th className="px-2 py-3 font-medium">Venc.</th>
+                    <th className="px-2 py-3 font-medium">Status</th>
+                    <th className="px-2 py-3 text-right font-medium">Valor</th>
+                    <th className="px-2 py-3 text-right font-medium">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -613,7 +613,7 @@ export default function ContasAPagarPage() {
                         key={d.id}
                         className="border-b border-gray-50 last:border-0 hover:bg-gray-50/60"
                       >
-                        <td className="px-3 py-3">
+                        <td className="px-2 py-3">
                           {!d.pago ? (
                             <input
                               type="checkbox"
@@ -625,12 +625,12 @@ export default function ContasAPagarPage() {
                             <span className="block h-4 w-4" />
                           )}
                         </td>
-                        <td className="px-3 py-3 font-medium text-gray-900">{d.descricao}</td>
-                        <td className="px-3 py-3 text-gray-600">
+                        <td className="px-2 py-3 font-medium text-gray-900">{d.descricao}</td>
+                        <td className="px-2 py-3 text-gray-600">
                           {d.fornecedor_id ? fornecedorPorId.get(d.fornecedor_id) || '—' : '—'}
                         </td>
-                        <td className="px-3 py-3 text-gray-600">{nomeUnidade(d.unidade_id)}</td>
-                        <td className="px-3 py-3">
+                        <td className="px-2 py-3 text-gray-600">{nomeUnidade(d.unidade_id)}</td>
+                        <td className="px-2 py-3">
                           {cat ? (
                             <span className="inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
                               {cat.nome}
@@ -639,18 +639,18 @@ export default function ContasAPagarPage() {
                             <span className="text-gray-400">—</span>
                           )}
                         </td>
-                        <td className="px-3 py-3">
+                        <td className="hidden px-2 py-3 2xl:table-cell">
                           <span
                             className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${ORIGEM_BADGE[d.origem]}`}
                           >
                             {ORIGEM_LABEL[d.origem]}
                           </span>
                         </td>
-                        <td className="px-3 py-3 text-gray-600">{fmtCompetencia(d.competencia)}</td>
-                        <td className={`px-3 py-3 ${vencida ? 'font-semibold text-red-600' : 'text-gray-600'}`}>
+                        <td className="px-2 py-3 text-gray-600">{fmtCompetencia(d.competencia)}</td>
+                        <td className={`px-2 py-3 ${vencida ? 'font-semibold text-red-600' : 'text-gray-600'}`}>
                           {fmtData(d.vencimento)}
                         </td>
-                        <td className="px-3 py-3">
+                        <td className="px-2 py-3">
                           {d.pago ? (
                             <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
                               Pago {d.pago_em ? `· ${fmtData(d.pago_em)}` : ''}
@@ -665,15 +665,15 @@ export default function ContasAPagarPage() {
                             </span>
                           )}
                         </td>
-                        <td className="px-3 py-3 text-right font-semibold text-gray-900">
+                        <td className="px-2 py-3 text-right font-semibold text-gray-900">
                           {fmtBRL(Number(d.valor))}
                         </td>
-                        <td className="px-3 py-3">
-                          <div className="flex items-center justify-end gap-1">
+                        <td className="px-2 py-3">
+                          <div className="flex items-center justify-end gap-0.5">
                             <button
                               onClick={() => alternarPago(d)}
                               title={d.pago ? 'Reverter para em aberto' : 'Marcar como paga'}
-                              className={`rounded-lg p-2 transition hover:bg-gray-100 ${
+                              className={`rounded-lg p-1.5 transition hover:bg-gray-100 ${
                                 d.pago
                                   ? 'text-gray-500 hover:text-amber-600'
                                   : 'text-gray-500 hover:text-green-600'
@@ -684,14 +684,14 @@ export default function ContasAPagarPage() {
                             <button
                               onClick={() => abrirEdicao(d)}
                               title="Editar"
-                              className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-[#ff2d9b]"
+                              className="rounded-lg p-1.5 text-gray-500 transition hover:bg-gray-100 hover:text-[#ff2d9b]"
                             >
                               <Pencil size={16} />
                             </button>
                             <button
                               onClick={() => excluir(d)}
                               title="Excluir"
-                              className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-red-600"
+                              className="rounded-lg p-1.5 text-gray-500 transition hover:bg-gray-100 hover:text-red-600"
                             >
                               <Trash2 size={16} />
                             </button>
