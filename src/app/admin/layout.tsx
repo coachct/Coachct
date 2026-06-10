@@ -54,6 +54,7 @@ const nav = [
     children: [
       { label: 'Visão Geral',          href: '/admin/financeiro' },
       { label: 'Receitas',             href: '/admin/financeiro/receitas' },
+      { label: 'Valores check-in',     href: '/admin/financeiro/valores-checkin' },
       { label: 'Contas a Pagar',       href: '/admin/financeiro/contas-a-pagar' },
       { label: 'Recorrentes',          href: '/admin/financeiro/recorrentes' },
       { label: 'Funcionários',         href: '/admin/financeiro/funcionarios' },
