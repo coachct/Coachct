@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
 import { useRouter } from 'next/navigation'
-import { Clock, CheckCircle, XCircle, Search, Users, Calendar, ChevronLeft, ChevronRight, Lock, Unlock, X, AlertCircle } from 'lucide-react'
+import { Clock, CheckCircle, XCircle, Search, Users, Calendar, ChevronLeft, ChevronRight, Lock, Unlock, X, AlertCircle, Tv } from 'lucide-react'
 import UnidadeSelector from '@/components/UnidadeSelector'
 
 const HORARIOS = [
@@ -14,6 +14,21 @@ const HORARIOS = [
   '16:00','16:30','17:00','17:30','18:00','18:30','19:00',
   '19:30','20:00'
 ]
+
+// 🔧 Crédito legível a partir da chave (ex.: totalpass_just_ct → 🔵 TotalPass TP6 — Just CT)
+function parsePlanoKey(key: string): { label: string; icon: string } {
+  const lower = (key || '').toLowerCase()
+  let tipo = ''
+  let icon = '🏋️'
+  let slugUnidade = ''
+  if (lower.startsWith('coach_ct_pro')) { tipo = 'Coach CT Pro'; icon = '🏆'; slugUnidade = key.substring('coach_ct_pro_'.length) }
+  else if (lower.startsWith('wellhub')) { tipo = 'Wellhub Diamond'; icon = '💜'; slugUnidade = key.split('_').slice(1).join('_') }
+  else if (lower.startsWith('totalpass')) { tipo = 'TotalPass TP6'; icon = '🔵'; slugUnidade = key.split('_').slice(1).join('_') }
+  else if (lower.startsWith('avulso') || lower.startsWith('credito')) { tipo = 'Crédito Avulso'; icon = '🎟️'; slugUnidade = key.split('_').slice(1).join('_') }
+  else { tipo = key }
+  const nomeUnidade: Record<string, string> = { just_ct: 'Just CT', just_club_vila_olimpia: 'Vila Olímpia', just_club_pinheiros: 'Pinheiros' }
+  return { label: `${tipo} — ${nomeUnidade[slugUnidade] || slugUnidade.replace(/_/g, ' ')}`, icon }
+}
 
 function addDias(dataStr: string, dias: number) {
   const d = new Date(dataStr + 'T12:00:00')
@@ -36,7 +51,9 @@ export default function RecepcaoAgendaPage() {
   const [loadingData, setLoadingData] = useState(true)
   const [alocandoId, setAlocandoId] = useState<string | null>(null)
   const [busca, setBusca] = useState('')
-  const [abaAtiva, setAbaAtiva] = useState<'agendamentos' | 'grade'>('agendamentos')
+  const [abaAtiva, setAbaAtiva] = useState<'agendamentos' | 'grade' | 'recepcao'>('agendamentos')
+  // 🔧 Relógio interno da aba Próximos Treinos: dispara a regra de "sumir 15 min após o horário"
+  const [agora, setAgora] = useState<Date>(() => new Date())
 
   const [modalBloqueio, setModalBloqueio] = useState<{ horario: string; vagasLivres: number; bloqueiosAtivos: any[] } | null>(null)
   const [qtdBloquear, setQtdBloquear] = useState(1)
@@ -83,6 +100,18 @@ export default function RecepcaoAgendaPage() {
   useEffect(() => {
     if (perfil && unidadeAtiva) loadData()
   }, [data, perfil, unidadeAtiva?.id])
+
+  // 🔧 Aba Próximos Treinos: a cada 1 min, avança o relógio e recarrega (mantém scroll).
+  useEffect(() => {
+    if (abaAtiva !== 'recepcao') return
+    setAgora(new Date())
+    const id = setInterval(() => {
+      setAgora(new Date())
+      if (data === hoje && perfil && unidadeAtiva) loadData(true)
+    }, 60000)
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abaAtiva, data, perfil, unidadeAtiva?.id])
 
   async function loadData(manter_scroll = false) {
     if (!unidadeAtiva) return
@@ -359,6 +388,21 @@ export default function RecepcaoAgendaPage() {
     .filter(a => a.status !== 'cancelado')
     .sort((a, b) => a.horario.localeCompare(b.horario))
 
+  // 🔧 ---- Aba Próximos Treinos (visão rolante) ----
+  // Um horário fica visível até 15 min depois de começar (05:30 some às 05:45).
+  const JANELA_MIN = 15
+  function horaParaMin(h: string) { const [hh, mm] = h.split(':').map(Number); return hh * 60 + mm }
+  const ehHoje = data === hoje
+  const agoraMin = agora.getHours() * 60 + agora.getMinutes()
+  const horariosComAgendamento = Array.from(new Set(agendamentosAtivos.map(a => norm(a.horario)))).sort()
+  const horariosRecepcao = horariosComAgendamento.filter(h => !ehHoje || agoraMin < horaParaMin(h) + JANELA_MIN)
+  const pendentesRecepcao = ehHoje
+    ? agendamentosAtivos.filter(a =>
+        agoraMin >= horaParaMin(norm(a.horario)) + JANELA_MIN &&
+        a.status !== 'realizado' && a.status !== 'falta'
+      )
+    : []
+
   const agendamentosFiltrados = busca
     ? agendamentos.filter(a =>
         a.clientes?.nome?.toLowerCase().includes(busca.toLowerCase()) ||
@@ -472,6 +516,22 @@ export default function RecepcaoAgendaPage() {
             }`}>
             <Calendar size={14} />
             Grade do dia
+          </button>
+          <button onClick={() => setAbaAtiva('recepcao')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+              abaAtiva === 'recepcao'
+                ? 'bg-primary-600 text-white'
+                : 'bg-white border border-gray-200 text-gray-600 hover:border-primary-300'
+            }`}>
+            <Tv size={14} />
+            Próximos Treinos
+            {ehHoje && pendentesRecepcao.length > 0 && (
+              <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${
+                abaAtiva === 'recepcao' ? 'bg-white text-orange-600' : 'bg-orange-100 text-orange-700'
+              }`}>
+                {pendentesRecepcao.length}
+              </span>
+            )}
           </button>
         </div>
 
@@ -670,6 +730,109 @@ export default function RecepcaoAgendaPage() {
                               ))}
                             </div>
                           )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+            {abaAtiva === 'recepcao' && (
+              <div>
+                {/* Faixa de aviso: treinos já vencidos ainda sem presença/falta */}
+                {ehHoje && pendentesRecepcao.length > 0 && (
+                  <div className="card mb-5 border-2 border-orange-300 bg-orange-50">
+                    <div className="flex items-center gap-2 font-semibold text-orange-800">
+                      <AlertCircle size={18} className="flex-shrink-0" />
+                      {pendentesRecepcao.length} treino{pendentesRecepcao.length !== 1 ? 's' : ''} sem presença/falta — ajustar
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {pendentesRecepcao.map(ag => (
+                        <div key={ag.id} className="flex items-center gap-3 rounded-xl border border-orange-100 bg-white px-3 py-2">
+                          <span className="font-mono font-bold text-gray-700">{norm(ag.horario)}</span>
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900">{ag.clientes?.nome}</span>
+                          <button onClick={() => marcarPresenca(ag.id)} className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
+                            <CheckCircle size={12} /> Presença
+                          </button>
+                          <button onClick={() => marcarFalta(ag.id)} className="btn btn-sm gap-1 text-orange-600 hover:bg-orange-50">
+                            <XCircle size={12} /> Falta
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {horariosRecepcao.length === 0 ? (
+                  <div className="card py-12 text-center text-sm text-gray-400">
+                    {ehHoje ? 'Nenhum próximo treino no momento. 🎉' : 'Nenhum agendamento para este dia.'}
+                  </div>
+                ) : (
+                  <div className="space-y-7">
+                    {horariosRecepcao.map(h => {
+                      const cards = agendamentosPorHorario(h).filter(a => a.status !== 'cancelado')
+                      if (cards.length === 0) return null
+                      return (
+                        <div key={h}>
+                          <div className="mb-3 flex items-baseline gap-3">
+                            <span className="font-mono text-3xl font-extrabold text-primary-700">{h}</span>
+                            <span className="text-sm font-medium text-gray-400">{cards.length} aluno{cards.length !== 1 ? 's' : ''}</span>
+                          </div>
+                          <div className="space-y-3">
+                            {cards.map(ag => {
+                              const { label: planoLabel, icon: planoIcon } = parsePlanoKey(ag.tipo_credito || '')
+                              const feito = ag.status === 'realizado'
+                              const faltou = ag.status === 'falta'
+                              const coachesHorario = usaEscalaFds ? coachesFds : coachesPorHorario(h)
+                              const agsH = agendamentosPorHorario(h).filter(a => a.status !== 'cancelado')
+                              const coachesLivres = coachesHorario.filter(c => !agsH.some(a => a.id !== ag.id && a.coach_id === c.coaches?.id))
+                              return (
+                                <div key={ag.id} className={`flex items-start gap-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm border-l-4 ${feito ? 'border-l-gray-300 opacity-70' : faltou ? 'border-l-orange-400' : ag.coach_id ? 'border-l-green-400' : 'border-l-primary-400'}`}>
+                                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-primary-100 text-sm font-bold text-primary-800">
+                                    {ag.clientes?.nome?.slice(0, 2).toUpperCase()}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="truncate text-lg font-bold text-gray-900">{ag.clientes?.nome || '—'}</div>
+                                    <div className="mt-0.5 text-sm text-gray-500">{planoIcon} {planoLabel}</div>
+                                    <div className="mt-2">
+                                      {!ag.coach_id && coachesLivres.length > 0 && (
+                                        <select className="input input-sm text-xs max-w-[230px]" defaultValue=""
+                                          onChange={e => { if (e.target.value) alocarCoach(ag.id, e.target.value) }}
+                                          disabled={alocandoId === ag.id}>
+                                          <option value="">Alocar coach...</option>
+                                          {coachesLivres.map(c => <option key={c.coaches?.id} value={c.coaches?.id}>{c.coaches?.nome}</option>)}
+                                        </select>
+                                      )}
+                                      {ag.coach_id && (
+                                        <select className="input input-sm text-xs max-w-[230px]" value={ag.coach_id}
+                                          onChange={e => alocarCoach(ag.id, e.target.value)} disabled={alocandoId === ag.id}>
+                                          {coachesHorario.map(c => <option key={c.coaches?.id} value={c.coaches?.id}>{c.coaches?.nome}</option>)}
+                                          <option value="">— Sem coach —</option>
+                                        </select>
+                                      )}
+                                      {!ag.coach_id && coachesLivres.length === 0 && (
+                                        <span className="text-xs text-gray-400">Nenhum coach livre neste horário</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {feito || faltou ? (
+                                    <span className={`flex-shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${statusConfig[ag.status]?.color}`}>
+                                      {statusConfig[ag.status]?.label}
+                                    </span>
+                                  ) : (
+                                    <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row">
+                                      <button onClick={() => marcarPresenca(ag.id)} className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
+                                        <CheckCircle size={14} /> Presença
+                                      </button>
+                                      <button onClick={() => marcarFalta(ag.id)} className="btn btn-sm gap-1 text-orange-600 hover:bg-orange-50">
+                                        <XCircle size={14} /> Falta
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
                         </div>
                       )
                     })}

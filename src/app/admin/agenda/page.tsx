@@ -403,7 +403,7 @@ export default function AdminAgendaPage() {
           <button onClick={() => setAbaAtiva('recepcao')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${abaAtiva === 'recepcao' ? 'bg-primary-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-primary-300'}`}>
             <Tv size={14} />
-            Recepção
+            Próximos Treinos
             {ehHoje && pendentesRecepcao.length > 0 && (
               <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${abaAtiva === 'recepcao' ? 'bg-white text-orange-600' : 'bg-orange-100 text-orange-700'}`}>
                 {pendentesRecepcao.length}
@@ -607,21 +607,44 @@ export default function AdminAgendaPage() {
                               const { label: planoLabel, icon: planoIcon } = parsePlanoKey(ag.tipo_credito || '')
                               const feito = ag.status === 'realizado'
                               const faltou = ag.status === 'falta'
+                              const coachesHorario = coachesPorHorario(h)
+                              const agsH = agendamentosPorHorario(h).filter(a => a.status !== 'cancelado')
+                              const coachesLivres = coachesHorario.filter(c => !agsH.some(a => a.id !== ag.id && a.coach_id === c.coaches?.id))
                               return (
-                                <div key={ag.id} className={`flex items-center gap-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm border-l-4 ${feito ? 'border-l-gray-300 opacity-70' : faltou ? 'border-l-orange-400' : 'border-l-primary-400'}`}>
+                                <div key={ag.id} className={`flex items-start gap-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm border-l-4 ${feito ? 'border-l-gray-300 opacity-70' : faltou ? 'border-l-orange-400' : ag.coach_id ? 'border-l-green-400' : 'border-l-primary-400'}`}>
                                   <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-primary-100 text-sm font-bold text-primary-800">
                                     {ag.clientes?.nome?.slice(0, 2).toUpperCase()}
                                   </div>
                                   <div className="min-w-0 flex-1">
                                     <div className="truncate text-lg font-bold text-gray-900">{ag.clientes?.nome || '—'}</div>
                                     <div className="mt-0.5 text-sm text-gray-500">{planoIcon} {planoLabel}</div>
+                                    <div className="mt-2">
+                                      {!ag.coach_id && coachesLivres.length > 0 && (
+                                        <select className="input input-sm text-xs max-w-[230px]" defaultValue=""
+                                          onChange={e => { if (e.target.value) alocarCoach(ag.id, e.target.value) }}
+                                          disabled={alocandoId === ag.id}>
+                                          <option value="">Alocar coach...</option>
+                                          {coachesLivres.map(c => <option key={c.coaches?.id} value={c.coaches?.id}>{c.coaches?.nome}</option>)}
+                                        </select>
+                                      )}
+                                      {ag.coach_id && (
+                                        <select className="input input-sm text-xs max-w-[230px]" value={ag.coach_id}
+                                          onChange={e => alocarCoach(ag.id, e.target.value)} disabled={alocandoId === ag.id}>
+                                          {coachesHorario.map(c => <option key={c.coaches?.id} value={c.coaches?.id}>{c.coaches?.nome}</option>)}
+                                          <option value="">— Sem coach —</option>
+                                        </select>
+                                      )}
+                                      {!ag.coach_id && coachesLivres.length === 0 && (
+                                        <span className="text-xs text-gray-400">Nenhum coach livre neste horário</span>
+                                      )}
+                                    </div>
                                   </div>
                                   {feito || faltou ? (
                                     <span className={`flex-shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${statusConfig[ag.status]?.color}`}>
                                       {statusConfig[ag.status]?.label}
                                     </span>
                                   ) : (
-                                    <div className="flex flex-shrink-0 gap-2">
+                                    <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row">
                                       <button onClick={() => marcarPresenca(ag.id)} className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
                                         <CheckCircle size={14} /> Presença
                                       </button>
