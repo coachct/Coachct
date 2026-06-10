@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
 import { useRouter } from 'next/navigation'
-import { Clock, CheckCircle, XCircle, Search, Users, Calendar, ChevronLeft, ChevronRight, Lock, Unlock, X, AlertCircle } from 'lucide-react'
+import { Clock, CheckCircle, XCircle, Search, Users, Calendar, ChevronLeft, ChevronRight, Lock, Unlock, X, AlertCircle, Tv } from 'lucide-react'
 import UnidadeSelector from '@/components/UnidadeSelector'
 
 const HORARIOS = [
@@ -55,7 +55,9 @@ export default function AdminAgendaPage() {
   const [loadingData, setLoadingData] = useState(true)
   const [alocandoId, setAlocandoId] = useState<string | null>(null)
   const [busca, setBusca] = useState('')
-  const [abaAtiva, setAbaAtiva] = useState<'agendamentos' | 'grade'>('agendamentos')
+  const [abaAtiva, setAbaAtiva] = useState<'agendamentos' | 'grade' | 'recepcao'>('agendamentos')
+  // 🔧 Relógio interno da aba Recepção: dispara a regra de "sumir 15 min após o horário"
+  const [agora, setAgora] = useState<Date>(() => new Date())
   // 🔧 Mapa user_id → { id: coaches.id, nome } — igual à tela de Escala
   const [coachMap, setCoachMap] = useState<Record<string, { id: string; nome: string }>>({})
   // 🔧 Mapa coaches.id → nome (TODOS os coaches, inclusive inativos) — fonte do nome exibido no card
@@ -102,6 +104,19 @@ export default function AdminAgendaPage() {
   useEffect(() => {
     if (perfil && unidadeAtiva) loadData()
   }, [data, perfil, unidadeAtiva?.id])
+
+  // 🔧 Aba Recepção: a cada 1 min, avança o relógio e recarrega os dados (mantém scroll).
+  // Assim os horários "vencidos" somem sozinhos e presenças marcadas em outra tela aparecem.
+  useEffect(() => {
+    if (abaAtiva !== 'recepcao') return
+    setAgora(new Date())
+    const id = setInterval(() => {
+      setAgora(new Date())
+      if (data === hoje && perfil && unidadeAtiva) loadData(true)
+    }, 60000)
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abaAtiva, data, perfil, unidadeAtiva?.id])
 
   async function loadData(manter_scroll = false) {
     if (!unidadeAtiva) return
@@ -285,6 +300,24 @@ export default function AdminAgendaPage() {
     coachesPorHorario(h).length > 0 || agendamentosPorHorario(h).length > 0
   )
   const agendamentosAtivos = agendamentos.filter(a => a.status !== 'cancelado').sort((a, b) => a.horario.localeCompare(b.horario))
+
+  // 🔧 ---- Aba Recepção (visão rolante) ----
+  // Regra: um horário fica visível até 15 min depois de começar (05:30 some às 05:45).
+  const JANELA_MIN = 15
+  function horaParaMin(h: string) { const [hh, mm] = h.split(':').map(Number); return hh * 60 + mm }
+  const ehHoje = data === hoje
+  const agoraMin = agora.getHours() * 60 + agora.getMinutes()
+  // horários (HH:MM) que têm pelo menos 1 agendamento não cancelado, ordenados
+  const horariosComAgendamento = Array.from(new Set(agendamentosAtivos.map(a => norm(a.horario)))).sort()
+  // próximos treinos: hoje aplica a janela; em outros dias mostra tudo
+  const horariosRecepcao = horariosComAgendamento.filter(h => !ehHoje || agoraMin < horaParaMin(h) + JANELA_MIN)
+  // pendentes: horários já vencidos (hoje) com treino ainda sem presença/falta
+  const pendentesRecepcao = ehHoje
+    ? agendamentosAtivos.filter(a =>
+        agoraMin >= horaParaMin(norm(a.horario)) + JANELA_MIN &&
+        a.status !== 'realizado' && a.status !== 'falta'
+      )
+    : []
   const agendamentosFiltrados = busca
     ? agendamentos.filter(a => a.clientes?.nome?.toLowerCase().includes(busca.toLowerCase()) || a.clientes?.cpf?.includes(busca))
     : null
@@ -366,6 +399,16 @@ export default function AdminAgendaPage() {
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${abaAtiva === 'grade' ? 'bg-primary-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-primary-300'}`}>
             <Calendar size={14} />
             Grade do dia
+          </button>
+          <button onClick={() => setAbaAtiva('recepcao')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${abaAtiva === 'recepcao' ? 'bg-primary-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-primary-300'}`}>
+            <Tv size={14} />
+            Recepção
+            {ehHoje && pendentesRecepcao.length > 0 && (
+              <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${abaAtiva === 'recepcao' ? 'bg-white text-orange-600' : 'bg-orange-100 text-orange-700'}`}>
+                {pendentesRecepcao.length}
+              </span>
+            )}
           </button>
         </div>
 
@@ -511,6 +554,86 @@ export default function AdminAgendaPage() {
                               ))}
                             </div>
                           )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+            {abaAtiva === 'recepcao' && (
+              <div>
+                {/* Faixa de aviso: treinos já vencidos ainda sem presença/falta */}
+                {ehHoje && pendentesRecepcao.length > 0 && (
+                  <div className="card mb-5 border-2 border-orange-300 bg-orange-50">
+                    <div className="flex items-center gap-2 font-semibold text-orange-800">
+                      <AlertCircle size={18} className="flex-shrink-0" />
+                      {pendentesRecepcao.length} treino{pendentesRecepcao.length !== 1 ? 's' : ''} sem presença/falta — ajustar
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {pendentesRecepcao.map(ag => (
+                        <div key={ag.id} className="flex items-center gap-3 rounded-xl border border-orange-100 bg-white px-3 py-2">
+                          <span className="font-mono font-bold text-gray-700">{norm(ag.horario)}</span>
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900">{ag.clientes?.nome}</span>
+                          <button onClick={() => marcarPresenca(ag.id)} className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
+                            <CheckCircle size={12} /> Presença
+                          </button>
+                          <button onClick={() => marcarFalta(ag.id)} className="btn btn-sm gap-1 text-orange-600 hover:bg-orange-50">
+                            <XCircle size={12} /> Falta
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {horariosRecepcao.length === 0 ? (
+                  <div className="card py-12 text-center text-sm text-gray-400">
+                    {ehHoje ? 'Nenhum próximo treino no momento. 🎉' : 'Nenhum agendamento para este dia.'}
+                  </div>
+                ) : (
+                  <div className="space-y-7">
+                    {horariosRecepcao.map(h => {
+                      const cards = agendamentosPorHorario(h).filter(a => a.status !== 'cancelado')
+                      if (cards.length === 0) return null
+                      return (
+                        <div key={h}>
+                          <div className="mb-3 flex items-baseline gap-3">
+                            <span className="font-mono text-3xl font-extrabold text-primary-700">{h}</span>
+                            <span className="text-sm font-medium text-gray-400">{cards.length} aluno{cards.length !== 1 ? 's' : ''}</span>
+                          </div>
+                          <div className="space-y-3">
+                            {cards.map(ag => {
+                              const { label: planoLabel, icon: planoIcon } = parsePlanoKey(ag.tipo_credito || '')
+                              const feito = ag.status === 'realizado'
+                              const faltou = ag.status === 'falta'
+                              return (
+                                <div key={ag.id} className={`flex items-center gap-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm border-l-4 ${feito ? 'border-l-gray-300 opacity-70' : faltou ? 'border-l-orange-400' : 'border-l-primary-400'}`}>
+                                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-primary-100 text-sm font-bold text-primary-800">
+                                    {ag.clientes?.nome?.slice(0, 2).toUpperCase()}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="truncate text-lg font-bold text-gray-900">{ag.clientes?.nome || '—'}</div>
+                                    <div className="mt-0.5 text-sm text-gray-500">{planoIcon} {planoLabel}</div>
+                                  </div>
+                                  {feito || faltou ? (
+                                    <span className={`flex-shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${statusConfig[ag.status]?.color}`}>
+                                      {statusConfig[ag.status]?.label}
+                                    </span>
+                                  ) : (
+                                    <div className="flex flex-shrink-0 gap-2">
+                                      <button onClick={() => marcarPresenca(ag.id)} className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
+                                        <CheckCircle size={14} /> Presença
+                                      </button>
+                                      <button onClick={() => marcarFalta(ag.id)} className="btn btn-sm gap-1 text-orange-600 hover:bg-orange-50">
+                                        <XCircle size={14} /> Falta
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
                         </div>
                       )
                     })}
