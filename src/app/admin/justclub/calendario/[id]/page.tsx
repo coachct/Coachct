@@ -107,6 +107,10 @@ export default function RecepcaoClubDetalhe() {
   const [vagasBloqueadas, setVagasBloqueadas] = useState(0)
   const [salvandoVagas,   setSalvandoVagas]   = useState(false)
 
+  // NOVO: pausa da fila de espera (por ocorrência)
+  const [filaPausada,   setFilaPausada]   = useState(false)
+  const [salvandoPausa, setSalvandoPausa] = useState(false)
+
   const isRunning = ocorrencia?.club_aulas?.tipo === 'running_funcional'
 
   useEffect(() => { if (ocId) carregarDados() }, [ocId])
@@ -120,6 +124,7 @@ export default function RecepcaoClubDetalhe() {
       .eq('id', ocId).maybeSingle()
     setOcorrencia(oc)
     setVagasBloqueadas(oc?.vagas_bloqueadas || 0)
+    setFilaPausada(oc?.fila_pausada || false)
 
     const { data: res } = await supabase
       .from('club_reservas')
@@ -226,6 +231,22 @@ export default function RecepcaoClubDetalhe() {
     showMsg(val === 0
       ? '✅ Vagas liberadas'
       : `🚫 ${val} vaga${val>1?'s':''} bloqueada${val>1?'s':''} nesta aula`)
+  }
+
+  // NOVO: pausa/reativa a promoção automática da fila desta ocorrência
+  async function toggleFilaPausada() {
+    const novo = !filaPausada
+    setSalvandoPausa(true)
+    const { error } = await supabase
+      .from('club_ocorrencias')
+      .update({ fila_pausada: novo })
+      .eq('id', ocId)
+    if (error) { showMsg('Erro: '+error.message); setSalvandoPausa(false); return }
+    setFilaPausada(novo)
+    setSalvandoPausa(false)
+    showMsg(novo
+      ? '⏸️ Fila pausada — ninguém é promovido automaticamente'
+      : '▶️ Fila reativada')
   }
 
   async function buscarCliente() {
@@ -579,6 +600,30 @@ export default function RecepcaoClubDetalhe() {
           </div>
         ))}
       </div>
+
+      {/* NOVO: Pausar fila de espera — qualquer modalidade, aula de hoje/futuro */}
+      {!isPassado && aula && (
+        <div style={{ background:'#fff', border:`1px solid ${filaPausada ? VERMELHO : '#e5e7eb'}`, borderRadius:16, marginBottom:'1.5rem', overflow:'hidden' }}>
+          <div style={{ padding:'1rem 1.5rem', display:'flex', alignItems:'center', justifyContent:'space-between', gap:14, flexWrap:'wrap' }}>
+            <div style={{ flex:1, minWidth:200 }}>
+              <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>
+                Fila de espera{filaPausada && <span style={{ color:VERMELHO }}> · pausada</span>}
+              </div>
+              <div style={{ fontSize:12, color:'#aaa', marginTop:2, maxWidth:440 }}>
+                Pause antes de derrubar reservas ou bloquear vagas — assim a fila não promove ninguém no meio da operação. Reative quando terminar.
+              </div>
+            </div>
+            <button onClick={toggleFilaPausada} disabled={salvandoPausa}
+              style={{ flexShrink:0, padding:'0.6rem 1.15rem', borderRadius:10, fontSize:13, fontWeight:700,
+                fontFamily:"'DM Sans', sans-serif", cursor: salvandoPausa ? 'default' : 'pointer',
+                border:`1.5px solid ${filaPausada ? VERDE : VERMELHO}`,
+                background: filaPausada ? `${VERDE}14` : `${VERMELHO}10`,
+                color: filaPausada ? '#0f9d58' : VERMELHO, opacity: salvandoPausa ? 0.6 : 1 }}>
+              {salvandoPausa ? '...' : filaPausada ? '▶ Reativar fila' : '⏸ Pausar fila'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* NOVO: Bloquear vagas — só Lift / Lift for Girls, em aula de hoje/futuro */}
       {!isRunning && !isPassado && aula && (
