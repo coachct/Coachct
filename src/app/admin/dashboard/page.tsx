@@ -147,8 +147,9 @@ export default function AdminDashboard() {
 }
 
 // ============================================================
-// CONTAS A PAGAR — cards "hoje" e "amanhã" (unidade + Geral), em aberto.
-// Cada card mostra a somatória; ao clicar, expande quais contas são.
+// DESPESAS DO DIA — cards "hoje" e "amanhã" (unidade + Geral).
+// Mostra TODAS as despesas do dia (pagas e em aberto); o número grande é o
+// total do dia. Ao clicar, expande a lista com o status de cada uma.
 // ============================================================
 function ContasPagarCards({ unidadeId }: { unidadeId: string }) {
   const supabase = createClient()
@@ -166,43 +167,59 @@ function ContasPagarCards({ unidadeId }: { unidadeId: string }) {
       const dDate = new Date(); dDate.setDate(dDate.getDate() + 2)
       const depoisStr = dataLocalStr(dDate) // dia depois de amanhã (limite superior exclusivo)
 
-      // Busca robusta: por intervalo de vencimento (cobre coluna date OU timestamp),
-      // sem filtrar pago/unidade no servidor — filtramos no cliente pra evitar
-      // gotchas de .or() com UUID e de pago = null.
+      // Busca robusta: por intervalo de vencimento (cobre coluna date OU timestamp).
+      // Filtramos unidade no cliente pra evitar gotchas de .or() com UUID.
       const { data, error } = await supabase
         .from('despesas')
         .select('id, descricao, valor, vencimento, pago, unidade_id')
         .is('excluido_em', null)
         .gte('vencimento', hojeStr)
         .lt('vencimento', depoisStr)
-      if (error) console.error('Erro ao buscar contas a pagar:', error)
+      if (error) console.error('Erro ao buscar despesas do dia:', error)
       if (!ativo) return
 
       const diaDe = (v: any) => String(v || '').slice(0, 10) // normaliza date/timestamp
-      const emAberto = (data || []).filter((d: any) =>
-        !d.pago && (d.unidade_id === unidadeId || d.unidade_id == null))
+      // Pagas + em aberto da unidade (ou Geral). Em aberto primeiro, maior valor no topo.
+      const daUnidade = (data || [])
+        .filter((d: any) => d.unidade_id === unidadeId || d.unidade_id == null)
+        .sort((a: any, b: any) =>
+          a.pago === b.pago ? Number(b.valor || 0) - Number(a.valor || 0) : (a.pago ? 1 : -1))
 
-      setHojeRows(emAberto.filter((d: any) => diaDe(d.vencimento) === hojeStr))
-      setAmanhaRows(emAberto.filter((d: any) => diaDe(d.vencimento) === amanhaStr))
+      setHojeRows(daUnidade.filter((d: any) => diaDe(d.vencimento) === hojeStr))
+      setAmanhaRows(daUnidade.filter((d: any) => diaDe(d.vencimento) === amanhaStr))
     }
     load()
     return () => { ativo = false }
   }, [unidadeId])
 
   function Card({ chave, titulo, rows, urgente }: { chave: 'hoje' | 'amanha'; titulo: string; rows: any[]; urgente?: boolean }) {
-    const total = rows.reduce((s, d) => s + Number(d.valor || 0), 0)
-    const isOpen = aberto === chave
-    const cor = total > 0
+    const total       = rows.reduce((s, d) => s + Number(d.valor || 0), 0)
+    const abertoRows  = rows.filter((d: any) => !d.pago)
+    const abertoTotal = abertoRows.reduce((s, d) => s + Number(d.valor || 0), 0)
+    const abertoQtd   = abertoRows.length
+    const isOpen      = aberto === chave
+
+    // Cor pela atenção que o dia exige: tem em aberto = urgente; tudo pago = verde; vazio = cinza.
+    const cor = abertoTotal > 0
       ? (urgente ? { bg: 'bg-red-50', bd: 'border-red-100', tit: 'text-red-600', val: 'text-red-900', sub: 'text-red-500' }
                  : { bg: 'bg-amber-50', bd: 'border-amber-100', tit: 'text-amber-600', val: 'text-amber-900', sub: 'text-amber-500' })
-      : { bg: 'bg-gray-50', bd: 'border-gray-100', tit: 'text-gray-500', val: 'text-gray-700', sub: 'text-gray-400' }
+      : rows.length > 0
+        ? { bg: 'bg-green-50', bd: 'border-green-100', tit: 'text-green-600', val: 'text-green-900', sub: 'text-green-600' }
+        : { bg: 'bg-gray-50', bd: 'border-gray-100', tit: 'text-gray-500', val: 'text-gray-700', sub: 'text-gray-400' }
+
+    const sub = abertoQtd > 0
+      ? `${rows.length} ${rows.length === 1 ? 'despesa' : 'despesas'} · ${fmt(abertoTotal)} em aberto`
+      : rows.length > 0
+        ? `${rows.length} ${rows.length === 1 ? 'despesa' : 'despesas'} · tudo pago`
+        : 'Nenhuma despesa'
+
     return (
       <div className={`rounded-xl border ${cor.bg} ${cor.bd}`}>
         <button onClick={() => setAberto(isOpen ? null : chave)} className="w-full text-left p-4 flex items-start justify-between gap-2">
           <div>
             <div className={`text-xs font-medium uppercase tracking-wide mb-1 ${cor.tit}`}>{titulo}</div>
             <div className={`text-2xl font-semibold ${cor.val}`}>{fmt(total)}</div>
-            <div className={`text-xs mt-1 ${cor.sub}`}>{rows.length} {rows.length === 1 ? 'conta' : 'contas'} em aberto</div>
+            <div className={`text-xs mt-1 ${cor.sub}`}>{sub}</div>
           </div>
           <svg className={`w-5 h-5 mt-0.5 flex-shrink-0 transition-transform ${cor.sub} ${isOpen ? 'rotate-180' : ''}`}
             fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -211,15 +228,23 @@ function ContasPagarCards({ unidadeId }: { unidadeId: string }) {
         </button>
         {isOpen && (
           rows.length === 0 ? (
-            <div className="px-4 pb-4 text-xs text-gray-400 italic">Nada vencendo.</div>
+            <div className="px-4 pb-4 text-xs text-gray-400 italic">Nenhuma despesa nesse dia.</div>
           ) : (
             <div className="px-4 pb-4 space-y-1.5">
-              {rows.map((d: any) => (
-                <div key={d.id} className="flex items-center justify-between gap-2 text-sm border-t border-black/5 pt-1.5">
-                  <span className="text-gray-700 truncate">{d.descricao || 'Despesa'}</span>
-                  <span className="font-semibold text-gray-800 flex-shrink-0">{fmt(Number(d.valor || 0))}</span>
-                </div>
-              ))}
+              {rows.map((d: any) => {
+                const pago = !!d.pago
+                return (
+                  <div key={d.id} className="flex items-center justify-between gap-2 text-sm border-t border-black/5 pt-1.5">
+                    <span className={`truncate ${pago ? 'text-gray-400' : 'text-gray-700'}`}>{d.descricao || 'Despesa'}</span>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${pago ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {pago ? 'Paga' : 'Em aberto'}
+                      </span>
+                      <span className={`font-semibold ${pago ? 'text-gray-400' : 'text-gray-800'}`}>{fmt(Number(d.valor || 0))}</span>
+                    </div>
+                  </div>
+                )
+              })}
               <Link href="/admin/financeiro/contas-a-pagar" className="block text-xs text-primary-600 hover:underline pt-1.5">
                 Abrir Contas a Pagar →
               </Link>
@@ -232,8 +257,8 @@ function ContasPagarCards({ unidadeId }: { unidadeId: string }) {
 
   return (
     <div className="grid grid-cols-2 gap-3 mb-6 items-start">
-      <Card chave="hoje"   titulo="Vencendo hoje"   rows={hojeRows}   urgente />
-      <Card chave="amanha" titulo="Vencendo amanhã" rows={amanhaRows} />
+      <Card chave="hoje"   titulo="Despesas de hoje"   rows={hojeRows}   urgente />
+      <Card chave="amanha" titulo="Despesas de amanhã" rows={amanhaRows} />
     </div>
   )
 }
