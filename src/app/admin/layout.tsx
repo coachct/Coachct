@@ -18,6 +18,7 @@ const nav = [
       { label: 'Cadastrar Aulas',  href: '/admin/justclub' },
       { label: 'Calendário Club',  href: '/admin/justclub/calendario' },
       { label: 'Escala Club',      href: '/admin/justclub/escala-club' },
+      { label: 'Relatório Club',   href: '/admin/justclub/relatorio' },
       { label: 'Mapa de Posições', href: '/admin/posicoes' },
     ],
   },
