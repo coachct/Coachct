@@ -23,6 +23,13 @@ const AMARELO = '#ffaa00'
 const VERDE   = '#2ddd8b'
 const VERMELHO = '#ff4444'
 
+// Endereço fixo por nome de unidade (mesma fonte usada na home e no /agendar)
+const ENDERECOS_UNIDADES: Record<string, string> = {
+  'Just CT': 'Rua Fiandeiras, 392 — Itaim Bibi, São Paulo',
+  'JustClub Vila Olímpia': 'Av. Dr. Cardoso de Melo, 1337 — Vila Olímpia, São Paulo',
+  'JustClub Pinheiros': 'Rua Deputado Lacerda Franco, 342 — Pinheiros, São Paulo',
+}
+
 const DIAS_ABREV  = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB']
 const MESES_ABREV = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ']
 
@@ -471,6 +478,12 @@ function AulasPageInner() {
           <div>
             <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:28, color:'#fff', letterSpacing:1 }}>{unidade?.nome||'Aulas coletivas'}</div>
             <div style={{ fontSize:13, color:'#888', marginTop:2 }}>Lift · Lift for Girls · Running + Funcional</div>
+            {unidade?.nome && ENDERECOS_UNIDADES[unidade.nome] && (
+              <div style={{ display:'flex', gap:6, alignItems:'flex-start', marginTop:6, fontSize:13, color:'#777', lineHeight:1.4 }}>
+                <span style={{ flexShrink:0 }}>📍</span>
+                <span>{ENDERECOS_UNIDADES[unidade.nome]}</span>
+              </div>
+            )}
           </div>
         </div>
 
