@@ -838,12 +838,12 @@ export default function AgendarPage() {
                           style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', padding: '1rem 1.25rem', borderRadius: 12, border: `1px solid ${jaAgendado ? CYAN + '44' : clienteNaFila ? AMARELO + '44' : '#222'}`, background: jaAgendado ? '#00e5ff08' : clienteNaFila ? '#ffaa0008' : '#111' }}>
                           <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, fontWeight: 500, color: '#fff', width: 58, flexShrink: 0 }}>{h.hora}</div>
                           <div style={{ display: 'flex', gap: 6, flex: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-                            {Array.from({ length: h.total }).map((_, vi) => {
-                              let estado: 'livre' | 'ocupado' | 'meu' | 'fila' | 'bloqueado' = 'livre'
+                            {/* Vagas bloqueadas ficam ocultas do aluno: mostramos só ocupadas + livres */}
+                            {Array.from({ length: h.ocupados + h.livres }).map((_, vi) => {
+                              let estado: 'livre' | 'ocupado' | 'meu' | 'fila' = 'livre'
                               if (jaAgendado && vi === 0) estado = 'meu'
                               else if (clienteNaFila && vi === 0) estado = 'fila'
                               else if (vi < h.ocupados) estado = 'ocupado'
-                              else if (vi < h.ocupados + h.bloqueadas) estado = 'bloqueado'
                               return <HalterSVG key={vi} estado={estado} onClick={!isDiaExclusivoPro ? () => !lotado && !jaAgendado && tentarAgendar(h.hora, h.livres) : undefined} />
                             })}
                           </div>
@@ -863,7 +863,6 @@ export default function AgendarPage() {
                                 <div style={{ fontSize: 11, fontFamily: "'DM Mono', monospace", color: lotado ? '#ff4444' : h.livres <= 2 ? AMARELO : ACCENT, fontWeight: 600, marginBottom: 4 }}>
                                   {lotado ? 'LOTADO' : h.livres === 1 ? '1 VAGA' : `${h.livres} VAGAS`}
                                 </div>
-                                {h.bloqueadas > 0 && !lotado && <div style={{ fontSize: 9, color: '#ff4444', marginBottom: 4 }}>{h.bloqueadas} bloq.</div>}
                                 {temFilaEsperaAqui && !lotado && <div style={{ fontSize: 9, color: AMARELO, marginBottom: 4 }}>⏳ há fila</div>}
                                 {!lotado && <button onClick={() => tentarAgendar(h.hora, h.livres)} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Reservar</button>}
                                 {lotado && <button onClick={() => tentarFila(h.hora)} style={{ background: 'transparent', color: AMARELO, border: `1px solid ${AMARELO}`, borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Entrar na fila</button>}
