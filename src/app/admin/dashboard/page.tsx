@@ -147,12 +147,14 @@ export default function AdminDashboard() {
 }
 
 // ============================================================
-// CONTAS A PAGAR — cards "hoje" e "amanhã" (unidade + Geral), em aberto
+// CONTAS A PAGAR — cards "hoje" e "amanhã" (unidade + Geral), em aberto.
+// Cada card mostra a somatória; ao clicar, expande quais contas são.
 // ============================================================
 function ContasPagarCards({ unidadeId }: { unidadeId: string }) {
   const supabase = createClient()
-  const [hoje, setHoje]     = useState<{ total: number; qtd: number }>({ total: 0, qtd: 0 })
-  const [amanha, setAmanha] = useState<{ total: number; qtd: number }>({ total: 0, qtd: 0 })
+  const [hojeRows, setHojeRows]     = useState<any[]>([])
+  const [amanhaRows, setAmanhaRows] = useState<any[]>([])
+  const [aberto, setAberto]         = useState<'hoje' | 'amanha' | null>(null)
 
   useEffect(() => {
     if (!unidadeId) return
@@ -161,45 +163,77 @@ function ContasPagarCards({ unidadeId }: { unidadeId: string }) {
       const hojeStr = dataLocalStr(new Date())
       const aDate = new Date(); aDate.setDate(aDate.getDate() + 1)
       const amanhaStr = dataLocalStr(aDate)
+      const dDate = new Date(); dDate.setDate(dDate.getDate() + 2)
+      const depoisStr = dataLocalStr(dDate) // dia depois de amanhã (limite superior exclusivo)
 
-      const { data } = await supabase
+      // Busca robusta: por intervalo de vencimento (cobre coluna date OU timestamp),
+      // sem filtrar pago/unidade no servidor — filtramos no cliente pra evitar
+      // gotchas de .or() com UUID e de pago = null.
+      const { data, error } = await supabase
         .from('despesas')
-        .select('valor, vencimento, unidade_id')
-        .eq('pago', false).is('excluido_em', null)
-        .in('vencimento', [hojeStr, amanhaStr])
-        .or(`unidade_id.eq.${unidadeId},unidade_id.is.null`)
+        .select('id, descricao, valor, vencimento, pago, unidade_id')
+        .is('excluido_em', null)
+        .gte('vencimento', hojeStr)
+        .lt('vencimento', depoisStr)
+      if (error) console.error('Erro ao buscar contas a pagar:', error)
       if (!ativo) return
 
-      const rows = data || []
-      const resumo = (str: string) => {
-        const r = rows.filter((d: any) => d.vencimento === str)
-        return { total: r.reduce((s: number, d: any) => s + Number(d.valor || 0), 0), qtd: r.length }
-      }
-      setHoje(resumo(hojeStr))
-      setAmanha(resumo(amanhaStr))
+      const diaDe = (v: any) => String(v || '').slice(0, 10) // normaliza date/timestamp
+      const emAberto = (data || []).filter((d: any) =>
+        !d.pago && (d.unidade_id === unidadeId || d.unidade_id == null))
+
+      setHojeRows(emAberto.filter((d: any) => diaDe(d.vencimento) === hojeStr))
+      setAmanhaRows(emAberto.filter((d: any) => diaDe(d.vencimento) === amanhaStr))
     }
     load()
     return () => { ativo = false }
   }, [unidadeId])
 
-  function CardConta({ titulo, dados, urgente }: { titulo: string; dados: { total: number; qtd: number }; urgente?: boolean }) {
-    const cor = dados.total > 0
+  function Card({ chave, titulo, rows, urgente }: { chave: 'hoje' | 'amanha'; titulo: string; rows: any[]; urgente?: boolean }) {
+    const total = rows.reduce((s, d) => s + Number(d.valor || 0), 0)
+    const isOpen = aberto === chave
+    const cor = total > 0
       ? (urgente ? { bg: 'bg-red-50', bd: 'border-red-100', tit: 'text-red-600', val: 'text-red-900', sub: 'text-red-500' }
                  : { bg: 'bg-amber-50', bd: 'border-amber-100', tit: 'text-amber-600', val: 'text-amber-900', sub: 'text-amber-500' })
       : { bg: 'bg-gray-50', bd: 'border-gray-100', tit: 'text-gray-500', val: 'text-gray-700', sub: 'text-gray-400' }
     return (
-      <Link href="/admin/financeiro/contas-a-pagar" className={`block rounded-xl p-4 border ${cor.bg} ${cor.bd} hover:shadow-sm transition-shadow`}>
-        <div className={`text-xs font-medium uppercase tracking-wide mb-1 ${cor.tit}`}>{titulo}</div>
-        <div className={`text-2xl font-semibold ${cor.val}`}>{fmt(dados.total)}</div>
-        <div className={`text-xs mt-1 ${cor.sub}`}>{dados.qtd} {dados.qtd === 1 ? 'conta' : 'contas'} em aberto</div>
-      </Link>
+      <div className={`rounded-xl border ${cor.bg} ${cor.bd}`}>
+        <button onClick={() => setAberto(isOpen ? null : chave)} className="w-full text-left p-4 flex items-start justify-between gap-2">
+          <div>
+            <div className={`text-xs font-medium uppercase tracking-wide mb-1 ${cor.tit}`}>{titulo}</div>
+            <div className={`text-2xl font-semibold ${cor.val}`}>{fmt(total)}</div>
+            <div className={`text-xs mt-1 ${cor.sub}`}>{rows.length} {rows.length === 1 ? 'conta' : 'contas'} em aberto</div>
+          </div>
+          <svg className={`w-5 h-5 mt-0.5 flex-shrink-0 transition-transform ${cor.sub} ${isOpen ? 'rotate-180' : ''}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        {isOpen && (
+          rows.length === 0 ? (
+            <div className="px-4 pb-4 text-xs text-gray-400 italic">Nada vencendo.</div>
+          ) : (
+            <div className="px-4 pb-4 space-y-1.5">
+              {rows.map((d: any) => (
+                <div key={d.id} className="flex items-center justify-between gap-2 text-sm border-t border-black/5 pt-1.5">
+                  <span className="text-gray-700 truncate">{d.descricao || 'Despesa'}</span>
+                  <span className="font-semibold text-gray-800 flex-shrink-0">{fmt(Number(d.valor || 0))}</span>
+                </div>
+              ))}
+              <Link href="/admin/financeiro/contas-a-pagar" className="block text-xs text-primary-600 hover:underline pt-1.5">
+                Abrir Contas a Pagar →
+              </Link>
+            </div>
+          )
+        )}
+      </div>
     )
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3 mb-6">
-      <CardConta titulo="A pagar hoje"   dados={hoje}   urgente />
-      <CardConta titulo="A pagar amanhã" dados={amanha} />
+    <div className="grid grid-cols-2 gap-3 mb-6 items-start">
+      <Card chave="hoje"   titulo="Vencendo hoje"   rows={hojeRows}   urgente />
+      <Card chave="amanha" titulo="Vencendo amanhã" rows={amanhaRows} />
     </div>
   )
 }
