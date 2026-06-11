@@ -284,9 +284,6 @@ function DashboardCT({ unidadeId, unidadeNome }: { unidadeId: string; unidadeNom
 
   return (
     <div>
-      {/* Contas a pagar */}
-      <ContasPagarCards unidadeId={unidadeId} />
-
       {/* Reservas de hoje — card que expande a lista de alunos */}
       <div className="card mb-6">
         <button onClick={() => setAberto(a => !a)} className="w-full flex items-center justify-between text-left">
@@ -338,6 +335,9 @@ function DashboardCT({ unidadeId, unidadeNome }: { unidadeId: string; unidadeNom
         <KpiCard label="Vendas hoje" value={fmt(vendasDia)} sub={unidadeNome || undefined} />
         <KpiCard label="Vendas no mês" value={fmt(vendasMes)} sub="mês atual" />
       </div>
+
+      {/* Contas a pagar */}
+      <ContasPagarCards unidadeId={unidadeId} />
     </div>
   )
 }
@@ -488,19 +488,10 @@ function DashboardClub({ unidadeId, unidadeNome }: { unidadeId: string; unidadeN
 
   return (
     <div>
-      {/* Contas a pagar */}
-      <ContasPagarCards unidadeId={unidadeId} />
-
       {/* Resumo HOJE / AMANHÃ */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <CardDia titulo="Hoje"   dataStr={hoje}   resumo={resumoHoje}   destaque />
         <CardDia titulo="Amanhã" dataStr={amanha} resumo={resumoAmanha} />
-      </div>
-
-      {/* Vendas */}
-      <div className="grid grid-cols-2 gap-3 mb-6">
-        <KpiCard label="Vendas hoje" value={fmt(vendasDia)} sub={unidadeNome || undefined} />
-        <KpiCard label="Vendas no mês" value={fmt(vendasMes)} sub="mês atual" />
       </div>
 
       {/* Resumo por aula */}
@@ -587,6 +578,15 @@ function DashboardClub({ unidadeId, unidadeNome }: { unidadeId: string; unidadeN
           </>
         )}
       </div>
+
+      {/* Vendas */}
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        <KpiCard label="Vendas hoje" value={fmt(vendasDia)} sub={unidadeNome || undefined} />
+        <KpiCard label="Vendas no mês" value={fmt(vendasMes)} sub="mês atual" />
+      </div>
+
+      {/* Contas a pagar */}
+      <ContasPagarCards unidadeId={unidadeId} />
     </div>
   )
 }
