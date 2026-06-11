@@ -9,6 +9,7 @@ const nav = [
       { label: 'Calendário Coach CT', href: '/admin/agenda' },
       { label: 'Escala Coach CT',     href: '/admin/escala' },
       { label: 'Horários populares',  href: '/admin/horarios' },
+      { label: 'Relatório Coach CT',  href: '/admin/relatorios/coach-ct' },
     ],
   },
   {

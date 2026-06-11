@@ -1,9 +1,8 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
-import { fmt, calcCoachMetrics, perfLabel } from '@/lib/utils'
-import { Coach, Aula } from '@/types'
-import { KpiCard, OccBar, Badge, Insight, PageHeader, Spinner } from '@/components/ui'
+import { fmt } from '@/lib/utils'
+import { KpiCard, PageHeader, Spinner } from '@/components/ui'
 import Link from 'next/link'
 
 type Unidade = {
@@ -24,7 +23,7 @@ function tipoLabelClub(t: string) {
   return t || '—'
 }
 
-// Rótulo curto da unidade para os cards do header (CT / Club VO / Club PI)
+// Rótulo curto da unidade para os botões do header (CT / Club VO / Club PI)
 function labelCurtoUnidade(u: { nome: string; tipo: string }) {
   if (u.tipo === 'ct') return 'CT'
   const n = (u.nome || '').toLowerCase()
@@ -34,18 +33,48 @@ function labelCurtoUnidade(u: { nome: string; tipo: string }) {
 }
 const ORDEM_UNIDADES = ['CT', 'Club VO', 'Club PI']
 
+// Vendas (online pago + balcão, sem duplicar) — mesma regra da página /admin/vendas.
+// Parametrizado por unidade pra servir tanto pro CT quanto pras Clubs.
+async function buscarVendas(supabase: any, unidadeId: string) {
+  const n = new Date()
+  const inicioDia = new Date(n.getFullYear(), n.getMonth(), n.getDate()).toISOString()
+  const fimDia    = new Date(n.getFullYear(), n.getMonth(), n.getDate(), 23, 59, 59).toISOString()
+  const inicioMes = new Date(n.getFullYear(), n.getMonth(), 1).toISOString()
+  const fimMes    = new Date(n.getFullYear(), n.getMonth() + 1, 0, 23, 59, 59).toISOString()
+
+  const { data: onlineMes } = await supabase
+    .from('pagamentos_pendentes')
+    .select('valor_total, venda_id, pago_em')
+    .eq('unidade_id', unidadeId).eq('status', 'pago').is('excluido_em', null)
+    .gte('pago_em', inicioMes).lte('pago_em', fimMes)
+
+  const { data: balcaoMes } = await supabase
+    .from('vendas')
+    .select('id, valor_total, vendido_em')
+    .eq('unidade_id', unidadeId).is('excluido_em', null)
+    .gte('vendido_em', inicioMes).lte('vendido_em', fimMes)
+
+  const online = onlineMes || []
+  const vendaIdsOnline = new Set(online.map((o: any) => o.venda_id).filter(Boolean))
+  const balcao = (balcaoMes || []).filter((v: any) => !vendaIdsOnline.has(v.id))
+
+  const soma = (rows: any[]) => rows.reduce((s, r) => s + Number(r.valor_total || 0), 0)
+  const dentro = (iso: string | null | undefined, ini: string, fim: string) => !!iso && iso >= ini && iso <= fim
+
+  return {
+    mes: soma(online) + soma(balcao),
+    dia: soma(online.filter((o: any) => dentro(o.pago_em, inicioDia, fimDia))) +
+         soma(balcao.filter((v: any) => dentro(v.vendido_em, inicioDia, fimDia))),
+  }
+}
+
 export default function AdminDashboard() {
-  const [coaches, setCoaches] = useState<Coach[]>([])
-  const [aulas, setAulas] = useState<Aula[]>([])
-  const [aulasHoje, setAulasHoje] = useState<any[]>([])
   const [unidades, setUnidades] = useState<Unidade[]>([])
   const [unidadeSelecionada, setUnidadeSelecionada] = useState<string>('')
-  const [loading, setLoading] = useState(true)
   const supabase = createClient()
 
   const now = new Date()
-  const mes = now.getMonth() + 1
-  const ano = now.getFullYear()
+  const mesNome = now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
 
   // Carregar unidades ativas + selecionar default (do localStorage ou primeira ativa)
   useEffect(() => {
@@ -72,163 +101,6 @@ export default function AdminDashboard() {
       localStorage.setItem('admin_unidade_selecionada', unidadeSelecionada)
     }
   }, [unidadeSelecionada])
-
-  // Carregar dados quando unidade muda
-  useEffect(() => {
-    if (!unidadeSelecionada) return
-
-    async function load() {
-      setLoading(true)
-      try {
-        const inicioHoje = new Date(ano, mes - 1, now.getDate()).toISOString()
-        const fimHoje = new Date(ano, mes - 1, now.getDate(), 23, 59, 59).toISOString()
-
-        const [coachesRes, aulasRes, hojeRes] = await Promise.allSettled([
-          supabase.from('coaches').select('*').eq('ativo', true),
-          supabase.from('aulas').select('*')
-            .gte('horario_agendado', `${ano}-${String(mes).padStart(2,'0')}-01`)
-            .eq('status', 'finalizada')
-            .eq('unidade_id', unidadeSelecionada),
-          supabase.from('aulas')
-            .select('*, coaches(nome), clientes:cliente_id(nome), treinos(nome)')
-            .gte('horario_agendado', inicioHoje)
-            .lte('horario_agendado', fimHoje)
-            .eq('unidade_id', unidadeSelecionada)
-            .order('horario_agendado', { ascending: true }),
-        ])
-
-        if (coachesRes.status === 'fulfilled') {
-          setCoaches(coachesRes.value.data || [])
-        } else {
-          console.error('Erro coaches:', coachesRes.reason)
-        }
-
-        if (aulasRes.status === 'fulfilled') {
-          setAulas(aulasRes.value.data || [])
-        } else {
-          console.error('Erro aulas:', aulasRes.reason)
-        }
-
-        if (hojeRes.status === 'fulfilled') {
-          const dados = (hojeRes.value.data || []).map((a: any) => ({
-            ...a,
-            alunos: a.clientes,
-          }))
-          setAulasHoje(dados)
-        } else {
-          console.error('Erro aulas hoje:', hojeRes.reason)
-        }
-      } catch (err) {
-        console.error('Erro geral no dashboard:', err)
-      } finally {
-        setLoading(false)
-      }
-    }
-    load()
-  }, [unidadeSelecionada])
-
-  if (loading) return <Spinner />
-
-  const aulasPorCoach = (coachId: string) => aulas.filter(a => a.coach_id === coachId).length
-  const metrics = coaches.map(c => calcCoachMetrics(c, aulasPorCoach(c.id), 54))
-  const fatTotal = metrics.reduce((s, m) => s + m.faturamento, 0)
-  const cstTotal = metrics.reduce((s, m) => s + m.custo_total, 0)
-  const mrgTotal = fatTotal - cstTotal
-  const mrgPct = fatTotal > 0 ? (mrgTotal / fatTotal) * 100 : 0
-  const aulasTotal = aulas.length
-  const mesNome = now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
-
-  // ====== HOJE EM NÚMEROS ======
-  // Separar por status (canceladas NÃO contam como "agendadas" nem no ranking)
-  const aulasFinalizadasHoje = aulasHoje.filter(a => a.status === 'finalizada')
-  const aulasEmAndamento = aulasHoje.filter(a => a.status === 'em_andamento')
-  const aulasCanceladasHoje = aulasHoje.filter(a => a.status === 'cancelada')
-  const aulasRealizadasOuEmCurso = aulasFinalizadasHoje.length + aulasEmAndamento.length
-  // "Agendadas hoje" = aulas válidas (finalizada + em_andamento), exclui canceladas
-  const totalAulasValidasHoje = aulasRealizadasOuEmCurso
-
-  // Capacidade do dia (Opção 3): coaches ativos × aulas/dia
-  // Seg-Sex: 15h30 de funcionamento → ~15 aulas/coach
-  // Sáb/Dom: 5h de funcionamento → ~5 aulas/coach
-  const diaSemana = now.getDay()
-  const isFimDeSemana = diaSemana === 0 || diaSemana === 6
-  const aulasPorCoachDia = isFimDeSemana ? 5 : 15
-  const capacidadeDia = coaches.length * aulasPorCoachDia
-  const ocupacaoPct = capacidadeDia > 0 ? Math.round((aulasRealizadasOuEmCurso / capacidadeDia) * 100) : 0
-
-  // ====== RANKING DE COACHES DO DIA ======
-  // Só conta aulas que realmente aconteceram (finalizada + em_andamento)
-  // Canceladas NÃO contam
-  const rankingCoachesHoje = (() => {
-    const contagem: Record<string, { nome: string; aulas: number }> = {}
-    aulasHoje
-      .filter(a => a.status === 'finalizada' || a.status === 'em_andamento')
-      .forEach(a => {
-        const coachId = a.coach_id
-        const coachNome = a.coaches?.nome || '—'
-        if (!coachId) return
-        if (!contagem[coachId]) contagem[coachId] = { nome: coachNome, aulas: 0 }
-        contagem[coachId].aulas++
-      })
-    const lista = Object.values(contagem).sort((a, b) => b.aulas - a.aulas)
-    const max = lista[0]?.aulas || 1
-    return lista.map(c => ({ ...c, pct: Math.round((c.aulas / max) * 100) }))
-  })()
-
-  const renderAula = (aula: any) => {
-    const emAndamento = aula.status === 'em_andamento'
-    return (
-      <div key={aula.id}
-        className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${
-          emAndamento
-            ? 'bg-orange-50 border-orange-200'
-            : 'bg-gray-50 border-gray-100'
-        }`}
-      >
-        <div className="text-center flex-shrink-0 w-20">
-          <div className="text-sm font-bold text-gray-700">
-            {new Date(aula.horario_agendado).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-          </div>
-          {aula.finalizada_em ? (
-            <div className="text-xs text-gray-400 mt-0.5">
-              até {new Date(aula.finalizada_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-            </div>
-          ) : (
-            <div className="text-xs text-orange-500 mt-0.5 font-medium">em curso</div>
-          )}
-        </div>
-
-        <div className="w-px h-8 bg-gray-200 flex-shrink-0" />
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium text-gray-900 truncate">
-              {aula.alunos?.nome || 'Aluno'}
-            </span>
-            <span className="text-xs text-gray-400">·</span>
-            <span className="text-xs text-gray-500 truncate">
-              {aula.treinos?.nome || '—'}
-            </span>
-          </div>
-          <div className="text-xs text-gray-400 mt-0.5">
-            Coach: {aula.coaches?.nome || '—'}
-          </div>
-        </div>
-
-        <div className="flex-shrink-0">
-          {emAndamento ? (
-            <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">
-              Em andamento
-            </span>
-          ) : (
-            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
-              Finalizada
-            </span>
-          )}
-        </div>
-      </div>
-    )
-  }
 
   const unidadeAtual = unidades.find(u => u.id === unidadeSelecionada)
   const isClub = unidadeAtual?.tipo === 'club'
@@ -263,229 +135,175 @@ export default function AdminDashboard() {
         )}
       </div>
 
-      {isClub ? (
+      {!unidadeSelecionada ? (
+        <Spinner />
+      ) : isClub ? (
         <DashboardClub unidadeId={unidadeSelecionada} unidadeNome={unidadeAtual?.nome} />
       ) : (
-        <>
-          {/* 1. Hero financeiro */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="bg-primary-50 border border-primary-100 rounded-xl p-5">
-              <div className="text-xs font-medium text-primary-600 uppercase tracking-wide mb-1">Faturamento</div>
-              <div className="text-2xl font-semibold text-primary-900">{fmt(fatTotal)}</div>
-              <div className="text-xs text-primary-600 mt-1">{aulasTotal} aulas no mês</div>
-            </div>
-            <div className="bg-danger-50 border border-danger-200 rounded-xl p-5">
-              <div className="text-xs font-medium text-danger-600 uppercase tracking-wide mb-1">Custo coaches</div>
-              <div className="text-2xl font-semibold text-danger-800">{fmt(cstTotal)}</div>
-              <div className="text-xs text-danger-600 mt-1">fixo + variável</div>
-            </div>
-            <div className="bg-blue-50 border border-blue-100 rounded-xl p-5">
-              <div className="text-xs font-medium text-blue-600 uppercase tracking-wide mb-1">Margem bruta</div>
-              <div className="text-2xl font-semibold text-blue-900">{fmt(mrgTotal)}</div>
-              <div className="text-xs text-blue-600 mt-1">{mrgPct.toFixed(1)}% de margem</div>
-            </div>
+        <DashboardCT unidadeId={unidadeSelecionada} unidadeNome={unidadeAtual?.nome} />
+      )}
+    </div>
+  )
+}
+
+// ============================================================
+// CONTAS A PAGAR — cards "hoje" e "amanhã" (unidade + Geral), em aberto
+// ============================================================
+function ContasPagarCards({ unidadeId }: { unidadeId: string }) {
+  const supabase = createClient()
+  const [hoje, setHoje]     = useState<{ total: number; qtd: number }>({ total: 0, qtd: 0 })
+  const [amanha, setAmanha] = useState<{ total: number; qtd: number }>({ total: 0, qtd: 0 })
+
+  useEffect(() => {
+    if (!unidadeId) return
+    let ativo = true
+    async function load() {
+      const hojeStr = dataLocalStr(new Date())
+      const aDate = new Date(); aDate.setDate(aDate.getDate() + 1)
+      const amanhaStr = dataLocalStr(aDate)
+
+      const { data } = await supabase
+        .from('despesas')
+        .select('valor, vencimento, unidade_id')
+        .eq('pago', false).is('excluido_em', null)
+        .in('vencimento', [hojeStr, amanhaStr])
+        .or(`unidade_id.eq.${unidadeId},unidade_id.is.null`)
+      if (!ativo) return
+
+      const rows = data || []
+      const resumo = (str: string) => {
+        const r = rows.filter((d: any) => d.vencimento === str)
+        return { total: r.reduce((s: number, d: any) => s + Number(d.valor || 0), 0), qtd: r.length }
+      }
+      setHoje(resumo(hojeStr))
+      setAmanha(resumo(amanhaStr))
+    }
+    load()
+    return () => { ativo = false }
+  }, [unidadeId])
+
+  function CardConta({ titulo, dados, urgente }: { titulo: string; dados: { total: number; qtd: number }; urgente?: boolean }) {
+    const cor = dados.total > 0
+      ? (urgente ? { bg: 'bg-red-50', bd: 'border-red-100', tit: 'text-red-600', val: 'text-red-900', sub: 'text-red-500' }
+                 : { bg: 'bg-amber-50', bd: 'border-amber-100', tit: 'text-amber-600', val: 'text-amber-900', sub: 'text-amber-500' })
+      : { bg: 'bg-gray-50', bd: 'border-gray-100', tit: 'text-gray-500', val: 'text-gray-700', sub: 'text-gray-400' }
+    return (
+      <Link href="/admin/financeiro/contas-a-pagar" className={`block rounded-xl p-4 border ${cor.bg} ${cor.bd} hover:shadow-sm transition-shadow`}>
+        <div className={`text-xs font-medium uppercase tracking-wide mb-1 ${cor.tit}`}>{titulo}</div>
+        <div className={`text-2xl font-semibold ${cor.val}`}>{fmt(dados.total)}</div>
+        <div className={`text-xs mt-1 ${cor.sub}`}>{dados.qtd} {dados.qtd === 1 ? 'conta' : 'contas'} em aberto</div>
+      </Link>
+    )
+  }
+
+  return (
+    <div className="grid grid-cols-2 gap-3 mb-6">
+      <CardConta titulo="A pagar hoje"   dados={hoje}   urgente />
+      <CardConta titulo="A pagar amanhã" dados={amanha} />
+    </div>
+  )
+}
+
+// ============================================================
+// DASHBOARD CT — reservas do dia (expansível) + vendas + contas a pagar
+// ============================================================
+function statusReserva(s: string) {
+  if (s === 'realizado') return { txt: 'Realizada',  cls: 'bg-green-100 text-green-700' }
+  if (s === 'falta')     return { txt: 'Falta',      cls: 'bg-red-100 text-red-700' }
+  return { txt: 'Confirmada', cls: 'bg-blue-100 text-blue-700' }
+}
+
+function DashboardCT({ unidadeId, unidadeNome }: { unidadeId: string; unidadeNome?: string }) {
+  const supabase = createClient()
+  const hoje = dataLocalStr(new Date())
+
+  const [reservas, setReservas]   = useState<any[]>([])
+  const [vendasDia, setVendasDia] = useState(0)
+  const [vendasMes, setVendasMes] = useState(0)
+  const [loading, setLoading]     = useState(true)
+  const [aberto, setAberto]       = useState(false)
+
+  useEffect(() => {
+    if (!unidadeId) return
+    let ativo = true
+    async function load() {
+      setLoading(true)
+      const { data: ags } = await supabase
+        .from('agendamentos')
+        .select('id, horario, status, clientes:cliente_id(nome), coaches:coach_id(nome)')
+        .eq('data', hoje).eq('unidade_id', unidadeId).neq('status', 'cancelado')
+        .order('horario', { ascending: true })
+      const v = await buscarVendas(supabase, unidadeId)
+      if (!ativo) return
+      setReservas(ags || [])
+      setVendasDia(v.dia)
+      setVendasMes(v.mes)
+      setLoading(false)
+    }
+    load()
+    return () => { ativo = false }
+  }, [unidadeId])
+
+  if (loading) return <Spinner />
+
+  const dataLabel = new Date(hoje + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
+
+  return (
+    <div>
+      {/* Contas a pagar */}
+      <ContasPagarCards unidadeId={unidadeId} />
+
+      {/* Reservas de hoje — card que expande a lista de alunos */}
+      <div className="card mb-6">
+        <button onClick={() => setAberto(a => !a)} className="w-full flex items-center justify-between text-left">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Reservas de hoje</h2>
+            <p className="text-xs text-gray-400 mt-0.5 capitalize">
+              {dataLabel}{unidadeNome && <span className="text-gray-300"> · {unidadeNome}</span>}
+            </p>
           </div>
-
-          {/* 2. KPIs */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-            <KpiCard label="Aulas no mês" value={String(aulasTotal)} />
-            <KpiCard label="Coaches ativos" value={String(coaches.length)} />
-            <KpiCard label="Custo fixo total" value={fmt(metrics.reduce((s,m)=>s+m.custo_fixo,0))} sub="salários" />
-            <KpiCard label="Custo variável" value={fmt(metrics.reduce((s,m)=>s+m.custo_variavel,0))} sub="por aulas dadas" />
+          <div className="flex items-center gap-3">
+            <span className="text-3xl font-semibold text-gray-900 leading-none">{reservas.length}</span>
+            <svg className={`w-5 h-5 text-gray-400 transition-transform ${aberto ? 'rotate-180' : ''}`}
+              fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
           </div>
+        </button>
 
-          {/* 3. HOJE EM NÚMEROS */}
-          <div className="card mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-sm font-semibold text-gray-900">Hoje em números</h2>
-                <p className="text-xs text-gray-400 mt-0.5 capitalize">
-                  {now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
-                  {unidadeAtual && <span className="text-gray-300"> · {unidadeAtual.nome}</span>}
-                </p>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-              <div className="bg-gray-50 border border-gray-100 rounded-xl p-4">
-                <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Agendadas hoje</div>
-                <div className="text-2xl font-semibold text-gray-900">{totalAulasValidasHoje}</div>
-                <div className="text-xs text-gray-400 mt-1">aulas no dia</div>
-              </div>
-              <div className="bg-green-50 border border-green-100 rounded-xl p-4">
-                <div className="text-xs font-medium text-green-600 uppercase tracking-wide mb-1">Já finalizadas</div>
-                <div className="text-2xl font-semibold text-green-900">{aulasFinalizadasHoje.length}</div>
-                <div className="text-xs text-green-600 mt-1">concluídas</div>
-              </div>
-              <div className="bg-orange-50 border border-orange-100 rounded-xl p-4">
-                <div className="text-xs font-medium text-orange-600 uppercase tracking-wide mb-1">A fazer</div>
-                <div className="text-2xl font-semibold text-orange-900">{aulasEmAndamento.length}</div>
-                <div className="text-xs text-orange-600 mt-1">em andamento</div>
-              </div>
-              <div className="bg-red-50 border border-red-100 rounded-xl p-4">
-                <div className="text-xs font-medium text-red-600 uppercase tracking-wide mb-1">Canceladas hoje</div>
-                <div className="text-2xl font-semibold text-red-900">{aulasCanceladasHoje.length}</div>
-                <div className="text-xs text-red-600 mt-1">
-                  {totalAulasValidasHoje + aulasCanceladasHoje.length > 0
-                    ? `${Math.round((aulasCanceladasHoje.length / (totalAulasValidasHoje + aulasCanceladasHoje.length)) * 100)}% do dia`
-                    : 'sem aulas ainda'}
-                </div>
-              </div>
-              <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
-                <div className="text-xs font-medium text-blue-600 uppercase tracking-wide mb-1">Ocupação do dia</div>
-                <div className="text-2xl font-semibold text-blue-900">{ocupacaoPct}%</div>
-                <div className="text-xs text-blue-600 mt-1">{aulasRealizadasOuEmCurso} de {capacidadeDia} vagas</div>
-              </div>
-            </div>
-          </div>
-
-          {/* 4. Aulas em andamento */}
-          {aulasEmAndamento.length > 0 && (
-            <div className="card mb-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                    <span className="w-2 h-2 bg-orange-500 rounded-full animate-pulse" />
-                    Aulas em andamento
-                  </h2>
-                  <p className="text-xs text-gray-400 mt-0.5">{aulasEmAndamento.length} aula{aulasEmAndamento.length !== 1 ? 's' : ''} acontecendo agora</p>
-                </div>
-                <span className="flex items-center gap-1.5 text-xs bg-orange-100 text-orange-700 px-2.5 py-1 rounded-full font-medium">
-                  {aulasEmAndamento.length} ao vivo
-                </span>
-              </div>
-              <div className="space-y-2">
-                {aulasEmAndamento.map(renderAula)}
-              </div>
-            </div>
-          )}
-
-          {/* 5. Aulas finalizadas hoje */}
-          <div className="card mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-sm font-semibold text-gray-900">Aulas finalizadas hoje</h2>
-                <p className="text-xs text-gray-400 mt-0.5 capitalize">
-                  {now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
-                </p>
-              </div>
-              <span className="text-xs bg-green-100 text-green-700 px-2.5 py-1 rounded-full font-medium">
-                {aulasFinalizadasHoje.length} finalizadas
-              </span>
-            </div>
-
-            {aulasFinalizadasHoje.length === 0 ? (
-              <div className="text-center py-8 text-sm text-gray-400 italic">
-                Nenhuma aula finalizada hoje ainda.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {aulasFinalizadasHoje.map(renderAula)}
-              </div>
-            )}
-          </div>
-
-          {/* 6. RANKING DE COACHES DO DIA */}
-          <div className="card mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-sm font-semibold text-gray-900">Ranking de coaches do dia</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Aulas efetivamente realizadas hoje (não inclui canceladas)</p>
-              </div>
-              {rankingCoachesHoje.length > 0 && (
-                <span className="text-xs bg-purple-100 text-purple-700 px-2.5 py-1 rounded-full font-medium">
-                  {rankingCoachesHoje.length} ativo{rankingCoachesHoje.length !== 1 ? 's' : ''}
-                </span>
-              )}
-            </div>
-            {rankingCoachesHoje.length === 0 ? (
-              <div className="text-center py-8 text-sm text-gray-400 italic">
-                Nenhum coach com aulas hoje ainda.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {rankingCoachesHoje.map((c, idx) => (
-                  <div key={c.nome}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-400 font-mono w-5">{idx + 1}.</span>
-                        <span className="text-sm font-medium text-gray-800">{c.nome}</span>
-                      </div>
-                      <span className="text-sm font-semibold text-gray-700">
-                        {c.aulas} {c.aulas === 1 ? 'aula' : 'aulas'}
-                      </span>
+        {aberto && (
+          reservas.length === 0 ? (
+            <div className="text-center py-8 text-sm text-gray-400 italic mt-2">Nenhuma reserva pra hoje.</div>
+          ) : (
+            <div className="space-y-2 mt-4">
+              {reservas.map((r: any) => {
+                const st = statusReserva(r.status)
+                return (
+                  <div key={r.id} className="flex items-center gap-3 px-4 py-3 rounded-xl border bg-gray-50 border-gray-100">
+                    <div className="text-center flex-shrink-0 w-14">
+                      <div className="text-sm font-bold text-gray-700">{(r.horario || '').slice(0, 5)}</div>
                     </div>
-                    <div className="ml-7 h-2 bg-gray-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-primary-400 to-primary-600 rounded-full transition-all"
-                        style={{ width: `${c.pct}%` }}
-                      />
+                    <div className="w-px h-8 bg-gray-200 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-900 truncate">{r.clientes?.nome || 'Aluno'}</div>
+                      <div className="text-xs text-gray-400 mt-0.5 truncate">Coach: {r.coaches?.nome || '—'}</div>
+                    </div>
+                    <div className="flex-shrink-0">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${st.cls}`}>{st.txt}</span>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* 7. Coaches + Alertas */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div className="card">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-semibold text-gray-900">Ocupação dos coaches</h2>
-                <Link href="/admin/relatorios/custo" className="text-xs text-primary-600 hover:underline">Ver completo</Link>
-              </div>
-              <div className="space-y-4">
-                {metrics.length === 0 ? (
-                  <div className="text-sm text-gray-400 italic py-4 text-center">Nenhum coach ativo encontrado.</div>
-                ) : metrics.map(m => {
-                  const p = perfLabel(m.ocupacao_pct)
-                  return (
-                    <div key={m.coach.id}>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-medium text-gray-800 flex-1">{m.coach.nome}</span>
-                        <Badge variant={p.color as any}>{p.txt}</Badge>
-                        <span className="text-sm font-semibold text-gray-700">{m.ocupacao_pct}%</span>
-                      </div>
-                      <OccBar pct={m.ocupacao_pct} />
-                      <div className="flex justify-between text-xs text-gray-400 mt-1">
-                        <span>{m.aulas_mes} aulas · margem {fmt(m.margem)}</span>
-                        <span className={m.breakeven_atingido ? 'text-primary-600' : 'text-danger-500'}>
-                          {m.breakeven_atingido ? `✓ equilíbrio atingido` : `⚠ faltam ${m.breakeven_aulas - m.aulas_mes} aulas`}
-                        </span>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
+                )
+              })}
             </div>
+          )
+        )}
+      </div>
 
-            <div className="card">
-              <h2 className="text-sm font-semibold text-gray-900 mb-4">Alertas do mês</h2>
-              <div className="space-y-1">
-                {metrics.length === 0 ? (
-                  <div className="text-sm text-gray-400 italic py-4 text-center">Sem dados pra exibir alertas.</div>
-                ) : metrics.map(m => {
-                  const occ = m.ocupacao_pct
-                  if (!m.breakeven_atingido) return (
-                    <Insight key={m.coach.id} variant="red">
-                      ⚠ <strong>{m.coach.nome}</strong> não cobriu o custo fixo. Faltam {m.breakeven_aulas - m.aulas_mes} aulas.
-                    </Insight>
-                  )
-                  if (occ < 44) return (
-                    <Insight key={m.coach.id} variant="amber">
-                      ● <strong>{m.coach.nome}</strong> com ocupação baixa ({occ}%). Avaliar redistribuição de horários.
-                    </Insight>
-                  )
-                  return (
-                    <Insight key={m.coach.id} variant="green">
-                      ✓ <strong>{m.coach.nome}</strong> — {occ}% de ocupação, margem {fmt(m.margem)}.
-                    </Insight>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-        </>
-      )}
+      {/* Vendas */}
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        <KpiCard label="Vendas hoje" value={fmt(vendasDia)} sub={unidadeNome || undefined} />
+        <KpiCard label="Vendas no mês" value={fmt(vendasMes)} sub="mês atual" />
+      </div>
     </div>
   )
 }
@@ -554,43 +372,6 @@ function DashboardClub({ unidadeId, unidadeNome }: { unidadeId: string; unidadeN
     return { aulas, totalReservas, ocupadas: totalReservas, capacidade, nAulas: aulas.length }
   }
 
-  // Vendas (online pago + balcão, sem duplicar) — igual à página /admin/vendas
-  async function carregarVendas() {
-    const n = new Date()
-    const inicioDia = new Date(n.getFullYear(), n.getMonth(), n.getDate()).toISOString()
-    const fimDia    = new Date(n.getFullYear(), n.getMonth(), n.getDate(), 23, 59, 59).toISOString()
-    const inicioMes = new Date(n.getFullYear(), n.getMonth(), 1).toISOString()
-    const fimMes    = new Date(n.getFullYear(), n.getMonth() + 1, 0, 23, 59, 59).toISOString()
-
-    const { data: onlineMes } = await supabase
-      .from('pagamentos_pendentes')
-      .select('valor_total, venda_id, pago_em')
-      .eq('unidade_id', unidadeId)
-      .eq('status', 'pago')
-      .is('excluido_em', null)
-      .gte('pago_em', inicioMes).lte('pago_em', fimMes)
-
-    const { data: balcaoMes } = await supabase
-      .from('vendas')
-      .select('id, valor_total, vendido_em')
-      .eq('unidade_id', unidadeId)
-      .is('excluido_em', null)
-      .gte('vendido_em', inicioMes).lte('vendido_em', fimMes)
-
-    const online = onlineMes || []
-    const vendaIdsOnline = new Set(online.map((o: any) => o.venda_id).filter(Boolean))
-    const balcao = (balcaoMes || []).filter((v: any) => !vendaIdsOnline.has(v.id))
-
-    const soma = (rows: any[]) => rows.reduce((s, r) => s + Number(r.valor_total || 0), 0)
-    const dentro = (iso: string | null | undefined, ini: string, fim: string) => !!iso && iso >= ini && iso <= fim
-
-    setVendasMes(soma(online) + soma(balcao))
-    setVendasDia(
-      soma(online.filter((o: any) => dentro(o.pago_em, inicioDia, fimDia))) +
-      soma(balcao.filter((v: any) => dentro(v.vendido_em, inicioDia, fimDia)))
-    )
-  }
-
   // Carga inicial: resumos de hoje e amanhã + vendas + detalhe inicial (hoje)
   useEffect(() => {
     if (!unidadeId) return
@@ -603,8 +384,10 @@ function DashboardClub({ unidadeId, unidadeNome }: { unidadeId: string; unidadeN
       setResumoAmanha(ra)
       setDataSel(hoje)
       setDetalhe(rh)
-      await carregarVendas()
+      const v = await buscarVendas(supabase, unidadeId)
       if (!ativo) return
+      setVendasDia(v.dia)
+      setVendasMes(v.mes)
       setLoading(false)
     }
     init()
@@ -671,6 +454,9 @@ function DashboardClub({ unidadeId, unidadeNome }: { unidadeId: string; unidadeN
 
   return (
     <div>
+      {/* Contas a pagar */}
+      <ContasPagarCards unidadeId={unidadeId} />
+
       {/* Resumo HOJE / AMANHÃ */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <CardDia titulo="Hoje"   dataStr={hoje}   resumo={resumoHoje}   destaque />
