@@ -275,12 +275,15 @@ function statusReserva(s: string) {
 function DashboardCT({ unidadeId, unidadeNome }: { unidadeId: string; unidadeNome?: string }) {
   const supabase = createClient()
   const hoje = dataLocalStr(new Date())
+  const amanhaDate = new Date(); amanhaDate.setDate(amanhaDate.getDate() + 1)
+  const amanha = dataLocalStr(amanhaDate)
 
-  const [reservas, setReservas]   = useState<any[]>([])
+  const [reservasHoje, setReservasHoje]     = useState<any[]>([])
+  const [reservasAmanha, setReservasAmanha] = useState<any[]>([])
   const [vendasDia, setVendasDia] = useState(0)
   const [vendasMes, setVendasMes] = useState(0)
   const [loading, setLoading]     = useState(true)
-  const [aberto, setAberto]       = useState(false)
+  const [aberto, setAberto]       = useState<'hoje' | 'amanha' | null>(null)
 
   useEffect(() => {
     if (!unidadeId) return
@@ -289,12 +292,14 @@ function DashboardCT({ unidadeId, unidadeNome }: { unidadeId: string; unidadeNom
       setLoading(true)
       const { data: ags } = await supabase
         .from('agendamentos')
-        .select('id, horario, status, clientes:cliente_id(nome), coaches:coach_id(nome)')
-        .eq('data', hoje).eq('unidade_id', unidadeId).neq('status', 'cancelado')
+        .select('id, data, horario, status, clientes:cliente_id(nome), coaches:coach_id(nome)')
+        .in('data', [hoje, amanha]).eq('unidade_id', unidadeId).neq('status', 'cancelado')
         .order('horario', { ascending: true })
       const v = await buscarVendas(supabase, unidadeId)
       if (!ativo) return
-      setReservas(ags || [])
+      const lista = ags || []
+      setReservasHoje(lista.filter((a: any) => a.data === hoje))
+      setReservasAmanha(lista.filter((a: any) => a.data === amanha))
       setVendasDia(v.dia)
       setVendasMes(v.mes)
       setLoading(false)
@@ -305,31 +310,30 @@ function DashboardCT({ unidadeId, unidadeNome }: { unidadeId: string; unidadeNom
 
   if (loading) return <Spinner />
 
-  const dataLabel = new Date(hoje + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
-
-  return (
-    <div>
-      {/* Reservas de hoje — card que expande a lista de alunos */}
-      <div className="card mb-6">
-        <button onClick={() => setAberto(a => !a)} className="w-full flex items-center justify-between text-left">
+  function CardReservas({ chave, titulo, dataStr, reservas, destaque }: { chave: 'hoje' | 'amanha'; titulo: string; dataStr: string; reservas: any[]; destaque?: boolean }) {
+    const isOpen = aberto === chave
+    const dataLabel = new Date(dataStr + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
+    return (
+      <div className={`card ${destaque ? 'border-primary-100' : ''}`}>
+        <button onClick={() => setAberto(isOpen ? null : chave)} className="w-full flex items-center justify-between text-left">
           <div>
-            <h2 className="text-sm font-semibold text-gray-900">Reservas de hoje</h2>
+            <h2 className="text-sm font-semibold text-gray-900">{titulo}</h2>
             <p className="text-xs text-gray-400 mt-0.5 capitalize">
               {dataLabel}{unidadeNome && <span className="text-gray-300"> · {unidadeNome}</span>}
             </p>
           </div>
           <div className="flex items-center gap-3">
             <span className="text-3xl font-semibold text-gray-900 leading-none">{reservas.length}</span>
-            <svg className={`w-5 h-5 text-gray-400 transition-transform ${aberto ? 'rotate-180' : ''}`}
+            <svg className={`w-5 h-5 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
               fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
             </svg>
           </div>
         </button>
 
-        {aberto && (
+        {isOpen && (
           reservas.length === 0 ? (
-            <div className="text-center py-8 text-sm text-gray-400 italic mt-2">Nenhuma reserva pra hoje.</div>
+            <div className="text-center py-8 text-sm text-gray-400 italic mt-2">Nenhuma reserva nesse dia.</div>
           ) : (
             <div className="space-y-2 mt-4">
               {reservas.map((r: any) => {
@@ -353,6 +357,16 @@ function DashboardCT({ unidadeId, unidadeNome }: { unidadeId: string; unidadeNom
             </div>
           )
         )}
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {/* Reservas hoje / amanhã — cards que expandem a lista de alunos */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 items-start">
+        <CardReservas chave="hoje"   titulo="Reservas de hoje"   dataStr={hoje}   reservas={reservasHoje}   destaque />
+        <CardReservas chave="amanha" titulo="Reservas de amanhã" dataStr={amanha} reservas={reservasAmanha} />
       </div>
 
       {/* Vendas */}
