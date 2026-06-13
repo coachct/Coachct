@@ -361,6 +361,27 @@ export default function RecepcaoClubDetalhe() {
     if (!clienteSel || !ocorrencia) return
     setAgendando(true); setErroAgendar('')
 
+    // NOVO (Lift/LFG): respeita a capacidade contando só ocupação efetiva (reservado + presente).
+    // Faltas NÃO contam — assim cada falta marcada pela equipe libera uma vaga para encaixe.
+    if (!isRunning) {
+      const cap = ocorrencia.club_aulas?.capacidade || 0
+      const ocupadasEfetivas = reservas.filter((r: any) => ['reservado','presente'].includes(r.status)).length
+      const livres = cap - ocupadasEfetivas - vagasBloqueadas
+      if (livres <= 0) {
+        setErroAgendar('Aula lotada. Marque uma falta para liberar vaga e encaixar.')
+        setAgendando(false); return
+      }
+    }
+
+    // NOVO (Running): se a posição escolhida está ocupada por uma falta, libera a posição
+    // (mantém status='falta' para o relatório/multa) antes de inserir o encaixe.
+    if (isRunning && posicaoSel) {
+      const faltaNaPosicao = reservas.find((r: any) => r.posicao === posicaoSel && r.status === 'falta')
+      if (faltaNaPosicao) {
+        await supabase.from('club_reservas').update({ posicao: null }).eq('id', faltaNaPosicao.id)
+      }
+    }
+
     // Se existir reserva cancelada para este cliente nesta ocorrência, reativa em vez de inserir
     const { data: cancelada } = await supabase.from('club_reservas')
       .select('id').eq('ocorrencia_id', ocId).eq('cliente_id', clienteSel.id)
