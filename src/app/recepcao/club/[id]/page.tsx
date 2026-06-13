@@ -131,14 +131,15 @@ export default function RecepcaoClubDetalhe() {
   // Realtime: recarrega quando reservas/ocorrência mudam em qualquer tablet
   useEffect(() => {
     if (!ocId) return
+    const recarregar = () => { if (document.visibilityState === 'visible') carregarDados(true) } // aba em segundo plano: não recarrega
     const canal = supabase
       .channel(`recepcao_club_oc_${ocId}`)
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'club_reservas', filter: `ocorrencia_id=eq.${ocId}` },
-        () => carregarDados(true))
+        recarregar)
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'club_ocorrencias', filter: `id=eq.${ocId}` },
-        () => carregarDados(true))
+        recarregar)
       .subscribe()
     return () => { supabase.removeChannel(canal) }
   }, [ocId])
@@ -148,7 +149,7 @@ export default function RecepcaoClubDetalhe() {
   useEffect(() => {
     if (!ocId) return
     const tick = () => { if (document.visibilityState === 'visible') carregarDados(true) }
-    const intervalo = setInterval(tick, 10000)
+    const intervalo = setInterval(tick, 30000)
     document.addEventListener('visibilitychange', tick)
     return () => { clearInterval(intervalo); document.removeEventListener('visibilitychange', tick) }
   }, [ocId])
