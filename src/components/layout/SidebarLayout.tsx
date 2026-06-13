@@ -181,7 +181,7 @@ export default function SidebarLayout({ children, navItems, role, rolesPermitido
       <aside className="hidden md:flex w-56 flex-col bg-white border-r border-gray-100 shrink-0 h-screen">
         <div className="px-4 py-4 border-b border-gray-100 shrink-0">
           <Link href={home} className="text-primary-800 font-semibold text-sm tracking-wider hover:text-primary-600 transition-colors">
-            ● COACH CT
+            ● Just Club & CT
           </Link>
           <div className="flex items-center gap-2 mt-3">
             <span className={cn('w-2 h-2 rounded-full', roleColor[role])} />
@@ -209,7 +209,7 @@ export default function SidebarLayout({ children, navItems, role, rolesPermitido
       <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-primary-900 h-14 flex items-center justify-between px-4">
         <Link href={home} className="text-primary-200 font-semibold text-sm tracking-wider flex items-center gap-2">
           <Home size={16} />
-          ● COACH CT
+          ● Just Club & CT
         </Link>
         <button onClick={() => setOpen(!open)} className="text-primary-200 p-1">
           {open ? <X size={20} /> : <Menu size={20} />}
