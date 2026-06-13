@@ -60,7 +60,10 @@ export default function RecepcaoClubPage() {
   useEffect(() => {
     if (!unidadeSel) return
     let t: any = null
-    const recarregar = () => { clearTimeout(t); t = setTimeout(() => carregarOcorrencias(true), 250) }
+    const recarregar = () => {
+      if (document.visibilityState !== 'visible') return // aba em segundo plano: não recarrega
+      clearTimeout(t); t = setTimeout(() => carregarOcorrencias(true), 1000)
+    }
     const canal = supabase
       .channel(`recepcao_club_lista_${unidadeSel.id}_${dataSel}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'club_reservas' }, recarregar)
@@ -74,7 +77,7 @@ export default function RecepcaoClubPage() {
   useEffect(() => {
     if (!unidadeSel) return
     const tick = () => { if (document.visibilityState === 'visible') carregarOcorrencias(true) }
-    const intervalo = setInterval(tick, 10000)
+    const intervalo = setInterval(tick, 30000)
     document.addEventListener('visibilitychange', tick)
     return () => { clearInterval(intervalo); document.removeEventListener('visibilitychange', tick) }
   }, [unidadeSel?.id, dataSel])
