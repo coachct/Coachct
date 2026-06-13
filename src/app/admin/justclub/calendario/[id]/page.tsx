@@ -99,6 +99,9 @@ export default function RecepcaoClubDetalhe() {
   const [posicoesBloqueadasPontual, setPosicoesBloqueadasPontual] = useState<string[]>([])
   const [salvandoBloqueio,          setSalvandoBloqueio]          = useState<string | null>(null)
 
+  // NOVO: bloqueios globais da unidade (tela /admin/posicoes — club_posicoes.bloqueado). Valem pra todas as aulas.
+  const [posicoesBloqueadasGlobal,  setPosicoesBloqueadasGlobal]  = useState<string[]>([])
+
   // Troca de posição
   const [trocandoReserva, setTrocandoReserva] = useState<any>(null)
   const [salvandoTroca,   setSalvandoTroca]   = useState(false)
@@ -150,6 +153,10 @@ export default function RecepcaoClubDetalhe() {
         .eq('unidade_id', oc.club_aulas.unidade_id)
         .eq('ativo', true).order('tipo').order('numero')
       setPosicoes(pos || [])
+      // NOVO: posições bloqueadas globalmente (club_posicoes.bloqueado) — valem pra todas as aulas
+      setPosicoesBloqueadasGlobal(
+        (pos || []).filter((p: any) => p.bloqueado).map((p: any) => `${p.tipo}${String(p.numero).padStart(2, '0')}`)
+      )
     }
     setLoadingData(false)
   }
@@ -369,9 +376,12 @@ export default function RecepcaoClubDetalhe() {
       const reserva = reservas.find((r:any) => r.posicao === label && ['reservado','presente'].includes(r.status))
       const tomado  = !!reserva
       const bloqueadaPontual = posicoesBloqueadasPontual.includes(label)
+      const bloqueadaGlobal  = posicoesBloqueadasGlobal.includes(label)
       const ehTrocando = posicaoAtualTroca === label
 
       if (modo === 'view') {
+        if (bloqueadaGlobal) return { bg:`${VERMELHO}15`, border:VERMELHO, icon:VERMELHO, cursor:'not-allowed',
+          nome:null, atual:false, bloqueada:true }
         if (bloqueadaPontual) return { bg:`${VERMELHO}15`, border:VERMELHO, icon:VERMELHO, cursor:'pointer',
           nome:null, atual:false, bloqueada:true }
         if (!tomado) return { bg:`${ACCENT}15`, border:ACCENT, icon:ACCENT, cursor:'pointer',
@@ -381,14 +391,14 @@ export default function RecepcaoClubDetalhe() {
       }
       if (modo === 'walkin') {
         if (label === posicaoSel) return { bg:`${ACCENT}15`, border:ACCENT, icon:ACCENT, cursor:'pointer', nome:null, atual:false, bloqueada:false }
-        if (bloqueadaPontual) return { bg:`${VERMELHO}15`, border:VERMELHO, icon:VERMELHO, cursor:'not-allowed', nome:null, atual:false, bloqueada:true }
+        if (bloqueadaPontual || bloqueadaGlobal) return { bg:`${VERMELHO}15`, border:VERMELHO, icon:VERMELHO, cursor:'not-allowed', nome:null, atual:false, bloqueada:true }
         if (tomado) return { bg:'#f3f4f6', border:'#d1d5db', icon:'#d1d5db', cursor:'not-allowed', nome:null, atual:false, bloqueada:false }
         return { bg:'#fff', border:'#e5e7eb', icon:'#aaa', cursor:'pointer', nome:null, atual:false, bloqueada:false }
       }
       // modo troca
       if (ehTrocando) return { bg:`${AMARELO}15`, border:AMARELO, icon:AMARELO, cursor:'default',
         nome: reserva?.clientes?.nome?.split(' ')[0] || '?', atual:true, bloqueada:false }
-      if (bloqueadaPontual) return { bg:`${VERMELHO}15`, border:VERMELHO, icon:VERMELHO, cursor:'not-allowed',
+      if (bloqueadaPontual || bloqueadaGlobal) return { bg:`${VERMELHO}15`, border:VERMELHO, icon:VERMELHO, cursor:'not-allowed',
         nome:null, atual:false, bloqueada:true }
       if (tomado) return { bg:'#f3f4f6', border:'#d1d5db', icon:'#d1d5db', cursor:'not-allowed',
         nome: reserva?.clientes?.nome?.split(' ')[0] || '?', atual:false, bloqueada:false }
@@ -397,18 +407,21 @@ export default function RecepcaoClubDetalhe() {
 
     function handleClick(label: string) {
       if (modo === 'view') {
+        if (posicoesBloqueadasGlobal.includes(label)) return // bloqueio global: destravar só em /admin/posicoes
         toggleBloqueioPontual(label)
         return
       }
       if (modo === 'walkin') {
         if (posicoesTomadas.includes(label)) return
         if (posicoesBloqueadasPontual.includes(label)) return
+        if (posicoesBloqueadasGlobal.includes(label)) return // bloqueada globalmente
         setPosicaoSel(label)
       }
       if (modo === 'troca') {
         if (label === posicaoAtualTroca) return // mesma posição, sem mudança
         if (posicoesTomadas.includes(label)) return // posição de outro cliente
         if (posicoesBloqueadasPontual.includes(label)) return // bloqueada pontual
+        if (posicoesBloqueadasGlobal.includes(label)) return // bloqueada globalmente
         confirmarTrocaPosicao(label)
       }
     }
@@ -417,21 +430,22 @@ export default function RecepcaoClubDetalhe() {
       const s = estadoPos(label)
       const tomado = posicoesTomadas.includes(label)
       const bloqueadaPontual = posicoesBloqueadasPontual.includes(label)
+      const bloqueadaGlobal  = posicoesBloqueadasGlobal.includes(label)
       const salvandoEssa = salvandoBloqueio === label
 
       // disabled:
-      // - view: nunca desabilitado quando livre/bloqueada (clica pra toggle); só quando ocupada
-      // - walkin/troca: desabilitado se tomado por outro ou bloqueada
+      // - view: nunca desabilitado quando livre/bloqueada (clica pra toggle); só quando ocupada ou bloqueada globalmente
+      // - walkin/troca: desabilitado se tomado por outro ou bloqueada (pontual ou global)
       let disabled = false
-      if (modo === 'view') disabled = tomado || salvandoEssa
-      else if (modo === 'walkin') disabled = (tomado || bloqueadaPontual) && label !== posicaoSel
-      else if (modo === 'troca') disabled = (tomado && label !== posicaoAtualTroca) || bloqueadaPontual
+      if (modo === 'view') disabled = tomado || salvandoEssa || bloqueadaGlobal
+      else if (modo === 'walkin') disabled = (tomado || bloqueadaPontual || bloqueadaGlobal) && label !== posicaoSel
+      else if (modo === 'troca') disabled = (tomado && label !== posicaoAtualTroca) || bloqueadaPontual || bloqueadaGlobal
 
       return (
         <button
           disabled={disabled}
           onClick={() => handleClick(label)}
-          title={bloqueadaPontual ? `${label} bloqueada — clique para desbloquear` : (s.nome ? s.nome : label)}
+          title={bloqueadaGlobal ? `${label} bloqueada (global — Mapa de Posições)` : bloqueadaPontual ? `${label} bloqueada — clique para desbloquear` : (s.nome ? s.nome : label)}
           style={{ border:`1.5px solid ${s.border}`, background:s.bg, borderRadius:8,
             cursor: disabled ? 'not-allowed' : s.cursor,
             padding:'4px 0', display:'flex', flexDirection:'column', alignItems:'center', gap:2,
