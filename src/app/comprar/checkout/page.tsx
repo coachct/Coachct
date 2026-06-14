@@ -37,6 +37,12 @@ function CheckoutContent() {
   const [parcelas, setParcelas] = useState(1)
   const [erro, setErro] = useState('')
 
+  // Cupom de desconto (só cartão)
+  const [cupomInput, setCupomInput] = useState('')
+  const [cupomAplicado, setCupomAplicado] = useState<any>(null)
+  const [cupomErro, setCupomErro] = useState('')
+  const [validandoCupom, setValidandoCupom] = useState(false)
+
   // PIX
   const [pixQrCode, setPixQrCode] = useState('')
   const [pixQrCodeUrl, setPixQrCodeUrl] = useState('')
@@ -202,6 +208,7 @@ function CheckoutContent() {
           mes: cartaoMes,
           ano: cartaoAno,
         }
+        if (cupomAplicado) payload.cupom_codigo = cupomAplicado.codigo
       }
 
       const res = await fetch('/api/pagamento/criar', {
@@ -253,6 +260,33 @@ function CheckoutContent() {
     return valor / n
   }
 
+  async function aplicarCupom() {
+    setCupomErro('')
+    const codigo = cupomInput.trim()
+    if (!codigo) return
+    if (!cliente?.id) { setCupomErro('Identifique-se antes de aplicar o cupom.'); return }
+    setValidandoCupom(true)
+    const { data, error } = await supabase.rpc('validar_cupom', {
+      p_codigo: codigo,
+      p_cliente_id: cliente.id,
+      p_produto_id: produtoId,
+    })
+    setValidandoCupom(false)
+    if (error || !data?.valido) {
+      setCupomAplicado(null)
+      setCupomErro(data?.motivo || 'Cupom inválido.')
+      return
+    }
+    setCupomAplicado({ ...data, codigo: codigo.toUpperCase() })
+    setCupomErro('')
+  }
+
+  function removerCupom() {
+    setCupomAplicado(null)
+    setCupomInput('')
+    setCupomErro('')
+  }
+
   // Descrição do produto no resumo do pedido
   function descricaoProduto(p: any): string {
     switch (p.subtipo) {
@@ -301,6 +335,8 @@ function CheckoutContent() {
 
   const valor = Number(produto.valor)
   const maxParcelas = produto.max_parcelas || 1
+  const descontoPct = (cupomAplicado && metodo === 'cartao') ? Number(cupomAplicado.desconto_percentual) : 0
+  const valorFinal = descontoPct > 0 ? Math.round(valor * (1 - descontoPct / 100) * 100) / 100 : valor
 
   return (
     <div style={{ background: '#080808', minHeight: '100vh', color: '#f0f0f0', fontFamily: "'DM Sans', sans-serif" }}>
@@ -502,19 +538,50 @@ function CheckoutContent() {
                         <button key={n} type="button" onClick={() => setParcelas(n)} className="parcela-btn-h"
                           style={{ padding: '0.65rem 0.5rem', background: parcelas === n ? `${ACCENT}15` : '#080808', border: `1.5px solid ${parcelas === n ? ACCENT : '#333'}`, borderRadius: 8, cursor: 'pointer', textAlign: 'center' as const, fontFamily: "'DM Sans', sans-serif" }}>
                           <div style={{ fontSize: 13, fontWeight: 600, color: parcelas === n ? '#fff' : '#888' }}>{n}x</div>
-                          <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>{formatarValor(calcularParcela(valor, n))}</div>
+                          <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>{formatarValor(calcularParcela(valorFinal, n))}</div>
                         </button>
                       ))}
                     </div>
                   </div>
                 )}
 
+                {metodo === 'cartao' && (
+                  <div style={{ marginTop: '1.25rem' }}>
+                    <label style={labelStyle}>Cupom de desconto</label>
+                    {cupomAplicado ? (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: `${ACCENT}15`, border: `1px solid ${ACCENT}44`, borderRadius: 8, padding: '0.7rem 0.9rem' }}>
+                        <span style={{ fontSize: 13, color: '#fff' }}>
+                          <strong style={{ color: ACCENT }}>{cupomAplicado.codigo}</strong> aplicado · -{Number(cupomAplicado.desconto_percentual)}%
+                        </span>
+                        <button type="button" onClick={removerCupom} style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}>remover ✕</button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <input style={{ ...inputStyle, flex: 1, textTransform: 'uppercase' as const }} type="text" placeholder="DIGITE O CUPOM"
+                          value={cupomInput} onChange={e => { setCupomInput(e.target.value.toUpperCase()); setCupomErro('') }} />
+                        <button type="button" onClick={aplicarCupom} disabled={validandoCupom || !cupomInput.trim()} className="btn-ghost-h"
+                          style={{ padding: '0 1.1rem', background: '#080808', border: `1.5px solid ${ACCENT}`, color: ACCENT, borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' as const, opacity: (validandoCupom || !cupomInput.trim()) ? 0.5 : 1 }}>
+                          {validandoCupom ? '...' : 'Aplicar'}
+                        </button>
+                      </div>
+                    )}
+                    {cupomErro && <div style={{ fontSize: 12, color: ACCENT, marginTop: 6 }}>{cupomErro}</div>}
+                  </div>
+                )}
+
+                {cupomAplicado && (
+                  <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#888' }}>
+                    <span>Desconto ({Number(cupomAplicado.desconto_percentual)}%)</span>
+                    <span style={{ color: ACCENT }}>- {formatarValor(valor - valorFinal)}</span>
+                  </div>
+                )}
+
                 <div style={{ marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid #222', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: 14, color: '#aaa' }}>Total</span>
                   <div style={{ textAlign: 'right' as const }}>
-                    <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: '#fff', lineHeight: 1 }}>{formatarValor(valor)}</div>
+                    <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: '#fff', lineHeight: 1 }}>{formatarValor(valorFinal)}</div>
                     {metodo === 'cartao' && parcelas > 1 && (
-                      <div style={{ fontSize: 12, color: '#555', marginTop: 2 }}>em {parcelas}x de {formatarValor(calcularParcela(valor, parcelas))}</div>
+                      <div style={{ fontSize: 12, color: '#555', marginTop: 2 }}>em {parcelas}x de {formatarValor(calcularParcela(valorFinal, parcelas))}</div>
                     )}
                   </div>
                 </div>
@@ -526,7 +593,7 @@ function CheckoutContent() {
             {!pixQrCode && (
               <button onClick={confirmarPagamento} className="btn-primary-h"
                 style={{ width: '100%', background: ACCENT, color: '#fff', border: 'none', borderRadius: 12, padding: '1rem', fontWeight: 700, fontSize: 16, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                {metodo === 'pix' ? 'Gerar PIX →' : `Pagar ${formatarValor(valor)} →`}
+                {metodo === 'pix' ? 'Gerar PIX →' : `Pagar ${formatarValor(valorFinal)} →`}
               </button>
             )}
 
