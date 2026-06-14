@@ -27,6 +27,7 @@ function SucessoContent() {
   const searchParams = useSearchParams()
   const produtoId = searchParams.get('produto')
   const metodo = searchParams.get('metodo') || 'pix'
+  const totalParam = searchParams.get('total')
 
   const [produto, setProduto] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -58,6 +59,11 @@ function SucessoContent() {
   const ehAcesso = produto?.subtipo === 'acesso'
   const ehPix = metodo === 'pix'
   const metodoLabel = ehPix ? 'PIX' : 'Cartão de crédito'
+
+  // Valor efetivamente pago (vem do checkout via ?total). Fallback: preço do produto.
+  const valorOriginal = produto ? Number(produto.valor) : 0
+  const valorPago = (totalParam != null && totalParam !== '') ? Number(totalParam) : valorOriginal
+  const temDesconto = valorPago < valorOriginal
   const tituloSucesso = ehPix ? 'PAGAMENTO CONFIRMADO!' : 'PAGAMENTO APROVADO!'
   const subtitulo = ehAcesso
     ? 'Seu plano de acesso foi ativado e já está disponível na sua conta.'
@@ -148,7 +154,7 @@ function SucessoContent() {
                 </div>
               </div>
               <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: '#fff', lineHeight: 1, whiteSpace: 'nowrap' as const }}>
-                {formatarValor(Number(produto.valor))}
+                {formatarValor(valorPago)}
               </div>
             </div>
 
@@ -159,6 +165,12 @@ function SucessoContent() {
                   {ehPix ? '⚡ ' : '💳 '}{metodoLabel}
                 </span>
               </div>
+              {temDesconto && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#999' }}>Desconto aplicado</span>
+                  <span style={{ color: ACCENT, fontWeight: 600 }}>- {formatarValor(valorOriginal - valorPago)}</span>
+                </div>
+              )}
               {ehAcesso && dataValidade() && (
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: '#999' }}>Válido até</span>
