@@ -226,7 +226,7 @@ function CheckoutContent() {
       }
 
       if (metodo === 'cartao' && data.cartao?.aprovado) {
-        router.push(`/comprar/sucesso?produto=${produtoId}&metodo=cartao&pagamento=${data.pagamento_id}`)
+        router.push(`/comprar/sucesso?produto=${produtoId}&metodo=cartao&pagamento=${data.pagamento_id}&total=${valorFinal.toFixed(2)}`)
         return
       }
 
