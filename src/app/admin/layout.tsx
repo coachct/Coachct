@@ -48,6 +48,7 @@ const nav = [
       { label: 'Vendas',   href: '/admin/vendas' },
       { label: 'Planos',   href: '/admin/planos' },
       { label: 'Produtos', href: '/admin/produtos' },
+      { label: 'Cupons',   href: '/admin/cupons' },
     ],
   },
   {
