@@ -56,8 +56,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Cliente bloqueado' }, { status: 403 })
     }
 
-    const valorReais = Number(produto.valor)
-    const valorCentavos = Math.round(valorReais * 100)
+    const valorOriginal = Number(produto.valor)
+
+    // NOVO: cupom de desconto — só cartão. Validação no servidor (proteção de corrida).
+    let descontoPercentual = 0
+    let cupomAplicado: any = null
+    if (metodo === 'cartao_credito' && body.cupom_codigo) {
+      const { data: val } = await supabase.rpc('validar_cupom', {
+        p_codigo: body.cupom_codigo,
+        p_cliente_id: cliente.id,
+        p_produto_id: produto.id,
+      })
+      if (!val || !val.valido) {
+        return NextResponse.json({ error: val?.motivo || 'Cupom inválido.' }, { status: 400 })
+      }
+      cupomAplicado = val
+      descontoPercentual = Number(val.desconto_percentual)
+    }
+
+    const valorCentavos = Math.round(valorOriginal * 100 * (1 - descontoPercentual / 100))
+    const valorComDesconto = valorCentavos / 100
 
     const { data: pagamento, error: errPag } = await supabase
       .from('pagamentos_pendentes')
@@ -66,8 +84,8 @@ export async function POST(req: NextRequest) {
         produto_id: produto.id,
         unidade_id: produto.unidade_id,
         quantidade: 1,
-        valor_unitario: valorReais,
-        valor_total: valorReais,
+        valor_unitario: valorOriginal,
+        valor_total: valorComDesconto,
         metodo_pagamento: metodo,
         parcelas: metodo === 'cartao_credito' ? (parcelas || 1) : 1,
         status: 'pendente',
@@ -212,7 +230,7 @@ export async function POST(req: NextRequest) {
         p_vendido_por: null,
         p_unidade_id: pagamento.unidade_id,
         p_observacao: 'Venda online via Pagar.me',
-        p_desconto_percentual: 0,
+        p_desconto_percentual: descontoPercentual,
       })
 
       if (errVenda) {
@@ -226,6 +244,20 @@ export async function POST(req: NextRequest) {
 
       updateData.status = 'pago'
       updateData.pago_em = new Date().toISOString()
+
+      // NOVO: registra o uso do cupom (faz os limites total/por cliente valerem)
+      if (cupomAplicado) {
+        const { error: errUso } = await supabase.from('cupons_usos').insert({
+          cupom_id: cupomAplicado.cupom_id,
+          cliente_id: pagamento.cliente_id,
+          venda_id: updateData.venda_id || null,
+          pagamento_id: pagamento.id,
+          produto_id: pagamento.produto_id,
+          desconto_percentual: descontoPercentual,
+          valor_desconto: Math.round((valorOriginal - valorComDesconto) * 100) / 100,
+        })
+        if (errUso) console.error('Erro ao registrar uso do cupom:', errUso)
+      }
     }
 
     // Determinar motivo da reprovação — prioriza antifraude e ignora acquirer_message confuso
