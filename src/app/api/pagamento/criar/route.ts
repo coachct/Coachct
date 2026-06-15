@@ -56,6 +56,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Cliente bloqueado' }, { status: 403 })
     }
 
+    // GUARD anti-cobrança-duplicada (somente cartão): se já existe um pagamento recente
+    // pendente/pago para o MESMO cliente + MESMO produto, não cria um segundo order na
+    // Pagar.me. Janela de 90s pega o duplo-clique sem travar uma recompra legítima.
+    // Status 'falhou'/'cancelado'/'expirado' ficam de fora de propósito, pra permitir
+    // que o cliente tente de novo após uma tentativa que realmente falhou.
+    if (metodo === 'cartao_credito') {
+      const janelaIso = new Date(Date.now() - 90_000).toISOString()
+      const { data: duplicado } = await supabase
+        .from('pagamentos_pendentes')
+        .select('id')
+        .eq('cliente_id', cliente.id)
+        .eq('produto_id', produto.id)
+        .in('status', ['pendente', 'pago'])
+        .is('excluido_em', null)
+        .gte('created_at', janelaIso)
+        .limit(1)
+        .maybeSingle()
+
+      if (duplicado) {
+        return NextResponse.json(
+          { error: 'Já existe uma cobrança recente para este produto. Aguarde alguns instantes antes de tentar novamente.' },
+          { status: 409 }
+        )
+      }
+    }
+
     const valorOriginal = Number(produto.valor)
 
     // NOVO: cupom de desconto — só cartão. Validação no servidor (proteção de corrida).
