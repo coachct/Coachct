@@ -63,6 +63,13 @@ function hojeLocalStr(): string {
 function competenciaStr(ano: number, mes: number): string {
   return `${ano}-${String(mes).padStart(2, '0')}-01`
 }
+function addDiasStr(base: string, dias: number): string {
+  const [y, m, d] = base.split('-').map(Number)
+  const dt = new Date(y, m - 1, d + dias)
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(
+    dt.getDate()
+  ).padStart(2, '0')}`
+}
 function fmtData(d: string | null): string {
   if (!d) return '—'
   const [y, m, dd] = d.split('-')
@@ -102,6 +109,7 @@ export default function ContasAPagarPage() {
 
   // ---- filtros ----
   const [baseMes, setBaseMes] = useState<'competencia' | 'vencimento'>('competencia')
+  const [fPeriodo, setFPeriodo] = useState<'mes' | 'hoje' | '7dias'>('mes')
   const [fTodosMeses, setFTodosMeses] = useState(false)
   const [fMes, setFMes] = useState(mesAtual)
   const [fAno, setFAno] = useState(anoAtual)
@@ -193,9 +201,19 @@ export default function ContasAPagarPage() {
     return unidadePorId.get(id) || '—'
   }
 
+  const periodoRange = useMemo(() => {
+    if (fPeriodo === 'hoje') return { ini: hoje, fim: hoje }
+    if (fPeriodo === '7dias') return { ini: addDiasStr(hoje, -6), fim: hoje }
+    return null
+  }, [fPeriodo, hoje])
+
   const lista = useMemo(() => {
     return despesas.filter((d) => {
-      if (!fTodosMeses) {
+      if (periodoRange) {
+        // atalhos rápidos filtram sempre por vencimento
+        if (!d.vencimento) return false
+        if (d.vencimento < periodoRange.ini || d.vencimento > periodoRange.fim) return false
+      } else if (!fTodosMeses) {
         const base = baseMes === 'competencia' ? d.competencia : d.vencimento
         if (!base) return false
         const [y, m] = base.split('-').map(Number)
@@ -210,7 +228,7 @@ export default function ContasAPagarPage() {
         return false
       return true
     })
-  }, [despesas, fTodosMeses, baseMes, fMes, fAno, fUnidade, fStatus, fCategoria])
+  }, [despesas, periodoRange, fTodosMeses, baseMes, fMes, fAno, fUnidade, fStatus, fCategoria])
 
   const totais = useMemo(() => {
     let aberto = 0
@@ -487,13 +505,49 @@ export default function ContasAPagarPage() {
           </div>
 
           <div>
+            <label className="mb-1 block text-xs font-medium text-gray-500">Atalhos</label>
+            <div className="flex rounded-xl border border-gray-200 p-0.5">
+              <button
+                onClick={() => setFPeriodo('mes')}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                  fPeriodo === 'mes'
+                    ? 'bg-[#ff2d9b] text-white'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                Mês
+              </button>
+              <button
+                onClick={() => setFPeriodo('hoje')}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                  fPeriodo === 'hoje'
+                    ? 'bg-[#ff2d9b] text-white'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                Hoje
+              </button>
+              <button
+                onClick={() => setFPeriodo('7dias')}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                  fPeriodo === '7dias'
+                    ? 'bg-[#ff2d9b] text-white'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                Últimos 7 dias
+              </button>
+            </div>
+          </div>
+
+          <div>
             <label className="mb-1 block text-xs font-medium text-gray-500">Mês</label>
             <div className="flex gap-2">
               <select
                 value={fMes}
                 onChange={(e) => setFMes(Number(e.target.value))}
-                disabled={fTodosMeses}
-                className={`${inputCls} ${fTodosMeses ? 'opacity-50' : ''}`}
+                disabled={fTodosMeses || fPeriodo !== 'mes'}
+                className={`${inputCls} ${fTodosMeses || fPeriodo !== 'mes' ? 'opacity-50' : ''}`}
               >
                 {MESES.map((m, i) => (
                   <option key={i} value={i + 1}>
@@ -504,8 +558,8 @@ export default function ContasAPagarPage() {
               <select
                 value={fAno}
                 onChange={(e) => setFAno(Number(e.target.value))}
-                disabled={fTodosMeses}
-                className={`${inputCls} ${fTodosMeses ? 'opacity-50' : ''}`}
+                disabled={fTodosMeses || fPeriodo !== 'mes'}
+                className={`${inputCls} ${fTodosMeses || fPeriodo !== 'mes' ? 'opacity-50' : ''}`}
               >
                 {anos.map((a) => (
                   <option key={a} value={a}>
@@ -521,7 +575,8 @@ export default function ContasAPagarPage() {
               type="checkbox"
               checked={fTodosMeses}
               onChange={(e) => setFTodosMeses(e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300 text-[#ff2d9b] focus:ring-[#ff2d9b]"
+              disabled={fPeriodo !== 'mes'}
+              className="h-4 w-4 rounded border-gray-300 text-[#ff2d9b] focus:ring-[#ff2d9b] disabled:opacity-50"
             />
             Todos os meses
           </label>
