@@ -59,8 +59,23 @@ export async function POST(req: NextRequest) {
   let body: any
   try { body = JSON.parse(raw) } catch { return new NextResponse('OK', { status: 200 }) }
 
-  // Extrai a primeira mensagem de texto (ignora status, etc.).
   const value = body?.entry?.[0]?.changes?.[0]?.value
+
+  // DEBUG: registra status de entrega (sent/delivered/failed) pra diagnóstico.
+  const statuses = value?.statuses
+  if (Array.isArray(statuses) && statuses.length) {
+    waitUntil((async () => {
+      try {
+        const supabase = createServiceSupabase()
+        for (const s of statuses) {
+          await registrarAcessoLgpd(supabase, { telefone: s?.recipient_id ?? null, acao: 'wa_status', detalhe: s })
+        }
+      } catch {}
+    })())
+    return new NextResponse('OK', { status: 200 })
+  }
+
+  // Extrai a primeira mensagem de texto.
   const msg = value?.messages?.[0]
   if (!msg || msg.type !== 'text') {
     return new NextResponse('OK', { status: 200 }) // nada a fazer
@@ -81,6 +96,9 @@ async function processar(de: string, texto: string): Promise<void> {
   try {
     const supabase = createServiceSupabase()
     const telefone = normalizarTelefone(de)
+
+    // DEBUG: registra que a mensagem chegou no nosso webhook (antes de tudo).
+    await registrarAcessoLgpd(supabase, { telefone, acao: 'wa_inbound', detalhe: { de, texto } })
 
     const ident = await identificarClientePorTelefone(supabase, de)
 
