@@ -13,18 +13,17 @@ const VERDE   = '#2ddd8b'
 
 const MESES = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro']
 
-// Tier mínimo por app + unidade (texto fixo, casado por tipo + nome da unidade)
+// Tier mínimo por app + escopo (texto fixo, casado por tipo + escopo da unidade: ct/club)
 const TIER_INFO: Record<string, { tier: string; creditos: number }> = {
-  'wellhub|Just CT':         { tier: 'Diamond', creditos: 8 },
-  'totalpass|Just CT':       { tier: 'TP6',     creditos: 10 },
-  'wellhub|Vila Olímpia':    { tier: 'Gold',    creditos: 12 },
-  'totalpass|Vila Olímpia':  { tier: 'TP3',     creditos: 12 },
-  'wellhub|Pinheiros':       { tier: 'Gold',    creditos: 12 },
-  'totalpass|Pinheiros':     { tier: 'TP3',     creditos: 12 },
+  'wellhub|ct':     { tier: 'Diamond', creditos: 8 },
+  'totalpass|ct':   { tier: 'TP6',     creditos: 10 },
+  'wellhub|club':   { tier: 'Gold',    creditos: 12 },
+  'totalpass|club': { tier: 'TP3',     creditos: 12 },
 }
 
-function tierDoPlano(tipo: string, nomeUnidade: string): { tier: string; creditos: number } | null {
-  return TIER_INFO[`${tipo}|${nomeUnidade}`] || null
+function tierDoPlano(tipo: string, unidadeTipo: string): { tier: string; creditos: number } | null {
+  const escopo = unidadeTipo === 'club' ? 'club' : 'ct'
+  return TIER_INFO[`${tipo}|${escopo}`] || null
 }
 
 const CONTRATO_TEXTO = `TERMOS DE USO — JUST CT & JUSTCLUB
@@ -712,7 +711,7 @@ export default function MinhaContaPage() {
                       const ativo=planoJaAtivo(plano.id)
                       const isWell=plano.tipo==='wellhub'
                       const cor=isWell?'#a78bfa':'#38bdf8'
-                      const info=tierDoPlano(plano.tipo, grupo.nome)
+                      const info=tierDoPlano(plano.tipo, grupo.tipo)
                       const creditosTxt = info ? info.creditos : plano.creditos_mes
                       return (
                         <div key={plano.id} style={{background:ativo?'#111':'#0a0a0a',border:`1px solid ${ativo?cor+'44':'#222'}`,borderRadius:12,padding:'0.9rem 1rem',display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
