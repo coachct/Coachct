@@ -12,9 +12,12 @@ import crypto from 'crypto'
 import {
   createServiceSupabase,
   identificarClientePorTelefone,
+  buscarClientePorId,
   normalizarTelefone,
   registrarAcessoLgpd,
+  type ClienteIdentificado,
 } from '@/lib/whatsapp/consultas'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { responderMensagem } from '@/lib/whatsapp/agente'
 import { enviarTexto, carregarHistorico, salvarMensagem } from '@/lib/whatsapp/canal'
 
@@ -107,11 +110,24 @@ async function processar(de: string, texto: string): Promise<void> {
       await enviarTexto(de, 'Oi! Não encontrei seu número no nosso cadastro. Procure a recepção da Just CT para vincular seu WhatsApp e eu poder te atender por aqui. 😊')
       return
     }
-    if (ident.status !== 'ok') {
+
+    let cliente: ClienteIdentificado
+    if (ident.status === 'ok') {
+      cliente = ident.cliente
+    } else if (ident.status === 'ambiguo') {
+      // Número em mais de um cadastro: lembra de quem já se identificou nesta
+      // conversa; senão casa pelo nome na mensagem; senão pergunta o nome.
+      const resolvido = await resolverAmbiguidade(supabase, telefone, texto, ident.candidatos)
+      if (!resolvido) {
+        const nomes = ident.candidatos.map((c) => primeiroNome(c.nome)).filter(Boolean).join(', ')
+        await enviarTexto(de, `Oi! Vi mais de um cadastro nesse número (${nomes}). Pra eu te atender certinho, me diz seu primeiro nome? 😊`)
+        return
+      }
+      cliente = resolvido
+    } else {
       await enviarTexto(de, 'Tive um probleminha para te identificar agora. Pode tentar de novo em instantes?')
       return
     }
-    const cliente = ident.cliente
 
     // Comando PARAR (opt-out) — para qualquer mensagem que seja só "parar".
     if (texto.toLowerCase().replace(/\W/g, '') === 'parar') {
@@ -144,4 +160,46 @@ async function processar(de: string, texto: string): Promise<void> {
     console.error('[whatsapp/webhook] erro no processamento:', e?.message)
     try { await enviarTexto(de, 'Tive um erro aqui. Pode tentar de novo em instantes?') } catch {}
   }
+}
+
+/** Primeiro nome (para casar identificação em número compartilhado). */
+function primeiroNome(nome: string): string {
+  return String(nome ?? '').trim().split(/\s+/)[0] ?? ''
+}
+
+/**
+ * Resolve qual cliente é, quando o número está em mais de um cadastro:
+ * 1) lembra de quem já se identificou nesta conversa (última msg com cliente_id);
+ * 2) senão, casa o primeiro nome citado na mensagem com um dos candidatos.
+ * Retorna null se não der pra decidir (aí o webhook pergunta o nome).
+ */
+async function resolverAmbiguidade(
+  supabase: SupabaseClient,
+  telefone: string,
+  texto: string,
+  candidatos: ClienteIdentificado[],
+): Promise<ClienteIdentificado | null> {
+  // 1. Já identificado antes nesta conversa?
+  const { data } = await supabase
+    .from('whatsapp_mensagens')
+    .select('cliente_id')
+    .eq('telefone', telefone)
+    .not('cliente_id', 'is', null)
+    .order('criado_em', { ascending: false })
+    .limit(1)
+  const anteriorId = (data as any)?.[0]?.cliente_id
+  if (anteriorId) {
+    const jaCandidato = candidatos.find((c) => c.id === anteriorId)
+    if (jaCandidato) return jaCandidato
+    const buscado = await buscarClientePorId(supabase, anteriorId)
+    if (buscado) return buscado
+  }
+
+  // 2. A mensagem cita o primeiro nome de algum candidato?
+  const t = texto.toLowerCase()
+  const porNome = candidatos.find((c) => {
+    const pn = primeiroNome(c.nome).toLowerCase()
+    return pn.length >= 2 && t.includes(pn)
+  })
+  return porNome ?? null
 }

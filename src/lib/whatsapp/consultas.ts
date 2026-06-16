@@ -83,7 +83,7 @@ export type ResultadoIdentificacao =
   | { status: 'ok'; cliente: ClienteIdentificado }
   | { status: 'invalido'; cliente: null }       // telefone não tem 10-11 dígitos
   | { status: 'nao_encontrado'; cliente: null } // número não está cadastrado
-  | { status: 'ambiguo'; cliente: null; candidatos: number } // 2+ clientes c/ mesmo número
+  | { status: 'ambiguo'; cliente: null; candidatos: ClienteIdentificado[] } // 2+ clientes c/ mesmo número
   | { status: 'erro'; cliente: null; erro: string }
 
 /**
@@ -105,8 +105,22 @@ export async function identificarClientePorTelefone(
 
   if (error) return { status: 'erro', cliente: null, erro: error.message }
   if (!data || data.length === 0) return { status: 'nao_encontrado', cliente: null }
-  if (data.length > 1) return { status: 'ambiguo', cliente: null, candidatos: data.length }
+  if (data.length > 1) return { status: 'ambiguo', cliente: null, candidatos: data as ClienteIdentificado[] }
   return { status: 'ok', cliente: data[0] as ClienteIdentificado }
+}
+
+/** Busca um cliente pelo id (mesmos campos da identificação). */
+export async function buscarClientePorId(
+  supabase: SupabaseClient,
+  id: string,
+): Promise<ClienteIdentificado | null> {
+  const { data, error } = await supabase
+    .from('clientes')
+    .select('id, nome, email, telefone, bloqueado, motivo_bloqueio, whatsapp_opt_out, lgpd_consentimento_em')
+    .eq('id', id)
+    .maybeSingle()
+  if (error || !data) return null
+  return data as ClienteIdentificado
 }
 
 // ---------------------------------------------------------------------------
