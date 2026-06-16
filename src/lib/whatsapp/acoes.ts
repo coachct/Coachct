@@ -21,6 +21,57 @@ export const JUST_CT_UNIDADE_ID = 'c28bf4bb-56f8-44ff-818a-c7836e58bcef'
 // Horários de fim de semana / feriado no CT (mesma lista do app).
 const HORARIOS_FDS = ['08:00', '09:00', '10:00', '11:00', '12:00']
 
+const LINK_CARTAO = 'https://www.justclubct.com.br/cadastrar-cartao'
+
+/**
+ * Clientes Wellhub/TotalPass precisam de um cartão VÁLIDO cadastrado para
+ * reservar (garantia da multa de no-show) — mesma regra do app (precisaCartao).
+ * Confere se há cartão salvo e, quando possível, valida no Pagar.me (ativo/não
+ * vencido). Retorna ok:false (com mensagem pro cliente) quando falta/expira.
+ * Para créditos que não são de parceiro, retorna ok:true (não exige cartão).
+ */
+export async function verificarCartaoParceiro(
+  supabase: SupabaseClient,
+  clienteId: string,
+  tipoCredito: string,
+): Promise<ResultadoAcao> {
+  const tc = String(tipoCredito ?? '')
+  if (!tc.startsWith('wellhub_') && !tc.startsWith('totalpass_')) return { ok: true, mensagem: '' }
+
+  const { data: cli } = await supabase
+    .from('clientes').select('pagarme_customer_id, pagarme_card_id').eq('id', clienteId).maybeSingle()
+  if (!cli?.pagarme_card_id || !cli?.pagarme_customer_id) {
+    return { ok: false, mensagem: `Para reservar com Wellhub/TotalPass você precisa de um cartão cadastrado — é a garantia da multa caso falte. Cadastre rapidinho aqui (é seguro): ${LINK_CARTAO}` }
+  }
+
+  // Validação real no Pagar.me (não bloqueia se a consulta falhar — já tem cartão salvo).
+  const apiKey = process.env.PAGARME_API_KEY ?? process.env.PAGARME_SECRET_KEY
+  if (apiKey) {
+    try {
+      const auth = Buffer.from(`${apiKey}:`).toString('base64')
+      const resp = await fetch(
+        `https://api.pagar.me/core/v5/customers/${cli.pagarme_customer_id}/cards/${cli.pagarme_card_id}`,
+        { headers: { Authorization: `Basic ${auth}` } },
+      )
+      if (resp.ok) {
+        const card: any = await resp.json()
+        const ativo = card?.status === 'active'
+        let expirado = false
+        if (card?.exp_month && card?.exp_year) {
+          const now = new Date()
+          const ano = Number(card.exp_year) < 100 ? 2000 + Number(card.exp_year) : Number(card.exp_year)
+          const mes = Number(card.exp_month)
+          expirado = ano < now.getFullYear() || (ano === now.getFullYear() && mes < now.getMonth() + 1)
+        }
+        if (!ativo || expirado) {
+          return { ok: false, mensagem: `Seu cartão cadastrado está inválido ou vencido 😕. Atualize aqui pra eu poder reservar (é seguro): ${LINK_CARTAO}` }
+        }
+      }
+    } catch { /* erro de rede não bloqueia: já existe cartão salvo */ }
+  }
+  return { ok: true, mensagem: '' }
+}
+
 export interface HorarioDisponivel {
   hora: string // HH:MM
   livres: number
@@ -224,8 +275,12 @@ export async function reservarClub(
   // Cliente bloqueado / sexo (para aula só-mulheres).
   const { data: cli } = await supabase.from('clientes').select('bloqueado, sexo').eq('id', clienteId).maybeSingle()
   if (cli?.bloqueado) {
-    return { ok: false, mensagem: 'Sua conta está bloqueada — procure a recepção para regularizar.' }
+    return { ok: false, mensagem: 'Sua conta está com uma pendência e a reserva está temporariamente bloqueada. Me conta que eu te ajudo a resolver por aqui.' }
   }
+
+  // Wellhub/TotalPass exigem cartão válido cadastrado.
+  const cartao = await verificarCartaoParceiro(supabase, clienteId, tipoCredito)
+  if (!cartao.ok) return cartao
 
   // Ocorrência + aula.
   const { data: oc } = await supabase
@@ -371,8 +426,11 @@ export async function entrarFilaClub(
 
   const { data: cli } = await supabase.from('clientes').select('bloqueado, sexo').eq('id', clienteId).maybeSingle()
   if (cli?.bloqueado) {
-    return { ok: false, mensagem: 'Sua conta está bloqueada — procure a recepção para regularizar.' }
+    return { ok: false, mensagem: 'Sua conta está com uma pendência e está temporariamente bloqueada. Me conta que eu te ajudo a resolver por aqui.' }
   }
+
+  const cartao = await verificarCartaoParceiro(supabase, clienteId, tipoCredito)
+  if (!cartao.ok) return cartao
 
   const { data: oc } = await supabase
     .from('club_ocorrencias')
@@ -462,8 +520,12 @@ export async function agendarCt(
   // 1. Cliente bloqueado?
   const { data: cli } = await supabase.from('clientes').select('bloqueado').eq('id', clienteId).maybeSingle()
   if (cli?.bloqueado) {
-    return { ok: false, mensagem: 'Sua conta está bloqueada — procure a recepção para regularizar antes de agendar.' }
+    return { ok: false, mensagem: 'Sua conta está com uma pendência e o agendamento está temporariamente bloqueado. Me conta que eu te ajudo a resolver por aqui.' }
   }
+
+  // 1b. Wellhub/TotalPass exigem cartão válido cadastrado.
+  const cartao = await verificarCartaoParceiro(supabase, clienteId, tipoCredito)
+  if (!cartao.ok) return cartao
 
   // 2. Janela: não pode no passado nem além de 14 dias.
   const { dataStr: hojeStr } = agoraEmSaoPaulo()
@@ -534,8 +596,11 @@ export async function entrarFilaCt(
 
   const { data: cli } = await supabase.from('clientes').select('bloqueado').eq('id', clienteId).maybeSingle()
   if (cli?.bloqueado) {
-    return { ok: false, mensagem: 'Sua conta está bloqueada — procure a recepção para regularizar.' }
+    return { ok: false, mensagem: 'Sua conta está com uma pendência e está temporariamente bloqueada. Me conta que eu te ajudo a resolver por aqui.' }
   }
+
+  const cartao = await verificarCartaoParceiro(supabase, clienteId, tipoCredito)
+  if (!cartao.ok) return cartao
 
   const { dataStr: hojeStr } = agoraEmSaoPaulo()
   if (data < hojeStr) return { ok: false, mensagem: 'Essa data já passou.' }
