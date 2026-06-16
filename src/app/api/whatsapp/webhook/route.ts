@@ -107,7 +107,7 @@ async function processar(de: string, texto: string): Promise<void> {
 
     // Número não cadastrado → orienta (cadastro por CPF fica como melhoria futura).
     if (ident.status === 'nao_encontrado') {
-      await enviarTexto(de, 'Oi! Não encontrei seu número no nosso cadastro. Procure a recepção da Just CT para vincular seu WhatsApp e eu poder te atender por aqui. 😊')
+      await enviarTexto(de, 'Oi! 😊 Ainda não encontrei seu número no nosso cadastro. Você já é aluno(a) da Just CT? Se sim, me diz seu nome completo e CPF que eu confiro aqui pra você.')
       return
     }
 
