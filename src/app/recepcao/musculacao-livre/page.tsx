@@ -67,7 +67,7 @@ export default function RecepcaoMusculacaoLivrePage() {
 
     // 2) Agregadores (Wellhub/TotalPass) — tabela entradas_walkin, do dia (fuso SP)
     const { data: agregadores } = await supabase.from('entradas_walkin')
-      .select('id, origem, id_externo, produto, recebido_em, clientes(nome, cpf)')
+      .select('id, origem, id_externo, produto, recebido_em, raw, clientes(nome, cpf)')
       .eq('unidade_id', CT_UNIDADE_ID)
       .gte('recebido_em', `${hoje}T00:00:00-03:00`)
       .order('recebido_em', { ascending: false })
@@ -85,12 +85,17 @@ export default function RecepcaoMusculacaoLivrePage() {
     const itensAgregador = (agregadores || []).map((r: any) => {
       const c = Array.isArray(r.clientes) ? r.clientes[0] : r.clientes
       const label = ORIGENS[r.origem]?.label || r.origem
+      // Nome real do payload quando não há cliente cadastrado vinculado.
+      const u = r.raw?.event_data?.user
+      const nomePayload = [u?.first_name, u?.last_name].filter(Boolean).join(' ').trim()
+      // Tipo do check-in: descrição limpa do produto (sem o "id —" na frente).
+      const tipo = r.raw?.event_data?.gym?.product?.description || r.produto || null
       return {
         id: r.id,
         origem: r.origem,
-        nome: c?.nome || (r.id_externo ? `${label} · ${r.id_externo}` : label),
+        nome: c?.nome || nomePayload || (r.id_externo ? `${label} · ${r.id_externo}` : label),
         cpf: c?.cpf || null,
-        produto: r.produto || null,
+        produto: tipo,
         hora: r.recebido_em,
       }
     })
