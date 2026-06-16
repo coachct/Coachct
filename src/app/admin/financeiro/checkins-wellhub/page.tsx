@@ -83,6 +83,7 @@ export default function CheckinsWellhubPage() {
   const [erro, setErro] = useState<string | null>(null)
   const [itens, setItens] = useState<Checkin[]>([])
   const [revalidandoId, setRevalidandoId] = useState<string | null>(null)
+  const [corrigindo, setCorrigindo] = useState(false)
 
   const anos = [agora.getFullYear() - 1, agora.getFullYear(), agora.getFullYear() + 1]
 
@@ -142,6 +143,28 @@ export default function CheckinsWellhubPage() {
     return r.status === 'erro' || r.status === 'recebido' || (r.status === 'validado' && r.valor == null)
   }
 
+  // Preenche o valor de todos os validados-sem-valor de uma vez (local, sem Gympass).
+  async function corrigirTodos() {
+    const alvos = itens.filter((r) => r.status === 'validado' && r.valor == null)
+    if (alvos.length === 0) return
+    setCorrigindo(true)
+    setErro(null)
+    try {
+      for (const r of alvos) {
+        await fetch('/api/wellhub/revalidar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ entradaId: r.id }),
+        })
+      }
+      await carregar()
+    } catch {
+      setErro('Não foi possível corrigir todos os valores.')
+    } finally {
+      setCorrigindo(false)
+    }
+  }
+
   // Por origem (afeta cards e tabela)
   const porOrigem = useMemo(() => {
     if (fOrigem === 'todas') return itens
@@ -177,16 +200,28 @@ export default function CheckinsWellhubPage() {
     <div className="min-h-screen bg-[#f3f4f6] px-4 py-6 sm:px-8">
       <div className="mx-auto max-w-5xl">
         {/* Cabeçalho */}
-        <div className="mb-6 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#ff2d9b]/10 text-[#ff2d9b]">
-            <CheckCircle2 size={20} />
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#ff2d9b]/10 text-[#ff2d9b]">
+              <CheckCircle2 size={20} />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">Check-ins Wellhub</h1>
+              <p className="text-sm text-gray-500">
+                Check-ins dos agregadores com valor por check-in e receita esperada
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">Check-ins Wellhub</h1>
-            <p className="text-sm text-gray-500">
-              Check-ins dos agregadores com valor por check-in e receita esperada
-            </p>
-          </div>
+
+          <button
+            onClick={corrigirTodos}
+            disabled={corrigindo}
+            className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-60"
+            title="Preenche o valor dos check-ins validados que estão sem valor"
+          >
+            {corrigindo ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+            Corrigir valores
+          </button>
         </div>
 
         {/* Filtros */}

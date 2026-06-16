@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createServerSupabase } from '@/lib/supabase-server';
-import { validarCheckin } from '@/lib/wellhub/validar-checkin';
+import { validarCheckin, corrigirValor } from '@/lib/wellhub/validar-checkin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -54,30 +54,39 @@ export async function POST(req: NextRequest) {
 
   const { data: entrada, error } = await admin
     .from('entradas_walkin')
-    .select('id, id_externo, origem, raw')
+    .select('id, id_externo, origem, status, raw')
     .eq('id', entradaId)
     .maybeSingle();
   if (error || !entrada) {
     return NextResponse.json({ erro: 'entrada nao encontrada' }, { status: 404 });
   }
-  if ((entrada as any).origem !== 'wellhub') {
+  const e = entrada as any;
+  if (e.origem !== 'wellhub') {
     return NextResponse.json({ erro: 'origem nao suportada' }, { status: 400 });
   }
 
-  const p = (entrada as any).raw?.event_data?.gym?.product;
-  const gympassId =
-    (entrada as any).id_externo ?? (entrada as any).raw?.event_data?.user?.unique_token;
+  const p = e.raw?.event_data?.gym?.product;
+  const produtoId = p?.id != null ? String(p.id) : null;
+  const produtoDescricao = p?.description ?? null;
+
+  // 4a. Já validado: só preenche o valor (busca local, sem Gympass) — não
+  //     depende da janela de revalidação nem corre risco de rebaixar pra 'erro'.
+  if (e.status === 'validado') {
+    const r = await corrigirValor({ entradaId: e.id, produtoId, produtoDescricao });
+    return NextResponse.json({ ok: true, modo: 'valor', ...r });
+  }
+
+  // 4b. 'erro'/'recebido': tenta validar na Gympass (sujeito à janela de tempo).
+  const gympassId = e.id_externo ?? e.raw?.event_data?.user?.unique_token;
   if (!gympassId) {
     return NextResponse.json({ erro: 'gympassId ausente' }, { status: 400 });
   }
-
-  // 4. Re-roda a validação (atualiza status/valor na própria entrada)
   await validarCheckin({
-    entradaId: (entrada as any).id,
+    entradaId: e.id,
     gympassId: String(gympassId),
-    produtoId: p?.id != null ? String(p.id) : null,
-    produtoDescricao: p?.description ?? null,
+    produtoId,
+    produtoDescricao,
   });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, modo: 'revalidado' });
 }

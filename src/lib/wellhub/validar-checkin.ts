@@ -90,6 +90,35 @@ export async function validarCheckin(input: ValidarCheckinInput): Promise<void> 
   );
 }
 
+// Preenche SÓ o valor de uma entrada já validada — busca local no cadastro,
+// sem chamar a Gympass (não depende da janela de revalidação nem mexe no status).
+// Usado pra corrigir entradas validadas que ficaram sem valor.
+export async function corrigirValor(input: {
+  entradaId: string;
+  produtoId: string | null;
+  produtoDescricao: string | null;
+}): Promise<{ ok: boolean; valor: number | null }> {
+  const { entradaId, produtoId, produtoDescricao } = input;
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceKey) {
+    console.error('[wellhub/corrigir] env do Supabase ausente');
+    return { ok: false, valor: null };
+  }
+  const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+
+  const valor = await buscarValor(supabase, produtoId, produtoDescricao);
+  if (valor == null) return { ok: false, valor: null };
+
+  const { error } = await supabase.from('entradas_walkin').update({ valor }).eq('id', entradaId);
+  if (error) {
+    console.error('[wellhub/corrigir] erro ao gravar valor:', error);
+    return { ok: false, valor: null };
+  }
+  return { ok: true, valor };
+}
+
 // Busca o valor por check-in do produto. Tenta por produto_id; se não achar,
 // cai pra descrição (e, casando por descrição, faz o backfill do produto_id no
 // cadastro — assim o sistema "aprende" o id no 1o check-in real). Sem match,
