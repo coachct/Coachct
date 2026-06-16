@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
-import { CheckCircle2, TrendingUp, AlertCircle, Loader2, Clock } from 'lucide-react'
+import { CheckCircle2, TrendingUp, AlertCircle, Loader2, Clock, RefreshCw } from 'lucide-react'
 
 const supabase = createClient()
 
@@ -82,6 +82,7 @@ export default function CheckinsWellhubPage() {
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
   const [itens, setItens] = useState<Checkin[]>([])
+  const [revalidandoId, setRevalidandoId] = useState<string | null>(null)
 
   const anos = [agora.getFullYear() - 1, agora.getFullYear(), agora.getFullYear() + 1]
 
@@ -115,6 +116,31 @@ export default function CheckinsWellhubPage() {
     if (!authLoading) carregar()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, mes, ano])
+
+  async function revalidar(id: string) {
+    setRevalidandoId(id)
+    setErro(null)
+    try {
+      const res = await fetch('/api/wellhub/revalidar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entradaId: id }),
+      })
+      if (!res.ok) {
+        setErro('Não foi possível revalidar. Tente novamente.')
+      } else {
+        await carregar()
+      }
+    } catch {
+      setErro('Não foi possível revalidar. Tente novamente.')
+    } finally {
+      setRevalidandoId(null)
+    }
+  }
+
+  function precisaRevalidar(r: Checkin): boolean {
+    return r.status === 'erro' || r.status === 'recebido' || (r.status === 'validado' && r.valor == null)
+  }
 
   // Por origem (afeta cards e tabela)
   const porOrigem = useMemo(() => {
@@ -248,6 +274,7 @@ export default function CheckinsWellhubPage() {
                     <th className="px-4 py-3 font-medium">Produto</th>
                     <th className="px-4 py-3 font-medium">Status</th>
                     <th className="px-4 py-3 text-right font-medium">Valor</th>
+                    <th className="px-4 py-3 text-right font-medium">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -276,6 +303,22 @@ export default function CheckinsWellhubPage() {
                         <td className="px-4 py-3 text-right font-semibold text-gray-900">
                           {r.valor != null ? fmtBRL(Number(r.valor)) : <span className="text-gray-300">—</span>}
                         </td>
+                        <td className="px-4 py-3 text-right">
+                          {precisaRevalidar(r) && (
+                            <button
+                              onClick={() => revalidar(r.id)}
+                              disabled={revalidandoId === r.id}
+                              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:bg-gray-50 hover:text-[#ff2d9b] disabled:opacity-50"
+                            >
+                              {revalidandoId === r.id ? (
+                                <Loader2 size={13} className="animate-spin" />
+                              ) : (
+                                <RefreshCw size={13} />
+                              )}
+                              Revalidar
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     )
                   })}
@@ -288,6 +331,7 @@ export default function CheckinsWellhubPage() {
                     <td className="px-4 py-3 text-right text-base font-bold text-gray-900">
                       {fmtBRL(lista.reduce((acc, r) => acc + Number(r.valor || 0), 0))}
                     </td>
+                    <td />
                   </tr>
                 </tfoot>
               </table>
