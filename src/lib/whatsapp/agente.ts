@@ -29,7 +29,7 @@ import {
   listarConhecimento,
   type UnidadeInfo,
 } from './conhecimento'
-import { cancelarAgendamentoCt, horariosDisponiveisCt, agendarCt, entrarFilaCt, sairFila, aulasClubDisponiveis, reservarClub, cancelarReservaClub, entrarFilaClub } from './acoes'
+import { cancelarAgendamentoCt, horariosDisponiveisCt, agendarCt, entrarFilaCt, sairFila, aulasClubDisponiveis, reservarClub, cancelarReservaClub, entrarFilaClub, posicoesLivresClub } from './acoes'
 import { agoraEmSaoPaulo } from './consultas'
 
 interface ContextoGeral {
@@ -80,7 +80,7 @@ ${cliente.bloqueado ? `ATENÇÃO: este cliente está BLOQUEADO. Motivo: ${client
 - CANCELAR um agendamento de personal (Just CT) — ver a regra obrigatória abaixo.
 - Colocar o cliente na FILA de espera de um horário lotado, e TIRAR da fila — ver a regra abaixo.
 - Consultar as AULAS do JustClub (coletivas: lift, lift for girls, running funcional) disponíveis num dia/unidade, com vagas (ferramenta aulas_club_disponiveis). Passe a unidade (Vila Olímpia ou Pinheiros) e a data.
-- RESERVAR uma aula de Lift ou Lift for Girls do JustClub — ver a regra abaixo. (Reserva de Running Funcional ainda não está disponível por aqui.)
+- RESERVAR uma aula do JustClub: Lift, Lift for Girls e Running Funcional (neste, escolhendo a posição) — ver a regra abaixo.
 - CANCELAR uma reserva do JustClub — ver a regra abaixo (use proximas_reservas_club para achar o id).
 
 # Data de hoje
@@ -96,8 +96,9 @@ Hoje é ${hoje.extenso} (${hoje.dataStr}). Use isso para entender "hoje", "amanh
 # Como reservar aula do JustClub (REGRA OBRIGATÓRIA)
 - Use aulas_club_disponiveis para achar a aula (precisa do ocorrencia_id) e ver se tem vaga. Pergunte a unidade se o cliente não disse.
 - Use consultar_saldo para o crédito (tipo_credito): para JustClub use uma chave que contenha "just_club" (da unidade certa).
-- Só Lift e Lift for Girls. Para Running Funcional, diga com gentileza que a reserva dessa aula ainda não está disponível por aqui e ofereça ajudar com Lift, Lift for Girls ou outra coisa — sem mandar pra outro canal.
-- SEMPRE confirme antes (aula, dia, hora, plano) e peça "sim"; só então chame reservar_aula_club. A ferramenta revalida vaga, só-mulheres e saldo no servidor.
+- Lift e Lift for Girls: confirme aula/dia/hora/plano e chame reservar_aula_club (sem posição).
+- Running Funcional: pergunte se a pessoa prefere ESTEIRA ou FUNCIONAL; use posicoes_livres_club para ver as livres (esteira = códigos que começam com R; funcional = começam com F); ofereça uma posição livre; e ao confirmar chame reservar_aula_club passando a posição (ex.: R03 ou F07).
+- SEMPRE confirme antes (com "sim") e só então chame reservar_aula_club. A ferramenta revalida vaga, posição, só-mulheres e saldo no servidor.
 
 # Como cancelar reserva do JustClub (REGRA OBRIGATÓRIA)
 - Use proximas_reservas_club para achar a reserva e seu id.
@@ -118,8 +119,7 @@ Hoje é ${hoje.extenso} (${hoje.dataStr}). Use isso para entender "hoje", "amanh
 - SÓ chame a ferramenta cancelar_agendamento DEPOIS do cliente confirmar. Nunca cancele por conta própria.
 - A ferramenta aplica as regras de prazo (12h/3h/fila) e devolve o resultado — repasse a mensagem ao cliente com suas palavras.
 
-# O que você NÃO faz (ainda)
-- Você NÃO reserva Running Funcional por aqui ainda. Se pedirem, diga com gentileza que essa reserva específica ainda não está disponível no WhatsApp e ofereça as outras opções — NUNCA mande para recepção ou app.
+# Regras gerais
 - Nunca invente regras, valores, horários ou políticas. Para preços use a ferramenta; para dúvidas use a base de conhecimento. Se realmente não tiver a informação, diga com sinceridade que não tem esse dado no momento e siga ajudando no que puder — sem mandar o cliente para outro canal.
 
 # Fatos úteis (responda com isto quando perguntarem)
@@ -225,13 +225,25 @@ const TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'posicoes_livres_club',
+    description: 'Lista as posições livres de uma aula de Running Funcional, separadas em esteira (R) e funcional (F). Use antes de reservar Running Funcional. ocorrencia_id vem de aulas_club_disponiveis.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        ocorrencia_id: { type: 'string', description: 'id da aula de running funcional' },
+      },
+      required: ['ocorrencia_id'],
+    },
+  },
+  {
     name: 'reservar_aula_club',
-    description: 'Reserva uma aula de Lift ou Lift for Girls do JustClub. Só use APÓS o cliente confirmar. O ocorrencia_id vem de aulas_club_disponiveis. Não use para running_funcional.',
+    description: 'Reserva uma aula do JustClub (Lift, Lift for Girls ou Running Funcional). Só use APÓS o cliente confirmar. Para Running Funcional é OBRIGATÓRIO passar a posição (ex.: R03 esteira, F07 funcional) — pegue uma livre em posicoes_livres_club.',
     input_schema: {
       type: 'object',
       properties: {
         ocorrencia_id: { type: 'string', description: 'id da aula (campo "ocorrencia_id" de aulas_club_disponiveis)' },
         tipo_credito: { type: 'string', description: 'chave do crédito de club, como em consultar_saldo (ex.: totalpass_just_club_vila_olimpia)' },
+        posicao: { type: 'string', description: 'posição para Running Funcional (ex.: R03 = esteira, F07 = funcional). Vazio para Lift/Lift for Girls.' },
       },
       required: ['ocorrencia_id', 'tipo_credito'],
     },
@@ -351,10 +363,13 @@ async function executarTool(
       return JSON.stringify(await sairFila(supabase, cliente.id, String(input?.fila_id ?? '')))
     case 'aulas_club_disponiveis':
       return JSON.stringify(await aulasClubDisponiveis(supabase, String(input?.unidade ?? ''), String(input?.data ?? '')))
+    case 'posicoes_livres_club':
+      return JSON.stringify(await posicoesLivresClub(supabase, String(input?.ocorrencia_id ?? '')))
     case 'reservar_aula_club':
       return JSON.stringify(await reservarClub(supabase, cliente.id, {
         ocorrenciaId: String(input?.ocorrencia_id ?? ''),
         tipoCredito: String(input?.tipo_credito ?? ''),
+        posicao: input?.posicao ? String(input.posicao) : undefined,
       }))
     case 'cancelar_reserva_club':
       return JSON.stringify(await cancelarReservaClub(supabase, cliente.id, String(input?.reserva_id ?? '')))

@@ -170,7 +170,41 @@ export async function aulasClubDisponiveis(
 }
 
 /**
- * Reserva uma aula coletiva do JustClub (lift ou lift_for_girls).
+ * Posições livres de uma aula de Running Funcional: "R" = esteira, "F" = funcional.
+ * Livre = posição ativa, não bloqueada e não reservada/presente naquela ocorrência.
+ * Labels no formato R01..R13 / F01..F13 (mesmo padrão do app).
+ */
+export async function posicoesLivresClub(
+  supabase: SupabaseClient,
+  ocorrenciaId: string,
+): Promise<{ unidadeId: string | null; esteira: string[]; funcional: string[] } | { erro: string }> {
+  const { data: oc } = await supabase
+    .from('club_ocorrencias')
+    .select('id, status, club_aulas(tipo, unidade_id)')
+    .eq('id', ocorrenciaId).maybeSingle()
+  const aula: any = (oc as any)?.club_aulas
+  if (!oc || !aula) return { erro: 'aula não encontrada' }
+  if (aula.tipo !== 'running_funcional') return { unidadeId: aula.unidade_id, esteira: [], funcional: [] }
+
+  const [posRes, tomRes] = await Promise.all([
+    supabase.from('club_posicoes').select('tipo, numero, bloqueado').eq('unidade_id', aula.unidade_id).eq('ativo', true),
+    supabase.from('club_reservas').select('posicao').eq('ocorrencia_id', ocorrenciaId).in('status', ['reservado', 'presente']),
+  ])
+  const tomadas = new Set((tomRes.data ?? []).map((t: any) => t.posicao).filter(Boolean))
+  const livres = (posRes.data ?? [])
+    .filter((p: any) => !p.bloqueado)
+    .map((p: any) => ({ tipo: p.tipo, label: `${p.tipo}${String(p.numero).padStart(2, '0')}` }))
+    .filter((p: any) => !tomadas.has(p.label))
+
+  return {
+    unidadeId: aula.unidade_id,
+    esteira: livres.filter((p: any) => p.tipo === 'R').map((p: any) => p.label).sort(),
+    funcional: livres.filter((p: any) => p.tipo === 'F').map((p: any) => p.label).sort(),
+  }
+}
+
+/**
+ * Reserva uma aula coletiva do JustClub (lift, lift_for_girls ou running_funcional).
  * Running funcional NÃO é suportado aqui (exige escolher posição no mapa — fica no app).
  * Espelha confirmarReserva do app e ADICIONA checagem de capacidade e só-mulheres no
  * servidor (a tela confia na UI). O banco barra reserva dupla via trigger.
@@ -178,13 +212,14 @@ export async function aulasClubDisponiveis(
 export async function reservarClub(
   supabase: SupabaseClient,
   clienteId: string,
-  params: { ocorrenciaId: string; tipoCredito: string },
+  params: { ocorrenciaId: string; tipoCredito: string; posicao?: string },
 ): Promise<ResultadoAcao> {
   const ocorrenciaId = String(params.ocorrenciaId ?? '').trim()
   const tipoCredito = String(params.tipoCredito ?? '').trim()
   if (!ocorrenciaId || !tipoCredito) {
     return { ok: false, mensagem: 'Faltou a aula ou o plano para reservar.' }
   }
+  let posicaoFinal: string | null = null
 
   // Cliente bloqueado / sexo (para aula só-mulheres).
   const { data: cli } = await supabase.from('clientes').select('bloqueado, sexo').eq('id', clienteId).maybeSingle()
@@ -205,9 +240,18 @@ export async function reservarClub(
   const horario = String(aula.horario ?? '').slice(0, 5)
   const dataBr = `${dataStr.slice(8, 10)}/${dataStr.slice(5, 7)}`
 
-  // Running funcional fica no app (escolha de posição no mapa).
+  // Running Funcional: precisa de uma posição livre (esteira R / funcional F).
   if (aula.tipo === 'running_funcional') {
-    return { ok: false, mensagem: 'O Running Funcional é reservado pelo app da Just CT, porque você escolhe sua posição no mapa. Posso te ajudar com Lift ou Lift for Girls.' }
+    const pos = String(params.posicao ?? '').trim().toUpperCase()
+    if (!pos) {
+      return { ok: false, mensagem: 'Pra Running Funcional você escolhe a posição (esteira ou funcional). Quer que eu te mostre as livres?' }
+    }
+    const livres = await posicoesLivresClub(supabase, ocorrenciaId)
+    const todas = 'erro' in livres ? [] : [...livres.esteira, ...livres.funcional]
+    if (!todas.includes(pos)) {
+      return { ok: false, mensagem: `A posição ${pos} não está mais livre. Quer ver as posições disponíveis?` }
+    }
+    posicaoFinal = pos
   }
 
   // Aula exclusiva para mulheres.
@@ -232,9 +276,13 @@ export async function reservarClub(
     return { ok: false, mensagem: 'Você não tem saldo nesse plano para reservar essa aula.' }
   }
 
-  // Reserva (idêntico ao app, sem posição).
+  // Reserva (com posição quando for Running Funcional).
   const { error } = await supabase.from('club_reservas').insert({
-    ocorrencia_id: ocorrenciaId, cliente_id: clienteId, tipo_credito: tipoCredito, status: 'reservado',
+    ocorrencia_id: ocorrenciaId,
+    cliente_id: clienteId,
+    tipo_credito: tipoCredito,
+    status: 'reservado',
+    ...(posicaoFinal ? { posicao: posicaoFinal } : {}),
   })
   if (error) {
     if (error.message?.includes('já tem uma reserva')) {
@@ -246,8 +294,9 @@ export async function reservarClub(
   await registrarAcessoLgpd(supabase, {
     clienteId, acao: 'reservar_club', detalhe: { ocorrencia_id: ocorrenciaId, tipo_credito: tipoCredito },
   })
-  const nome = aula.tipo === 'lift_for_girls' ? 'Lift for Girls' : 'Lift'
-  return { ok: true, mensagem: `Aula reservada! ${nome} dia ${dataBr} às ${horario}. Te esperamos! 💪` }
+  const nome = aula.tipo === 'lift_for_girls' ? 'Lift for Girls' : aula.tipo === 'running_funcional' ? 'Running Funcional' : 'Lift'
+  const posTxt = posicaoFinal ? ` (posição ${posicaoFinal})` : ''
+  return { ok: true, mensagem: `Aula reservada! ${nome} dia ${dataBr} às ${horario}${posTxt}. Te esperamos! 💪` }
 }
 
 /**
