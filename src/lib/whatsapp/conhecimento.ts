@@ -39,16 +39,41 @@ export async function listarEnderecos(supabase: SupabaseClient): Promise<Unidade
   }))
 }
 
-/** Catálogo de preços (produtos ativos, exceto multas). */
+/**
+ * Traduz o tipo/subtipo interno do produto em "pra que serve" — para o agente
+ * NUNCA confundir as famílias. Atenção: os pacotes de treino (5/10/40) são de
+ * TREINO/musculação livre (credito_treino), NÃO valem para Coach CT (personal).
+ */
+function aplicacaoProduto(tipo: string | null, subtipo: string | null): string {
+  if (subtipo === 'ilimitado_club') return 'JustClub — aulas coletivas (lift, lift for girls, running funcional)'
+  switch (tipo) {
+    case 'credito_coach':
+      return 'Coach CT — personal 1×1 (treino guiado por um coach)'
+    case 'credito_treino':
+      return 'Treino / musculação livre (NÃO é Coach CT personal)'
+    case 'coach_ct_pro':
+      return 'Plano Coach CT Pro (assinatura)'
+    default:
+      return tipo ?? 'outro'
+  }
+}
+
+/** Catálogo de preços (produtos ativos, exceto multas), já com "pra que serve" e validade. */
 export async function consultarPrecos(supabase: SupabaseClient): Promise<any[]> {
   const { data, error } = await supabase
     .from('produtos')
-    .select('nome, valor, subtipo, tipo')
+    .select('nome, valor, subtipo, tipo, dias_validade, creditos_por_venda')
     .eq('ativo', true)
     .neq('subtipo', 'multa')
     .order('valor', { ascending: true })
   if (error) throw new Error(`produtos: ${error.message}`)
-  return data ?? []
+  return (data ?? []).map((p: any) => ({
+    nome: p.nome,
+    valor: p.valor,
+    para_que_serve: aplicacaoProduto(p.tipo, p.subtipo),
+    creditos: p.creditos_por_venda || null,
+    validade_dias: p.dias_validade || null,
+  }))
 }
 
 /** Itens ativos da base de conhecimento (dúvidas gerais). */

@@ -19,7 +19,7 @@ import {
 } from '@/lib/whatsapp/consultas'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { responderMensagem } from '@/lib/whatsapp/agente'
-import { enviarTexto, carregarHistorico, salvarMensagem } from '@/lib/whatsapp/canal'
+import { enviarTexto, enviarBotoes, carregarHistorico, salvarMensagem } from '@/lib/whatsapp/canal'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -78,14 +78,25 @@ export async function POST(req: NextRequest) {
     return new NextResponse('OK', { status: 200 })
   }
 
-  // Extrai a primeira mensagem de texto.
+  // Extrai a primeira mensagem (texto digitado OU clique em botão/lista).
   const msg = value?.messages?.[0]
-  if (!msg || msg.type !== 'text') {
+  if (!msg) {
     return new NextResponse('OK', { status: 200 }) // nada a fazer
   }
 
   const de = String(msg.from ?? '')
-  const texto = String(msg.text?.body ?? '').trim()
+  let texto = ''
+  if (msg.type === 'text') {
+    texto = String(msg.text?.body ?? '').trim()
+  } else if (msg.type === 'interactive') {
+    // Cliente tocou num botão (button_reply) ou item de lista (list_reply):
+    // tratamos o título da opção como se ele tivesse digitado isso.
+    const it = msg.interactive
+    texto = String(it?.button_reply?.title ?? it?.list_reply?.title ?? '').trim()
+  }
+  if (!texto) {
+    return new NextResponse('OK', { status: 200 }) // tipo não suportado (áudio, imagem, etc.)
+  }
 
   // Responde 200 rápido e processa em segundo plano.
   waitUntil(processar(de, texto))
@@ -152,10 +163,14 @@ async function processar(de: string, texto: string): Promise<void> {
     await salvarMensagem(supabase, { telefone, clienteId: cliente.id, role: 'user', conteudo: texto })
 
     const resposta = await responderMensagem({ supabase, cliente, mensagem: texto, historico })
-    const respostaFinal = prefixo + resposta
+    const corpo = prefixo + resposta.texto
 
-    await salvarMensagem(supabase, { telefone, clienteId: cliente.id, role: 'assistant', conteudo: resposta })
-    await enviarTexto(de, respostaFinal)
+    await salvarMensagem(supabase, { telefone, clienteId: cliente.id, role: 'assistant', conteudo: resposta.texto })
+    if (resposta.botoes?.length) {
+      await enviarBotoes(de, corpo, resposta.botoes)
+    } else {
+      await enviarTexto(de, corpo)
+    }
   } catch (e: any) {
     console.error('[whatsapp/webhook] erro no processamento:', e?.message)
     try { await enviarTexto(de, 'Tive um erro aqui. Pode tentar de novo em instantes?') } catch {}

@@ -92,6 +92,7 @@ Sempre, antes de pedir o "sim" final, informe de forma curta as regras de cancel
 - Entre 3h e 12h, só dá pra cancelar se houver fila de espera para o horário.
 - Com menos de 3h não dá pra cancelar; faltar gera multa (R$ 99,00 no Coach CT / R$ 49,90 nas aulas do JustClub).
 Só chame a ferramenta de agendar/reservar DEPOIS de o cliente confirmar ciente dessas regras.
+Para pedir esse "sim" final (em agendar, reservar, cancelar ou entrar/sair de fila), use a ferramenta responder_com_botoes com dois botões: "Confirmar" e "Agora não". Assim o cliente confirma com um toque. O texto do botão volta como mensagem dele — "Confirmar" significa seguir com a ação; "Agora não" significa que ele desistiu desta ação (NÃO confunda com cancelar uma reserva já existente).
 
 # Como agendar (REGRA OBRIGATÓRIA)
 - Descubra a data desejada (use a data de hoje para converter "amanhã", "quinta", etc. em AAAA-MM-DD).
@@ -132,6 +133,13 @@ Só chame a ferramenta de agendar/reservar DEPOIS de o cliente confirmar ciente 
 # Fatos úteis (responda com isto quando perguntarem)
 - Escolher o coach / qual coach vai atender: a escolha do coach na hora de agendar é um BENEFÍCIO EXCLUSIVO do plano **Coach CT Pro**. Nos demais planos, o coach é definido na chegada ao Studio (não dá pra escolher antes). Então, se o cliente perguntar quem vai atender ou se pode escolher o coach, explique isso de forma simpática e APROVEITE para mencionar que, com o plano Coach CT Pro, ele poderia escolher o coach já no agendamento — como uma sugestão leve e convidativa, sem ser insistente. Nunca prometa um nome específico nem mande perguntar em outro canal.
 
+# Sobre preços e pacotes (CUIDADO — não confunda as famílias)
+A ferramenta consultar_precos traz, para cada produto, o campo "para_que_serve". RESPEITE ele à risca:
+- "Treino / musculação livre" (ex.: Treino Avulso, Pacote 5/10/40 Treinos) é a musculação no seu ritmo — NÃO serve para Coach CT (personal 1×1). Nunca apresente os pacotes de 5, 10 ou 40 treinos como se fossem de Coach CT/personal.
+- "Coach CT — personal 1×1" (ex.: Coach CT Avulso, Plano Semestral/Anual Just CT) é o treino guiado pelo coach.
+- "Coach CT Pro" é a assinatura premium; "JustClub" são as aulas coletivas.
+Quando listar pacotes, deixe claro a qual modalidade pertencem e, quando útil, cite a validade (campo validade_dias) e a quantidade de créditos. Nunca misture pacote de treino com Coach CT.
+
 # Endereços das unidades
 ${enderecosTxt}
 
@@ -155,6 +163,28 @@ ${faqTxt}
 // passa cliente_id, então não há risco de ele consultar outra pessoa.
 
 const TOOLS: Anthropic.Tool[] = [
+  {
+    name: 'responder_com_botoes',
+    description: 'Envia sua resposta ao cliente com BOTÕES clicáveis, em vez de texto puro. Use SEMPRE que apresentar uma escolha curta de até 3 opções — principalmente o "sim/não" final de confirmação antes de agendar, reservar, cancelar ou entrar/sair de fila (ex.: botões "Confirmar" e "Cancelar"). NÃO use para listas de horários (muitos itens). Coloque a pergunta/mensagem em "texto" e cada opção como um botão curto (até 20 caracteres). Esta ferramenta ENCERRA o turno: depois de chamá-la, a resposta já vai para o cliente.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        texto: { type: 'string', description: 'a mensagem/pergunta que aparece acima dos botões' },
+        botoes: {
+          type: 'array',
+          description: 'de 1 a 3 opções de botão',
+          items: {
+            type: 'object',
+            properties: {
+              titulo: { type: 'string', description: 'rótulo curto do botão, até 20 caracteres (ex.: Confirmar, Cancelar)' },
+            },
+            required: ['titulo'],
+          },
+        },
+      },
+      required: ['texto', 'botoes'],
+    },
+  },
   {
     name: 'consultar_saldo',
     description: 'Saldo de créditos do cliente, por plano e unidade. Use quando o cliente perguntar quantos créditos/aulas tem.',
@@ -395,6 +425,12 @@ export interface TurnoConversa {
   content: string
 }
 
+/** Resposta do agente: texto e, opcionalmente, botões clicáveis. */
+export interface RespostaAgente {
+  texto: string
+  botoes?: { id: string; titulo: string }[]
+}
+
 /**
  * Gera a resposta do agente para uma mensagem do cliente.
  * `historico` são os turnos anteriores da conversa (sem a mensagem atual).
@@ -405,7 +441,7 @@ export async function responderMensagem(params: {
   mensagem: string
   historico?: TurnoConversa[]
   registroTools?: string[] // debug: recebe "nome -> resultado" de cada tool chamada
-}): Promise<string> {
+}): Promise<RespostaAgente> {
   const { supabase, cliente, mensagem, historico = [], registroTools } = params
 
   const client = new Anthropic() // lê ANTHROPIC_API_KEY do ambiente
@@ -440,6 +476,27 @@ export async function responderMensagem(params: {
     })
 
     if (resposta.stop_reason === 'tool_use') {
+      // Terminal: o agente quer responder com BOTÕES? Encerra o turno aqui.
+      const blocoBotoes = resposta.content.find(
+        (b): b is Anthropic.ToolUseBlock =>
+          b.type === 'tool_use' && b.name === 'responder_com_botoes',
+      )
+      if (blocoBotoes) {
+        const inp: any = blocoBotoes.input
+        const texto = String(inp?.texto ?? '').trim()
+        const brutos = Array.isArray(inp?.botoes) ? inp.botoes : []
+        const botoes = brutos
+          .slice(0, 3)
+          .map((b: any, idx: number) => ({
+            id: `btn_${idx}`,
+            titulo: String(b?.titulo ?? b ?? '').trim().slice(0, 20),
+          }))
+          .filter((b: { titulo: string }) => b.titulo)
+        registroTools?.push(`responder_com_botoes(${JSON.stringify(inp)})`)
+        if (texto && botoes.length) return { texto, botoes }
+        if (texto) return { texto } // veio malformado → manda só o texto
+      }
+
       // Executa as ferramentas pedidas e devolve os resultados.
       messages.push({ role: 'assistant', content: resposta.content })
 
@@ -470,9 +527,9 @@ export async function responderMensagem(params: {
       .map((b) => b.text)
       .join('\n')
       .trim()
-    return texto || 'Desculpa, não consegui responder agora. Pode tentar de novo?'
+    return { texto: texto || 'Desculpa, não consegui responder agora. Pode tentar de novo?' }
   }
 
   // Estourou o limite de iterações de tools.
-  return 'Tive um probleminha para consultar seus dados agora. Pode tentar de novo em instantes?'
+  return { texto: 'Tive um probleminha para consultar seus dados agora. Pode tentar de novo em instantes?' }
 }
