@@ -742,3 +742,100 @@ export async function cancelarAgendamentoCt(
 
   return { ok: true, mensagem: 'Pronto, cancelei o treino. Seu crédito volta para o saldo.' }
 }
+
+// ---------------------------------------------------------------------------
+// Recuperação de acesso / senha (login do site é e-mail + senha)
+// ---------------------------------------------------------------------------
+
+/** Senha provisória de 8 caracteres (sem caracteres ambíguos). */
+function gerarSenhaProvisoria(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
+  let senha = ''
+  const arr = new Uint8Array(8)
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(arr)
+    for (let i = 0; i < 8; i++) senha += chars[arr[i] % chars.length]
+  } else {
+    for (let i = 0; i < 8; i++) senha += chars[Math.floor(Math.random() * chars.length)]
+  }
+  return senha
+}
+
+/** Acha o usuário de Auth por e-mail varrendo as páginas do listUsers. */
+async function acharUsuarioAuthPorEmail(supabase: SupabaseClient, emailLimpo: string): Promise<any | null> {
+  const perPage = 1000
+  let page = 1
+  while (page <= 50) {
+    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage })
+    if (error) return null
+    const users: any[] = (data?.users as any[]) || []
+    const found = users.find((u: any) => String(u?.email || '').toLowerCase() === emailLimpo)
+    if (found) return found
+    if (users.length < perPage) return null
+    page++
+  }
+  return null
+}
+
+/**
+ * Regulariza o acesso do cliente ao site (login = e-mail + senha):
+ * - se já tem login, atualiza o e-mail e define uma senha provisória;
+ * - se nunca teve (migrado), cria a conta com o e-mail + senha provisória e vincula.
+ * Devolve o e-mail de login e a senha provisória para o agente repassar no WhatsApp.
+ * O cliente já vem identificado (telefone ou CPF+nome) — isso é a trava de segurança.
+ */
+export async function recuperarAcessoCliente(
+  supabase: SupabaseClient,
+  clienteId: string,
+  emailRaw: string,
+): Promise<ResultadoAcao & { email?: string; senha?: string }> {
+  const email = String(emailRaw ?? '').trim().toLowerCase()
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    return { ok: false, mensagem: 'Esse e-mail não parece válido. Pode conferir e me mandar de novo?' }
+  }
+
+  const { data: cli } = await supabase
+    .from('clientes').select('id, nome, cpf, email, user_id').eq('id', clienteId).maybeSingle()
+  if (!cli) return { ok: false, mensagem: 'Não localizei seu cadastro para regularizar agora.' }
+
+  const senha = gerarSenhaProvisoria()
+
+  if ((cli as any).user_id) {
+    // Já tem login: atualiza e-mail (login) + senha provisória.
+    const { error } = await supabase.auth.admin.updateUserById((cli as any).user_id, {
+      email, password: senha, email_confirm: true,
+    })
+    if (error) {
+      if (/(already|exist|registered|duplicate)/i.test(error.message)) {
+        return { ok: false, mensagem: 'Esse e-mail já está em uso em outra conta. Quer tentar com outro?' }
+      }
+      return { ok: false, mensagem: 'Não consegui regularizar agora. Pode tentar de novo em instantes?' }
+    }
+  } else {
+    // Sem login (migrado): cria a conta com e-mail + senha provisória.
+    const { data: novo, error } = await supabase.auth.admin.createUser({
+      email, password: senha, email_confirm: true,
+      user_metadata: { nome: (cli as any).nome, cpf: (cli as any).cpf, role: 'cliente' },
+    })
+    let userId: string | null = novo?.user?.id || null
+    if (error || !userId) {
+      // E-mail pode já existir no Auth como conta órfã: acha e redefine.
+      const existente = await acharUsuarioAuthPorEmail(supabase, email)
+      if (!existente) {
+        return { ok: false, mensagem: 'Não consegui criar seu acesso agora. Pode tentar de novo em instantes?' }
+      }
+      userId = existente.id
+      const { error: e2 } = await supabase.auth.admin.updateUserById(userId as string, { password: senha, email_confirm: true })
+      if (e2) return { ok: false, mensagem: 'Não consegui regularizar agora. Pode tentar de novo em instantes?' }
+    }
+    await supabase.from('perfis').upsert({ id: userId, nome: (cli as any).nome, role: 'cliente', ativo: true })
+    await supabase.from('clientes').update({ user_id: userId }).eq('id', (cli as any).id)
+  }
+
+  // Regulariza o e-mail no cadastro do cliente.
+  await supabase.from('clientes').update({ email }).eq('id', (cli as any).id)
+
+  await registrarAcessoLgpd(supabase, { clienteId, acao: 'wa_recuperar_acesso', detalhe: { email } })
+
+  return { ok: true, mensagem: '', email, senha }
+}

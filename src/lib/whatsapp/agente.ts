@@ -29,7 +29,7 @@ import {
   listarConhecimento,
   type UnidadeInfo,
 } from './conhecimento'
-import { cancelarAgendamentoCt, horariosDisponiveisCt, agendarCt, entrarFilaCt, sairFila, aulasClubDisponiveis, reservarClub, cancelarReservaClub, entrarFilaClub, posicoesLivresClub } from './acoes'
+import { cancelarAgendamentoCt, horariosDisponiveisCt, agendarCt, entrarFilaCt, sairFila, aulasClubDisponiveis, reservarClub, cancelarReservaClub, entrarFilaClub, posicoesLivresClub, recuperarAcessoCliente } from './acoes'
 import { agoraEmSaoPaulo } from './consultas'
 
 interface ContextoGeral {
@@ -86,6 +86,7 @@ ${cliente.bloqueado ? `ATENÇÃO: este cliente está BLOQUEADO. Motivo: ${client
 - Consultar as AULAS do JustClub (coletivas: lift, lift for girls, running funcional) disponíveis num dia/unidade, com vagas (ferramenta aulas_club_disponiveis). Passe a unidade (Vila Olímpia ou Pinheiros) e a data.
 - RESERVAR uma aula do JustClub: Lift, Lift for Girls e Running Funcional (neste, escolhendo a posição) — ver a regra abaixo.
 - CANCELAR uma reserva do JustClub — ver a regra abaixo (use proximas_reservas_club para achar o id).
+- RECUPERAR o ACESSO ao site (quem não consegue logar, esqueceu a senha ou nunca acessou) — ver a regra abaixo.
 
 # Data de hoje (fuso de São Paulo — use SEMPRE estas, nunca calcule por conta própria)
 - HOJE é ${hoje.extenso} — ${hoje.dataStr}.
@@ -102,6 +103,13 @@ Para pedir esse "sim" final (em agendar, reservar, cancelar ou entrar/sair de fi
 
 # Quando não houver plano/saldo ativo (IMPORTANTE)
 Se o consultar_saldo não retornar nenhum crédito/plano utilizável para o que o cliente quer, NUNCA diga algo técnico como "não consegui ver/identificar seu saldo". Em vez disso, diga de forma leve que não localizou um plano ativo e pergunte qual ele pretende usar. Ex.: "Não localizei um plano ativo na sua conta 🤔. Qual você pretende usar — TotalPass, Wellhub ou plano direto com a gente?" Depois siga normalmente com o plano que ele indicar (a ferramenta revalida saldo no servidor).
+
+# Recuperação de acesso / senha (login do site)
+Se o cliente disser que NÃO consegue acessar a conta, esqueceu a senha, ou nunca acessou o sistema, resolva aqui mesmo:
+- Explique rapidinho que o login no site é por e-mail + senha, e pergunte qual e-mail ele quer usar para entrar (pode ser o atual ou um novo — esse e-mail vai passar a valer).
+- Quando ele te passar o e-mail, chame a ferramenta recuperar_acesso com esse e-mail.
+- A ferramenta devolve o e-mail de login e uma senha provisória. Repasse os DOIS para o cliente aqui no WhatsApp e oriente: entrar em https://www.justclubct.com.br/login e depois trocar a senha em "Minha Conta".
+- NUNCA peça a senha atual dele e NUNCA invente senha — use só a que a ferramenta devolver.
 
 # Como agendar (REGRA OBRIGATÓRIA)
 - Descubra a data desejada (use as datas de HOJE e AMANHÃ já fornecidas acima; nunca calcule por conta própria).
@@ -332,6 +340,17 @@ const TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'recuperar_acesso',
+    description: 'Regulariza o acesso do cliente ao site (login = e-mail + senha): cria ou redefine a conta com o e-mail informado e gera uma senha provisória, que VOCÊ repassa ao cliente aqui no WhatsApp. Use quando o cliente não consegue acessar, esqueceu a senha ou nunca acessou. Antes de chamar, pergunte qual e-mail ele quer usar para entrar.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        email: { type: 'string', description: 'e-mail que o cliente quer usar para fazer login' },
+      },
+      required: ['email'],
+    },
+  },
+  {
     name: 'sair_fila',
     description: 'Remove o cliente de uma fila de espera (Just CT ou JustClub). Só use APÓS o cliente confirmar. O id vem de posicao_na_fila.',
     input_schema: {
@@ -408,6 +427,8 @@ async function executarTool(
       }))
     case 'sair_fila':
       return JSON.stringify(await sairFila(supabase, cliente.id, String(input?.fila_id ?? '')))
+    case 'recuperar_acesso':
+      return JSON.stringify(await recuperarAcessoCliente(supabase, cliente.id, String(input?.email ?? '')))
     case 'aulas_club_disponiveis':
       return JSON.stringify(await aulasClubDisponiveis(supabase, String(input?.unidade ?? ''), String(input?.data ?? '')))
     case 'posicoes_livres_club':
