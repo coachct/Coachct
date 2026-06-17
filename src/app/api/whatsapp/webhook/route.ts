@@ -26,7 +26,7 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 const AVISO_LGPD =
-  'Olá! Sou o assistente virtual da Just CT. Para te atender, acesso seus dados cadastrais (nome, plano, agendamentos). Ao continuar, você concorda com nossa Política de Privacidade. Para parar de receber mensagens, envie PARAR.'
+  'E aí! 👊 Aqui é a Just Club & CT no seu WhatsApp. Pra te ajudar certinho, dou uma olhada no seu cadastro (nome, plano, treinos) — seguindo a conversa, você concorda com a nossa Política de Privacidade. Se um dia quiser parar de receber mensagens, é só mandar PARAR. Bora? Como posso te ajudar hoje? 💪'
 
 // ---------------------------------------------------------------------------
 // GET — verificação do webhook (Meta)
@@ -145,7 +145,7 @@ async function processar(de: string, texto: string): Promise<void> {
     if (texto.toLowerCase().replace(/\W/g, '') === 'parar') {
       await supabase.from('clientes').update({ whatsapp_opt_out: true }).eq('id', cliente.id)
       await registrarAcessoLgpd(supabase, { clienteId: cliente.id, telefone, acao: 'opt_out_parar' })
-      await enviarTexto(de, 'Pronto, você não receberá mais mensagens por aqui. Se mudar de ideia, é só falar com a recepção. 👋')
+      await enviarTexto(de, 'Pronto, você não receberá mais mensagens por aqui. Se mudar de ideia, é só me chamar de novo neste mesmo WhatsApp. 👋')
       return
     }
 
@@ -239,7 +239,7 @@ async function resolverAmbiguidade(
 
 // Mensagem para quem não é cliente (CPF não encontrado no cadastro).
 const MSG_NAO_CLIENTE =
-  'Não localizei esse CPF no nosso cadastro 🤔. Por aqui, sem cadastro, eu consigo te ajudar só com informações gerais (modalidades, valores, endereços) — para reservar treino, ver saldo e usar tudo, é preciso estar cadastrado(a). É rapidinho e dá pra fazer aqui: https://www.justclubct.com.br/cadastro — use o mesmo número deste WhatsApp que, assim que terminar, eu já te reconheço por aqui! 😊'
+  'Não localizei esse CPF no nosso cadastro 🤔. Por aqui, sem cadastro, eu consigo te ajudar só com informações gerais (modalidades, valores, endereços) — para reservar treino, ver saldo e usar tudo na Just Club & CT, é preciso estar cadastrado(a). É rapidinho e dá pra fazer aqui: https://www.justclubct.com.br/cadastro — use o mesmo número deste WhatsApp que, assim que terminar, eu já te reconheço por aqui! 😊'
 
 /**
  * Resolve a identidade quando o telefone NÃO está cadastrado:
@@ -266,7 +266,7 @@ async function resolverPorCadastro(
     if (pareceNaoCliente(texto)) {
       await enviarTexto(de, MSG_NAO_CLIENTE)
     } else {
-      await enviarTexto(de, 'Oi! 😊 Não encontrei seu número no nosso cadastro. Você já é aluno(a) da Just CT? Se sim, me manda seu *nome completo* e *CPF* numa mensagem só, que eu confiro aqui. Se ainda não for aluno(a), me avisa que eu te conto como começar!')
+      await enviarTexto(de, 'Oi! 😊 Não encontrei seu número no nosso cadastro. Você já treina com a gente na Just Club & CT? Se sim, me manda seu *nome completo* e *CPF* numa mensagem só, que eu confiro aqui. Se ainda não for aluno(a), me avisa que eu te conto como começar!')
     }
     return null
   }
