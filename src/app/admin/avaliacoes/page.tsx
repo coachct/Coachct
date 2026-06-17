@@ -17,6 +17,17 @@ function dataBR(d: string | null): string {
   return dia && m && a ? `${dia}/${m}/${a}` : d
 }
 
+function dataHoraBR(ts: string | null): string {
+  if (!ts) return '—'
+  const dt = new Date(ts)
+  if (isNaN(dt.getTime())) return '—'
+  const dia = String(dt.getDate()).padStart(2, '0')
+  const mes = String(dt.getMonth() + 1).padStart(2, '0')
+  const hora = String(dt.getHours()).padStart(2, '0')
+  const min = String(dt.getMinutes()).padStart(2, '0')
+  return `${dia}/${mes} ${hora}:${min}`
+}
+
 function media(vals: (number | null)[]): { texto: string; n: number } {
   const validos = vals.filter((v): v is number => v != null)
   if (!validos.length) return { texto: '—', n: 0 }
@@ -39,6 +50,7 @@ export default function AvaliacoesPage() {
   const [fCoach, setFCoach] = useState('')
   const [fInicio, setFInicio] = useState('')
   const [fFim, setFFim] = useState('')
+  const [fOrdem, setFOrdem] = useState<'recente' | 'aula'>('recente')
 
   useEffect(() => {
     async function load() {
@@ -46,8 +58,8 @@ export default function AvaliacoesPage() {
         supabase.from('avaliacoes_aula')
           .select('*, clientes(nome)')
           .eq('dispensado', false)
-          .order('data_aula', { ascending: false })
           .order('criado_em', { ascending: false })
+          .order('data_aula', { ascending: false })
           .limit(500),
         supabase.from('unidades').select('id, nome').order('nome'),
       ])
@@ -72,6 +84,9 @@ export default function AvaliacoesPage() {
     if (fInicio && (a.data_aula || '') < fInicio) return false
     if (fFim && (a.data_aula || '') > fFim) return false
     return true
+  }).sort((a, b) => {
+    if (fOrdem === 'recente') return (b.criado_em || '').localeCompare(a.criado_em || '')
+    return (b.data_aula || '').localeCompare(a.data_aula || '') || (b.criado_em || '').localeCompare(a.criado_em || '')
   })
 
   const mAula = media(filtradas.map(a => a.nota_aula))
@@ -124,6 +139,13 @@ export default function AvaliacoesPage() {
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-400 uppercase tracking-wide">Até</label>
             <input type="date" className={selectCls} value={fFim} onChange={e => setFFim(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-400 uppercase tracking-wide">Ordenar por</label>
+            <select className={selectCls} value={fOrdem} onChange={e => setFOrdem(e.target.value as 'recente' | 'aula')}>
+              <option value="recente">Últimas avaliadas</option>
+              <option value="aula">Data da aula</option>
+            </select>
           </div>
           {(fUnidade || fCoach || fInicio || fFim) && (
             <button
@@ -184,7 +206,10 @@ export default function AvaliacoesPage() {
               <tbody className="divide-y divide-gray-50">
                 {filtradas.map((a) => (
                   <tr key={a.id}>
-                    <td className="py-2.5 pr-3 text-gray-500 whitespace-nowrap">{dataBR(a.data_aula)}{a.horario ? ` ${a.horario}` : ''}</td>
+                    <td className="py-2.5 pr-3 text-gray-500 whitespace-nowrap">
+                      {dataBR(a.data_aula)}{a.horario ? ` ${a.horario}` : ''}
+                      <div className="text-xs text-gray-400">avaliada {dataHoraBR(a.criado_em)}</div>
+                    </td>
                     <td className="py-2.5 pr-3 text-gray-700 whitespace-nowrap">
                       {tipoLabel(a.tipo_aula)}
                       <div className="text-xs text-gray-400">{unidades.find(u => u.id === a.unidade_id)?.nome || ''}</div>
