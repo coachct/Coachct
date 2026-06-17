@@ -33,7 +33,7 @@ export default function CobrancaNoShowPage() {
   const [aba,           setAba]           = useState<AbaAtiva>('ct')
   const [faltas,        setFaltas]        = useState<any[]>([])
   const [loadingFaltas, setLoadingFaltas] = useState(false)
-  const [filtroPeriodo, setFiltroPeriodo] = useState<FiltroPeriodo>('mes')
+  const [filtroPeriodo, setFiltroPeriodo] = useState<FiltroPeriodo>('hoje')
   const [filtroStatus,  setFiltroStatus]  = useState<FiltroStatus>('todos')
 
   const [modalCobranca,  setModalCobranca]  = useState<any>(null)
