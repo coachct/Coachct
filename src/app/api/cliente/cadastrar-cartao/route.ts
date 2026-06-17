@@ -338,19 +338,26 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Se TODAS aprovadas, desbloqueia cliente
-      if (resumoPendencias.falhadas === 0 && resumoPendencias.cobradas > 0) {
-        const { error: errDesbloquear } = await supabase
-          .from('clientes')
-          .update({ bloqueado: false, motivo_bloqueio: null })
-          .eq('id', cliente.id)
+    }
 
-        if (errDesbloquear) {
-          console.error('ERRO AO DESBLOQUEAR CLIENTE após cobrança automática:', errDesbloquear)
-          // Cobrança já foi feita — não falha a requisição, mas loga para investigação
-        } else {
-          resumoPendencias.cliente_desbloqueado = true
-        }
+    // ── Desbloqueio unificado ──
+    // O bloqueio só existe por FALHA DE COBRANÇA. Agora que o cliente tem um cartão
+    // válido, ele deve ser liberado sempre que NÃO sobrar nenhuma pendência falhando:
+    //   • bloqueado COM pendências, todas pagas agora → libera;
+    //   • bloqueado SEM nenhuma pendência (bloqueio legado/órfão) → libera também,
+    //     em vez de deixá-lo preso sem forma de se resolver sozinho.
+    // Se alguma pendência falhou, mantém bloqueado (ainda há dívida a regularizar).
+    if (cliente.bloqueado && resumoPendencias.falhadas === 0) {
+      const { error: errDesbloquear } = await supabase
+        .from('clientes')
+        .update({ bloqueado: false, motivo_bloqueio: null })
+        .eq('id', cliente.id)
+
+      if (errDesbloquear) {
+        console.error('ERRO AO DESBLOQUEAR CLIENTE após cadastro de cartão:', errDesbloquear)
+        // Cartão já foi salvo e pendências já cobradas — não falha a requisição, só loga.
+      } else {
+        resumoPendencias.cliente_desbloqueado = true
       }
     }
 

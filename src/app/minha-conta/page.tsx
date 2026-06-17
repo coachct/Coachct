@@ -500,12 +500,12 @@ export default function MinhaContaPage() {
             <div style={{background:'#120d00',border:'1.5px solid #ffaa0055',borderRadius:14,padding:'1.25rem',marginBottom:'1.5rem',animation:'fadeIn .2s ease'}}>
               <div style={{display:'flex',gap:12,alignItems:'flex-start'}}>
                 <span style={{fontSize:22,flexShrink:0,animation:'pulse 2s ease infinite'}}>⚠️</span>
-                <div>
-                  <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:18,color:AMARELO,letterSpacing:1,marginBottom:4}}>CONTA BLOQUEADA</div>
-                  <div style={{fontSize:13,color:'#ffddaa',lineHeight:1.6,marginBottom:8}}>{cliente.motivo_bloqueio||'Sua conta está temporariamente bloqueada.'}</div>
-                  <div style={{background:'#0a0700',border:`1px solid ${AMARELO}33`,borderRadius:8,padding:'0.6rem 0.85rem',fontSize:12,color:'#ffcc88'}}>
-                    Compareça à recepção da sua unidade para regularizar.
-                  </div>
+                <div style={{flex:1}}>
+                  <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:18,color:AMARELO,letterSpacing:1,marginBottom:4}}>REGULARIZE PARA LIBERAR</div>
+                  <div style={{fontSize:13,color:'#ffddaa',lineHeight:1.6,marginBottom:'1rem'}}>{cliente.motivo_bloqueio||'Há uma multa de falta a regularizar. Cadastre ou atualize seu cartão para acertar o pagamento e liberar sua conta.'}</div>
+                  <button onClick={()=>router.push('/cadastrar-cartao')} style={{width:'100%',background:AMARELO,color:'#000',border:'none',borderRadius:10,padding:'0.75rem',fontWeight:700,fontSize:14,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
+                    💳 Cadastrar/atualizar cartão e regularizar →
+                  </button>
                 </div>
               </div>
             </div>

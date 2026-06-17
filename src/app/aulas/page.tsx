@@ -514,16 +514,16 @@ function AulasPageInner() {
         {user && cliente?.bloqueado && cobrancasPend.length === 0 && (
           <div style={{ background:'#1a1000', border:`2px solid ${AMARELO}`, borderRadius:16, padding:'1.5rem', marginBottom:'1.5rem' }}>
             <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:'0.75rem' }}>
-              <div style={{ fontSize:32 }}>⏳</div>
+              <div style={{ fontSize:32 }}>🔒</div>
               <div>
-                <div style={{ fontSize:18, color:AMARELO, fontWeight:700, fontFamily:"'Bebas Neue', sans-serif", letterSpacing:1 }}>AGUARDANDO REGULARIZAÇÃO</div>
+                <div style={{ fontSize:18, color:AMARELO, fontWeight:700, fontFamily:"'Bebas Neue', sans-serif", letterSpacing:1 }}>REGULARIZE PARA LIBERAR</div>
                 <div style={{ fontSize:13, color:'#ccc' }}>Conta temporariamente bloqueada</div>
               </div>
             </div>
-            <div style={{ fontSize:14, color:'#ddd', lineHeight:1.7, marginBottom:'0.75rem' }}>{cliente?.motivo_bloqueio || 'Você teve uma falta sem cancelamento prévio.'}</div>
-            <div style={{ background:'#0a0500', border:`1px solid ${AMARELO}33`, borderRadius:10, padding:'0.85rem 1rem', fontSize:13, color:'#aaa' }}>
-              ⏳ <strong style={{ color:'#fff' }}>Aguarde a regularização da cobrança</strong> para fazer novas reservas.
-            </div>
+            <div style={{ fontSize:14, color:'#ddd', lineHeight:1.7, marginBottom:'1rem' }}>{cliente?.motivo_bloqueio || 'Há uma multa de falta a regularizar. Cadastre ou atualize seu cartão para acertar o pagamento e liberar novas reservas.'}</div>
+            <button onClick={() => router.push('/cadastrar-cartao')} style={{ width:'100%', background:AMARELO, color:'#000', border:'none', borderRadius:10, padding:'0.85rem', fontWeight:700, fontSize:14, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
+              💳 Cadastrar/atualizar cartão e regularizar
+            </button>
           </div>
         )}
 

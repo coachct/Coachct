@@ -220,7 +220,17 @@ export async function POST(req: NextRequest) {
         criado_por: perfil.id, observacao: `reserva_id: ${reserva_id}`,
       })
 
-      return NextResponse.json({ error: errMsg, cobranca_pendente_criada: true }, { status: 400 })
+      // Falha de cobrança é o ÚNICO gatilho de bloqueio (falta isolada nunca bloqueia).
+      // Bloqueia o cliente para que o banner vermelho apareça e ele possa pagar sozinho
+      // em /cadastrar-cartao (reprocessa a pendência e desbloqueia automaticamente).
+      await supabase.from('clientes')
+        .update({
+          bloqueado: true,
+          motivo_bloqueio: 'Multa não paga: o pagamento da sua falta foi recusado. Atualize seu cartão para liberar novos agendamentos.',
+        })
+        .eq('id', cliente.id)
+
+      return NextResponse.json({ error: errMsg, cobranca_pendente_criada: true, cliente_bloqueado: true }, { status: 400 })
     }
 
     // SUCESSO — Insere venda
