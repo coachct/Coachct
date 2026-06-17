@@ -123,6 +123,24 @@ export async function buscarClientePorId(
   return data as ClienteIdentificado
 }
 
+/**
+ * Busca um cliente pelo CPF (no banco o CPF é guardado só com dígitos).
+ * Retorna null se não achar ou se houver mais de um (não chuta).
+ */
+export async function buscarClientePorCpf(
+  supabase: SupabaseClient,
+  cpfRaw: string,
+): Promise<ClienteIdentificado | null> {
+  const cpf = String(cpfRaw ?? '').replace(/\D/g, '')
+  if (cpf.length !== 11) return null
+  const { data, error } = await supabase
+    .from('clientes')
+    .select('id, nome, email, telefone, bloqueado, motivo_bloqueio, whatsapp_opt_out, lgpd_consentimento_em')
+    .eq('cpf', cpf)
+  if (error || !data || data.length !== 1) return null
+  return data[0] as ClienteIdentificado
+}
+
 // ---------------------------------------------------------------------------
 // Saldo de créditos
 // ---------------------------------------------------------------------------

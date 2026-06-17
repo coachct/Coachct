@@ -13,6 +13,7 @@ import {
   createServiceSupabase,
   identificarClientePorTelefone,
   buscarClientePorId,
+  buscarClientePorCpf,
   normalizarTelefone,
   registrarAcessoLgpd,
   type ClienteIdentificado,
@@ -116,12 +117,6 @@ async function processar(de: string, texto: string): Promise<void> {
 
     const ident = await identificarClientePorTelefone(supabase, de)
 
-    // Número não cadastrado → orienta (cadastro por CPF fica como melhoria futura).
-    if (ident.status === 'nao_encontrado') {
-      await enviarTexto(de, 'Oi! 😊 Ainda não encontrei seu número no nosso cadastro. Você já é aluno(a) da Just CT? Se sim, me diz seu nome completo e CPF que eu confiro aqui pra você.')
-      return
-    }
-
     let cliente: ClienteIdentificado
     if (ident.status === 'ok') {
       cliente = ident.cliente
@@ -134,6 +129,12 @@ async function processar(de: string, texto: string): Promise<void> {
         await enviarTexto(de, `Oi! Vi mais de um cadastro nesse número (${nomes}). Pra eu te atender certinho, me diz seu primeiro nome? 😊`)
         return
       }
+      cliente = resolvido
+    } else if (ident.status === 'nao_encontrado') {
+      // Número não cadastrado: tenta reconhecer pelo histórico desta conversa;
+      // senão, identifica por CPF + nome; senão, trata como não-cliente (lead).
+      const resolvido = await resolverPorCadastro(supabase, telefone, texto, de)
+      if (!resolvido) return // resolverPorCadastro já respondeu (pediu CPF/nome ou enviou info de lead)
       cliente = resolvido
     } else {
       await enviarTexto(de, 'Tive um probleminha para te identificar agora. Pode tentar de novo em instantes?')
@@ -217,4 +218,112 @@ async function resolverAmbiguidade(
     return pn.length >= 2 && t.includes(pn)
   })
   return porNome ?? null
+}
+
+// Mensagem para quem não é cliente (CPF não encontrado no cadastro).
+const MSG_NAO_CLIENTE =
+  'Não localizei esse CPF no nosso cadastro 🤔. Por aqui, sem cadastro, eu consigo te ajudar só com informações gerais (modalidades, valores, endereços) — para reservar treino, ver saldo e usar tudo, é preciso estar cadastrado(a). É rapidinho e dá pra fazer aqui: https://www.justclubct.com.br/cadastro — use o mesmo número deste WhatsApp que, assim que terminar, eu já te reconheço por aqui! 😊'
+
+/**
+ * Resolve a identidade quando o telefone NÃO está cadastrado:
+ * 1) reconhece pelo histórico (se já se identificou por CPF nesta conversa);
+ * 2) senão, se a mensagem trouxer CPF + nome que batem, identifica e vincula;
+ * 3) senão, pede CPF+nome (ou manda info de não-cliente).
+ * Retorna o cliente quando identificado; null quando já respondeu ao usuário.
+ */
+async function resolverPorCadastro(
+  supabase: SupabaseClient,
+  telefone: string,
+  texto: string,
+  de: string,
+): Promise<ClienteIdentificado | null> {
+  // 1. Já vinculado nesta conversa? (mensagem anterior com cliente_id)
+  const vinculado = await clienteVinculadoPorHistorico(supabase, telefone)
+  if (vinculado) return vinculado
+
+  // 2. A mensagem traz um CPF?
+  const cpf = extrairCpf(texto)
+  if (!cpf) {
+    // Sem CPF: se a pessoa sinaliza que não é aluno, manda info de não-cliente;
+    // senão, pede nome + CPF para tentar identificar.
+    if (pareceNaoCliente(texto)) {
+      await enviarTexto(de, MSG_NAO_CLIENTE)
+    } else {
+      await enviarTexto(de, 'Oi! 😊 Não encontrei seu número no nosso cadastro. Você já é aluno(a) da Just CT? Se sim, me manda seu *nome completo* e *CPF* numa mensagem só, que eu confiro aqui. Se ainda não for aluno(a), me avisa que eu te conto como começar!')
+    }
+    return null
+  }
+
+  // 3. Tem CPF: procura no cadastro.
+  const achado = await buscarClientePorCpf(supabase, cpf)
+  if (!achado) {
+    await enviarTexto(de, MSG_NAO_CLIENTE)
+    return null
+  }
+
+  // 4. Achou: por segurança, confere o nome na mesma mensagem.
+  if (!nomeBate(texto, achado.nome)) {
+    await enviarTexto(de, 'Achei um cadastro com esse CPF! 😊 Por segurança, me reenvia seu *nome completo* junto com o *CPF* na mesma mensagem, do jeitinho que está no cadastro, que eu confirmo que é você.')
+    return null
+  }
+
+  // 5. Confirmado. O vínculo é gravado pela salvarMensagem (com cliente_id) lá no
+  //    fluxo principal — assim, nas próximas conversas, o passo 1 já reconhece.
+  await registrarAcessoLgpd(supabase, { clienteId: achado.id, telefone, acao: 'wa_vinculo_cpf' })
+  return achado
+}
+
+/** Cliente já vinculado a este telefone numa mensagem anterior (cliente_id salvo). */
+async function clienteVinculadoPorHistorico(
+  supabase: SupabaseClient,
+  telefone: string,
+): Promise<ClienteIdentificado | null> {
+  const { data } = await supabase
+    .from('whatsapp_mensagens')
+    .select('cliente_id')
+    .eq('telefone', telefone)
+    .not('cliente_id', 'is', null)
+    .order('criado_em', { ascending: false })
+    .limit(1)
+  const id = (data as any)?.[0]?.cliente_id
+  if (!id) return null
+  return await buscarClientePorId(supabase, id)
+}
+
+/** Extrai um CPF (11 dígitos) da mensagem — aceita formatado (000.000.000-00) ou solto. */
+function extrairCpf(texto: string): string | null {
+  const fmt = texto.match(/\d{3}\.?\d{3}\.?\d{3}-?\d{2}/)
+  if (fmt) {
+    const d = fmt[0].replace(/\D/g, '')
+    if (d.length === 11) return d
+  }
+  const solto = texto.replace(/\D/g, ' ').match(/(?:^|\s)(\d{11})(?:\s|$)/)
+  return solto ? solto[1] : null
+}
+
+/**
+ * Confere se o nome do cadastro aparece na mensagem (segurança leve junto do CPF).
+ * Exige o primeiro nome e, havendo sobrenome, também o último. Sem acento/caixa.
+ */
+function nomeBate(texto: string, nome: string): boolean {
+  const norm = (s: string) =>
+    String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9\s]/g, ' ')
+  const tokens = new Set(norm(texto).split(/\s+/).filter((w) => w.length >= 3))
+  const partes = norm(nome).split(/\s+/).filter((w) => w.length >= 3)
+  if (!partes.length) return false
+  const temPrimeiro = tokens.has(partes[0])
+  if (partes.length === 1) return temPrimeiro
+  return temPrimeiro && tokens.has(partes[partes.length - 1])
+}
+
+/** Heurística: a mensagem sinaliza que a pessoa ainda NÃO é aluno(a)? */
+function pareceNaoCliente(texto: string): boolean {
+  const t = String(texto ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  return [
+    'nao sou aluno', 'nao sou cliente', 'ainda nao sou', 'nao sou', 'nunca fui',
+    'nao tenho cadastro', 'nao tenho plano', 'nao sou matriculado', 'nao estou matriculado',
+    'quero conhecer', 'gostaria de conhecer', 'quero saber dos planos', 'quero saber mais',
+    'quero comecar', 'gostaria de comecar', 'primeira vez', 'nao sou matricula', 'novo aqui',
+    'quero me matricular', 'como faco para ser', 'como me torno', 'quero treinar ai',
+  ].some((p) => t.includes(p))
 }
