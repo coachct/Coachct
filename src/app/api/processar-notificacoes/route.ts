@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
+import { enviarTexto } from '@/lib/whatsapp/canal'
 
 const REMETENTE = 'Just Club & CT <nao-responda@justct.com.br>'
 const BASE_URL  = process.env.NEXT_PUBLIC_BASE_URL || 'https://coach-ct.vercel.app'
@@ -150,17 +151,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ sucesso: true, processadas: 0, mensagem: 'Nenhuma notificação pendente' })
   }
 
-  // Busca emails dos clientes (sempre enviamos email, independente do canal)
+  // Busca dados dos clientes (email para o canal email; telefone para o WhatsApp)
   const clienteIds = [...new Set(notifs.map(n => n.cliente_id).filter(Boolean))]
   const { data: clientes } = await supabase
     .from('clientes')
-    .select('id, nome, email')
+    .select('id, nome, email, telefone')
     .in('id', clienteIds)
 
-  const clienteMap: Record<string, { nome: string; email: string }> = {}
+  const clienteMap: Record<string, { nome: string; email: string | null; telefone: string | null }> = {}
   for (const c of (clientes || [])) {
-    if (c.email) clienteMap[c.id] = { nome: c.nome, email: c.email }
+    clienteMap[c.id] = { nome: c.nome, email: c.email, telefone: c.telefone }
   }
+
+  const marcar = (id: string, campos: Record<string, any>) =>
+    supabase.from('notificacoes_pendentes').update(campos).eq('id', id)
 
   let enviadas = 0
   let erros = 0
@@ -168,13 +172,28 @@ export async function POST(req: NextRequest) {
   for (const notif of notifs) {
     const cliente = clienteMap[notif.cliente_id]
 
+    // ── Canal WhatsApp (promoção da fila): tenta WhatsApp e cai para email se
+    //    não houver telefone válido ou a Meta recusar (ex.: fora da janela de 24h).
+    if (notif.canal === 'whatsapp') {
+      const tel = String(notif.destino || cliente?.telefone || '').replace(/\D/g, '')
+      const telValido = tel.length === 10 || tel.length === 11
+      const enviadoWa = telValido ? await enviarTexto('55' + tel, notif.mensagem) : false
+
+      if (enviadoWa) {
+        await marcar(notif.id, { status: 'enviado', enviado_em: new Date().toISOString() })
+        enviadas++
+        continue
+      }
+      // Sem telefone ou WhatsApp falhou → segue para o fallback de email abaixo.
+    }
+
+    // ── Canal email (padrão, e fallback do WhatsApp)
     if (!cliente?.email) {
-      // Cliente sem email — marca como erro e segue
-      await supabase.from('notificacoes_pendentes').update({
+      await marcar(notif.id, {
         status: 'erro',
-        erro: 'Cliente sem email cadastrado',
+        erro: 'Cliente sem telefone/email para o canal solicitado',
         enviado_em: new Date().toISOString(),
-      }).eq('id', notif.id)
+      })
       erros++
       continue
     }
@@ -189,17 +208,14 @@ export async function POST(req: NextRequest) {
     })
 
     if (errEmail) {
-      await supabase.from('notificacoes_pendentes').update({
+      await marcar(notif.id, {
         status: 'erro',
         erro: errEmail.message || 'Erro desconhecido do Resend',
         enviado_em: new Date().toISOString(),
-      }).eq('id', notif.id)
+      })
       erros++
     } else {
-      await supabase.from('notificacoes_pendentes').update({
-        status: 'enviado',
-        enviado_em: new Date().toISOString(),
-      }).eq('id', notif.id)
+      await marcar(notif.id, { status: 'enviado', enviado_em: new Date().toISOString() })
       enviadas++
     }
   }

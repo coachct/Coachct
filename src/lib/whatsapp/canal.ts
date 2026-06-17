@@ -8,13 +8,17 @@ import type { TurnoConversa } from './agente'
 
 const GRAPH_VERSION = 'v21.0'
 
-/** Envia uma mensagem de texto pelo WhatsApp (Meta Graph API). */
-export async function enviarTexto(para: string, texto: string): Promise<void> {
+/**
+ * Envia uma mensagem de texto pelo WhatsApp (Meta Graph API).
+ * Retorna true se a Meta aceitou o envio, false caso contrário (config ausente,
+ * fora da janela de 24h, etc.) — permite ao chamador cair para um canal alternativo.
+ */
+export async function enviarTexto(para: string, texto: string): Promise<boolean> {
   const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID
   const token = process.env.WHATSAPP_TOKEN
   if (!phoneId || !token) {
     console.error('[whatsapp/canal] WHATSAPP_PHONE_NUMBER_ID ou WHATSAPP_TOKEN ausente')
-    return
+    return false
   }
   const resp = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${phoneId}/messages`, {
     method: 'POST',
@@ -32,7 +36,9 @@ export async function enviarTexto(para: string, texto: string): Promise<void> {
   if (!resp.ok) {
     const erro = await resp.text().catch(() => '')
     console.error(`[whatsapp/canal] falha ao enviar (${resp.status}): ${erro}`)
+    return false
   }
+  return true
 }
 
 /**
