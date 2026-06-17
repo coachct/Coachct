@@ -44,7 +44,6 @@ export default function LandingPage() {
   const isLogado = !!perfil
 
   const [unidades, setUnidades] = useState<any[]>([])
-  const [popupAberto, setPopupAberto] = useState(false)
 
   useEffect(() => {
     async function carregarUnidades() {
@@ -63,21 +62,6 @@ export default function LandingPage() {
     }
     carregarUnidades()
   }, [])
-
-  // Popup de aviso de sistema novo — aparece uma vez por navegador
-  useEffect(() => {
-    try {
-      const visto = window.localStorage.getItem('popup_sistema_novo_visto')
-      if (!visto) setPopupAberto(true)
-    } catch (e) {
-      setPopupAberto(true)
-    }
-  }, [])
-
-  function fecharPopup() {
-    try { window.localStorage.setItem('popup_sistema_novo_visto', '1') } catch (e) {}
-    setPopupAberto(false)
-  }
 
   const s: Record<string, any> = {
     page: { background: '#080808', minHeight: '100vh', color: '#f0f0f0', fontFamily: "'DM Sans', sans-serif" },
@@ -584,46 +568,6 @@ export default function LandingPage() {
           )}
         </div>
       </footer>
-
-      {/* POPUP GO-LIVE — aparece 1x por navegador. Remover este bloco em 10-15 dias. */}
-      {popupAberto && (
-        <div className="popup-overlay" onClick={fecharPopup}>
-          <div className="popup-card" onClick={(e) => e.stopPropagation()}>
-            <button className="popup-close" onClick={fecharPopup} aria-label="Fechar">✕</button>
-
-            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(26px, 4vw, 36px)', color: ACCENT, lineHeight: 1.1, letterSpacing: 1.5, marginBottom: '1.25rem', textShadow: `0 0 30px ${ACCENT}66`, textAlign: 'center' as const }}>
-              🎉 SISTEMA NOVO NO AR!
-            </div>
-
-            <div style={{ fontSize: 14, color: '#fff', lineHeight: 1.7, marginBottom: '0.85rem' }}>
-              <strong>Já é cliente Just e possui cadastro?</strong> Só clicar em <strong>Login</strong> e depois em <strong>"Esqueci minha senha"</strong> — acesse com sua senha provisória que chegará no seu email de cadastro.
-            </div>
-            <div style={{ fontSize: 14, color: '#fff', lineHeight: 1.7, marginBottom: '0.85rem' }}>
-              <strong>Primeira vez por aqui?</strong> Cadastre-se normalmente e agende seu primeiro treino.
-            </div>
-            <div style={{ fontSize: 13, color: '#bbb', lineHeight: 1.6, marginBottom: '1.5rem' }}>
-              Qualquer dúvida nos primeiros dias, fale com a gente no direct do Instagram 👇
-            </div>
-
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const, marginBottom: '0.85rem' }}>
-              <button onClick={() => { fecharPopup(); router.push('/login') }}
-                style={{ flex: 1, minWidth: 140, background: ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                Fazer login →
-              </button>
-              <a href="https://instagram.com/justclub.ct" target="_blank" rel="noopener noreferrer" style={{ flex: 1, minWidth: 140 }} onClick={fecharPopup}>
-                <button style={{ width: '100%', background: 'transparent', color: '#fff', border: '1.5px solid #333', borderRadius: 10, padding: '0.85rem', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                  📩 Falar no Instagram
-                </button>
-              </a>
-            </div>
-
-            <button onClick={fecharPopup}
-              style={{ width: '100%', background: 'transparent', color: '#888', border: 'none', padding: '0.5rem', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-              Entendi, ver o site →
-            </button>
-          </div>
-        </div>
-      )}
 
     </div>
   )
