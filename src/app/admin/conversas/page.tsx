@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
-import { MessageCircle, Search, Bot, User } from 'lucide-react'
+import { MessageCircle, Search, Bot, User, Send, Headset } from 'lucide-react'
 
 // Quantas mensagens trazer (volume ainda baixo; subir depois se precisar).
 const LIMITE_MSGS = 3000
@@ -15,6 +15,7 @@ type Msg = {
   role: 'user' | 'assistant'
   conteudo: string
   criado_em: string
+  autor?: string | null
 }
 
 type Conversa = {
@@ -53,10 +54,13 @@ export default function ConversasPage() {
   const supabase = createClient()
 
   const [msgs, setMsgs] = useState<Msg[]>([])
+  const [controle, setControle] = useState<Record<string, boolean>>({})
   const [carregando, setCarregando] = useState(true)
   const [busca, setBusca] = useState('')
   const [desde, setDesde] = useState('') // AAAA-MM-DD opcional
   const [telSel, setTelSel] = useState<string | null>(null)
+  const [rascunho, setRascunho] = useState('')
+  const [enviando, setEnviando] = useState(false)
 
   useEffect(() => {
     if (!loading && perfil && perfil.role !== 'admin' && perfil.role !== 'coordenadora') router.push('/')
@@ -68,7 +72,7 @@ export default function ConversasPage() {
     setCarregando(true)
     const { data: linhas } = await supabase
       .from('whatsapp_mensagens')
-      .select('id, telefone, cliente_id, role, conteudo, criado_em')
+      .select('*')
       .order('criado_em', { ascending: false })
       .limit(LIMITE_MSGS)
     const lista = (linhas || []) as Msg[]
@@ -80,16 +84,57 @@ export default function ConversasPage() {
       const { data: cls } = await supabase.from('clientes').select('id, nome').in('id', cids)
       for (const c of (cls || [])) nomeMap[c.id] = c.nome
     }
-    // Injeta o nome em cada mensagem (quando houver cliente_id).
     setMsgs(lista.map((m) => ({ ...m, _nome: m.cliente_id ? nomeMap[m.cliente_id] : null } as any)))
+
+    // Estado de atendimento humano por telefone.
+    const { data: ctrl } = await supabase.from('whatsapp_controle').select('telefone, modo_humano')
+    const cmap: Record<string, boolean> = {}
+    for (const c of (ctrl || [])) cmap[(c as any).telefone] = (c as any).modo_humano
+    setControle(cmap)
+
     setCarregando(false)
+  }
+
+  async function toggleHumano(telefone: string, ligar: boolean) {
+    setControle((m) => ({ ...m, [telefone]: ligar })) // otimista
+    const { error } = await supabase
+      .from('whatsapp_controle')
+      .upsert({ telefone, modo_humano: ligar, atualizado_em: new Date().toISOString() }, { onConflict: 'telefone' })
+    if (error) {
+      setControle((m) => ({ ...m, [telefone]: !ligar })) // desfaz
+      alert('Não consegui mudar o atendimento agora. Tente de novo.')
+    }
+  }
+
+  async function enviarMensagem() {
+    const txt = rascunho.trim()
+    if (!txt || !telSel || enviando) return
+    setEnviando(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const resp = await fetch('/api/admin/whatsapp/enviar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token ?? ''}` },
+        body: JSON.stringify({ telefone: telSel, texto: txt }),
+      })
+      if (resp.ok) {
+        setRascunho('')
+        await carregar()
+      } else {
+        const e = await resp.json().catch(() => ({}))
+        alert(e.error || 'Falha ao enviar a mensagem.')
+      }
+    } catch {
+      alert('Falha ao enviar a mensagem.')
+    } finally {
+      setEnviando(false)
+    }
   }
 
   // Agrupa por telefone → lista de conversas (mais recente primeiro).
   const conversas = useMemo<Conversa[]>(() => {
     const porTel: Record<string, Conversa> = {}
     for (const m of msgs) {
-      // msgs já vem do mais novo pro mais antigo → a 1ª que vejo de cada tel é a última.
       if (!porTel[m.telefone]) {
         porTel[m.telefone] = {
           telefone: m.telefone,
@@ -125,6 +170,7 @@ export default function ConversasPage() {
   }, [msgs, telSel])
 
   const convSel = conversas.find((c) => c.telefone === telSel) || null
+  const humanoAtivo = telSel ? !!controle[telSel] : false
 
   if (loading) return (
     <div className="flex items-center justify-center h-screen">
@@ -182,13 +228,14 @@ export default function ConversasPage() {
                 conversasFiltradas.map((c) => (
                   <button
                     key={c.telefone}
-                    onClick={() => setTelSel(c.telefone)}
+                    onClick={() => { setTelSel(c.telefone); setRascunho('') }}
                     className={`w-full text-left px-4 py-3 border-b border-gray-50 transition-colors ${
                       telSel === c.telefone ? 'bg-primary-50' : 'hover:bg-gray-50'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <div className="text-sm font-medium text-gray-900 truncate">
+                      <div className="text-sm font-medium text-gray-900 truncate flex items-center gap-1.5">
+                        {controle[c.telefone] && <Headset size={13} className="text-green-600 flex-shrink-0" />}
                         {c.nome || 'Não identificado'}
                       </div>
                       <div className="text-[11px] text-gray-400 flex-shrink-0">{fmtDataHora(c.ultimaEm)}</div>
@@ -210,17 +257,32 @@ export default function ConversasPage() {
               </div>
             ) : (
               <>
-                <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-semibold text-gray-900">{convSel.nome || 'Não identificado'}</div>
+                <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-gray-900 truncate">{convSel.nome || 'Não identificado'}</div>
                     <div className="text-xs text-gray-400">{fmtTel(convSel.telefone)} · {convSel.total} mensagens</div>
                   </div>
+                  <button
+                    onClick={() => toggleHumano(convSel.telefone, !humanoAtivo)}
+                    className={`flex-shrink-0 px-3 py-2 rounded-xl text-xs font-medium border transition-all ${
+                      humanoAtivo
+                        ? 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'
+                        : 'bg-green-600 text-white border-green-600 hover:bg-green-700'
+                    }`}
+                  >
+                    {humanoAtivo ? 'Devolver ao assistente' : 'Assumir conversa'}
+                  </button>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
                   {thread.map((m, i) => {
                     const novoDia = i === 0 || diaStr(thread[i - 1].criado_em) !== diaStr(m.criado_em)
                     const ehCliente = m.role === 'user'
+                    const ehHumano = !ehCliente && m.autor === 'humano'
+                    const bolha = ehCliente ? 'bg-white border border-gray-200' : ehHumano ? 'bg-green-600 text-white' : 'bg-primary-600 text-white'
+                    const tagCor = ehCliente ? 'text-gray-400' : ehHumano ? 'text-green-100' : 'text-primary-100'
+                    const horaCor = ehCliente ? 'text-gray-300' : ehHumano ? 'text-green-200' : 'text-primary-200'
+                    const quem = ehCliente ? (convSel.nome || 'Cliente') : ehHumano ? 'Atendente' : 'Assistente'
                     return (
                       <div key={m.id}>
                         {novoDia && (
@@ -231,23 +293,45 @@ export default function ConversasPage() {
                           </div>
                         )}
                         <div className={`flex ${ehCliente ? 'justify-start' : 'justify-end'}`}>
-                          <div className={`max-w-[78%] rounded-2xl px-3.5 py-2 ${
-                            ehCliente ? 'bg-white border border-gray-200' : 'bg-primary-600 text-white'
-                          }`}>
-                            <div className={`flex items-center gap-1.5 mb-0.5 text-[10px] uppercase tracking-wide ${ehCliente ? 'text-gray-400' : 'text-primary-100'}`}>
-                              {ehCliente ? <User size={11} /> : <Bot size={11} />}
-                              {ehCliente ? (convSel.nome || 'Cliente') : 'Assistente'}
+                          <div className={`max-w-[78%] rounded-2xl px-3.5 py-2 ${bolha}`}>
+                            <div className={`flex items-center gap-1.5 mb-0.5 text-[10px] uppercase tracking-wide ${tagCor}`}>
+                              {ehCliente ? <User size={11} /> : ehHumano ? <Headset size={11} /> : <Bot size={11} />}
+                              {quem}
                             </div>
                             <div className="text-sm whitespace-pre-wrap break-words">{m.conteudo}</div>
-                            <div className={`text-[10px] mt-1 text-right ${ehCliente ? 'text-gray-300' : 'text-primary-200'}`}>
-                              {fmtHora(m.criado_em)}
-                            </div>
+                            <div className={`text-[10px] mt-1 text-right ${horaCor}`}>{fmtHora(m.criado_em)}</div>
                           </div>
                         </div>
                       </div>
                     )
                   })}
                 </div>
+
+                {/* Rodapé: responder (modo humano) ou aviso (modo assistente) */}
+                {humanoAtivo ? (
+                  <div className="border-t border-gray-100 p-3 flex items-end gap-2">
+                    <textarea
+                      value={rascunho}
+                      onChange={(e) => setRascunho(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarMensagem() } }}
+                      rows={1}
+                      placeholder="Escreva sua resposta… (Enter envia, Shift+Enter quebra linha)"
+                      className="flex-1 resize-none px-3 py-2 text-sm rounded-xl border border-gray-200 focus:border-primary-400 focus:outline-none max-h-32"
+                    />
+                    <button
+                      onClick={enviarMensagem}
+                      disabled={enviando || !rascunho.trim()}
+                      className="flex-shrink-0 px-4 py-2 rounded-xl bg-primary-600 text-white text-sm font-medium disabled:opacity-50 flex items-center gap-1.5"
+                    >
+                      <Send size={15} />
+                      {enviando ? 'Enviando…' : 'Enviar'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="border-t border-gray-100 px-4 py-3 text-xs text-gray-400 text-center">
+                    O assistente está respondendo automaticamente. Clique em <span className="font-medium text-gray-600">Assumir conversa</span> para responder você mesmo.
+                  </div>
+                )}
               </>
             )}
           </div>

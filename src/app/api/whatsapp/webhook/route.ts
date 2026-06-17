@@ -152,6 +152,13 @@ async function processar(de: string, texto: string): Promise<void> {
     // Respeita opt-out anterior.
     if (cliente.whatsapp_opt_out) return
 
+    // Atendimento humano ativo nesta conversa: guarda a mensagem (pra aparecer no
+    // painel) e NÃO aciona o agente — quem responde é o atendente, pelo painel.
+    if (await emModoHumano(supabase, telefone)) {
+      await salvarMensagem(supabase, { telefone, clienteId: cliente.id, role: 'user', conteudo: texto })
+      return
+    }
+
     // Primeira interação → aviso de privacidade (LGPD) + registra consentimento.
     let prefixo = ''
     if (!cliente.lgpd_consentimento_em) {
@@ -176,6 +183,16 @@ async function processar(de: string, texto: string): Promise<void> {
     console.error('[whatsapp/webhook] erro no processamento:', e?.message)
     try { await enviarTexto(de, 'Tive um erro aqui. Pode tentar de novo em instantes?') } catch {}
   }
+}
+
+/** Conversa está sob atendimento humano? (whatsapp_controle.modo_humano = true) */
+async function emModoHumano(supabase: SupabaseClient, telefone: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('whatsapp_controle')
+    .select('modo_humano')
+    .eq('telefone', telefone)
+    .maybeSingle()
+  return !!(data as any)?.modo_humano
 }
 
 /** Primeiro nome (para casar identificação em número compartilhado). */
