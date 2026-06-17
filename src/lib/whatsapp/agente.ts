@@ -47,7 +47,7 @@ const MAX_ITERACOES = 6 // trava de segurança contra loop infinito de tools
 function systemPrompt(
   cliente: ClienteIdentificado,
   ctx: ContextoGeral,
-  hoje: { dataStr: string; extenso: string },
+  hoje: { dataStr: string; extenso: string; amanhaStr: string; amanhaExtenso: string },
 ): string {
   const enderecosTxt = ctx.enderecos.length
     ? ctx.enderecos.map((u) => `- ${u.nome}: ${u.endereco ?? 'endereço não cadastrado'}`).join('\n')
@@ -87,8 +87,10 @@ ${cliente.bloqueado ? `ATENÇÃO: este cliente está BLOQUEADO. Motivo: ${client
 - RESERVAR uma aula do JustClub: Lift, Lift for Girls e Running Funcional (neste, escolhendo a posição) — ver a regra abaixo.
 - CANCELAR uma reserva do JustClub — ver a regra abaixo (use proximas_reservas_club para achar o id).
 
-# Data de hoje
-Hoje é ${hoje.extenso} (${hoje.dataStr}). Use isso para entender "hoje", "amanhã", "quinta", etc. e converter para a data no formato AAAA-MM-DD ao usar a ferramenta horarios_disponiveis. O agendamento do Just CT abre para os próximos 14 dias.
+# Data de hoje (fuso de São Paulo — use SEMPRE estas, nunca calcule por conta própria)
+- HOJE é ${hoje.extenso} — ${hoje.dataStr}.
+- AMANHÃ é ${hoje.amanhaExtenso} — ${hoje.amanhaStr}.
+Quando o cliente disser "hoje" use ${hoje.dataStr}; quando disser "amanhã" use ${hoje.amanhaStr}. Para outros dias ("quinta", "dia 20"), conte a partir de HOJE acima. Sempre passe a data no formato AAAA-MM-DD para as ferramentas. O agendamento do Just CT abre para os próximos 14 dias.
 
 # ANTES de confirmar QUALQUER reserva ou agendamento (OBRIGATÓRIO)
 Sempre, antes de pedir o "sim" final, informe de forma curta as regras de cancelamento:
@@ -457,12 +459,23 @@ export async function responderMensagem(params: {
   ])
   const ctx: ContextoGeral = { enderecos, faq }
 
-  // Data de hoje (fuso de SP) para o agente interpretar "amanhã", "quinta", etc.
+  // Data de hoje e de amanhã (fuso de SP) — entregues prontas para o agente não
+  // precisar fazer conta de data (era a origem do "bug noturno": à noite o
+  // servidor em UTC já estava no dia seguinte).
   const { dataStr } = agoraEmSaoPaulo()
-  const extenso = new Intl.DateTimeFormat('pt-BR', {
-    timeZone: 'America/Sao_Paulo', weekday: 'long', day: 'numeric', month: 'long',
-  }).format(new Date())
-  const hoje = { dataStr, extenso }
+  const extensoFmt = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long',
+  })
+  // Ancorado ao meio-dia UTC do dia-calendário de SP → soma de 1 dia é segura.
+  const hojeNoon = new Date(dataStr + 'T12:00:00Z')
+  const amanhaNoon = new Date(hojeNoon.getTime() + 24 * 60 * 60 * 1000)
+  const amanhaStr = amanhaNoon.toISOString().slice(0, 10)
+  const hoje = {
+    dataStr,
+    extenso: extensoFmt.format(hojeNoon),
+    amanhaStr,
+    amanhaExtenso: extensoFmt.format(amanhaNoon),
+  }
 
   const messages: Anthropic.MessageParam[] = [
     ...historico.map((t) => ({ role: t.role, content: t.content })),
