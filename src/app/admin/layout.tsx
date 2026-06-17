@@ -1,6 +1,6 @@
 'use client'
 import SidebarLayout from '@/components/layout/SidebarLayout'
-import { Dumbbell, Footprints, Clock, Users, ShoppingCart, BarChart3, UserCog, BookOpen, Settings } from 'lucide-react'
+import { Dumbbell, Footprints, Clock, Users, ShoppingCart, BarChart3, UserCog, BookOpen, Settings, MessageCircle } from 'lucide-react'
 const nav = [
   {
     label: 'Coach CT',
@@ -40,6 +40,13 @@ const nav = [
       { label: 'Clientes sem treinar', href: '/admin/relatorios/inativos' },
       { label: 'Avaliações de aula',  href: '/admin/avaliacoes' },
       { label: 'Cobrança No-Show',    href: '/admin/cobranca-noshow' },
+    ],
+  },
+  {
+    label: 'WhatsApp',
+    icon: MessageCircle,
+    children: [
+      { label: 'Conversas', href: '/admin/conversas' },
     ],
   },
   {
