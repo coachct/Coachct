@@ -171,11 +171,6 @@ export async function consultarSaldo(
 // Agendamentos (Just CT) e reservas (JustClub)
 // ---------------------------------------------------------------------------
 
-/** Data local YYYY-MM-DD (mesma convenção do app). */
-function dataLocalStr(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
 /**
  * "Agora" no fuso de São Paulo, independente do fuso do servidor (Vercel = UTC).
  * Retorna data (YYYY-MM-DD) e hora (HH:MM) locais de SP.
@@ -197,7 +192,7 @@ export async function proximosAgendamentos(
   clienteId: string,
   opts: { hoje?: string } = {},
 ): Promise<any[]> {
-  const hoje = opts.hoje ?? dataLocalStr(new Date())
+  const hoje = opts.hoje ?? agoraEmSaoPaulo().dataStr
   const { data, error } = await supabase
     .from('agendamentos')
     .select('id, data, horario, status, tipo_credito, unidades(nome)')
@@ -219,7 +214,7 @@ export async function proximasReservasClub(
   clienteId: string,
   opts: { hoje?: string } = {},
 ): Promise<any[]> {
-  const hoje = opts.hoje ?? dataLocalStr(new Date())
+  const hoje = opts.hoje ?? agoraEmSaoPaulo().dataStr
   const { data, error } = await supabase
     .from('club_reservas')
     .select('id, status, posicao, tipo_credito, club_ocorrencias(data, club_aulas(tipo, horario, unidade_id))')
