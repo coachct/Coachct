@@ -47,12 +47,16 @@ export async function listarEnderecos(supabase: SupabaseClient): Promise<Unidade
 function aplicacaoProduto(tipo: string | null, subtipo: string | null): string {
   if (subtipo === 'ilimitado_club') return 'JustClub — aulas coletivas (lift, lift for girls, running funcional)'
   switch (tipo) {
-    case 'credito_coach':
-      return 'Coach CT — personal 1×1 (treino guiado por um coach)'
-    case 'credito_treino':
-      return 'Treino / musculação livre (NÃO é Coach CT personal)'
     case 'coach_ct_pro':
-      return 'Plano Coach CT Pro (assinatura)'
+      return 'Coach CT Pro — treino com coach (personal 1×1)'
+    case 'credito_coach':
+      // CUIDADO: só o crédito avulso é Coach CT (personal). Os planos de "acesso"
+      // (Semestral/Anual Just CT) dão acesso SOMENTE à musculação livre.
+      return subtipo === 'acesso'
+        ? 'Just CT — acesso só à musculação livre (NÃO inclui Coach CT/personal)'
+        : 'Coach CT — personal 1×1 (treino com coach)'
+    case 'credito_treino':
+      return 'Treino / musculação livre (NÃO é Coach CT/personal)'
     default:
       return tipo ?? 'outro'
   }

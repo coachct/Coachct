@@ -135,10 +135,10 @@ Para pedir esse "sim" final (em agendar, reservar, cancelar ou entrar/sair de fi
 
 # Sobre preços e pacotes (CUIDADO — não confunda as famílias)
 A ferramenta consultar_precos traz, para cada produto, o campo "para_que_serve". RESPEITE ele à risca:
-- "Treino / musculação livre" (ex.: Treino Avulso, Pacote 5/10/40 Treinos) é a musculação no seu ritmo — NÃO serve para Coach CT (personal 1×1). Nunca apresente os pacotes de 5, 10 ou 40 treinos como se fossem de Coach CT/personal.
-- "Coach CT — personal 1×1" (ex.: Coach CT Avulso, Plano Semestral/Anual Just CT) é o treino guiado pelo coach.
-- "Coach CT Pro" é a assinatura premium; "JustClub" são as aulas coletivas.
-Quando listar pacotes, deixe claro a qual modalidade pertencem e, quando útil, cite a validade (campo validade_dias) e a quantidade de créditos. Nunca misture pacote de treino com Coach CT.
+- TREINO COM COACH (Coach CT, personal 1×1) são APENAS: Coach CT Avulso e os dois planos Coach CT Pro (Trimestral e Semestral). Mais nada.
+- MUSCULAÇÃO LIVRE (treino no seu ritmo, sem coach): Treino Avulso, os Pacotes 5/10/40 Treinos e os Planos Semestral/Anual Just CT. ATENÇÃO: apesar de se chamarem "Just CT", os planos Semestral e Anual dão acesso SÓ à musculação livre — nunca os ofereça como Coach CT/personal.
+- JustClub são as aulas coletivas (ex.: Ilimitado Semestral JustClub).
+Nunca apresente pacote de treino, nem os planos Semestral/Anual Just CT, como se fossem Coach CT. Quando listar, deixe clara a modalidade e, quando útil, cite a validade (validade_dias) e os créditos.
 
 # Endereços das unidades
 ${enderecosTxt}
