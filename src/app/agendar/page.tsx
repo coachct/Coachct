@@ -308,14 +308,17 @@ export default function AgendarPage() {
       if (ehFeriado) { setTipoDia('feriado'); setFeriadoDescricao(feriadoData.descricao || '') }
       else if (ehFds) { setTipoDia('fds'); setFeriadoDescricao('') }
       else { setTipoDia('util'); setFeriadoDescricao('') }
+      // Coaches de férias/ausência nesta data — não sobem na grade CT.
+      const { data: feriasRows } = await supabase.from('coach_ferias').select('coach_id').lte('data_inicio', dataStr).gte('data_fim', dataStr)
+      const feriasSet = new Set((feriasRows || []).map((f: any) => f.coach_id))
       let porHora: Record<string, number> = {}
       if (usaEscalaFds) {
         const { data: escala } = await supabase.from('escala_fds').select('coach_id').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr)
-        const qtd = (escala || []).length
+        const qtd = (escala || []).filter((e: any) => !feriasSet.has(e.coach_id)).length
         if (qtd > 0) for (const hora of HORARIOS_FDS) { if (isDiaDe && hora <= horaAtual) continue; porHora[hora] = qtd }
       } else {
-        const { data: hors } = await supabase.from('coach_horarios').select('hora').eq('dia_semana', diaSem).eq('ativo', true).eq('unidade_id', unidadeAtiva.id)
-        for (const h of (hors || [])) { const hora = (h.hora || '').slice(0, 5); if (isDiaDe && hora <= horaAtual) continue; porHora[hora] = (porHora[hora] || 0) + 1 }
+        const { data: hors } = await supabase.from('coach_horarios').select('hora, coach_id').eq('dia_semana', diaSem).eq('ativo', true).eq('unidade_id', unidadeAtiva.id)
+        for (const h of (hors || [])) { if (feriasSet.has(h.coach_id)) continue; const hora = (h.hora || '').slice(0, 5); if (isDiaDe && hora <= horaAtual) continue; porHora[hora] = (porHora[hora] || 0) + 1 }
       }
       const [agsRes, filaGeralRes, bloqueadasRes, agClienteRes, filasRes] = await Promise.allSettled([
         supabase.from('agendamentos').select('horario, status').eq('data', dataStr).eq('unidade_id', unidadeAtiva.id).neq('status', 'cancelado'),
@@ -355,6 +358,9 @@ export default function AgendarPage() {
     const diaSem = new Date(dataStr + 'T12:00:00').getDay()
     const { data: feriadoData } = await supabase.from('feriados').select('*').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr).eq('ativo', true).maybeSingle()
     const usaEscalaFds = !!feriadoData || diaSem === 0 || diaSem === 6
+    // Coaches de férias/ausência nesta data — não aparecem como selecionáveis.
+    const { data: feriasRows } = await supabase.from('coach_ferias').select('coach_id').lte('data_inicio', dataStr).gte('data_fim', dataStr)
+    const feriasSet = new Set((feriasRows || []).map((f: any) => f.coach_id))
     let coachIds: string[] = []
     if (usaEscalaFds) {
       const { data: escala } = await supabase.from('escala_fds').select('coach_id').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr)
@@ -363,6 +369,7 @@ export default function AgendarPage() {
       const { data: hors } = await supabase.from('coach_horarios').select('coach_id').eq('dia_semana', diaSem).eq('hora', horaStr).eq('ativo', true).eq('unidade_id', unidadeAtiva.id)
       coachIds = (hors || []).map((h: any) => h.coach_id).filter(Boolean)
     }
+    coachIds = coachIds.filter(id => !feriasSet.has(id))
     if (coachIds.length === 0) { setCoachesDisponiveis([]); return }
     const { data: ocupados } = await supabase.from('agendamentos').select('coach_id').eq('data', dataStr).eq('horario', horaStr + ':00').eq('unidade_id', unidadeAtiva.id).neq('status', 'cancelado').not('coach_id', 'is', null)
     const idsOcupados = new Set((ocupados || []).map((a: any) => a.coach_id))

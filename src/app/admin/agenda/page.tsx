@@ -137,6 +137,10 @@ export default function AdminAgendaPage() {
         .eq('ativo', true),
     ])
 
+    // Coaches de férias/ausência nesta data — não sobem na grade CT (coach_ferias.coach_id = coaches.id).
+    const { data: feriasRows } = await supabase.from('coach_ferias').select('coach_id').lte('data_inicio', data).gte('data_fim', data)
+    const feriasSet = new Set((feriasRows || []).map((f: any) => f.coach_id))
+
     let coachsFinal: any[] = []
 
     if (ehFds) {
@@ -149,6 +153,7 @@ export default function AdminAgendaPage() {
 
       for (const e of (escala || []) as any[]) {
         const info = coachMap[e.coach_id]
+        if (feriasSet.has(info?.id || e.coach_id)) continue
         for (const hora of HORARIOS_FDS) {
           coachsFinal.push({
             id: `${e.coach_id}-${hora}`,
@@ -165,7 +170,7 @@ export default function AdminAgendaPage() {
         .eq('dia_semana', diaSem)
         .eq('unidade_id', unidadeAtiva.id)
         .eq('ativo', true)
-      coachsFinal = coachs || []
+      coachsFinal = (coachs || []).filter((c: any) => !feriasSet.has(c.coach_id))
     }
 
     setAgendamentos(ags || [])

@@ -23,6 +23,7 @@ export default function AdminEscalaPage() {
   const [coachesDisponiveis, setCoachesDisponiveis] = useState<any[]>([])
   const [escalas, setEscalas] = useState<any[]>([])
   const [feriados, setFeriados] = useState<any[]>([])
+  const [feriasRows, setFeriasRows] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   const [modalAdicionar, setModalAdicionar] = useState<{ data: string } | null>(null)
@@ -72,6 +73,11 @@ export default function AdminEscalaPage() {
       ? await supabase.from('coaches').select('id, nome, user_id').eq('ativo', true).in('id', coachIds).order('nome')
       : { data: [] as any[] }
 
+    // Férias/ausências dos coaches desta unidade que tocam a janela exibida (coach_ferias.coach_id = coaches.id).
+    const { data: ferias } = coachIds.length
+      ? await supabase.from('coach_ferias').select('coach_id, data_inicio, data_fim').in('coach_id', coachIds).lte('data_inicio', formatarData(dataLimite)).gte('data_fim', dataInicio)
+      : { data: [] as any[] }
+
     const [{ data: esc }, { data: fer }] = await Promise.all([
       supabase.from('escala_fds')
         .select('*')
@@ -89,6 +95,7 @@ export default function AdminEscalaPage() {
     setCoachesDisponiveis(coaches || [])
     setEscalas(esc || [])
     setFeriados(fer || [])
+    setFeriasRows(ferias || [])
     setLoading(false)
   }
 
@@ -100,9 +107,17 @@ export default function AdminEscalaPage() {
   function coachesDaData(data: string): any[] {
     return escalas.filter(e => e.data === data)
   }
+  // escala_fds.coach_id guarda user_id; coach_ferias.coach_id guarda coaches.id — resolve antes de checar.
+  function coachIdReal(coachUserId: string): string | undefined {
+    return coachesDisponiveis.find(c => c.user_id === coachUserId)?.id
+  }
+  function estaDeFerias(coachRealId: string | undefined, data: string): boolean {
+    if (!coachRealId) return false
+    return feriasRows.some(f => f.coach_id === coachRealId && f.data_inicio <= data && f.data_fim >= data)
+  }
   function coachesNaoEscalados(data: string): any[] {
     const idsEscalados = new Set(coachesDaData(data).map(e => e.coach_id))
-    return coachesDisponiveis.filter(c => !idsEscalados.has(c.user_id))
+    return coachesDisponiveis.filter(c => !idsEscalados.has(c.user_id) && !estaDeFerias(c.id, data))
   }
 
   function toggleCoachSelecionado(userId: string) {
@@ -281,7 +296,12 @@ export default function AdminEscalaPage() {
                     <div className="space-y-1.5 mb-3">
                       {coachesEsc.map(e => (
                         <div key={e.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 text-sm">
-                          <span className="text-gray-800">{nomeCoach(e.coach_id)}</span>
+                          <span className="text-gray-800 flex items-center gap-2">
+                            {nomeCoach(e.coach_id)}
+                            {estaDeFerias(coachIdReal(e.coach_id), e.data) && (
+                              <span style={{ fontSize: 11, fontWeight: 600, color: '#ea580c', background: '#ffedd5', borderRadius: 6, padding: '1px 6px' }}>de férias</span>
+                            )}
+                          </span>
                           <button onClick={() => removerCoachDaEscala(e.id)}
                             style={{ background: 'transparent', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 4px' }}>
                             ×
@@ -375,7 +395,12 @@ export default function AdminEscalaPage() {
                       <div className="space-y-1.5 mb-3">
                         {coachesEsc.map(e => (
                           <div key={e.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 text-sm">
-                            <span className="text-gray-800">{nomeCoach(e.coach_id)}</span>
+                            <span className="text-gray-800 flex items-center gap-2">
+                              {nomeCoach(e.coach_id)}
+                              {estaDeFerias(coachIdReal(e.coach_id), e.data) && (
+                                <span style={{ fontSize: 11, fontWeight: 600, color: '#ea580c', background: '#ffedd5', borderRadius: 6, padding: '1px 6px' }}>de férias</span>
+                              )}
+                            </span>
                             <button onClick={() => removerCoachDaEscala(e.id)}
                               style={{ background: 'transparent', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 4px' }}>
                               ×

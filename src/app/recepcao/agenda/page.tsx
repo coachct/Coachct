@@ -119,6 +119,10 @@ export default function RecepcaoAgendaPage() {
     const diaSem = new Date(data + 'T12:00:00').getDay()
     const ehFds = diaSem === 0 || diaSem === 6
 
+    // Coaches de férias/ausência nesta data — não sobem na grade CT (coach_ferias.coach_id = coaches.id).
+    const { data: feriasRows } = await supabase.from('coach_ferias').select('coach_id').lte('data_inicio', data).gte('data_fim', data)
+    const feriasSet = new Set((feriasRows || []).map((f: any) => f.coach_id))
+
     const [{ data: ags }, { data: coachs }, { data: bloqs }, { data: feriado }] = await Promise.all([
       supabase.from('agendamentos')
         .select('*, clientes(nome, cpf, telefone)')
@@ -160,7 +164,7 @@ export default function RecepcaoAgendaPage() {
         const { data: cs } = await supabase.from('coaches')
           .select('id, nome')
           .in('user_id', userIds)
-        coachesEscala = (cs || []).map((c: any) => ({ coaches: { id: c.id, nome: c.nome } }))
+        coachesEscala = (cs || []).filter((c: any) => !feriasSet.has(c.id)).map((c: any) => ({ coaches: { id: c.id, nome: c.nome } }))
       }
       setCoachesFds(coachesEscala)
     } else {
@@ -168,7 +172,7 @@ export default function RecepcaoAgendaPage() {
     }
 
     setAgendamentos(ags || [])
-    setCoaches(coachs || [])
+    setCoaches((coachs || []).filter((c: any) => !feriasSet.has(c.coach_id)))
     setBloqueios(bloqs || [])
     setLoadingData(false)
 

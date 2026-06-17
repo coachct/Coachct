@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase'
 import { Coach } from '@/types'
 import { fmt, DIAS_SEMANA, HORARIOS } from '@/lib/utils'
 import { PageHeader, Spinner, EmptyState } from '@/components/ui'
-import { Plus, ChevronDown, ChevronUp, Save, Trash2, X, ClipboardList, KeyRound, Building2 } from 'lucide-react'
+import { Plus, ChevronDown, ChevronUp, Save, Trash2, X, ClipboardList, KeyRound, Building2, CalendarOff } from 'lucide-react'
 
 const EMPTY = {
   nome: '', cpf: '', email: '', senha: '',
@@ -53,6 +53,14 @@ export default function CoachesPage() {
   const [salvandoSenha, setSalvandoSenha] = useState(false)
   const [msgSenha, setMsgSenha] = useState('')
   const [excluindoCoach, setExcluindoCoach] = useState<string | null>(null)
+
+  // ─── Férias / Ausências (exclusivo CT) ───
+  const [expandedFerias,  setExpandedFerias]  = useState<string | null>(null)
+  const [feriasPorCoach,  setFeriasPorCoach]  = useState<Record<string, any[]>>({})
+  const [feriasForm,      setFeriasForm]      = useState<{ data_inicio: string; data_fim: string; motivo: string }>({ data_inicio: '', data_fim: '', motivo: '' })
+  const [salvandoFerias,  setSalvandoFerias]  = useState<string | null>(null)
+  const [removendoFerias, setRemovendoFerias] = useState<string | null>(null)
+  const [avisoFerias,     setAvisoFerias]     = useState<{ data: string; horario: string }[] | null>(null)
 
   const supabase = createClient()
   const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
@@ -205,6 +213,58 @@ export default function CoachesPage() {
     setTimeout(() => setMsg(''), 3000)
   }
 
+  // ─── Férias / Ausências ───
+  async function loadFerias(coachId: string) {
+    const { data } = await supabase.from('coach_ferias').select('*').eq('coach_id', coachId).order('data_inicio', { ascending: false })
+    setFeriasPorCoach(prev => ({ ...prev, [coachId]: data || [] }))
+  }
+
+  async function addFerias(coachId: string) {
+    if (!feriasForm.data_inicio || !feriasForm.data_fim) { setMsg('Preencha as datas de início e fim.'); return }
+    if (feriasForm.data_fim < feriasForm.data_inicio) { setMsg('A data de fim deve ser igual ou posterior à data de início.'); return }
+    setSalvandoFerias(coachId); setMsg(''); setAvisoFerias(null)
+
+    // Rede de segurança: lista agendamentos existentes do coach no intervalo (não cancela nada).
+    const { data: conflitos } = await supabase.from('agendamentos')
+      .select('data, horario')
+      .eq('coach_id', coachId)
+      .gte('data', feriasForm.data_inicio)
+      .lte('data', feriasForm.data_fim)
+      .neq('status', 'cancelado')
+      .order('data').order('horario')
+
+    const { data: { user } } = await supabase.auth.getUser()
+    const { error } = await supabase.from('coach_ferias').insert({
+      coach_id: coachId,
+      data_inicio: feriasForm.data_inicio,
+      data_fim: feriasForm.data_fim,
+      motivo: feriasForm.motivo.trim() || null,
+      criado_por: user?.id || null,
+    })
+    setSalvandoFerias(null)
+    if (error) { setMsg('Erro ao salvar período: ' + error.message); return }
+    setFeriasForm({ data_inicio: '', data_fim: '', motivo: '' })
+    if (conflitos && conflitos.length > 0) setAvisoFerias(conflitos)
+    setMsg('Período de ausência salvo!')
+    setTimeout(() => setMsg(''), 2500)
+    loadFerias(coachId)
+  }
+
+  async function removeFerias(feriasId: string, coachId: string) {
+    if (!confirm('Remover este período de ausência?')) return
+    setRemovendoFerias(feriasId)
+    const { error } = await supabase.from('coach_ferias').delete().eq('id', feriasId)
+    setRemovendoFerias(null)
+    if (error) { setMsg('Erro ao remover: ' + error.message); return }
+    loadFerias(coachId)
+  }
+
+  function fmtData(s: string) {
+    if (!s) return ''
+    const [y, m, d] = s.split('T')[0].split('-')
+    return `${d}/${m}/${y}`
+  }
+
   // ─── Criar / editar ───
   async function handleCreate() {
     if (!form.nome || !form.email || !form.senha) { setMsg('Preencha nome, email e senha.'); return }
@@ -343,6 +403,13 @@ export default function CoachesPage() {
                       }} className={`btn btn-sm gap-1 ${expandedGrade===coach.id?'bg-primary-50 text-primary-700 border border-primary-200':''}`}>
                         Grade {expandedGrade===coach.id?<ChevronUp size={12}/>:<ChevronDown size={12}/>}
                       </button>
+                      <button onClick={() => {
+                        const abrindo = expandedFerias !== coach.id
+                        setExpandedFerias(abrindo ? coach.id : null)
+                        if (abrindo) { loadFerias(coach.id); setFeriasForm({ data_inicio:'', data_fim:'', motivo:'' }); setAvisoFerias(null) }
+                      }} className={`btn btn-sm gap-1 ${expandedFerias===coach.id?'bg-amber-50 text-amber-700 border border-amber-200':''}`}>
+                        <CalendarOff size={12}/> Férias {expandedFerias===coach.id?<ChevronUp size={12}/>:<ChevronDown size={12}/>}
+                      </button>
                       <button onClick={() => excluirCoach(coach)} disabled={excluindoCoach===coach.id} className="btn btn-sm text-red-500 hover:bg-red-50 disabled:opacity-50">
                         {excluindoCoach===coach.id?<div className="w-3 h-3 border-2 border-red-400 border-t-transparent rounded-full animate-spin"/>:<Trash2 size={12}/>}
                       </button>
@@ -464,6 +531,65 @@ export default function CoachesPage() {
                     <button onClick={() => saveHorarios(coach.id)} className="btn btn-primary btn-sm gap-1"><Save size={12}/>Salvar grade</button>
                     <button onClick={() => { const all = new Set<string>(); HORARIOS.forEach(h => [0,1,2,3,4,5,6].forEach(d => all.add(`${d}-${h}`))); setHorarios(prev=>({...prev,[coach.id]:all})) }} className="btn btn-sm">Marcar todos</button>
                     <button onClick={() => setHorarios(prev=>({...prev,[coach.id]:new Set()}))} className="btn btn-sm">Limpar</button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Seção Férias / Ausências ── */}
+              {expandedFerias === coach.id && !inativo && (
+                <div className="mt-4 pt-4 border-t border-amber-100">
+                  <div className="flex items-center gap-2 mb-3">
+                    <CalendarOff size={14} className="text-amber-600"/>
+                    <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Férias / Ausências — Coach CT</span>
+                  </div>
+                  <p className="text-xs text-gray-400 mb-3">Enquanto o período estiver vigente, a grade deste coach não sobe no CT (não conta vaga, não aparece como selecionável). Volta sozinho quando o período passa.</p>
+
+                  {/* Lista de períodos cadastrados */}
+                  {(feriasPorCoach[coach.id]?.length ?? 0) === 0 ? (
+                    <p className="text-xs text-gray-400 italic mb-4">Nenhum período cadastrado.</p>
+                  ) : (
+                    <div className="space-y-2 mb-4">
+                      {feriasPorCoach[coach.id]!.map(f => (
+                        <div key={f.id} className="flex items-center gap-3 px-3 py-2 rounded-xl bg-amber-50 border border-amber-100">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-gray-800">{fmtData(f.data_inicio)} → {fmtData(f.data_fim)}</div>
+                            {f.motivo && <div className="text-xs text-gray-500 mt-0.5">{f.motivo}</div>}
+                          </div>
+                          <button onClick={() => removeFerias(f.id, coach.id)} disabled={removendoFerias===f.id}
+                            className="flex-shrink-0 p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50">
+                            {removendoFerias===f.id?<div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin"/>:<Trash2 size={14}/>}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Aviso — agendamentos existentes no intervalo (não bloqueia) */}
+                  {avisoFerias && avisoFerias.length > 0 && (
+                    <div className="mb-4 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3">
+                      <div className="text-xs font-semibold text-orange-800 mb-1">⚠️ {avisoFerias.length} agendamento{avisoFerias.length!==1?'s':''} já existe{avisoFerias.length!==1?'m':''} neste intervalo</div>
+                      <p className="text-xs text-orange-700 mb-2">Os agendamentos NÃO foram cancelados. Verifique e trate manualmente:</p>
+                      <ul className="text-xs text-orange-800 space-y-0.5 max-h-32 overflow-y-auto">
+                        {avisoFerias.map((a, i) => <li key={i}>• {fmtData(a.data)} às {a.horario}</li>)}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Form de adicionar período */}
+                  <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                    <div className="text-xs font-semibold text-gray-700 mb-3 uppercase tracking-wide">Adicionar período</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                      <div><label className="label">Início *</label><input type="date" className="input" value={feriasForm.data_inicio} onChange={e=>setFeriasForm(f=>({...f,data_inicio:e.target.value}))}/></div>
+                      <div><label className="label">Fim *</label><input type="date" className="input" value={feriasForm.data_fim} onChange={e=>setFeriasForm(f=>({...f,data_fim:e.target.value}))}/></div>
+                    </div>
+                    <div className="mb-3">
+                      <label className="label">Motivo <span className="text-gray-400 font-normal">— opcional</span></label>
+                      <input className="input" value={feriasForm.motivo} placeholder="Férias, atestado, folga…" onChange={e=>setFeriasForm(f=>({...f,motivo:e.target.value}))}/>
+                    </div>
+                    <button onClick={() => addFerias(coach.id)} disabled={salvandoFerias===coach.id} className="btn btn-primary btn-sm gap-1">
+                      {salvandoFerias===coach.id?<div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"/>:<Save size={12}/>}
+                      {salvandoFerias===coach.id?'Salvando...':'Adicionar período'}
+                    </button>
                   </div>
                 </div>
               )}
