@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
 
-const REMETENTE = 'Just CT <nao-responda@justct.com.br>'
+const REMETENTE = 'Just Club & CT <nao-responda@justct.com.br>'
 const BASE_URL  = process.env.NEXT_PUBLIC_BASE_URL || 'https://coach-ct.vercel.app'
 
 // Protege a rota com um segredo para evitar chamadas externas
@@ -29,8 +29,8 @@ function gerarHtml(tipo: string, mensagem: string, nomeCliente: string): { subje
         <!-- Header -->
         <tr>
           <td style="background:linear-gradient(135deg,#0a0a0a,#1a1a1a);padding:36px 32px;text-align:center;">
-            <div style="font-family:Impact,sans-serif;font-size:34px;color:#fff;letter-spacing:4px;">
-              JUST<span style="color:#ff2d9b;">CT</span>
+            <div style="font-family:Impact,'Arial Black',sans-serif;font-size:30px;color:#fff;letter-spacing:1px;">
+              Just Club &amp; <span style="color:#ff2d9b;">CT</span>
             </div>
           </td>
         </tr>
@@ -40,7 +40,7 @@ function gerarHtml(tipo: string, mensagem: string, nomeCliente: string): { subje
         <tr>
           <td style="background:#0a0a0a;padding:20px 32px;text-align:center;">
             <div style="font-size:11px;color:#555;line-height:1.6;">
-              Just CT — Serious Training<br/>
+              Just Club &amp; CT — Serious Training<br/>
               Rua Fiandeiras, 392 · Vila Olímpia · São Paulo/SP
             </div>
             <div style="font-size:10px;color:#333;margin-top:12px;">

@@ -390,6 +390,18 @@ function AulasPageInner() {
   function fecharModalReserva() {
     setModalReserva(null); setModalSoAvulso(false); setErroModal('')
   }
+  // Dispara o email de confirmação (fire-and-forget; não trava nem quebra a UX se falhar).
+  async function dispararEmailReserva(reservaId: string) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) return
+      fetch('/api/notificacoes/reserva-confirmada', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ tipo: 'club', reservaId }),
+      }).catch(() => {})
+    } catch {}
+  }
   async function confirmarReserva() {
     if (!tipoCredito) { setErroModal('Selecione o plano para usar.'); return }
     if (modalReserva?.club_aulas?.tipo === 'running_funcional' && !posicaoSel) { setErroModal('Selecione sua posição no mapa.'); return }
@@ -397,22 +409,29 @@ function AulasPageInner() {
     setConfirmando(true); setErroModal('')
     const payload: any = { ocorrencia_id: modalReserva.id, cliente_id: cliente.id, tipo_credito: tipoCredito, status: 'reservado' }
     if (posicaoSel) payload.posicao = posicaoSel
-    const { error } = await supabase.from('club_reservas').insert(payload)
+    const { data: nova, error } = await supabase.from('club_reservas').insert(payload).select('id').single()
     if (error) {
       const msg = error.message?.includes('já tem uma reserva')
         ? 'Você já tem uma reserva nesta unidade neste dia com este plano. Cada plano permite apenas uma reserva por dia por unidade.'
         : 'Erro ao reservar: ' + error.message
       setErroModal(msg); setConfirmando(false); return
     }
+    if (nova?.id) dispararEmailReserva(nova.id)
     setConfirmando(false); setModalReserva(null); setModalSoAvulso(false)
     // ClassPass reserva em sequência (empilha): mantém na página e recarrega; clientes normais vão pra minha-conta
     if (cliente?.is_classpass) { await carregarOcorrencias(dataSelStr) }
     else { router.push('/minha-conta') }
   }
-  async function confirmarFila() {
+  async function confirmarFila(skipTel: boolean = false) {
     if (!tipoCredito) { setErroModal('Selecione o plano para usar.'); return }
     if (!filaAceite) { setErroModal('Confirme que entendeu as regras da fila.'); return }
     if (!cliente || !modalFila) return
+    // Fila exige telefone (o aviso de promoção é por WhatsApp). Gate independente de cartão.
+    if (!skipTel && !telefoneValido(cliente?.telefone)) {
+      setPendingReserva(() => () => confirmarFila(true))
+      setModalTelefone(true)
+      return
+    }
     setEntrandoFila(true); setErroModal('')
     const { error } = await supabase.from('fila_espera').insert({
       ocorrencia_id: modalFila.id, cliente_id: cliente.id, tipo_credito: tipoCredito,
@@ -1035,7 +1054,7 @@ function AulasPageInner() {
             {erroModal && <div style={{ background:'#ffaa0015', border:'1px solid #ffaa0044', borderRadius:8, padding:'0.6rem 1rem', fontSize:13, color:AMARELO, marginBottom:'1rem' }}>{erroModal}</div>}
             <div style={{ display:'flex', gap:8 }}>
               <button onClick={() => setModalFila(null)} style={{ flex:1, background:'transparent', border:'1px solid #2a2a2a', borderRadius:10, padding:'0.85rem', color:'#555', fontSize:14, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>Cancelar</button>
-              <button onClick={confirmarFila} disabled={entrandoFila}
+              <button onClick={() => confirmarFila()} disabled={entrandoFila}
                 style={{ flex:2, background:AMARELO, color:'#000', border:'none', borderRadius:10, padding:'0.85rem', fontWeight:700, fontSize:15, cursor:entrandoFila?'default':'pointer', fontFamily:"'DM Sans', sans-serif", opacity:entrandoFila?0.7:1 }}>
                 {entrandoFila?'Entrando...':'Entrar na fila ⏳'}
               </button>

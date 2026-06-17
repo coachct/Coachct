@@ -468,6 +468,18 @@ export default function AgendarPage() {
     else { setCoachesDisponiveis([]); setCoachEscolhido('') }
   }, [tipoCredito, modalSlot?.hora, modalSlot?.data])
 
+  // Dispara o email de confirmação (fire-and-forget; não trava nem quebra a UX se falhar).
+  async function dispararEmailAgendamento(agendamentoId: string) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) return
+      fetch('/api/notificacoes/reserva-confirmada', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ tipo: 'ct', agendamentoId }),
+      }).catch(() => {})
+    } catch {}
+  }
   async function confirmarAgendamento() {
     if (!tipoCredito) { setErroModal('Selecione como vai usar esta sessão.'); return }
     if (!modalSlot || !cliente || !unidadeAtiva) return
@@ -485,18 +497,25 @@ export default function AgendarPage() {
     setConfirmando(true); setErroModal('')
     const payload: any = { cliente_id: cliente.id, data: modalSlot.data, horario: modalSlot.hora + ':00', status: 'agendado', tipo_credito: tipoCredito, unidade_id: unidadeAtiva.id }
     if (tipoCredito.startsWith('coach_ct_pro_') && coachEscolhido) { payload.coach_id = coachEscolhido; payload.alocado_por = perfil?.id || null; payload.alocado_em = new Date().toISOString() }
-    const { error } = await supabase.from('agendamentos').insert(payload)
+    const { data: novo, error } = await supabase.from('agendamentos').insert(payload).select('id').single()
     if (error) { setErroModal('Erro ao agendar. Tente novamente.'); setConfirmando(false); return }
+    if (novo?.id) dispararEmailAgendamento(novo.id)
     await Promise.all([carregarSaldos(cliente.id, unidadeAtiva.id), loadHorarios()])
     setContratoAssinado(true); setModalSlot(null); setConfirmando(false)
     router.push('/minha-conta')
   }
 
-  async function confirmarFila() {
+  async function confirmarFila(skipTel: boolean = false) {
     if (!tipoFilaCredito) { setErroFila('Selecione como vai usar esta sessão.'); return }
     if (!filaAceite) { setErroFila('Confirme que entendeu as regras da fila.'); return }
     if (!modalFila || !cliente || !unidadeAtiva) return
     if (clienteBloqueado) { setErroFila('Sua conta está bloqueada.'); return }
+    // Fila exige telefone (o aviso de promoção é por WhatsApp). Gate independente de cartão.
+    if (!skipTel && !telefoneValido(cliente?.telefone)) {
+      setPendingReserva(() => () => confirmarFila(true))
+      setModalTelefone(true)
+      return
+    }
     setEntrandoFila(true); setErroFila('')
     if (notifFila !== cliente.notificacao_preferida) {
       await supabase.from('clientes').update({ notificacao_preferida: notifFila }).eq('id', cliente.id)
@@ -1055,7 +1074,7 @@ export default function AgendarPage() {
             {erroFila && <div style={{ background: '#ffaa0015', border: '1px solid #ffaa0044', borderRadius: 8, padding: '0.6rem 1rem', fontSize: 13, color: AMARELO, marginBottom: '1rem' }}>{erroFila}</div>}
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => setModalFila(null)} style={{ flex: 1, background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.85rem', color: '#888', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Cancelar</button>
-              <button onClick={confirmarFila} disabled={entrandoFila}
+              <button onClick={() => confirmarFila()} disabled={entrandoFila}
                 style={{ flex: 2, background: AMARELO, color: '#000', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 700, fontSize: 15, cursor: entrandoFila ? 'default' : 'pointer', fontFamily: "'DM Sans', sans-serif", opacity: entrandoFila ? 0.7 : 1 }}>
                 {entrandoFila ? 'Entrando...' : 'Entrar na fila ⏳'}
               </button>
