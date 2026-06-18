@@ -29,6 +29,33 @@ function tipoColor(t: string) {
 
 const TIPOS_CLUB = ['lift', 'lift_for_girls', 'running_funcional']
 
+// Datas de fds (sáb/dom) de uma competência 'YYYY-MM', em data local.
+function fdsDoMes(comp: string) {
+  const [y, m] = comp.split('-').map(Number)
+  const dias: { data: string; dow: number }[] = []
+  const d = new Date(y, m - 1, 1)
+  while (d.getMonth() === m - 1) {
+    const dow = d.getDay()
+    if (dow === 0 || dow === 6) dias.push({ data: dataLocalStr(d), dow })
+    d.setDate(d.getDate() + 1)
+  }
+  return dias
+}
+function competenciaLabel(comp: string) {
+  const [y, m] = comp.split('-').map(Number)
+  return new Date(y, m - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+}
+function addMes(comp: string, delta: number) {
+  const [y, m] = comp.split('-').map(Number)
+  const d = new Date(y, m - 1 + delta, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+function mesSeguinte() {
+  const h = new Date()
+  const p = new Date(h.getFullYear(), h.getMonth() + 1, 1)
+  return `${p.getFullYear()}-${String(p.getMonth() + 1).padStart(2, '0')}`
+}
+
 export default function AdminEscalaClubPage() {
   const { perfil, loading } = useAuth()
   const router   = useRouter()
@@ -44,8 +71,8 @@ export default function AdminEscalaClubPage() {
   const [modalAula, setModalAula] = useState<any>(null)
   const [salvando,  setSalvando]  = useState(false)
 
-  // NOVO: abas FDS / Feriados / Capacidade
-  const [aba, setAba] = useState<'fds' | 'feriados' | 'capacidade'>('fds')
+  // NOVO: abas FDS / Feriados / Capacidade / Disponibilidade
+  const [aba, setAba] = useState<'fds' | 'feriados' | 'capacidade' | 'disponibilidade'>('fds')
   const [feriados,              setFeriados]              = useState<any[]>([])
   const [ocorrenciasFeriadoMap, setOcorrenciasFeriadoMap] = useState<Record<string, any[]>>({}) // feriado_id -> ocorrências
   const [loadingFeriados,       setLoadingFeriados]       = useState(false)
@@ -55,6 +82,12 @@ export default function AdminEscalaClubPage() {
   const [capMatrix,   setCapMatrix]   = useState<Record<string, Set<string>>>({}) // coachId -> Set<tipo>
   const [loadingCap,  setLoadingCap]  = useState(false)
   const [salvandoCap, setSalvandoCap] = useState<string | null>(null) // `${coachId}-${tipo}`
+
+  // NOVO: disponibilidade (club_disponibilidade_fds) — grade coach × datas de fds do mês.
+  const [competencia,  setCompetencia]  = useState<string>(mesSeguinte()) // 'YYYY-MM', default mês seguinte
+  const [dispSet,      setDispSet]      = useState<Set<string>>(new Set()) // `${coachId}|${data}`
+  const [loadingDisp,  setLoadingDisp]  = useState(false)
+  const [salvandoDisp, setSalvandoDisp] = useState<string | null>(null)    // `${coachId}|${data}`
 
   useEffect(() => {
     if (!loading && perfil && perfil.role !== 'admin' && perfil.role !== 'coordenadora') router.push('/')
@@ -70,10 +103,11 @@ export default function AdminEscalaClubPage() {
       carregarFeriados()
     }
   }, [unidadeSel?.id])
-  // Capacidade não depende de unidade (vale pra todo o Club). Recarrega ao abrir a aba.
+  // Capacidade e Disponibilidade não dependem de unidade (valem pra todo o Club).
   useEffect(() => {
-    if (aba === 'capacidade' && unidades.length > 0) carregarCapacidade()
-  }, [aba, unidades.length])
+    if (aba === 'capacidade'     && unidades.length > 0) carregarCapacidade()
+    if (aba === 'disponibilidade' && unidades.length > 0) carregarDisponibilidade()
+  }, [aba, unidades.length, competencia])
 
   // Próximos 6 fins de semana (12 datas)
   const proximosFDS = (() => {
@@ -229,26 +263,31 @@ export default function AdminEscalaClubPage() {
     setSalvando(false)
   }
 
-  // ─── Capacidade (coach_tipos) ───
+  // ─── Coaches Club (compartilhado por Capacidade e Disponibilidade) ───
   // Coach Club = ativo e com ≥1 unidade Club em coach_unidades. Independe da unidade selecionada.
-  async function carregarCapacidade() {
-    setLoadingCap(true)
+  async function fetchCoachesClub(): Promise<any[]> {
     const clubIds = unidades.map((u: any) => u.id) // 'unidades' já vem filtrado pra tipo='club'
-    if (clubIds.length === 0) { setCoachesClub([]); setCapMatrix({}); setLoadingCap(false); return }
-
+    if (clubIds.length === 0) return []
     const { data: cu } = await supabase.from('coach_unidades')
       .select('coach_id').in('unidade_id', clubIds).eq('ativo', true)
     const ids = Array.from(new Set((cu || []).map((u: any) => u.coach_id)))
-    if (ids.length === 0) { setCoachesClub([]); setCapMatrix({}); setLoadingCap(false); return }
+    if (ids.length === 0) return []
+    const { data: cs } = await supabase.from('coaches')
+      .select('id, nome').eq('ativo', true).in('id', ids).order('nome')
+    return cs || []
+  }
 
-    const [{ data: cs }, { data: ts }] = await Promise.all([
-      supabase.from('coaches').select('id, nome').eq('ativo', true).in('id', ids).order('nome'),
-      supabase.from('coach_tipos').select('coach_id, tipo').in('coach_id', ids).eq('ativo', true),
-    ])
-    setCoachesClub(cs || [])
-
+  // ─── Capacidade (coach_tipos) ───
+  async function carregarCapacidade() {
+    setLoadingCap(true)
+    const cs = await fetchCoachesClub()
+    setCoachesClub(cs)
+    if (cs.length === 0) { setCapMatrix({}); setLoadingCap(false); return }
+    const ids = cs.map((c: any) => c.id)
+    const { data: ts } = await supabase.from('coach_tipos')
+      .select('coach_id, tipo').in('coach_id', ids).eq('ativo', true)
     const mapa: Record<string, Set<string>> = {}
-    for (const c of (cs || [])) mapa[c.id] = new Set<string>()
+    for (const c of cs) mapa[c.id] = new Set<string>()
     for (const t of (ts || [])) { if (mapa[t.coach_id]) mapa[t.coach_id].add(t.tipo) }
     setCapMatrix(mapa)
     setLoadingCap(false)
@@ -271,6 +310,42 @@ export default function AdminEscalaClubPage() {
     }
     setCapMatrix(prev => ({ ...prev, [coachId]: new Set(set) }))
     setSalvandoCap(null)
+  }
+
+  // ─── Disponibilidade (club_disponibilidade_fds) ───
+  async function carregarDisponibilidade() {
+    setLoadingDisp(true)
+    const cs = await fetchCoachesClub()
+    setCoachesClub(cs)
+    const datas = fdsDoMes(competencia).map(f => f.data)
+    if (cs.length === 0 || datas.length === 0) { setDispSet(new Set()); setLoadingDisp(false); return }
+    const { data: disp } = await supabase.from('club_disponibilidade_fds')
+      .select('coach_id, data').in('data', datas)
+    const s = new Set<string>()
+    for (const d of (disp || [])) s.add(`${d.coach_id}|${d.data}`)
+    setDispSet(s)
+    setLoadingDisp(false)
+  }
+
+  async function toggleDisp(coachId: string, data: string) {
+    const key = `${coachId}|${data}`
+    setSalvandoDisp(key)
+    const marcado = dispSet.has(key)
+    if (marcado) {
+      const { error } = await supabase.from('club_disponibilidade_fds')
+        .delete().eq('coach_id', coachId).eq('data', data)
+      if (error) { setSalvandoDisp(null); return }
+    } else {
+      const { error } = await supabase.from('club_disponibilidade_fds')
+        .upsert({ competencia, coach_id: coachId, data, criado_por: perfil?.id || null }, { onConflict: 'coach_id,data' })
+      if (error) { setSalvandoDisp(null); return }
+    }
+    setDispSet(prev => {
+      const n = new Set(prev)
+      n.has(key) ? n.delete(key) : n.add(key)
+      return n
+    })
+    setSalvandoDisp(null)
   }
 
   if (loading || loadingUnidades) return (
@@ -300,6 +375,10 @@ export default function AdminEscalaClubPage() {
         <div style={{ background:`${VERDE}10`, border:`1px solid ${VERDE}40`, borderRadius:12, padding:'0.75rem 1rem', marginBottom:'1.5rem', fontSize:13, color:'#0f766e' }}>
           💡 Marque <strong>quais tipos cada coach sabe dar</strong>. Isso define quem aparece como elegível na montagem da escala — vale em qualquer unidade Club.
         </div>
+      ) : aba === 'disponibilidade' ? (
+        <div style={{ background:`${AMARELO}12`, border:`1px solid ${AMARELO}50`, borderRadius:12, padding:'0.75rem 1rem', marginBottom:'1.5rem', fontSize:13, color:'#a16207' }}>
+          💡 Marque <strong>quem está disponível</strong> em cada sábado/domingo do mês, conforme cada coach avisar. É o que filtra os coaches elegíveis na montagem.
+        </div>
       ) : aba === 'fds' ? (
         <div style={{ background:`${CYAN}10`, border:`1px solid ${CYAN}40`, borderRadius:12, padding:'0.75rem 1rem', marginBottom:'1.5rem', fontSize:13, color:'#0e7490' }}>
           💡 A escala aqui <strong>sobrescreve</strong> o coach da grade fixa só para o dia específico. Para limpar, clique no coach atual e escolha "Voltar à grade".
@@ -311,7 +390,7 @@ export default function AdminEscalaClubPage() {
       )}
 
       {/* Seletor de unidade */}
-      {aba !== 'capacidade' && unidades.length > 1 && (
+      {aba !== 'capacidade' && aba !== 'disponibilidade' && unidades.length > 1 && (
         <div style={{ display:'flex', gap:8, marginBottom:'1.5rem', flexWrap:'wrap' }}>
           {unidades.map((u: any) => (
             <button key={u.id} onClick={() => setUnidadeSel(u)}
@@ -329,9 +408,10 @@ export default function AdminEscalaClubPage() {
       {/* Abas: FDS / Feriados */}
       <div style={{ display:'flex', gap:8, borderBottom:'1px solid #e5e7eb', marginBottom:'1.5rem' }}>
         {[
-          { key:'fds',        label:'Final de Semana' },
-          { key:'feriados',   label:'Feriados' },
-          { key:'capacidade', label:'Capacidade' },
+          { key:'fds',             label:'Final de Semana' },
+          { key:'feriados',        label:'Feriados' },
+          { key:'capacidade',      label:'Capacidade' },
+          { key:'disponibilidade', label:'Disponibilidade' },
         ].map(t => (
           <button key={t.key} onClick={() => setAba(t.key as any)}
             style={{ padding:'0.6rem 1rem', fontSize:14, fontWeight:600,
@@ -391,6 +471,82 @@ export default function AdminEscalaClubPage() {
             </table>
           </div>
         )
+      ) : aba === 'disponibilidade' ? (
+        (() => {
+          const fds = fdsDoMes(competencia)
+          return (
+          <div>
+            {/* Seletor de mês */}
+            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:'1.25rem' }}>
+              <button onClick={() => setCompetencia(c => addMes(c, -1))}
+                style={{ width:34, height:34, borderRadius:10, border:'1.5px solid #e5e7eb', background:'#fff', cursor:'pointer', fontSize:14, color:'#555' }}>◀</button>
+              <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:22, color:'#111', letterSpacing:0.5, textTransform:'capitalize', minWidth:200, textAlign:'center' }}>
+                {competenciaLabel(competencia)}
+              </div>
+              <button onClick={() => setCompetencia(c => addMes(c, 1))}
+                style={{ width:34, height:34, borderRadius:10, border:'1.5px solid #e5e7eb', background:'#fff', cursor:'pointer', fontSize:14, color:'#555' }}>▶</button>
+            </div>
+
+            {loadingDisp ? (
+              <div style={{ textAlign:'center', padding:'3rem', color:'#aaa', fontSize:14 }}>Carregando disponibilidade...</div>
+            ) : coachesClub.length === 0 ? (
+              <div style={{ background:'#f9fafb', border:'1px dashed #e5e7eb', borderRadius:16, padding:'3rem', textAlign:'center', color:'#aaa', fontSize:14 }}>
+                Nenhum coach Club ativo.<br/>
+                <span style={{ fontSize:12 }}>Habilite uma unidade Club no coach em <strong>Coaches → Unidades</strong>.</span>
+              </div>
+            ) : fds.length === 0 ? (
+              <div style={{ background:'#f9fafb', border:'1px dashed #e5e7eb', borderRadius:16, padding:'3rem', textAlign:'center', color:'#aaa', fontSize:14 }}>
+                Sem fins de semana nesta competência.
+              </div>
+            ) : (
+              <div style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:16, padding:'1.25rem', overflowX:'auto' }}>
+                <table style={{ borderCollapse:'collapse', width:'100%', fontFamily:"'DM Sans', sans-serif" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign:'left', padding:'0.5rem 0.75rem', fontSize:11, color:'#aaa', textTransform:'uppercase', letterSpacing:0.5, borderBottom:'1px solid #f0f0f0', position:'sticky', left:0, background:'#fff' }}>Coach</th>
+                      {fds.map(f => {
+                        const dia = f.data.slice(8, 10)
+                        return (
+                          <th key={f.data} style={{ padding:'0.4rem 0.3rem', borderBottom:'1px solid #f0f0f0', minWidth:48 }}>
+                            <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:18, color:'#111', lineHeight:1 }}>{dia}</div>
+                            <div style={{ fontSize:10, fontWeight:700, color: f.dow === 6 ? CYAN : ACCENT, textTransform:'uppercase', letterSpacing:0.5 }}>
+                              {f.dow === 6 ? 'Sáb' : 'Dom'}
+                            </div>
+                          </th>
+                        )
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {coachesClub.map((c: any) => (
+                      <tr key={c.id} style={{ borderBottom:'1px solid #f7f7f7' }}>
+                        <td style={{ padding:'0.5rem 0.75rem', fontSize:13, fontWeight:600, color:'#111', whiteSpace:'nowrap', position:'sticky', left:0, background:'#fff' }}>{c.nome}</td>
+                        {fds.map(f => {
+                          const key = `${c.id}|${f.data}`
+                          const on = dispSet.has(key)
+                          const carregando = salvandoDisp === key
+                          return (
+                            <td key={f.data} style={{ padding:'0.3rem', textAlign:'center' }}>
+                              <button onClick={() => toggleDisp(c.id, f.data)} disabled={carregando}
+                                style={{ width:30, height:30, borderRadius:8, cursor: carregando ? 'default' : 'pointer',
+                                  border:`1.5px solid ${on ? VERDE : '#e5e7eb'}`, background: on ? `${VERDE}18` : '#fff',
+                                  color: on ? VERDE : '#ddd', fontSize:15, fontWeight:700,
+                                  display:'inline-flex', alignItems:'center', justifyContent:'center',
+                                  opacity: carregando ? 0.5 : 1, fontFamily:"'DM Sans', sans-serif" }}>
+                                {carregando ? '·' : on ? '✓' : ''}
+                              </button>
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+          )
+        })()
       ) : !unidadeSel ? (
         <div style={{ background:'#f9fafb', border:'1px dashed #e5e7eb', borderRadius:16, padding:'3rem', textAlign:'center', color:'#aaa' }}>
           Nenhuma unidade Club encontrada.
