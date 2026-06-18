@@ -23,7 +23,9 @@ const V = 'v21.0'
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const token = searchParams.get('token')
-  const esperado = process.env.WHATSAPP_TEST_TOKEN
+  // Usa o INSTAGRAM_VERIFY_TOKEN (já configurado no Vercel) como senha da rota,
+  // com fallback pro WHATSAPP_TEST_TOKEN.
+  const esperado = process.env.INSTAGRAM_VERIFY_TOKEN ?? process.env.WHATSAPP_TEST_TOKEN
   if (!esperado || token !== esperado) {
     return NextResponse.json({ error: 'token inválido' }, { status: 403 })
   }
