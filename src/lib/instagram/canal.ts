@@ -20,7 +20,7 @@ export async function enviarTextoInstagram(igsid: string, texto: string): Promis
     console.error('[instagram/canal] INSTAGRAM_ACCOUNT_ID ou INSTAGRAM_TOKEN ausente')
     return
   }
-  const resp = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${accountId}/messages`, {
+  const resp = await fetch(`https://graph.instagram.com/${GRAPH_VERSION}/${accountId}/messages`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,

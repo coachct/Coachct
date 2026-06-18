@@ -39,9 +39,10 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const raw = await req.text()
 
-  // Valida a assinatura (HMAC SHA-256 com o App Secret — o mesmo do app Meta).
+  // Valida a assinatura (HMAC SHA-256). No fluxo "login do Instagram" o payload
+  // é assinado com a CHAVE SECRETA DO APP DO INSTAGRAM (fallback p/ o secret geral).
   const assinatura = req.headers.get('x-hub-signature-256') ?? ''
-  const appSecret = process.env.META_APP_SECRET
+  const appSecret = process.env.INSTAGRAM_APP_SECRET ?? process.env.META_APP_SECRET
   if (appSecret) {
     const esperado = 'sha256=' + crypto.createHmac('sha256', appSecret).update(raw).digest('hex')
     const ok =
