@@ -27,6 +27,8 @@ function tipoColor(t: string) {
   return VERDE
 }
 
+const TIPOS_CLUB = ['lift', 'lift_for_girls', 'running_funcional']
+
 export default function AdminEscalaClubPage() {
   const { perfil, loading } = useAuth()
   const router   = useRouter()
@@ -42,11 +44,17 @@ export default function AdminEscalaClubPage() {
   const [modalAula, setModalAula] = useState<any>(null)
   const [salvando,  setSalvando]  = useState(false)
 
-  // NOVO: abas FDS / Feriados
-  const [aba, setAba] = useState<'fds' | 'feriados'>('fds')
+  // NOVO: abas FDS / Feriados / Capacidade
+  const [aba, setAba] = useState<'fds' | 'feriados' | 'capacidade'>('fds')
   const [feriados,              setFeriados]              = useState<any[]>([])
   const [ocorrenciasFeriadoMap, setOcorrenciasFeriadoMap] = useState<Record<string, any[]>>({}) // feriado_id -> ocorrências
   const [loadingFeriados,       setLoadingFeriados]       = useState(false)
+
+  // NOVO: capacidade (coach_tipos) — matriz coach × tipo. coach_id = coaches.id.
+  const [coachesClub, setCoachesClub] = useState<any[]>([])       // todos coaches Club ativos
+  const [capMatrix,   setCapMatrix]   = useState<Record<string, Set<string>>>({}) // coachId -> Set<tipo>
+  const [loadingCap,  setLoadingCap]  = useState(false)
+  const [salvandoCap, setSalvandoCap] = useState<string | null>(null) // `${coachId}-${tipo}`
 
   useEffect(() => {
     if (!loading && perfil && perfil.role !== 'admin' && perfil.role !== 'coordenadora') router.push('/')
@@ -62,6 +70,10 @@ export default function AdminEscalaClubPage() {
       carregarFeriados()
     }
   }, [unidadeSel?.id])
+  // Capacidade não depende de unidade (vale pra todo o Club). Recarrega ao abrir a aba.
+  useEffect(() => {
+    if (aba === 'capacidade' && unidades.length > 0) carregarCapacidade()
+  }, [aba, unidades.length])
 
   // Próximos 6 fins de semana (12 datas)
   const proximosFDS = (() => {
@@ -217,6 +229,50 @@ export default function AdminEscalaClubPage() {
     setSalvando(false)
   }
 
+  // ─── Capacidade (coach_tipos) ───
+  // Coach Club = ativo e com ≥1 unidade Club em coach_unidades. Independe da unidade selecionada.
+  async function carregarCapacidade() {
+    setLoadingCap(true)
+    const clubIds = unidades.map((u: any) => u.id) // 'unidades' já vem filtrado pra tipo='club'
+    if (clubIds.length === 0) { setCoachesClub([]); setCapMatrix({}); setLoadingCap(false); return }
+
+    const { data: cu } = await supabase.from('coach_unidades')
+      .select('coach_id').in('unidade_id', clubIds).eq('ativo', true)
+    const ids = Array.from(new Set((cu || []).map((u: any) => u.coach_id)))
+    if (ids.length === 0) { setCoachesClub([]); setCapMatrix({}); setLoadingCap(false); return }
+
+    const [{ data: cs }, { data: ts }] = await Promise.all([
+      supabase.from('coaches').select('id, nome').eq('ativo', true).in('id', ids).order('nome'),
+      supabase.from('coach_tipos').select('coach_id, tipo').in('coach_id', ids).eq('ativo', true),
+    ])
+    setCoachesClub(cs || [])
+
+    const mapa: Record<string, Set<string>> = {}
+    for (const c of (cs || [])) mapa[c.id] = new Set<string>()
+    for (const t of (ts || [])) { if (mapa[t.coach_id]) mapa[t.coach_id].add(t.tipo) }
+    setCapMatrix(mapa)
+    setLoadingCap(false)
+  }
+
+  async function toggleCap(coachId: string, tipo: string) {
+    const key = `${coachId}-${tipo}`
+    setSalvandoCap(key)
+    const set = new Set(capMatrix[coachId] || [])
+    const removendo = set.has(tipo)
+    if (removendo) {
+      const { error } = await supabase.from('coach_tipos').delete().eq('coach_id', coachId).eq('tipo', tipo)
+      if (error) { setSalvandoCap(null); return }
+      set.delete(tipo)
+    } else {
+      const { error } = await supabase.from('coach_tipos')
+        .upsert({ coach_id: coachId, tipo, ativo: true }, { onConflict: 'coach_id,tipo' })
+      if (error) { setSalvandoCap(null); return }
+      set.add(tipo)
+    }
+    setCapMatrix(prev => ({ ...prev, [coachId]: new Set(set) }))
+    setSalvandoCap(null)
+  }
+
   if (loading || loadingUnidades) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh' }}>
       <div style={{ width:32, height:32, border:`4px solid ${ACCENT}`, borderTopColor:'transparent',
@@ -240,7 +296,11 @@ export default function AdminEscalaClubPage() {
       </div>
 
       {/* Banner explicativo */}
-      {aba === 'fds' ? (
+      {aba === 'capacidade' ? (
+        <div style={{ background:`${VERDE}10`, border:`1px solid ${VERDE}40`, borderRadius:12, padding:'0.75rem 1rem', marginBottom:'1.5rem', fontSize:13, color:'#0f766e' }}>
+          💡 Marque <strong>quais tipos cada coach sabe dar</strong>. Isso define quem aparece como elegível na montagem da escala — vale em qualquer unidade Club.
+        </div>
+      ) : aba === 'fds' ? (
         <div style={{ background:`${CYAN}10`, border:`1px solid ${CYAN}40`, borderRadius:12, padding:'0.75rem 1rem', marginBottom:'1.5rem', fontSize:13, color:'#0e7490' }}>
           💡 A escala aqui <strong>sobrescreve</strong> o coach da grade fixa só para o dia específico. Para limpar, clique no coach atual e escolha "Voltar à grade".
         </div>
@@ -251,7 +311,7 @@ export default function AdminEscalaClubPage() {
       )}
 
       {/* Seletor de unidade */}
-      {unidades.length > 1 && (
+      {aba !== 'capacidade' && unidades.length > 1 && (
         <div style={{ display:'flex', gap:8, marginBottom:'1.5rem', flexWrap:'wrap' }}>
           {unidades.map((u: any) => (
             <button key={u.id} onClick={() => setUnidadeSel(u)}
@@ -269,8 +329,9 @@ export default function AdminEscalaClubPage() {
       {/* Abas: FDS / Feriados */}
       <div style={{ display:'flex', gap:8, borderBottom:'1px solid #e5e7eb', marginBottom:'1.5rem' }}>
         {[
-          { key:'fds',      label:'Final de Semana' },
-          { key:'feriados', label:'Feriados' },
+          { key:'fds',        label:'Final de Semana' },
+          { key:'feriados',   label:'Feriados' },
+          { key:'capacidade', label:'Capacidade' },
         ].map(t => (
           <button key={t.key} onClick={() => setAba(t.key as any)}
             style={{ padding:'0.6rem 1rem', fontSize:14, fontWeight:600,
@@ -282,7 +343,55 @@ export default function AdminEscalaClubPage() {
         ))}
       </div>
 
-      {!unidadeSel ? (
+      {aba === 'capacidade' ? (
+        loadingCap ? (
+          <div style={{ textAlign:'center', padding:'3rem', color:'#aaa', fontSize:14 }}>Carregando capacidade...</div>
+        ) : coachesClub.length === 0 ? (
+          <div style={{ background:'#f9fafb', border:'1px dashed #e5e7eb', borderRadius:16, padding:'3rem', textAlign:'center', color:'#aaa', fontSize:14 }}>
+            Nenhum coach Club ativo.<br/>
+            <span style={{ fontSize:12 }}>Habilite uma unidade Club no coach em <strong>Coaches → Unidades</strong>.</span>
+          </div>
+        ) : (
+          <div style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:16, padding:'1.25rem', overflowX:'auto' }}>
+            <table style={{ borderCollapse:'collapse', width:'100%', fontFamily:"'DM Sans', sans-serif" }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign:'left', padding:'0.5rem 0.75rem', fontSize:11, color:'#aaa', textTransform:'uppercase', letterSpacing:0.5, borderBottom:'1px solid #f0f0f0' }}>Coach</th>
+                  {TIPOS_CLUB.map(t => (
+                    <th key={t} style={{ padding:'0.5rem', fontSize:11, fontWeight:700, color:tipoColor(t), textTransform:'uppercase', letterSpacing:0.5, borderBottom:'1px solid #f0f0f0', minWidth:120 }}>
+                      {tipoLabel(t)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {coachesClub.map((c: any) => (
+                  <tr key={c.id} style={{ borderBottom:'1px solid #f7f7f7' }}>
+                    <td style={{ padding:'0.6rem 0.75rem', fontSize:13, fontWeight:600, color:'#111', whiteSpace:'nowrap' }}>{c.nome}</td>
+                    {TIPOS_CLUB.map(t => {
+                      const ativo      = capMatrix[c.id]?.has(t) || false
+                      const carregando = salvandoCap === `${c.id}-${t}`
+                      const cor        = tipoColor(t)
+                      return (
+                        <td key={t} style={{ padding:'0.4rem', textAlign:'center' }}>
+                          <button onClick={() => toggleCap(c.id, t)} disabled={carregando}
+                            style={{ width:30, height:30, borderRadius:8, cursor: carregando ? 'default' : 'pointer',
+                              border:`1.5px solid ${ativo ? cor : '#e5e7eb'}`, background: ativo ? `${cor}18` : '#fff',
+                              color: ativo ? cor : '#ddd', fontSize:15, fontWeight:700,
+                              display:'inline-flex', alignItems:'center', justifyContent:'center',
+                              opacity: carregando ? 0.5 : 1, fontFamily:"'DM Sans', sans-serif" }}>
+                            {carregando ? '·' : ativo ? '✓' : ''}
+                          </button>
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      ) : !unidadeSel ? (
         <div style={{ background:'#f9fafb', border:'1px dashed #e5e7eb', borderRadius:16, padding:'3rem', textAlign:'center', color:'#aaa' }}>
           Nenhuma unidade Club encontrada.
         </div>
