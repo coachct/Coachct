@@ -95,6 +95,9 @@ export default function AdminEscalaClubPage() {
   const [feriasFds,   setFeriasFds]   = useState<Record<string, { ini: string; fim: string }[]>>({})
   const [conflitoSet, setConflitoSet] = useState<Set<string>>(new Set())          // coachIds ocupados no slot aberto
 
+  // NOVO Fase 4: ocupação histórica (RPC). Chave: `${coachId}|${tipo}|${unidadeId}|${dow}` -> { media, n }.
+  const [ocupMap, setOcupMap] = useState<Record<string, { media: number; n: number }>>({})
+
   useEffect(() => {
     if (!loading && perfil && perfil.role !== 'admin' && perfil.role !== 'coordenadora') router.push('/')
   }, [perfil, loading])
@@ -362,10 +365,11 @@ export default function AdminEscalaClubPage() {
     if (datas.length === 0) return
     const minD = datas.reduce((a, b) => (a < b ? a : b))
     const maxD = datas.reduce((a, b) => (a > b ? a : b))
-    const [{ data: disp }, { data: tipos }, { data: fer }] = await Promise.all([
+    const [{ data: disp }, { data: tipos }, { data: fer }, { data: ocup }] = await Promise.all([
       supabase.from('club_disponibilidade_fds').select('coach_id, data').in('data', datas),
       supabase.from('coach_tipos').select('coach_id, tipo').eq('ativo', true),
       supabase.from('coach_ferias').select('coach_id, data_inicio, data_fim').lte('data_inicio', maxD).gte('data_fim', minD),
+      supabase.rpc('coach_ocupacao_historica', { p_meses: 3 }),
     ])
     const ds = new Set<string>()
     for (const d of (disp || [])) ds.add(`${d.coach_id}|${d.data}`)
@@ -376,6 +380,9 @@ export default function AdminEscalaClubPage() {
     const fm: Record<string, { ini: string; fim: string }[]> = {}
     for (const f of (fer || [])) { if (!fm[f.coach_id]) fm[f.coach_id] = []; fm[f.coach_id].push({ ini: f.data_inicio, fim: f.data_fim }) }
     setFeriasFds(fm)
+    const om: Record<string, { media: number; n: number }> = {}
+    for (const o of (ocup || [])) { om[`${o.coach_id}|${o.tipo}|${o.unidade_id}|${o.dia_semana}`] = { media: Number(o.ocupacao_media), n: o.n_aulas } }
+    setOcupMap(om)
   }
 
   // Elegibilidade de um coach pra uma ocorrência (data + tipo). Motivo prioriza: férias > tipo > disponibilidade.
@@ -819,12 +826,24 @@ export default function AdminEscalaClubPage() {
             <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:'1rem' }}>
               {(() => {
                 const modoFds = aba === 'fds'
-                // Ordena elegíveis (e sem conflito) primeiro; no Feriados mantém ordem original.
+                const dow  = new Date(modalAula.data + 'T12:00:00').getDay()
+                const tipo = modalAula?.club_aulas?.tipo
+                const uId  = unidadeSel?.id
+                // Ocupação histórica do coach pra ESTE slot (tipo+unidade+dia). Mín. 3 aulas pra ranquear.
+                const ocupDe = (coachId: string) => {
+                  const o = ocupMap[`${coachId}|${tipo}|${uId}|${dow}`]
+                  return (o && o.n >= 3) ? o : null
+                }
+                // Ordena: elegíveis (sem conflito) primeiro; dentro, por ocupação desc; depois nome.
                 const lista = modoFds
                   ? [...coaches].sort((a: any, b: any) => {
                       const ea = elegibilidade(modalAula, a.id).ok && !conflitoSet.has(a.id)
                       const eb = elegibilidade(modalAula, b.id).ok && !conflitoSet.has(b.id)
-                      return (eb ? 1 : 0) - (ea ? 1 : 0)
+                      if (ea !== eb) return (eb ? 1 : 0) - (ea ? 1 : 0)
+                      const oa = ocupDe(a.id)?.media ?? -1
+                      const ob = ocupDe(b.id)?.media ?? -1
+                      if (ob !== oa) return ob - oa
+                      return (a.nome || '').localeCompare(b.nome || '')
                     })
                   : coaches
                 return lista.map((c: any) => {
@@ -855,9 +874,19 @@ export default function AdminEscalaClubPage() {
                         )}
                       </div>
                       {selecionado ? (
-                        <span style={{ fontSize:11, fontWeight:700, color:ACCENT }}>✓ escalado</span>
+                        <span style={{ fontSize:11, fontWeight:700, color:ACCENT, flexShrink:0 }}>✓ escalado</span>
                       ) : modoFds && el.ok && !conflito ? (
-                        <span style={{ fontSize:10, fontWeight:700, color:VERDE }}>elegível</span>
+                        (() => {
+                          const o = ocupDe(c.id)
+                          return o ? (
+                            <span title={`Ocupação média · ${o.n} aulas nos últimos 3 meses`}
+                              style={{ fontSize:10, fontWeight:700, color:VERDE, background:`${VERDE}18`, padding:'2px 8px', borderRadius:10, flexShrink:0 }}>
+                              {Math.round(o.media * 100)}% ocup.
+                            </span>
+                          ) : (
+                            <span style={{ fontSize:10, fontWeight:600, color:'#bbb', flexShrink:0 }}>sem dados</span>
+                          )
+                        })()
                       ) : null}
                     </button>
                   )
