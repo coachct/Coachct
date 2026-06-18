@@ -89,6 +89,12 @@ export default function AdminEscalaClubPage() {
   const [loadingDisp,  setLoadingDisp]  = useState(false)
   const [salvandoDisp, setSalvandoDisp] = useState<string | null>(null)    // `${coachId}|${data}`
 
+  // NOVO Fase 3 (montagem): elegibilidade (disponibilidade + capacidade + férias) e conflito de horário.
+  const [dispFds,     setDispFds]     = useState<Set<string>>(new Set())          // `${coachId}|${data}`
+  const [tiposFds,    setTiposFds]    = useState<Record<string, Set<string>>>({}) // coachId -> Set<tipo>
+  const [feriasFds,   setFeriasFds]   = useState<Record<string, { ini: string; fim: string }[]>>({})
+  const [conflitoSet, setConflitoSet] = useState<Set<string>>(new Set())          // coachIds ocupados no slot aberto
+
   useEffect(() => {
     if (!loading && perfil && perfil.role !== 'admin' && perfil.role !== 'coordenadora') router.push('/')
   }, [perfil, loading])
@@ -105,8 +111,9 @@ export default function AdminEscalaClubPage() {
   }, [unidadeSel?.id])
   // Capacidade e Disponibilidade não dependem de unidade (valem pra todo o Club).
   useEffect(() => {
-    if (aba === 'capacidade'     && unidades.length > 0) carregarCapacidade()
+    if (aba === 'capacidade'      && unidades.length > 0) carregarCapacidade()
     if (aba === 'disponibilidade' && unidades.length > 0) carregarDisponibilidade()
+    if (aba === 'fds'             && unidades.length > 0) carregarElegibilidadeFds()
   }, [aba, unidades.length, competencia])
 
   // Próximos 6 fins de semana (12 datas)
@@ -348,6 +355,59 @@ export default function AdminEscalaClubPage() {
     setSalvandoDisp(null)
   }
 
+  // ─── Montagem: elegibilidade + conflito (Fase 3) ───
+  // Carrega disponibilidade, capacidade e férias pras datas de fds exibidas.
+  async function carregarElegibilidadeFds() {
+    const datas = proximosFDS.map(p => p.data)
+    if (datas.length === 0) return
+    const minD = datas.reduce((a, b) => (a < b ? a : b))
+    const maxD = datas.reduce((a, b) => (a > b ? a : b))
+    const [{ data: disp }, { data: tipos }, { data: fer }] = await Promise.all([
+      supabase.from('club_disponibilidade_fds').select('coach_id, data').in('data', datas),
+      supabase.from('coach_tipos').select('coach_id, tipo').eq('ativo', true),
+      supabase.from('coach_ferias').select('coach_id, data_inicio, data_fim').lte('data_inicio', maxD).gte('data_fim', minD),
+    ])
+    const ds = new Set<string>()
+    for (const d of (disp || [])) ds.add(`${d.coach_id}|${d.data}`)
+    setDispFds(ds)
+    const tm: Record<string, Set<string>> = {}
+    for (const t of (tipos || [])) { if (!tm[t.coach_id]) tm[t.coach_id] = new Set<string>(); tm[t.coach_id].add(t.tipo) }
+    setTiposFds(tm)
+    const fm: Record<string, { ini: string; fim: string }[]> = {}
+    for (const f of (fer || [])) { if (!fm[f.coach_id]) fm[f.coach_id] = []; fm[f.coach_id].push({ ini: f.data_inicio, fim: f.data_fim }) }
+    setFeriasFds(fm)
+  }
+
+  // Elegibilidade de um coach pra uma ocorrência (data + tipo). Motivo prioriza: férias > tipo > disponibilidade.
+  function elegibilidade(oc: any, coachId: string): { ok: boolean; motivo: string } {
+    const data = oc?.data
+    const tipo = oc?.club_aulas?.tipo
+    const deFerias = (feriasFds[coachId] || []).some(p => p.ini <= data && data <= p.fim)
+    if (deFerias) return { ok: false, motivo: 'de férias' }
+    if (!(tiposFds[coachId]?.has(tipo))) return { ok: false, motivo: 'não dá esse tipo' }
+    if (!dispFds.has(`${coachId}|${data}`)) return { ok: false, motivo: 'sem disponibilidade' }
+    return { ok: true, motivo: '' }
+  }
+
+  // Abre o modal e, no FDS, carrega quem já está ocupado no mesmo dia+horário (qualquer unidade Club).
+  async function abrirModal(oc: any) {
+    setModalAula(oc)
+    setConflitoSet(new Set())
+    if (aba !== 'fds') return
+    const horario = oc?.club_aulas?.horario || ''
+    const { data: ocs } = await supabase.from('club_ocorrencias')
+      .select('id, coach_id, club_aulas(horario, coach_id)')
+      .eq('data', oc.data).eq('status', 'ativa')
+    const ocup = new Set<string>()
+    for (const o of (ocs || [])) {
+      if (o.id === oc.id) continue
+      if (((o.club_aulas as any)?.horario || '') !== horario) continue
+      const eff = o.coach_id || (o.club_aulas as any)?.coach_id
+      if (eff) ocup.add(eff)
+    }
+    setConflitoSet(ocup)
+  }
+
   if (loading || loadingUnidades) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh' }}>
       <div style={{ width:32, height:32, border:`4px solid ${ACCENT}`, borderTopColor:'transparent',
@@ -587,7 +647,7 @@ export default function AdminEscalaClubPage() {
                       const corOrigem = ef.origem === 'escalado' ? ACCENT : ef.origem === 'grade' ? '#888' : VERMELHO
 
                       return (
-                        <div key={oc.id} onClick={() => setModalAula(oc)}
+                        <div key={oc.id} onClick={() => abrirModal(oc)}
                           style={{ display:'flex', alignItems:'center', gap:10, padding:'0.6rem 0.75rem',
                             background:'#fafafa', border:'1px solid #f0f0f0', borderRadius:10, cursor:'pointer',
                             transition:'all .15s' }}
@@ -675,7 +735,7 @@ export default function AdminEscalaClubPage() {
                         const cor = tipoColor(aula?.tipo)
                         const corOrigem = ef.origem === 'escalado' ? ACCENT : ef.origem === 'grade' ? '#888' : VERMELHO
                         return (
-                          <div key={oc.id} onClick={() => setModalAula(oc)}
+                          <div key={oc.id} onClick={() => abrirModal(oc)}
                             style={{ display:'flex', alignItems:'center', gap:10, padding:'0.6rem 0.75rem',
                               background:'#fafafa', border:'1px solid #f0f0f0', borderRadius:10, cursor:'pointer',
                               transition:'all .15s' }}
@@ -757,30 +817,52 @@ export default function AdminEscalaClubPage() {
 
             {/* Lista de coaches */}
             <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:'1rem' }}>
-              {coaches.map((c: any) => {
-                const selecionado = modalAula.coach_id === c.id
-                return (
-                  <button key={c.id}
-                    onClick={() => salvarCoach(c.id)}
-                    disabled={salvando}
-                    style={{ display:'flex', alignItems:'center', gap:10, width:'100%', textAlign:'left' as const,
-                      padding:'0.75rem 1rem', borderRadius:10,
-                      border:`1.5px solid ${selecionado ? ACCENT : '#e5e7eb'}`,
-                      background: selecionado ? `${ACCENT}10` : '#fff',
-                      cursor:'pointer', fontFamily:"'DM Sans', sans-serif", opacity: salvando ? 0.5 : 1 }}>
-                    <div style={{ width:28, height:28, borderRadius:'50%', background:`${ACCENT}20`,
-                      display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700, color:ACCENT }}>
-                      {c.nome?.charAt(0).toUpperCase()}
-                    </div>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>{c.nome}</div>
-                    </div>
-                    {selecionado && (
-                      <span style={{ fontSize:11, fontWeight:700, color:ACCENT }}>✓ escalado</span>
-                    )}
-                  </button>
-                )
-              })}
+              {(() => {
+                const modoFds = aba === 'fds'
+                // Ordena elegíveis (e sem conflito) primeiro; no Feriados mantém ordem original.
+                const lista = modoFds
+                  ? [...coaches].sort((a: any, b: any) => {
+                      const ea = elegibilidade(modalAula, a.id).ok && !conflitoSet.has(a.id)
+                      const eb = elegibilidade(modalAula, b.id).ok && !conflitoSet.has(b.id)
+                      return (eb ? 1 : 0) - (ea ? 1 : 0)
+                    })
+                  : coaches
+                return lista.map((c: any) => {
+                  const selecionado = modalAula.coach_id === c.id
+                  const el        = modoFds ? elegibilidade(modalAula, c.id) : { ok: true, motivo: '' }
+                  const conflito  = modoFds && conflitoSet.has(c.id)
+                  const bloqueado = modoFds && (!el.ok || conflito) && !selecionado
+                  const motivo    = conflito ? 'já escalado neste horário' : el.motivo
+                  return (
+                    <button key={c.id}
+                      onClick={() => { if (!bloqueado) salvarCoach(c.id) }}
+                      disabled={salvando || bloqueado}
+                      title={bloqueado ? motivo : ''}
+                      style={{ display:'flex', alignItems:'center', gap:10, width:'100%', textAlign:'left' as const,
+                        padding:'0.75rem 1rem', borderRadius:10,
+                        border:`1.5px solid ${selecionado ? ACCENT : conflito ? `${VERMELHO}66` : '#e5e7eb'}`,
+                        background: selecionado ? `${ACCENT}10` : '#fff',
+                        cursor: bloqueado ? 'not-allowed' : 'pointer', fontFamily:"'DM Sans', sans-serif",
+                        opacity: salvando ? 0.5 : bloqueado ? 0.45 : 1 }}>
+                      <div style={{ width:28, height:28, borderRadius:'50%', background:`${ACCENT}20`,
+                        display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700, color:ACCENT }}>
+                        {c.nome?.charAt(0).toUpperCase()}
+                      </div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:13, fontWeight:600, color: bloqueado ? '#999' : '#111' }}>{c.nome}</div>
+                        {bloqueado && (
+                          <div style={{ fontSize:10, fontWeight:600, color: conflito ? VERMELHO : '#aaa', marginTop:1 }}>{motivo}</div>
+                        )}
+                      </div>
+                      {selecionado ? (
+                        <span style={{ fontSize:11, fontWeight:700, color:ACCENT }}>✓ escalado</span>
+                      ) : modoFds && el.ok && !conflito ? (
+                        <span style={{ fontSize:10, fontWeight:700, color:VERDE }}>elegível</span>
+                      ) : null}
+                    </button>
+                  )
+                })
+              })()}
             </div>
 
             <button onClick={() => setModalAula(null)} disabled={salvando}
