@@ -19,8 +19,17 @@ import {
   type ClienteIdentificado,
 } from '@/lib/whatsapp/consultas'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { responderMensagem } from '@/lib/whatsapp/agente'
-import { enviarTexto, enviarBotoes, carregarHistorico, salvarMensagem } from '@/lib/whatsapp/canal'
+import { responderMensagem, executarAcaoConfirmada } from '@/lib/whatsapp/agente'
+import {
+  enviarTexto,
+  enviarBotoes,
+  carregarHistorico,
+  salvarMensagem,
+  registrarProcessada,
+  buscarAcaoPendente,
+  salvarAcaoPendente,
+  limparAcaoPendente,
+} from '@/lib/whatsapp/canal'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -86,31 +95,40 @@ export async function POST(req: NextRequest) {
   }
 
   const de = String(msg.from ?? '')
+  const wamid = String(msg.id ?? '') // id único do inbound (Meta) — usado na dedup
   let texto = ''
+  let botaoId = '' // id do botão clicado (ex.: "confirmar" / "negar"), quando houver
   if (msg.type === 'text') {
     texto = String(msg.text?.body ?? '').trim()
   } else if (msg.type === 'interactive') {
     // Cliente tocou num botão (button_reply) ou item de lista (list_reply):
-    // tratamos o título da opção como se ele tivesse digitado isso.
+    // tratamos o título da opção como se ele tivesse digitado isso, e guardamos o
+    // id do botão (payload que NÓS definimos) para reconhecer confirmações.
     const it = msg.interactive
     texto = String(it?.button_reply?.title ?? it?.list_reply?.title ?? '').trim()
+    botaoId = String(it?.button_reply?.id ?? it?.list_reply?.id ?? '').trim()
   }
   if (!texto) {
     return new NextResponse('OK', { status: 200 }) // tipo não suportado (áudio, imagem, etc.)
   }
 
   // Responde 200 rápido e processa em segundo plano.
-  waitUntil(processar(de, texto))
+  waitUntil(processar(de, texto, wamid, botaoId))
   return new NextResponse('OK', { status: 200 })
 }
 
 // ---------------------------------------------------------------------------
 // Processamento em background
 // ---------------------------------------------------------------------------
-async function processar(de: string, texto: string): Promise<void> {
+async function processar(de: string, texto: string, wamid: string, botaoId: string): Promise<void> {
   try {
     const supabase = createServiceSupabase()
     const telefone = normalizarTelefone(de)
+
+    // Idempotência: a Meta entrega cada inbound "pelo menos uma vez". Se já vimos
+    // este wamid, é reentrega — ignora para não duplicar a resposta.
+    const novo = await registrarProcessada(supabase, wamid)
+    if (!novo) return
 
     // DEBUG: registra que a mensagem chegou no nosso webhook (antes de tudo).
     await registrarAcessoLgpd(supabase, { telefone, acao: 'wa_inbound', detalhe: { de, texto } })
@@ -159,6 +177,25 @@ async function processar(de: string, texto: string): Promise<void> {
       return
     }
 
+    // Ação pendente: o cliente está respondendo a um pedido de confirmação?
+    // (clicou "Confirmar"/"Agora não" OU digitou um "sim"/"não"). Consumimos a
+    // ação aqui — de forma determinística, sem depender do modelo re-derivar nada.
+    const pendente = await buscarAcaoPendente(supabase, telefone)
+    if (pendente) {
+      await limparAcaoPendente(supabase, telefone) // consome já (evita reprocesso/loop)
+      const decisao = interpretarConfirmacao(texto, botaoId)
+      if (decisao === 'confirmar') {
+        await salvarMensagem(supabase, { telefone, clienteId: cliente.id, role: 'user', conteudo: texto })
+        const alvoId = pendente.cliente_id || cliente.id
+        const resultado = await executarAcaoConfirmada(supabase, alvoId, pendente.acao, pendente.params)
+        await salvarMensagem(supabase, { telefone, clienteId: cliente.id, role: 'assistant', conteudo: resultado.texto })
+        await enviarTexto(de, resultado.texto)
+        return
+      }
+      // 'negar' ou indefinido → descarta a ação e segue normalmente para o agente,
+      // que responde a mensagem atual com naturalidade (sem re-perguntar a ação).
+    }
+
     // Primeira interação → aviso de privacidade (LGPD) + registra consentimento.
     let prefixo = ''
     if (!cliente.lgpd_consentimento_em) {
@@ -174,6 +211,19 @@ async function processar(de: string, texto: string): Promise<void> {
     const corpo = prefixo + resposta.texto
 
     await salvarMensagem(supabase, { telefone, clienteId: cliente.id, role: 'assistant', conteudo: resposta.texto })
+
+    // Se o agente pediu confirmação de uma ação, guarda-a como pendente: a próxima
+    // mensagem do cliente ("Confirmar"/"sim") vai executá-la lá em cima.
+    if (resposta.acaoPendente) {
+      await salvarAcaoPendente(supabase, {
+        telefone,
+        clienteId: cliente.id,
+        acao: resposta.acaoPendente.acao,
+        params: resposta.acaoPendente.params,
+        resumo: resposta.acaoPendente.resumo,
+      })
+    }
+
     if (resposta.botoes?.length) {
       await enviarBotoes(de, corpo, resposta.botoes)
     } else {
@@ -193,6 +243,27 @@ async function emModoHumano(supabase: SupabaseClient, telefone: string): Promise
     .eq('telefone', telefone)
     .maybeSingle()
   return !!(data as any)?.modo_humano
+}
+
+/**
+ * Decide se a resposta do cliente a um pedido de confirmação foi sim, não ou
+ * indefinido. O id do botão ("confirmar"/"negar") é a via principal e confiável;
+ * o texto é um fallback para quando ele digita em vez de clicar.
+ */
+function interpretarConfirmacao(texto: string, botaoId: string): 'confirmar' | 'negar' | null {
+  const id = String(botaoId ?? '').toLowerCase()
+  if (id === 'confirmar') return 'confirmar'
+  if (id === 'negar') return 'negar'
+
+  const t = String(texto ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .trim()
+  // Negativos primeiro (ex.: "não", "agora não", "deixa pra lá").
+  if (/\b(nao|deixa|esquece|negativo|cancela isso)\b/.test(t)) return 'negar'
+  if (/\b(sim|confirmo|confirmar|confirma|pode|isso|claro|bora|aceito|positivo|fechado|perfeito|quero|certeza|ok|blz|beleza)\b/.test(t)) return 'confirmar'
+  return null
 }
 
 /** Primeiro nome (para casar identificação em número compartilhado). */

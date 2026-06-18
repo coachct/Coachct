@@ -126,3 +126,75 @@ export async function salvarMensagem(
   })
   if (error) console.error('[whatsapp/canal] falha ao salvar mensagem:', error.message)
 }
+
+// ---------------------------------------------------------------------------
+// Idempotência (dedup de inbound) e ação pendente (memória do "Confirmar")
+// ---------------------------------------------------------------------------
+
+/**
+ * Marca um inbound (wamid) como processado. Retorna true se é NOVO (deve
+ * processar) e false se já tínhamos visto (reentrega da Meta → ignorar).
+ * A trava é atômica no banco (primary key), segura contra entregas concorrentes.
+ * Em erro (ex.: tabela ainda não criada), retorna true para não travar o atendimento.
+ */
+export async function registrarProcessada(supabase: SupabaseClient, wamid: string): Promise<boolean> {
+  const id = String(wamid ?? '').trim()
+  if (!id) return true // sem id não dá pra deduplicar; processa (não deve ocorrer)
+  const { data, error } = await supabase
+    .from('whatsapp_processadas')
+    .upsert({ wamid: id }, { onConflict: 'wamid', ignoreDuplicates: true })
+    .select('wamid')
+  if (error) {
+    console.error('[whatsapp/canal] falha na dedup (processa mesmo assim):', error.message)
+    return true
+  }
+  return (data?.length ?? 0) > 0
+}
+
+export interface AcaoPendente {
+  cliente_id: string | null
+  acao: string
+  params: any
+}
+
+/** Lê a ação aguardando confirmação para este telefone (ou null). */
+export async function buscarAcaoPendente(
+  supabase: SupabaseClient,
+  telefone: string,
+): Promise<AcaoPendente | null> {
+  const { data } = await supabase
+    .from('whatsapp_acao_pendente')
+    .select('cliente_id, acao, params')
+    .eq('telefone', telefone)
+    .maybeSingle()
+  if (!data || !(data as any).acao) return null
+  return {
+    cliente_id: (data as any).cliente_id ?? null,
+    acao: (data as any).acao,
+    params: (data as any).params ?? {},
+  }
+}
+
+/** Grava (ou substitui) a ação aguardando confirmação deste telefone. */
+export async function salvarAcaoPendente(
+  supabase: SupabaseClient,
+  opts: { telefone: string; clienteId: string | null; acao: string; params: any; resumo?: string },
+): Promise<void> {
+  const { error } = await supabase.from('whatsapp_acao_pendente').upsert(
+    {
+      telefone: opts.telefone,
+      cliente_id: opts.clienteId,
+      acao: opts.acao,
+      params: opts.params ?? {},
+      resumo: opts.resumo ?? null,
+      criado_em: new Date().toISOString(),
+    },
+    { onConflict: 'telefone' },
+  )
+  if (error) console.error('[whatsapp/canal] falha ao salvar ação pendente:', error.message)
+}
+
+/** Remove a ação pendente deste telefone (consumida ou descartada). */
+export async function limparAcaoPendente(supabase: SupabaseClient, telefone: string): Promise<void> {
+  await supabase.from('whatsapp_acao_pendente').delete().eq('telefone', telefone)
+}

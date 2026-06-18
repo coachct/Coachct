@@ -29,7 +29,7 @@ import {
   listarConhecimento,
   type UnidadeInfo,
 } from './conhecimento'
-import { cancelarAgendamentoCt, horariosDisponiveisCt, agendarCt, entrarFilaCt, sairFila, aulasClubDisponiveis, reservarClub, cancelarReservaClub, entrarFilaClub, posicoesLivresClub, recuperarAcessoCliente } from './acoes'
+import { cancelarAgendamentoCt, horariosDisponiveisCt, agendarCt, entrarFilaCt, sairFila, aulasClubDisponiveis, reservarClub, cancelarReservaClub, entrarFilaClub, posicoesLivresClub, recuperarAcessoCliente, type ResultadoAcao } from './acoes'
 import { agoraEmSaoPaulo } from './consultas'
 
 interface ContextoGeral {
@@ -93,13 +93,17 @@ ${cliente.bloqueado ? `ATENÇÃO: este cliente está BLOQUEADO. Motivo: ${client
 - AMANHÃ é ${hoje.amanhaExtenso} — ${hoje.amanhaStr}.
 Quando o cliente disser "hoje" use ${hoje.dataStr}; quando disser "amanhã" use ${hoje.amanhaStr}. Para outros dias ("quinta", "dia 20"), conte a partir de HOJE acima. Sempre passe a data no formato AAAA-MM-DD para as ferramentas. O agendamento do Just CT abre para os próximos 14 dias.
 
-# ANTES de confirmar QUALQUER reserva ou agendamento (OBRIGATÓRIO)
+# ANTES de confirmar QUALQUER ação que mexe na agenda (OBRIGATÓRIO)
+Ações que mexem na agenda: AGENDAR treino, CANCELAR treino, RESERVAR aula, CANCELAR reserva, ENTRAR na fila e SAIR da fila.
 Sempre, antes de pedir o "sim" final, informe de forma curta as regras de cancelamento:
 - Cancelamento grátis até 12h antes (o crédito volta).
 - Entre 3h e 12h, só dá pra cancelar se houver fila de espera para o horário.
 - Com menos de 3h não dá pra cancelar; faltar gera multa (R$ 99,00 no Coach CT / R$ 49,90 nas aulas do JustClub).
-Só chame a ferramenta de agendar/reservar DEPOIS de o cliente confirmar ciente dessas regras.
-Para pedir esse "sim" final (em agendar, reservar, cancelar ou entrar/sair de fila), use a ferramenta responder_com_botoes com dois botões: "Confirmar" e "Agora não". Assim o cliente confirma com um toque. O texto do botão volta como mensagem dele — "Confirmar" significa seguir com a ação; "Agora não" significa que ele desistiu desta ação (NÃO confunda com cancelar uma reserva já existente).
+Para TODAS essas ações o fluxo é SEMPRE o mesmo:
+1) Levante os dados necessários com as ferramentas de consulta (ex.: proximos_agendamentos para achar o id do treino, horarios_disponiveis para ver vaga, consultar_saldo para o crédito).
+2) Peça o "sim" final chamando a ferramenta **pedir_confirmacao**, passando a "acao" exata, os "params" que ela exige e um "texto" curto repetindo o que vai acontecer (data, hora, plano) com as regras de cancelamento.
+IMPORTANTE: você NÃO executa essas ações. Depois que o cliente tocar em "Confirmar", o SISTEMA executa sozinho e responde o resultado. Por isso, ao chamar pedir_confirmacao seu turno TERMINA — nunca diga "já cancelei", "já agendei" nem prometa o resultado; apenas confirme o pedido. NUNCA peça esse "sim" por texto puro nem com responder_com_botoes.
+Use responder_com_botoes apenas para escolhas que NÃO mexem na agenda (ex.: escolher unidade Vila Olímpia/Pinheiros, ou entre dois horários).
 
 # Quando não houver plano/saldo ativo (IMPORTANTE)
 Se o consultar_saldo não retornar nenhum crédito/plano utilizável para o que o cliente quer, NUNCA diga algo técnico como "não consegui ver/identificar seu saldo". Em vez disso, diga de forma leve que não localizou um plano ativo e pergunte qual ele pretende usar. Ex.: "Não localizei um plano ativo na sua conta 🤔. Qual você pretende usar — TotalPass, Wellhub ou plano direto com a gente?" Depois siga normalmente com o plano que ele indicar (a ferramenta revalida saldo no servidor).
@@ -115,34 +119,33 @@ Se o cliente disser que NÃO consegue acessar a conta, esqueceu a senha, ou nunc
 - Descubra a data desejada (use as datas de HOJE e AMANHÃ já fornecidas acima; nunca calcule por conta própria).
 - Use horarios_disponiveis para ver se o horário pedido tem vaga; se o cliente não disse a hora, mostre as opções com vaga.
 - Use consultar_saldo para saber com qual crédito agendar (tipo_credito). Para personal, use uma chave que contenha "just_ct" ou "coach_ct_pro" (NUNCA uma de "club"). Se houver mais de um crédito de personal com saldo, pergunte qual o cliente quer usar.
-- SEMPRE confirme antes: repita data, hora e plano e peça um "sim". Ex.: "Confirma agendar dia 16/06 às 08:00 usando seu TotalPass?"
-- SÓ chame agendar_treino DEPOIS do "sim". A ferramenta revalida tudo no servidor (vaga, saldo, bloqueio) e devolve o resultado — repasse com suas palavras.
+- Para confirmar, chame pedir_confirmacao com acao "agendar_treino" e params { data, hora, tipo_credito }, com o texto repetindo data, hora e plano + as regras de cancelamento. NUNCA confirme por texto puro.
+- Você não executa: o sistema agenda e responde o resultado quando o cliente tocar em "Confirmar". Não diga "já agendei".
 
 # Como reservar aula do JustClub (REGRA OBRIGATÓRIA)
 - Use aulas_club_disponiveis para achar a aula (precisa do ocorrencia_id) e ver se tem vaga. Pergunte a unidade se o cliente não disse.
 - Use consultar_saldo para o crédito (tipo_credito): para JustClub use uma chave que contenha "just_club" (da unidade certa).
-- Lift e Lift for Girls: confirme aula/dia/hora/plano e chame reservar_aula_club (sem posição).
-- Running Funcional: pergunte se a pessoa prefere ESTEIRA ou FUNCIONAL; use posicoes_livres_club para ver as livres (esteira = códigos que começam com R; funcional = começam com F); ofereça uma posição livre; e ao confirmar chame reservar_aula_club passando a posição (ex.: R03 ou F07).
-- SEMPRE confirme antes (com "sim") e só então chame reservar_aula_club. A ferramenta revalida vaga, posição, só-mulheres e saldo no servidor.
+- Lift e Lift for Girls: confirme via pedir_confirmacao com acao "reservar_aula_club" e params { ocorrencia_id, tipo_credito } (sem posição).
+- Running Funcional: pergunte se a pessoa prefere ESTEIRA ou FUNCIONAL; use posicoes_livres_club para ver as livres (esteira = códigos que começam com R; funcional = começam com F); ofereça uma posição livre; e confirme via pedir_confirmacao com acao "reservar_aula_club" e params { ocorrencia_id, tipo_credito, posicao } (ex.: R03 ou F07).
+- Sempre passe pelo pedir_confirmacao; o sistema revalida vaga, posição, só-mulheres e saldo e executa após o "Confirmar".
 
 # Como cancelar reserva do JustClub (REGRA OBRIGATÓRIA)
 - Use proximas_reservas_club para achar a reserva e seu id.
-- SEMPRE confirme antes (aula, dia, hora) e peça "sim"; só então chame cancelar_reserva_club.
-- A ferramenta aplica a regra de prazo (12h/3h/fila) e devolve o resultado — repasse com suas palavras.
+- Para confirmar, chame pedir_confirmacao com acao "cancelar_reserva_club" e params { reserva_id }, repetindo aula/dia/hora no texto.
+- O sistema aplica a regra de prazo (12h/3h/fila) e responde o resultado após o "Confirmar".
 
 # Fila de espera (REGRA OBRIGATÓRIA)
 - A fila serve quando o horário/aula está LOTADO. Se o cliente quer algo cheio, ofereça entrar na fila.
-- Personal (Just CT): para ENTRAR use entrar_fila (data, hora, plano).
-- JustClub (aulas coletivas): para ENTRAR use entrar_fila_club (ocorrencia_id de aulas_club_disponiveis, plano).
-- Para SAIR (de qualquer fila): use posicao_na_fila para achar o id; confirme qual e use sair_fila.
-- SEMPRE confirme (com "sim") antes de entrar ou sair.
+- Personal (Just CT): para ENTRAR, confirme via pedir_confirmacao com acao "entrar_fila" e params { data, hora, tipo_credito }.
+- JustClub (aulas coletivas): para ENTRAR, confirme via pedir_confirmacao com acao "entrar_fila_club" e params { ocorrencia_id, tipo_credito }.
+- Para SAIR (de qualquer fila): use posicao_na_fila para achar o id e confirme via pedir_confirmacao com acao "sair_fila" e params { fila_id }.
+- Toda entrada/saída de fila passa pelo pedir_confirmacao; o sistema executa após o "Confirmar".
 
 # Como cancelar (REGRA OBRIGATÓRIA)
 - Para saber qual agendamento e seu id, use a ferramenta proximos_agendamentos.
 - Se houver mais de um agendamento, pergunte qual o cliente quer cancelar.
-- SEMPRE confirme antes: diga a data e a hora do treino e peça um "sim" explícito. Ex.: "Confirma que quer cancelar o treino de 15/06 às 05:30?"
-- SÓ chame a ferramenta cancelar_agendamento DEPOIS do cliente confirmar. Nunca cancele por conta própria.
-- A ferramenta aplica as regras de prazo (12h/3h/fila) e devolve o resultado — repasse a mensagem ao cliente com suas palavras.
+- Para confirmar, chame pedir_confirmacao com acao "cancelar_agendamento" e params { agendamento_id }, dizendo no texto a data e a hora do treino + as regras de cancelamento.
+- Você nunca cancela por conta própria nem diz "já cancelei": o sistema cancela e responde o resultado quando o cliente tocar em "Confirmar".
 
 # Regras gerais
 - Nunca invente regras, valores, horários ou políticas. Para preços use a ferramenta; para dúvidas use a base de conhecimento. Se realmente não tiver a informação, diga com sinceridade que não tem esse dado no momento e siga ajudando no que puder — sem mandar o cliente para outro canal.
@@ -182,7 +185,7 @@ ${faqTxt}
 const TOOLS: Anthropic.Tool[] = [
   {
     name: 'responder_com_botoes',
-    description: 'Envia sua resposta ao cliente com BOTÕES clicáveis, em vez de texto puro. Use SEMPRE que apresentar uma escolha curta de até 3 opções — principalmente o "sim/não" final de confirmação antes de agendar, reservar, cancelar ou entrar/sair de fila (ex.: botões "Confirmar" e "Cancelar"). NÃO use para listas de horários (muitos itens). Coloque a pergunta/mensagem em "texto" e cada opção como um botão curto (até 20 caracteres). Esta ferramenta ENCERRA o turno: depois de chamá-la, a resposta já vai para o cliente.',
+    description: 'Envia sua resposta ao cliente com BOTÕES clicáveis, em vez de texto puro. Use para escolhas curtas (até 3 opções) que NÃO mexem na agenda — por exemplo escolher a unidade (Vila Olímpia/Pinheiros) ou entre dois horários. NÃO use para o "sim/não" final de agendar, cancelar, reservar ou fila: para isso use SEMPRE pedir_confirmacao. NÃO use para listas de horários (muitos itens). Coloque a pergunta/mensagem em "texto" e cada opção como um botão curto (até 20 caracteres). Esta ferramenta ENCERRA o turno: depois de chamá-la, a resposta já vai para o cliente.',
     input_schema: {
       type: 'object',
       properties: {
@@ -193,13 +196,36 @@ const TOOLS: Anthropic.Tool[] = [
           items: {
             type: 'object',
             properties: {
-              titulo: { type: 'string', description: 'rótulo curto do botão, até 20 caracteres (ex.: Confirmar, Cancelar)' },
+              titulo: { type: 'string', description: 'rótulo curto do botão, até 20 caracteres (ex.: Vila Olímpia, Pinheiros)' },
             },
             required: ['titulo'],
           },
         },
       },
       required: ['texto', 'botoes'],
+    },
+  },
+  {
+    name: 'pedir_confirmacao',
+    description: 'Pede o "sim" final ao cliente antes de QUALQUER ação que mexe na agenda e DEIXA O SISTEMA EXECUTAR a ação quando ele tocar em "Confirmar". Use SEMPRE (no lugar de responder_com_botoes) para: agendar treino, cancelar treino, reservar aula, cancelar reserva, entrar na fila e sair da fila. Você NÃO executa a ação — ao chamar esta ferramenta seu turno TERMINA e o sistema cuida do resto (não diga "já fiz"). Passe "acao" (uma das chaves abaixo), os "params" que ela exige e um "texto" curto repetindo data/hora/plano + as regras de cancelamento.\n\nValores de "acao" e seus "params":\n- "cancelar_agendamento": { "agendamento_id": "<id de proximos_agendamentos>" }\n- "agendar_treino": { "data": "AAAA-MM-DD", "hora": "HH:MM", "tipo_credito": "<chave de consultar_saldo>" }\n- "reservar_aula_club": { "ocorrencia_id": "<id de aulas_club_disponiveis>", "tipo_credito": "<chave>", "posicao": "<R03/F07 só para Running Funcional; senão omita>" }\n- "cancelar_reserva_club": { "reserva_id": "<id de proximas_reservas_club>" }\n- "entrar_fila": { "data": "AAAA-MM-DD", "hora": "HH:MM", "tipo_credito": "<chave>" }\n- "entrar_fila_club": { "ocorrencia_id": "<id de aulas_club_disponiveis>", "tipo_credito": "<chave>" }\n- "sair_fila": { "fila_id": "<id de posicao_na_fila>" }',
+    input_schema: {
+      type: 'object',
+      properties: {
+        acao: {
+          type: 'string',
+          description: 'a ação que o sistema executa depois que o cliente tocar em "Confirmar"',
+          enum: ['cancelar_agendamento', 'agendar_treino', 'reservar_aula_club', 'cancelar_reserva_club', 'entrar_fila', 'entrar_fila_club', 'sair_fila'],
+        },
+        params: {
+          type: 'object',
+          description: 'os parâmetros que a ação exige (ver a lista na descrição desta ferramenta)',
+        },
+        texto: {
+          type: 'string',
+          description: 'mensagem curta de confirmação que o cliente vê acima dos botões (repita data/hora/plano e as regras de cancelamento)',
+        },
+      },
+      required: ['acao', 'params', 'texto'],
     },
   },
   {
@@ -244,30 +270,6 @@ const TOOLS: Anthropic.Tool[] = [
     },
   },
   {
-    name: 'agendar_treino',
-    description: 'Agenda um treino de personal no Just CT. Só use APÓS o cliente confirmar data, hora e plano. Antes, confira vaga (horarios_disponiveis) e o crédito (consultar_saldo).',
-    input_schema: {
-      type: 'object',
-      properties: {
-        data: { type: 'string', description: 'data do treino em AAAA-MM-DD' },
-        hora: { type: 'string', description: 'horário em HH:MM (ex.: 08:00)' },
-        tipo_credito: { type: 'string', description: 'a chave do crédito a usar, exatamente como aparece em consultar_saldo (ex.: totalpass_just_ct)' },
-      },
-      required: ['data', 'hora', 'tipo_credito'],
-    },
-  },
-  {
-    name: 'cancelar_agendamento',
-    description: 'Cancela um agendamento de personal (Just CT). Só use APÓS o cliente confirmar explicitamente qual treino cancelar. O id vem de proximos_agendamentos.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        agendamento_id: { type: 'string', description: 'id do agendamento a cancelar (campo "id" de proximos_agendamentos)' },
-      },
-      required: ['agendamento_id'],
-    },
-  },
-  {
     name: 'aulas_club_disponiveis',
     description: 'Lista as aulas coletivas do JustClub (lift, lift_for_girls, running_funcional) de um dia, com vagas livres. Passe a unidade (ex.: "Vila Olímpia" ou "Pinheiros") e a data AAAA-MM-DD.',
     input_schema: {
@@ -291,55 +293,6 @@ const TOOLS: Anthropic.Tool[] = [
     },
   },
   {
-    name: 'reservar_aula_club',
-    description: 'Reserva uma aula do JustClub (Lift, Lift for Girls ou Running Funcional). Só use APÓS o cliente confirmar. Para Running Funcional é OBRIGATÓRIO passar a posição (ex.: R03 esteira, F07 funcional) — pegue uma livre em posicoes_livres_club.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        ocorrencia_id: { type: 'string', description: 'id da aula (campo "ocorrencia_id" de aulas_club_disponiveis)' },
-        tipo_credito: { type: 'string', description: 'chave do crédito de club, como em consultar_saldo (ex.: totalpass_just_club_vila_olimpia)' },
-        posicao: { type: 'string', description: 'posição para Running Funcional (ex.: R03 = esteira, F07 = funcional). Vazio para Lift/Lift for Girls.' },
-      },
-      required: ['ocorrencia_id', 'tipo_credito'],
-    },
-  },
-  {
-    name: 'cancelar_reserva_club',
-    description: 'Cancela uma reserva de aula do JustClub. Só use APÓS o cliente confirmar. O id vem de proximas_reservas_club.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        reserva_id: { type: 'string', description: 'id da reserva (campo "id" de proximas_reservas_club)' },
-      },
-      required: ['reserva_id'],
-    },
-  },
-  {
-    name: 'entrar_fila',
-    description: 'Coloca o cliente na fila de espera de um horário LOTADO do Just CT. Só use APÓS confirmar data, hora e plano. Use horarios_disponiveis para ver se o horário está cheio.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        data: { type: 'string', description: 'data em AAAA-MM-DD' },
-        hora: { type: 'string', description: 'horário em HH:MM' },
-        tipo_credito: { type: 'string', description: 'chave do crédito, como em consultar_saldo (ex.: totalpass_just_ct)' },
-      },
-      required: ['data', 'hora', 'tipo_credito'],
-    },
-  },
-  {
-    name: 'entrar_fila_club',
-    description: 'Coloca o cliente na fila de espera de uma aula LOTADA do JustClub. Só use APÓS confirmar. O ocorrencia_id vem de aulas_club_disponiveis.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        ocorrencia_id: { type: 'string', description: 'id da aula (campo "ocorrencia_id" de aulas_club_disponiveis)' },
-        tipo_credito: { type: 'string', description: 'chave do crédito de club, como em consultar_saldo' },
-      },
-      required: ['ocorrencia_id', 'tipo_credito'],
-    },
-  },
-  {
     name: 'recuperar_acesso',
     description: 'Regulariza o acesso do cliente ao site (login = e-mail + senha): cria ou redefine a conta com o e-mail informado e gera uma senha provisória, que VOCÊ repassa ao cliente aqui no WhatsApp. Use quando o cliente não consegue acessar, esqueceu a senha ou nunca acessou. Antes de chamar, pergunte qual e-mail ele quer usar para entrar.',
     input_schema: {
@@ -348,17 +301,6 @@ const TOOLS: Anthropic.Tool[] = [
         email: { type: 'string', description: 'e-mail que o cliente quer usar para fazer login' },
       },
       required: ['email'],
-    },
-  },
-  {
-    name: 'sair_fila',
-    description: 'Remove o cliente de uma fila de espera (Just CT ou JustClub). Só use APÓS o cliente confirmar. O id vem de posicao_na_fila.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        fila_id: { type: 'string', description: 'id da fila (campo "id" de posicao_na_fila)' },
-      },
-      required: ['fila_id'],
     },
   },
 ]
@@ -406,44 +348,76 @@ async function executarTool(
       return JSON.stringify(await consultarPrecos(supabase))
     case 'horarios_disponiveis':
       return JSON.stringify(await horariosDisponiveisCt(supabase, String(input?.data ?? '')))
-    case 'agendar_treino':
-      return JSON.stringify(await agendarCt(supabase, cliente.id, {
-        data: String(input?.data ?? ''),
-        hora: String(input?.hora ?? ''),
-        tipoCredito: String(input?.tipo_credito ?? ''),
-      }))
-    case 'cancelar_agendamento':
-      return JSON.stringify(await cancelarAgendamentoCt(supabase, cliente.id, String(input?.agendamento_id ?? '')))
-    case 'entrar_fila':
-      return JSON.stringify(await entrarFilaCt(supabase, cliente.id, {
-        data: String(input?.data ?? ''),
-        hora: String(input?.hora ?? ''),
-        tipoCredito: String(input?.tipo_credito ?? ''),
-      }))
-    case 'entrar_fila_club':
-      return JSON.stringify(await entrarFilaClub(supabase, cliente.id, {
-        ocorrenciaId: String(input?.ocorrencia_id ?? ''),
-        tipoCredito: String(input?.tipo_credito ?? ''),
-      }))
-    case 'sair_fila':
-      return JSON.stringify(await sairFila(supabase, cliente.id, String(input?.fila_id ?? '')))
     case 'recuperar_acesso':
       return JSON.stringify(await recuperarAcessoCliente(supabase, cliente.id, String(input?.email ?? '')))
     case 'aulas_club_disponiveis':
       return JSON.stringify(await aulasClubDisponiveis(supabase, String(input?.unidade ?? ''), String(input?.data ?? '')))
     case 'posicoes_livres_club':
       return JSON.stringify(await posicoesLivresClub(supabase, String(input?.ocorrencia_id ?? '')))
-    case 'reservar_aula_club':
-      return JSON.stringify(await reservarClub(supabase, cliente.id, {
-        ocorrenciaId: String(input?.ocorrencia_id ?? ''),
-        tipoCredito: String(input?.tipo_credito ?? ''),
-        posicao: input?.posicao ? String(input.posicao) : undefined,
-      }))
-    case 'cancelar_reserva_club':
-      return JSON.stringify(await cancelarReservaClub(supabase, cliente.id, String(input?.reserva_id ?? '')))
     default:
       return JSON.stringify({ erro: `ferramenta desconhecida: ${nome}` })
   }
+}
+
+// ---------------------------------------------------------------------------
+// Execução de uma ação JÁ CONFIRMADA pelo cliente (o "sim" do botão)
+// ---------------------------------------------------------------------------
+
+/**
+ * Executa uma ação de escrita depois que o cliente confirmou (tocou em "Confirmar"
+ * ou respondeu "sim"). É chamada pelo WEBHOOK — fora do loop do modelo — a partir
+ * da ação pendente salva, de forma determinística. Devolve a mensagem já pronta
+ * para o cliente (as próprias ações retornam textos amigáveis em ok e em erro).
+ */
+export async function executarAcaoConfirmada(
+  supabase: SupabaseClient,
+  clienteId: string,
+  acao: string,
+  params: any,
+): Promise<{ texto: string }> {
+  const p = params ?? {}
+  let r: ResultadoAcao
+  switch (acao) {
+    case 'cancelar_agendamento':
+      r = await cancelarAgendamentoCt(supabase, clienteId, String(p.agendamento_id ?? ''))
+      break
+    case 'agendar_treino':
+      r = await agendarCt(supabase, clienteId, {
+        data: String(p.data ?? ''),
+        hora: String(p.hora ?? ''),
+        tipoCredito: String(p.tipo_credito ?? ''),
+      })
+      break
+    case 'reservar_aula_club':
+      r = await reservarClub(supabase, clienteId, {
+        ocorrenciaId: String(p.ocorrencia_id ?? ''),
+        tipoCredito: String(p.tipo_credito ?? ''),
+        posicao: p.posicao ? String(p.posicao) : undefined,
+      })
+      break
+    case 'cancelar_reserva_club':
+      r = await cancelarReservaClub(supabase, clienteId, String(p.reserva_id ?? ''))
+      break
+    case 'entrar_fila':
+      r = await entrarFilaCt(supabase, clienteId, {
+        data: String(p.data ?? ''),
+        hora: String(p.hora ?? ''),
+        tipoCredito: String(p.tipo_credito ?? ''),
+      })
+      break
+    case 'entrar_fila_club':
+      r = await entrarFilaClub(supabase, clienteId, {
+        ocorrenciaId: String(p.ocorrencia_id ?? ''),
+        tipoCredito: String(p.tipo_credito ?? ''),
+      })
+      break
+    case 'sair_fila':
+      r = await sairFila(supabase, clienteId, String(p.fila_id ?? ''))
+      break
+    default:
+      r = { ok: false, mensagem: 'Não consegui identificar a ação para confirmar. Pode me dizer de novo o que você quer fazer?' }
+  }
+  return { texto: r.mensagem }
 }
 
 // ---------------------------------------------------------------------------
@@ -459,6 +433,11 @@ export interface TurnoConversa {
 export interface RespostaAgente {
   texto: string
   botoes?: { id: string; titulo: string }[]
+  /**
+   * Presente quando o agente pediu confirmação de uma ação (via pedir_confirmacao).
+   * O webhook salva isto como "ação pendente" e a executa quando o cliente confirmar.
+   */
+  acaoPendente?: { acao: string; params: any; resumo: string }
 }
 
 /**
@@ -517,6 +496,31 @@ export async function responderMensagem(params: {
     })
 
     if (resposta.stop_reason === 'tool_use') {
+      // Terminal: pedido de confirmação de uma ação. Encerra o turno e devolve a
+      // ação pendente — o webhook a executa quando o cliente tocar em "Confirmar".
+      const blocoConfirma = resposta.content.find(
+        (b): b is Anthropic.ToolUseBlock =>
+          b.type === 'tool_use' && b.name === 'pedir_confirmacao',
+      )
+      if (blocoConfirma) {
+        const inp: any = blocoConfirma.input
+        const texto = String(inp?.texto ?? '').trim()
+        const acao = String(inp?.acao ?? '').trim()
+        const params = inp?.params ?? {}
+        registroTools?.push(`pedir_confirmacao(${JSON.stringify(inp)})`)
+        if (texto && acao) {
+          return {
+            texto,
+            botoes: [
+              { id: 'confirmar', titulo: 'Confirmar' },
+              { id: 'negar', titulo: 'Agora não' },
+            ],
+            acaoPendente: { acao, params, resumo: texto },
+          }
+        }
+        if (texto) return { texto } // malformado → manda só o texto
+      }
+
       // Terminal: o agente quer responder com BOTÕES? Encerra o turno aqui.
       const blocoBotoes = resposta.content.find(
         (b): b is Anthropic.ToolUseBlock =>
