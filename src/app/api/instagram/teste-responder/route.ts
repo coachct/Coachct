@@ -40,14 +40,14 @@ export async function GET(req: NextRequest) {
 
   try {
     // 1) Lê as conversas (chamada de API usando a permissão de mensagens).
-    const convUrl = `https://graph.instagram.com/${V}/me/conversations?fields=participants,messages{message,from,created_time}&access_token=${encodeURIComponent(igToken)}`
+    const convUrl = `https://graph.instagram.com/${V}/me/conversations?platform=instagram&fields=participants,messages{message,from,created_time}&access_token=${encodeURIComponent(igToken)}`
     const convResp = await fetch(convUrl, { cache: 'no-store' })
     const convData = await convResp.json().catch(() => ({}))
     diag.passos.push({ passo: 'GET conversations', status: convResp.status, ok: convResp.ok })
     if (!convResp.ok) { diag.conversationsError = convData; return NextResponse.json(diag, { status: 200 }) }
 
     const conversas = convData?.data ?? []
-    if (!conversas.length) { diag.aviso = 'nenhuma conversa encontrada'; return NextResponse.json(diag, { status: 200 }) }
+    if (!conversas.length) { diag.aviso = 'nenhuma conversa encontrada'; diag.raw = convData; return NextResponse.json(diag, { status: 200 }) }
 
     // 2) Acha o usuário (participante que não é a conta) e a última msg dele.
     const conv = conversas[0]
