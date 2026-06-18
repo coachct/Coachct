@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { waitUntil } from '@vercel/functions'
 import crypto from 'crypto'
-import { createServiceSupabase } from '@/lib/whatsapp/consultas'
+import { createServiceSupabase, registrarAcessoLgpd } from '@/lib/whatsapp/consultas'
 import { responderInstagram } from '@/lib/instagram/agente-info'
 import { enviarTextoInstagram, carregarHistoricoInstagram, salvarMensagemInstagram } from '@/lib/instagram/canal'
 
@@ -43,13 +43,27 @@ export async function POST(req: NextRequest) {
   // é assinado com a CHAVE SECRETA DO APP DO INSTAGRAM (fallback p/ o secret geral).
   const assinatura = req.headers.get('x-hub-signature-256') ?? ''
   const appSecret = process.env.INSTAGRAM_APP_SECRET ?? process.env.META_APP_SECRET
-  if (appSecret) {
+  let assinaturaOk = false
+  if (appSecret && assinatura) {
     const esperado = 'sha256=' + crypto.createHmac('sha256', appSecret).update(raw).digest('hex')
-    const ok =
+    assinaturaOk =
       assinatura.length === esperado.length &&
       crypto.timingSafeEqual(Buffer.from(assinatura), Buffer.from(esperado))
-    if (!ok) return new NextResponse('Invalid signature', { status: 403 })
   }
+
+  // DEBUG: registra QUALQUER POST que chega (antes de validar) p/ diagnóstico.
+  waitUntil((async () => {
+    try {
+      const s = createServiceSupabase()
+      await registrarAcessoLgpd(s, {
+        telefone: 'instagram',
+        acao: 'ig_inbound',
+        detalhe: { temSecret: !!appSecret, temAssinatura: !!assinatura, assinaturaOk, body: raw.slice(0, 800) },
+      })
+    } catch {}
+  })())
+
+  if (appSecret && !assinaturaOk) return new NextResponse('Invalid signature', { status: 403 })
 
   let body: any
   try { body = JSON.parse(raw) } catch { return new NextResponse('OK', { status: 200 }) }
