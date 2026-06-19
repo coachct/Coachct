@@ -56,7 +56,9 @@ function aplicacaoProduto(tipo: string | null, subtipo: string | null): string {
         ? 'Just CT — acesso só à musculação livre (NÃO inclui Coach CT/personal)'
         : 'Coach CT — personal 1×1 (treino com coach)'
     case 'credito_treino':
-      return 'Treino / musculação livre (NÃO é Coach CT/personal)'
+      // Treino avulso e pacotes (5/10/40): valem na musculação livre do Just CT
+      // E também nas aulas das unidades JustClub. Só NÃO servem para Coach CT.
+      return 'Treino avulso e pacotes (5/10/40) — válidos na musculação livre do Just CT E nas aulas do JustClub. NÃO é Coach CT/personal.'
     default:
       return tipo ?? 'outro'
   }
