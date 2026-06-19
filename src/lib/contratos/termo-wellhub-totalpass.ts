@@ -1,6 +1,6 @@
 // src/lib/contratos/termo-wellhub-totalpass.ts
 
-export const VERSAO_TERMO_WELLHUB_TOTALPASS = 'v1.0'
+export const VERSAO_TERMO_WELLHUB_TOTALPASS = 'v1.1'
 
 export const TEXTO_TERMO_WELLHUB_TOTALPASS = `**JUST CT — TERMO DE ADESÃO — WELLHUB / TOTALPASS**
 
@@ -80,7 +80,7 @@ O Coach CT é uma modalidade exclusiva da Just CT, com treinos elaborados e supe
 
 9.4 O agendamento pelo aplicativo parceiro não é vinculado à validação do plano contratado para a modalidade Coach CT. É responsabilidade exclusiva do cliente verificar, antes de realizar o agendamento, se o seu plano contempla o acesso ao Coach CT.
 
-9.5 Limites mensais de acesso ao Coach CT por aplicativo parceiro: (i) clientes TotalPass: plano mínimo TP6, com direito a até 10 (dez) treinos por mês mediante check-in; (ii) clientes Wellhub: até 8 (oito) treinos por mês mediante check-in. O cliente que desejar realizar treinos além do limite do seu plano poderá adquirir treinos avulsos do Coach CT diretamente com a Just CT.
+9.5 Limites mensais de acesso ao Coach CT por aplicativo parceiro: (i) clientes TotalPass: plano mínimo TP6, com direito a até 10 (dez) treinos por mês mediante check-in; (ii) clientes Wellhub: plano mínimo Diamond, com direito a até 8 (oito) treinos por mês mediante check-in. O cliente que desejar realizar treinos além do limite do seu plano poderá adquirir treinos avulsos do Coach CT diretamente com a Just CT.
 
 9.6 O cliente não poderá escolher o coach no momento do agendamento. A escolha somente poderá ocorrer na chegada ao Studio, quando a recepção informará os coaches disponíveis para aquela sessão. Caso o cliente não deseje realizar o treino com os coaches disponíveis por motivo pessoal, deverá optar pelo check-in na modalidade personal ou arcar com a multa de no-show no valor de R$ 99,00 (noventa e nove reais), conforme cláusula 8.
 

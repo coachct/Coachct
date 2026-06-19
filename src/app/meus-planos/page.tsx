@@ -145,6 +145,7 @@ export default function MeusPlanosPage() {
         creditos_mes: modalPlano.creditos_mes,
         tipo: modalPlano.tipo,
         unidade: modalPlano.unidades?.nome,
+        unidade_id: modalPlano.unidade_id,
       })
 
       // Recarrega dados em background (não fecha o modal)
@@ -234,7 +235,7 @@ export default function MeusPlanosPage() {
             {clientePlanos.length > 0 ? 'Ativar outros planos' : 'Planos disponíveis'}
           </div>
           <div style={{ background: '#0d0010', border: `1px solid ${ACCENT}33`, borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1.5rem', fontSize: 13, color: '#bbb', lineHeight: 1.7 }}>
-            Tem o app <strong style={{ color: '#fff' }}>Wellhub</strong> ou <strong style={{ color: '#fff' }}>TotalPass</strong>? Ative seu plano aqui e libere suas sessões Coach CT incluídas. Você pode ter planos em mais de uma unidade.
+            Possui algum app parceiro? Confira qual é aceito em cada unidade e ative em qual preferir.
           </div>
 
           {planosWellhub.length > 0 && (
@@ -251,7 +252,10 @@ export default function MeusPlanosPage() {
                   <div key={plano.id} className="plano-card" style={{ background: '#111', border: '1.5px solid #2a2a2a', borderRadius: 12, padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: 8, transition: 'border-color .2s' }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{plano.nome}</div>
-                      <div style={{ fontSize: 12, color: '#555', marginTop: 2 }}>{plano.unidades?.nome} · {plano.creditos_mes} sessões/mês</div>
+                      <div style={{ fontSize: 12, color: '#555', marginTop: 2 }}>
+                        {plano.unidades?.nome} · {plano.creditos_mes} sessões/mês
+                        {plano.plano_minimo_parceiro ? ` · a partir do ${plano.plano_minimo_parceiro}` : ''}
+                      </div>
                     </div>
                     <button onClick={() => abrirModalPlano(plano)} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 8, padding: '0.45rem 1.1rem', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", flexShrink: 0 }}>Ativar</button>
                   </div>
@@ -277,7 +281,10 @@ export default function MeusPlanosPage() {
                   <div key={plano.id} className="plano-card" style={{ background: '#111', border: '1.5px solid #2a2a2a', borderRadius: 12, padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: 8, transition: 'border-color .2s' }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{plano.nome}</div>
-                      <div style={{ fontSize: 12, color: '#555', marginTop: 2 }}>{plano.unidades?.nome} · {plano.creditos_mes} sessões/mês</div>
+                      <div style={{ fontSize: 12, color: '#555', marginTop: 2 }}>
+                        {plano.unidades?.nome} · {plano.creditos_mes} sessões/mês
+                        {plano.plano_minimo_parceiro ? ` · a partir do ${plano.plano_minimo_parceiro}` : ''}
+                      </div>
                     </div>
                     <button onClick={() => abrirModalPlano(plano)} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 8, padding: '0.45rem 1.1rem', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", flexShrink: 0 }}>Ativar</button>
                   </div>
@@ -349,7 +356,10 @@ export default function MeusPlanosPage() {
               <div style={{ background: '#0a1a0a', border: `1px solid ${VERDE}33`, borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1rem', textAlign: 'center' as const }}>
                 <div style={{ fontSize: 12, color: VERDE, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 4 }}>Seu direito mensal</div>
                 <div style={{ fontSize: 28, color: '#fff', fontWeight: 700, fontFamily: "'Bebas Neue', sans-serif" }}>
-                  {planoAtivadoSucesso.creditos_mes} treinos Coach CT
+                  {planoAtivadoSucesso.creditos_mes}{' '}
+                  {planoAtivadoSucesso.unidade_id === 'c28bf4bb-56f8-44ff-818a-c7836e58bcef'
+                    ? 'treinos Coach CT'
+                    : 'sessões'}
                 </div>
                 <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>por mês — créditos renovam dia 1º</div>
               </div>
