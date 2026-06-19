@@ -235,12 +235,10 @@ export default function AdminAgendaPage() {
   }
 
   async function marcarFalta(agendamentoId: string) {
-    if (!confirm('Marcar como falta? O cliente poderá ser bloqueado.')) return
+    // Marcar falta NÃO bloqueia o cliente. O bloqueio só nasce de FALHA DE COBRANÇA
+    // da multa (ver /api/admin/cobrar-cartao-salvo e /api/admin/cobrar-noshow-club).
+    if (!confirm('Marcar como falta?')) return
     await supabase.from('agendamentos').update({ status: 'falta' }).eq('id', agendamentoId)
-    const ag = agendamentos.find(a => a.id === agendamentoId)
-    if (ag?.cliente_id) {
-      await supabase.from('clientes').update({ bloqueado: true, motivo_bloqueio: 'No-show — falta sem cancelamento' }).eq('id', ag.cliente_id)
-    }
     await loadData(true)
   }
 
