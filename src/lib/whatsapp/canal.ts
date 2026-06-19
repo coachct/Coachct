@@ -198,3 +198,25 @@ export async function salvarAcaoPendente(
 export async function limparAcaoPendente(supabase: SupabaseClient, telefone: string): Promise<void> {
   await supabase.from('whatsapp_acao_pendente').delete().eq('telefone', telefone)
 }
+
+/**
+ * Marca a conversa como "aguardando atendimento humano" (o cliente pediu um
+ * atendente). Não mexe no modo_humano — é só um sinalizador para o painel.
+ * Faz update-ou-insert para não sobrescrever o modo_humano existente.
+ */
+export async function marcarAguardandoHumano(
+  supabase: SupabaseClient,
+  telefone: string,
+): Promise<void> {
+  const agora = new Date().toISOString()
+  const { data } = await supabase
+    .from('whatsapp_controle')
+    .update({ aguardando_humano: true, aguardando_em: agora })
+    .eq('telefone', telefone)
+    .select('telefone')
+  if (!data || data.length === 0) {
+    await supabase
+      .from('whatsapp_controle')
+      .insert({ telefone, modo_humano: false, aguardando_humano: true, aguardando_em: agora })
+  }
+}

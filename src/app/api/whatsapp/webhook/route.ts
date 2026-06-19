@@ -29,6 +29,7 @@ import {
   buscarAcaoPendente,
   salvarAcaoPendente,
   limparAcaoPendente,
+  marcarAguardandoHumano,
 } from '@/lib/whatsapp/canal'
 
 export const runtime = 'nodejs'
@@ -177,6 +178,12 @@ async function processar(de: string, texto: string, wamid: string, botaoId: stri
       return
     }
 
+    // Cliente pediu pra falar com um atendente: sinaliza no painel (contador/badge)
+    // para um adm dar uma olhada. O bot segue respondendo normalmente (acolhedor).
+    if (pedeHumano(texto)) {
+      await marcarAguardandoHumano(supabase, telefone)
+    }
+
     // Ação pendente: o cliente está respondendo a um pedido de confirmação?
     // (clicou "Confirmar"/"Agora não" OU digitou um "sim"/"não"). Consumimos a
     // ação aqui — de forma determinística, sem depender do modelo re-derivar nada.
@@ -243,6 +250,17 @@ async function emModoHumano(supabase: SupabaseClient, telefone: string): Promise
     .eq('telefone', telefone)
     .maybeSingle()
   return !!(data as any)?.modo_humano
+}
+
+/** O cliente está pedindo para falar com um atendente/pessoa/humano? */
+function pedeHumano(texto: string): boolean {
+  const t = String(texto ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  return [
+    'falar com um humano', 'falar com humano', 'falar com uma pessoa', 'falar com alguem',
+    'falar com atendente', 'falar com um atendente', 'com um atendente', 'atendente humano',
+    'atendimento humano', 'quero um humano', 'um humano', 'pessoa de verdade', 'humano de verdade',
+    'falar com a recepcao', 'falar com a equipe', 'falar com voces', 'falar com alguem da equipe',
+  ].some((p) => t.includes(p))
 }
 
 /**

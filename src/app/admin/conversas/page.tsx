@@ -55,6 +55,7 @@ export default function ConversasPage() {
 
   const [msgs, setMsgs] = useState<Msg[]>([])
   const [controle, setControle] = useState<Record<string, boolean>>({})
+  const [aguardando, setAguardando] = useState<Record<string, boolean>>({})
   const [carregando, setCarregando] = useState(true)
   const [busca, setBusca] = useState('')
   const [desde, setDesde] = useState('') // AAAA-MM-DD opcional
@@ -86,23 +87,44 @@ export default function ConversasPage() {
     }
     setMsgs(lista.map((m) => ({ ...m, _nome: m.cliente_id ? nomeMap[m.cliente_id] : null } as any)))
 
-    // Estado de atendimento humano por telefone.
-    const { data: ctrl } = await supabase.from('whatsapp_controle').select('telefone, modo_humano')
+    // Estado de atendimento humano + "aguardando atendimento" por telefone.
+    // select('*') p/ não quebrar se a coluna aguardando_humano ainda não existir.
+    const { data: ctrl } = await supabase.from('whatsapp_controle').select('*')
     const cmap: Record<string, boolean> = {}
-    for (const c of (ctrl || [])) cmap[(c as any).telefone] = (c as any).modo_humano
+    const amap: Record<string, boolean> = {}
+    for (const c of (ctrl || [])) {
+      cmap[(c as any).telefone] = (c as any).modo_humano
+      amap[(c as any).telefone] = !!(c as any).aguardando_humano
+    }
     setControle(cmap)
+    setAguardando(amap)
 
     setCarregando(false)
   }
 
   async function toggleHumano(telefone: string, ligar: boolean) {
     setControle((m) => ({ ...m, [telefone]: ligar })) // otimista
+    if (ligar) setAguardando((m) => ({ ...m, [telefone]: false })) // assumir limpa o "aguardando"
+    const payload: any = { telefone, modo_humano: ligar, atualizado_em: new Date().toISOString() }
+    if (ligar) payload.aguardando_humano = false
     const { error } = await supabase
       .from('whatsapp_controle')
-      .upsert({ telefone, modo_humano: ligar, atualizado_em: new Date().toISOString() }, { onConflict: 'telefone' })
+      .upsert(payload, { onConflict: 'telefone' })
     if (error) {
       setControle((m) => ({ ...m, [telefone]: !ligar })) // desfaz
       alert('Não consegui mudar o atendimento agora. Tente de novo.')
+    }
+  }
+
+  /** Marca a conversa como resolvida (limpa o "aguardando atendimento") sem assumir. */
+  async function resolverAguardando(telefone: string) {
+    setAguardando((m) => ({ ...m, [telefone]: false })) // otimista
+    const { error } = await supabase
+      .from('whatsapp_controle')
+      .upsert({ telefone, aguardando_humano: false, atualizado_em: new Date().toISOString() }, { onConflict: 'telefone' })
+    if (error) {
+      setAguardando((m) => ({ ...m, [telefone]: true }))
+      alert('Não consegui marcar como resolvido agora. Tente de novo.')
     }
   }
 
@@ -154,14 +176,21 @@ export default function ConversasPage() {
   const conversasFiltradas = useMemo(() => {
     const q = busca.trim().toLowerCase()
     const qDig = q.replace(/\D/g, '')
-    return conversas.filter((c) => {
+    const filtradas = conversas.filter((c) => {
       if (desde && c.ultimaEm.slice(0, 10) < desde) return false
       if (!q) return true
       const nomeOk = (c.nome || '').toLowerCase().includes(q)
       const telOk = qDig.length >= 3 && c.telefone.replace(/\D/g, '').includes(qDig)
       return nomeOk || telOk
     })
-  }, [conversas, busca, desde])
+    // Conversas aguardando atendimento sobem para o topo.
+    return filtradas.sort((a, b) => {
+      const aa = aguardando[a.telefone] ? 1 : 0
+      const bb = aguardando[b.telefone] ? 1 : 0
+      if (aa !== bb) return bb - aa
+      return b.ultimaEm.localeCompare(a.ultimaEm)
+    })
+  }, [conversas, busca, desde, aguardando])
 
   // Mensagens da conversa selecionada (ordem cronológica).
   const thread = useMemo(() => {
@@ -171,6 +200,7 @@ export default function ConversasPage() {
 
   const convSel = conversas.find((c) => c.telefone === telSel) || null
   const humanoAtivo = telSel ? !!controle[telSel] : false
+  const qtdAguardando = conversas.filter((c) => aguardando[c.telefone]).length
 
   if (loading) return (
     <div className="flex items-center justify-center h-screen">
@@ -214,6 +244,13 @@ export default function ConversasPage() {
               </div>
             </div>
 
+            {qtdAguardando > 0 && (
+              <div className="px-3 py-2 bg-red-50 border-b border-red-100 text-xs font-semibold text-red-700 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
+                {qtdAguardando} {qtdAguardando === 1 ? 'conversa aguardando atendimento' : 'conversas aguardando atendimento'}
+              </div>
+            )}
+
             <div className="flex-1 overflow-y-auto">
               {carregando ? (
                 <div className="flex items-center justify-center py-12">
@@ -235,6 +272,7 @@ export default function ConversasPage() {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="text-sm font-medium text-gray-900 truncate flex items-center gap-1.5">
+                        {aguardando[c.telefone] && <span title="Aguardando atendimento" className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />}
                         {controle[c.telefone] && <Headset size={13} className="text-green-600 flex-shrink-0" />}
                         {c.nome || 'Não identificado'}
                       </div>
@@ -261,17 +299,32 @@ export default function ConversasPage() {
                   <div className="min-w-0">
                     <div className="text-sm font-semibold text-gray-900 truncate">{convSel.nome || 'Não identificado'}</div>
                     <div className="text-xs text-gray-400">{fmtTel(convSel.telefone)} · {convSel.total} mensagens</div>
+                    {aguardando[convSel.telefone] && !humanoAtivo && (
+                      <div className="text-[11px] font-semibold text-red-600 flex items-center gap-1 mt-0.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> Cliente pediu atendimento
+                      </div>
+                    )}
                   </div>
-                  <button
-                    onClick={() => toggleHumano(convSel.telefone, !humanoAtivo)}
-                    className={`flex-shrink-0 px-3 py-2 rounded-xl text-xs font-medium border transition-all ${
-                      humanoAtivo
-                        ? 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'
-                        : 'bg-green-600 text-white border-green-600 hover:bg-green-700'
-                    }`}
-                  >
-                    {humanoAtivo ? 'Devolver ao assistente' : 'Assumir conversa'}
-                  </button>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {aguardando[convSel.telefone] && !humanoAtivo && (
+                      <button
+                        onClick={() => resolverAguardando(convSel.telefone)}
+                        className="px-3 py-2 rounded-xl text-xs font-medium border bg-white text-gray-600 border-gray-200 hover:border-primary-300"
+                      >
+                        Marcar resolvido
+                      </button>
+                    )}
+                    <button
+                      onClick={() => toggleHumano(convSel.telefone, !humanoAtivo)}
+                      className={`px-3 py-2 rounded-xl text-xs font-medium border transition-all ${
+                        humanoAtivo
+                          ? 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'
+                          : 'bg-green-600 text-white border-green-600 hover:bg-green-700'
+                      }`}
+                    >
+                      {humanoAtivo ? 'Devolver ao assistente' : 'Assumir conversa'}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
