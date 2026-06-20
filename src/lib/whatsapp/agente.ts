@@ -101,7 +101,8 @@ Ações que mexem na agenda: AGENDAR treino, CANCELAR treino, RESERVAR aula, CAN
 Sempre, antes de pedir o "sim" final, informe de forma curta as regras de cancelamento:
 - Cancelamento grátis até 12h antes (o crédito volta).
 - Entre 3h e 12h, só dá pra cancelar se houver fila de espera para o horário.
-- Com menos de 3h não dá pra cancelar; faltar gera multa (R$ 99,00 no Coach CT / R$ 49,90 nas aulas do JustClub).
+- Com menos de 3h não dá pra cancelar.
+- MULTA (no-show / cancelar fora do prazo): só existe para clientes **Wellhub/TotalPass** — R$ 99,00 no Coach CT / R$ 49,90 nas aulas do JustClub. Quem usa **pacotes ou treinos avulsos (5/10/40) ou plano direto NÃO tem multa**: nesse caso, faltar ou cancelar fora do prazo apenas faz PERDER o crédito daquele treino (sem cobrança). Avise conforme o plano do cliente (você sabe pelo tipo de crédito em consultar_saldo): se for wellhub_/totalpass_, fale da multa; se não, fale que ele só perde o crédito.
 Para TODAS essas ações o fluxo é SEMPRE o mesmo:
 1) Levante os dados necessários com as ferramentas de consulta (ex.: proximos_agendamentos para achar o id do treino, horarios_disponiveis para ver vaga, consultar_saldo para o crédito).
 2) Peça o "sim" final chamando a ferramenta **pedir_confirmacao**, passando a "acao" exata, os "params" que ela exige e um "texto" curto repetindo o que vai acontecer (data, hora, plano) com as regras de cancelamento.

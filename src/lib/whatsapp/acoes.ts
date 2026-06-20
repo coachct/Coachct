@@ -369,7 +369,7 @@ export async function cancelarReservaClub(
 
   const { data: rv, error } = await supabase
     .from('club_reservas')
-    .select('id, cliente_id, status, ocorrencia_id, club_ocorrencias(data, club_aulas(horario, tipo))')
+    .select('id, cliente_id, status, ocorrencia_id, tipo_credito, club_ocorrencias(data, club_aulas(horario, tipo))')
     .eq('id', reservaId).maybeSingle()
 
   if (error) return { ok: false, mensagem: 'Não consegui acessar essa reserva agora.' }
@@ -389,15 +389,22 @@ export async function cancelarReservaClub(
   const dataHora = new Date(`${data}T${horario}:00`)
   const diffHoras = (dataHora.getTime() - agora.getTime()) / (1000 * 60 * 60)
 
+  // Multa de no-show só existe para Wellhub/TotalPass. Demais (pacotes/avulso de
+  // treino, plano direto) NÃO têm multa — só perdem o crédito.
+  const tc = String((rv as any).tipo_credito ?? '')
+  const consequencia = (tc.startsWith('wellhub_') || tc.startsWith('totalpass_'))
+    ? 'Se não comparecer, conta como falta (multa de R$ 49,90).'
+    : 'Se não comparecer, você não tem multa — só perde o crédito dessa aula.'
+
   if (diffHoras <= 3) {
-    return { ok: false, mensagem: `Faltam menos de 3h para a aula (${horario}, ${dataBr}) — não dá mais para cancelar. Faltar gera multa de R$49,90.` }
+    return { ok: false, mensagem: `Faltam menos de 3h para a aula (${horario}, ${dataBr}) — não dá mais para cancelar. ${consequencia}` }
   }
   if (diffHoras <= 12) {
     const { data: f } = await supabase
       .from('fila_espera').select('id')
       .eq('ocorrencia_id', (rv as any).ocorrencia_id).eq('status', 'aguardando').limit(1)
     if (!(f ?? []).length) {
-      return { ok: false, mensagem: `Entre 3h e 12h só dá para cancelar se houver fila de espera para essa aula — e não há ninguém agora. Faltar gera multa de R$49,90.` }
+      return { ok: false, mensagem: `Entre 3h e 12h só dá para cancelar se houver fila de espera para essa aula — e não há ninguém agora. ${consequencia}` }
     }
   }
 
@@ -683,7 +690,7 @@ export async function cancelarAgendamentoCt(
   // 1. Busca e valida posse + estado.
   const { data: ag, error } = await supabase
     .from('agendamentos')
-    .select('id, cliente_id, data, horario, status, unidade_id')
+    .select('id, cliente_id, data, horario, status, unidade_id, tipo_credito')
     .eq('id', agendamentoId)
     .maybeSingle()
 
@@ -699,10 +706,17 @@ export async function cancelarAgendamentoCt(
   const dataHora = new Date(`${ag.data}T${ag.horario}`)
   const diffHoras = (dataHora.getTime() - agora.getTime()) / (1000 * 60 * 60)
 
+  // Multa de no-show só existe para Wellhub/TotalPass. Demais (pacotes/avulso de
+  // treino, plano direto) NÃO têm multa — só perdem o crédito.
+  const tcCt = String((ag as any).tipo_credito ?? '')
+  const consequenciaCt = (tcCt.startsWith('wellhub_') || tcCt.startsWith('totalpass_'))
+    ? 'Se não comparecer, conta como falta (multa de R$ 99,00).'
+    : 'Se não comparecer, você não tem multa — só perde o crédito desse treino.'
+
   if (diffHoras <= 3) {
     return {
       ok: false,
-      mensagem: 'Faltam menos de 3h para o treino — não dá mais para cancelar. Se não comparecer, conta como falta (multa R$99,00).',
+      mensagem: `Faltam menos de 3h para o treino — não dá mais para cancelar. ${consequenciaCt}`,
     }
   }
   if (diffHoras <= 12) {
@@ -717,7 +731,7 @@ export async function cancelarAgendamentoCt(
     if (!temFila) {
       return {
         ok: false,
-        mensagem: 'Entre 3h e 12h o cancelamento só é liberado se houver alguém na fila de espera deste horário — e não há ninguém agora. Se não comparecer, conta como falta (multa R$99,00).',
+        mensagem: `Entre 3h e 12h o cancelamento só é liberado se houver alguém na fila de espera deste horário — e não há ninguém agora. ${consequenciaCt}`,
       }
     }
   }
