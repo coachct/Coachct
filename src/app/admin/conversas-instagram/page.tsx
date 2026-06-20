@@ -41,6 +41,7 @@ export default function ConversasInstagramPage() {
 
   const [msgs, setMsgs] = useState<Msg[]>([])
   const [controle, setControle] = useState<Record<string, boolean>>({})
+  const [nomes, setNomes] = useState<Record<string, { nome?: string | null; username?: string | null }>>({})
   const [carregando, setCarregando] = useState(true)
   const [busca, setBusca] = useState('')
   const [desde, setDesde] = useState('')
@@ -68,6 +69,23 @@ export default function ConversasInstagramPage() {
     for (const c of (ctrl || [])) cmap[(c as any).igsid] = (c as any).modo_humano
     setControle(cmap)
     setCarregando(false)
+
+    // Busca os nomes/@usuário (cacheados) — não bloqueia a renderização da lista.
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const resp = await fetch('/api/admin/instagram/nomes', {
+        headers: { Authorization: `Bearer ${session?.access_token ?? ''}` },
+      })
+      if (resp.ok) { const j = await resp.json(); setNomes(j.nomes || {}) }
+    } catch { /* segue sem nomes */ }
+  }
+
+  // Rótulo amigável: nome real, ou @usuário, ou fallback pro id.
+  function rotulo(igsid: string): string {
+    const p = nomes[igsid]
+    if (p?.nome) return p.nome
+    if (p?.username) return `@${p.username}`
+    return rotuloIg(igsid)
   }
 
   async function toggleHumano(igsid: string, ligar: boolean) {
@@ -172,7 +190,7 @@ export default function ConversasInstagramPage() {
                     <div className="flex items-center justify-between gap-2">
                       <div className="text-sm font-medium text-gray-900 truncate flex items-center gap-1.5">
                         {controle[c.igsid] && <Headset size={13} className="text-green-600 flex-shrink-0" />}
-                        {rotuloIg(c.igsid)}
+                        {rotulo(c.igsid)}
                       </div>
                       <div className="text-[11px] text-gray-400 flex-shrink-0">{fmtDataHora(c.ultimaEm)}</div>
                     </div>
@@ -192,7 +210,7 @@ export default function ConversasInstagramPage() {
               <>
                 <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-gray-900 truncate">{rotuloIg(convSel.igsid)}</div>
+                    <div className="text-sm font-semibold text-gray-900 truncate">{rotulo(convSel.igsid)}</div>
                     <div className="text-xs text-gray-400">{convSel.total} mensagens</div>
                   </div>
                   <button onClick={() => toggleHumano(convSel.igsid, !humanoAtivo)}
