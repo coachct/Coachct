@@ -347,30 +347,34 @@ async function resolverPorCadastro(
   const vinculado = await clienteVinculadoPorHistorico(supabase, telefone)
   if (vinculado) return vinculado
 
+  // Registra a troca no banco (mesmo SEM cliente identificado) para a conversa
+  // aparecer no painel /admin/conversas, e responde ao cliente. Retorna null.
+  const responder = async (msg: string): Promise<null> => {
+    await salvarMensagem(supabase, { telefone, clienteId: null, role: 'user', conteudo: texto })
+    await enviarTexto(de, msg)
+    await salvarMensagem(supabase, { telefone, clienteId: null, role: 'assistant', conteudo: msg })
+    return null
+  }
+
   // 2. A mensagem traz um CPF?
   const cpf = extrairCpf(texto)
   if (!cpf) {
     // Sem CPF: se a pessoa sinaliza que não é aluno, manda info de não-cliente;
     // senão, pede nome + CPF para tentar identificar.
-    if (pareceNaoCliente(texto)) {
-      await enviarTexto(de, MSG_NAO_CLIENTE)
-    } else {
-      await enviarTexto(de, 'Oi! 😊 Não encontrei seu número no nosso cadastro. Você já treina com a gente na Just Club & CT? Se sim, me manda seu *nome completo* e *CPF* numa mensagem só, que eu confiro aqui. Se ainda não for aluno(a), me avisa que eu te conto como começar!')
-    }
-    return null
+    return responder(pareceNaoCliente(texto)
+      ? MSG_NAO_CLIENTE
+      : 'Oi! 😊 Não encontrei seu número no nosso cadastro. Você já treina com a gente na Just Club & CT? Se sim, me manda seu *nome completo* e *CPF* numa mensagem só, que eu confiro aqui. Se ainda não for aluno(a), me avisa que eu te conto como começar!')
   }
 
   // 3. Tem CPF: procura no cadastro.
   const achado = await buscarClientePorCpf(supabase, cpf)
   if (!achado) {
-    await enviarTexto(de, MSG_NAO_CLIENTE)
-    return null
+    return responder(MSG_NAO_CLIENTE)
   }
 
   // 4. Achou: por segurança, confere o nome na mesma mensagem.
   if (!nomeBate(texto, achado.nome)) {
-    await enviarTexto(de, 'Achei um cadastro com esse CPF! 😊 Por segurança, me reenvia seu *nome completo* junto com o *CPF* na mesma mensagem, do jeitinho que está no cadastro, que eu confirmo que é você.')
-    return null
+    return responder('Achei um cadastro com esse CPF! 😊 Por segurança, me reenvia seu *nome completo* junto com o *CPF* na mesma mensagem, do jeitinho que está no cadastro, que eu confirmo que é você.')
   }
 
   // 5. Confirmado. O vínculo é gravado pela salvarMensagem (com cliente_id) lá no
