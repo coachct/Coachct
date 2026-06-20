@@ -13,7 +13,7 @@ import { waitUntil } from '@vercel/functions'
 import crypto from 'crypto'
 import { createServiceSupabase, registrarAcessoLgpd } from '@/lib/whatsapp/consultas'
 import { responderInstagram } from '@/lib/instagram/agente-info'
-import { enviarTextoInstagram, carregarHistoricoInstagram, salvarMensagemInstagram } from '@/lib/instagram/canal'
+import { enviarTextoInstagram, carregarHistoricoInstagram, salvarMensagemInstagram, emModoHumanoInstagram } from '@/lib/instagram/canal'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -94,9 +94,12 @@ export async function POST(req: NextRequest) {
 async function processar(igsid: string, texto: string): Promise<void> {
   try {
     const supabase = createServiceSupabase()
-    const historico = await carregarHistoricoInstagram(supabase, igsid)
     await salvarMensagemInstagram(supabase, { igsid, role: 'user', conteudo: texto })
 
+    // Atendimento humano ativo: guarda a mensagem e NÃO aciona o agente.
+    if (await emModoHumanoInstagram(supabase, igsid)) return
+
+    const historico = await carregarHistoricoInstagram(supabase, igsid)
     const resposta = await responderInstagram({ supabase, mensagem: texto, historico })
 
     await salvarMensagemInstagram(supabase, { igsid, role: 'assistant', conteudo: resposta })

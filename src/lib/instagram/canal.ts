@@ -57,12 +57,20 @@ export async function carregarHistoricoInstagram(
 /** Salva um turno (user ou assistant) no histórico do Instagram. */
 export async function salvarMensagemInstagram(
   supabase: SupabaseClient,
-  params: { igsid: string; role: 'user' | 'assistant'; conteudo: string },
+  params: { igsid: string; role: 'user' | 'assistant'; conteudo: string; autor?: 'bot' | 'humano' },
 ): Promise<void> {
-  const { error } = await supabase.from('instagram_mensagens').insert({
-    igsid: params.igsid,
-    role: params.role,
-    conteudo: params.conteudo,
-  })
+  const row: any = { igsid: params.igsid, role: params.role, conteudo: params.conteudo }
+  if (params.autor) row.autor = params.autor
+  const { error } = await supabase.from('instagram_mensagens').insert(row)
   if (error) console.error('[instagram/canal] falha ao salvar mensagem:', error.message)
+}
+
+/** Conversa do Instagram está sob atendimento humano? (instagram_controle.modo_humano) */
+export async function emModoHumanoInstagram(supabase: SupabaseClient, igsid: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('instagram_controle')
+    .select('modo_humano')
+    .eq('igsid', igsid)
+    .maybeSingle()
+  return !!(data as any)?.modo_humano
 }
