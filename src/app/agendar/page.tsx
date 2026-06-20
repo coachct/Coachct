@@ -358,17 +358,24 @@ export default function AgendarPage() {
     const diaSem = new Date(dataStr + 'T12:00:00').getDay()
     const { data: feriadoData } = await supabase.from('feriados').select('*').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr).eq('ativo', true).maybeSingle()
     const usaEscalaFds = !!feriadoData || diaSem === 0 || diaSem === 6
-    // Coaches de férias/ausência nesta data — não aparecem como selecionáveis.
+    // Coaches de férias/ausência nesta data (coach_ferias.coach_id = coaches.id).
     const { data: feriasRows } = await supabase.from('coach_ferias').select('coach_id').lte('data_inicio', dataStr).gte('data_fim', dataStr)
     const feriasSet = new Set((feriasRows || []).map((f: any) => f.coach_id))
+    // Resolve a lista para coaches.id conforme a fonte:
+    //  - escala_fds.coach_id guarda USER_ID → precisa converter pra coaches.id
+    //  - coach_horarios.coach_id já é coaches.id
     let coachIds: string[] = []
     if (usaEscalaFds) {
       const { data: escala } = await supabase.from('escala_fds').select('coach_id').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr)
-      coachIds = (escala || []).map((e: any) => e.coach_id).filter(Boolean)
+      const userIds = (escala || []).map((e: any) => e.coach_id).filter(Boolean)
+      if (userIds.length === 0) { setCoachesDisponiveis([]); return }
+      const { data: resolvidos } = await supabase.from('coaches').select('id').in('user_id', userIds).eq('ativo', true)
+      coachIds = (resolvidos || []).map((c: any) => c.id).filter(Boolean)
     } else {
       const { data: hors } = await supabase.from('coach_horarios').select('coach_id').eq('dia_semana', diaSem).eq('hora', horaStr).eq('ativo', true).eq('unidade_id', unidadeAtiva.id)
       coachIds = (hors || []).map((h: any) => h.coach_id).filter(Boolean)
     }
+    // Daqui pra baixo, coachIds são sempre coaches.id (igual a coach_ferias e agendamentos).
     coachIds = coachIds.filter(id => !feriasSet.has(id))
     if (coachIds.length === 0) { setCoachesDisponiveis([]); return }
     const { data: ocupados } = await supabase.from('agendamentos').select('coach_id').eq('data', dataStr).eq('horario', horaStr + ':00').eq('unidade_id', unidadeAtiva.id).neq('status', 'cancelado').not('coach_id', 'is', null)
