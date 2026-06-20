@@ -9,7 +9,8 @@ const supabase = createClient(
 
 const PAGARME_API_URL = 'https://api.pagar.me/core/v5'
 const PAGARME_API_KEY = process.env.PAGARME_API_KEY!
-const PRODUTO_MULTA_ID = '7a0e93e1-98b0-4125-a993-7a688e8e34bb'
+const PRODUTO_MULTA_ID = '7a0e93e1-98b0-4125-a993-7a688e8e34bb'       // multa CT (agendamento)
+const PRODUTO_MULTA_CLUB_ID = '196ac99d-9b0e-45de-b418-471e45e22db3' // multa JustClub (reserva)
 
 function getAuthHeader() {
   const credentials = Buffer.from(`${PAGARME_API_KEY}:`).toString('base64')
@@ -285,12 +286,25 @@ export async function POST(req: NextRequest) {
       for (const pend of pendencias) {
         const valorCentavos = Math.round(Number(pend.valor) * 100)
 
+        // ── Origem da pendência ──
+        // A observacao guarda a referência da origem da multa:
+        //   • 'reserva_id: <uuid>'     → multa do JustClub → produto Club
+        //   • 'agendamento_id: <uuid>' → multa do CT        → produto CT
+        // Registrar no produto/unidade errados corrompe o relatório financeiro
+        // (o caso Club era gravado no produto do CT, com unidade nula).
+        const matchReserva = pend.observacao?.match(/reserva_id:\s*([a-f0-9-]{36})/i)
+        const matchAg      = pend.observacao?.match(/agendamento_id:\s*([a-f0-9-]{36})/i)
+        const origemClub   = !!matchReserva
+        const produtoIdVenda      = origemClub ? PRODUTO_MULTA_CLUB_ID : PRODUTO_MULTA_ID
+        // 'JUSTCLUBMULTA' = 13 chars (limite do Pagar.me); com espaço estouraria.
+        const statementDescriptor = origemClub ? 'JUSTCLUBMULTA' : 'JUSTCT MULTA'
+
         const orderPayload = {
           customer_id: pagarmeCustomerId,
           items: [{ amount: valorCentavos, description: pend.motivo, quantity: 1, code: `pendencia_${pend.id}` }],
           payments: [{
             payment_method: 'credit_card',
-            credit_card: { card_id: cardId, operation_type: 'auth_and_capture', installments: 1, statement_descriptor: 'JUSTCT MULTA' },
+            credit_card: { card_id: cardId, operation_type: 'auth_and_capture', installments: 1, statement_descriptor: statementDescriptor },
           }],
         }
 
@@ -316,19 +330,28 @@ export async function POST(req: NextRequest) {
             status: 'pago', pago_em: new Date().toISOString(), pagarme_order_id: orderData.id,
           }).eq('id', pend.id)
 
+          // ── Unidade da venda, conforme a origem ──
           let unidadeId: string | null = null
-          const matchAg = pend.observacao?.match(/agendamento_id:\s*([a-f0-9-]{36})/i)
-          if (matchAg) {
+          if (origemClub && matchReserva) {
+            // Club: reserva → ocorrência → aula → unidade
+            const { data: reserva } = await supabase
+              .from('club_reservas')
+              .select('club_ocorrencias(club_aulas(unidade_id))')
+              .eq('id', matchReserva[1])
+              .maybeSingle()
+            unidadeId = (reserva as any)?.club_ocorrencias?.club_aulas?.unidade_id || null
+          } else if (matchAg) {
+            // CT: agendamento → unidade
             const { data: ag } = await supabase.from('agendamentos').select('unidade_id').eq('id', matchAg[1]).maybeSingle()
             unidadeId = ag?.unidade_id || null
           }
 
           await supabase.from('vendas').insert({
-            produto_id: PRODUTO_MULTA_ID, cliente_id: cliente.id, quantidade: 1,
+            produto_id: produtoIdVenda, cliente_id: cliente.id, quantidade: 1,
             valor_unitario: Number(pend.valor), valor_total: Number(pend.valor), valor_original: Number(pend.valor),
             desconto_percentual: 0, forma_pagamento: 'cartao_credito', vendido_por: user.id,
             unidade_id: unidadeId,
-            observacao: `Multa regularizada pelo cliente — pendência ${pend.id} — order_id ${orderData.id}`,
+            observacao: `${origemClub ? 'Multa JustClub' : 'Multa'} regularizada pelo cliente — pendência ${pend.id} — order_id ${orderData.id}`,
           })
 
           resumoPendencias.cobradas++
