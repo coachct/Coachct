@@ -150,6 +150,11 @@ async function processar(de: string, texto: string, wamid: string, botaoId: stri
       }
       cliente = resolvido
     } else if (ident.status === 'nao_encontrado') {
+      // Já encaminhado pra equipe? Fica quieto (só guarda a mensagem) — sem loop.
+      if (await estaAguardandoHumano(supabase, telefone)) {
+        await salvarMensagem(supabase, { telefone, clienteId: null, role: 'user', conteudo: texto })
+        return
+      }
       // Número não cadastrado: tenta reconhecer pelo histórico desta conversa;
       // senão, identifica por CPF + nome; senão, trata como não-cliente (lead).
       const resolvido = await resolverPorCadastro(supabase, telefone, texto, de)
@@ -219,6 +224,13 @@ async function processar(de: string, texto: string, wamid: string, botaoId: stri
 
     await salvarMensagem(supabase, { telefone, clienteId: cliente.id, role: 'assistant', conteudo: resposta.texto })
 
+    // Se o agente disse que vai ENCAMINHAR pra EQUIPE, marca a conversa como
+    // aguardando atendimento (aparece no painel para um atendente resolver).
+    const tResp = resposta.texto.toLowerCase()
+    if (tResp.includes('encaminh') && tResp.includes('equipe')) {
+      await marcarAguardandoHumano(supabase, telefone)
+    }
+
     // Se o agente pediu confirmação de uma ação, guarda-a como pendente: a próxima
     // mensagem do cliente ("Confirmar"/"sim") vai executá-la lá em cima.
     if (resposta.acaoPendente) {
@@ -250,6 +262,28 @@ async function emModoHumano(supabase: SupabaseClient, telefone: string): Promise
     .eq('telefone', telefone)
     .maybeSingle()
   return !!(data as any)?.modo_humano
+}
+
+/** Conversa já foi encaminhada/escalada pra equipe? (aguardando_humano = true) */
+async function estaAguardandoHumano(supabase: SupabaseClient, telefone: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('whatsapp_controle')
+    .select('aguardando_humano')
+    .eq('telefone', telefone)
+    .maybeSingle()
+  return !!(data as any)?.aguardando_humano
+}
+
+/** Última resposta do assistente para este telefone (para evitar repetir igual). */
+async function ultimaRespostaAssistente(supabase: SupabaseClient, telefone: string): Promise<string | null> {
+  const { data } = await supabase
+    .from('whatsapp_mensagens')
+    .select('conteudo')
+    .eq('telefone', telefone)
+    .eq('role', 'assistant')
+    .order('criado_em', { ascending: false })
+    .limit(1)
+  return (data as any)?.[0]?.conteudo ?? null
 }
 
 /** O cliente está pedindo para falar com um atendente/pessoa/humano? */
@@ -349,10 +383,19 @@ async function resolverPorCadastro(
 
   // Registra a troca no banco (mesmo SEM cliente identificado) para a conversa
   // aparecer no painel /admin/conversas, e responde ao cliente. Retorna null.
+  // ANTI-LOOP: se a resposta for IGUAL à última que mandamos, não repete — em vez
+  // disso encaminha pra equipe (marca "aguardando atendimento" no painel).
   const responder = async (msg: string): Promise<null> => {
+    let saida = msg
+    const ultima = await ultimaRespostaAssistente(supabase, telefone)
+    const norm = (s: string) => String(s ?? '').toLowerCase().replace(/\s+/g, ' ').trim()
+    if (ultima && norm(ultima) === norm(msg)) {
+      await marcarAguardandoHumano(supabase, telefone)
+      saida = 'Deixa eu encaminhar sua mensagem pra nossa equipe dar uma olhada — já já te respondem por aqui, tá? 🙏'
+    }
     await salvarMensagem(supabase, { telefone, clienteId: null, role: 'user', conteudo: texto })
-    await enviarTexto(de, msg)
-    await salvarMensagem(supabase, { telefone, clienteId: null, role: 'assistant', conteudo: msg })
+    await enviarTexto(de, saida)
+    await salvarMensagem(supabase, { telefone, clienteId: null, role: 'assistant', conteudo: saida })
     return null
   }
 
@@ -429,6 +472,8 @@ function nomeBate(texto: string, nome: string): boolean {
 /** Heurística: a mensagem sinaliza que a pessoa ainda NÃO é aluno(a)? */
 function pareceNaoCliente(texto: string): boolean {
   const t = String(texto ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  // Respostas curtas de negação (ex.: "Não" respondendo "você já é aluno?").
+  if (['nao', 'n', 'ainda nao', 'agora nao', 'nunca', 'nunca fui', 'nao sou'].includes(t.trim())) return true
   return [
     'nao sou aluno', 'nao sou cliente', 'ainda nao sou', 'nao sou', 'nunca fui',
     'nao tenho cadastro', 'nao tenho plano', 'nao sou matriculado', 'nao estou matriculado',
