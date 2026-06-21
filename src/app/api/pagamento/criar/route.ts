@@ -14,6 +14,37 @@ function getAuthHeader() {
   return `Basic ${credentials}`
 }
 
+// Validação real de CPF (11 dígitos + dígitos verificadores)
+function cpfValido(valor: string): boolean {
+  const c = (valor || '').replace(/\D/g, '')
+  if (c.length !== 11) return false
+  if (/^(\d)\1{10}$/.test(c)) return false
+  let soma = 0
+  for (let i = 0; i < 9; i++) soma += parseInt(c[i]) * (10 - i)
+  let d1 = (soma * 10) % 11
+  if (d1 === 10) d1 = 0
+  if (d1 !== parseInt(c[9])) return false
+  soma = 0
+  for (let i = 0; i < 10; i++) soma += parseInt(c[i]) * (11 - i)
+  let d2 = (soma * 10) % 11
+  if (d2 === 10) d2 = 0
+  if (d2 !== parseInt(c[10])) return false
+  return true
+}
+
+// Achata o objeto `errors` do Pagar.me (422) num texto legível: "campo: msg | campo: msg"
+function descreverErroPagarme(data: any): string {
+  if (data?.errors && typeof data.errors === 'object') {
+    const partes: string[] = []
+    for (const [campo, msgs] of Object.entries(data.errors)) {
+      const lista = Array.isArray(msgs) ? (msgs as any[]).join('; ') : String(msgs)
+      partes.push(`${campo}: ${lista}`)
+    }
+    if (partes.length) return partes.join(' | ')
+  }
+  return data?.message || 'Erro desconhecido'
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
@@ -54,6 +85,18 @@ export async function POST(req: NextRequest) {
 
     if (cliente.bloqueado) {
       return NextResponse.json({ error: 'Cliente bloqueado' }, { status: 403 })
+    }
+
+    // Pré-voo: o Pagar.me valida o CPF (customer.document) e devolve 422 "The request
+    // is invalid." se o dígito verificador estiver errado. A maquininha física do balcão
+    // não passa por essa validação, então um CPF inválido no cadastro só quebra aqui.
+    // Barramos antes de criar order/pagamento_pendente, com mensagem clara pro cliente.
+    const cpfLimpo = (cliente.cpf || '').replace(/\D/g, '')
+    if (!cpfValido(cpfLimpo)) {
+      return NextResponse.json(
+        { error: 'CPF do cadastro inválido. Atualize seu CPF nos seus dados para concluir a compra.' },
+        { status: 400 }
+      )
     }
 
     // GUARD anti-cobrança-duplicada (somente cartão): se já existe um pagamento recente
@@ -124,7 +167,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Erro ao registrar pagamento' }, { status: 500 })
     }
 
-    const cpfLimpo = (cliente.cpf || '').replace(/\D/g, '')
     const telLimpo = (cliente.telefone || '').replace(/\D/g, '')
 
     const customer: any = {
@@ -204,18 +246,19 @@ export async function POST(req: NextRequest) {
 
     if (!pagarmeResponse.ok) {
       console.error('Erro Pagar.me (HTTP):', JSON.stringify(pagarmeData, null, 2))
+      const detalheErro = descreverErroPagarme(pagarmeData)
       await supabase
         .from('pagamentos_pendentes')
         .update({
           status: 'falhou',
-          motivo_falha: pagarmeData.message || JSON.stringify(pagarmeData).slice(0, 500),
+          motivo_falha: detalheErro.slice(0, 500),
           atualizado_em: new Date().toISOString(),
         })
         .eq('id', pagamento.id)
 
       return NextResponse.json({
         error: 'Erro ao processar pagamento',
-        detalhes: pagarmeData.message || 'Erro desconhecido',
+        detalhes: detalheErro,
       }, { status: 400 })
     }
 
