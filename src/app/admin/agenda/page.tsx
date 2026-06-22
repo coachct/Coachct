@@ -73,6 +73,12 @@ export default function AdminAgendaPage() {
   const [qtdLiberar, setQtdLiberar] = useState(1)
   const [desbloqueando, setDesbloqueando] = useState(false)
 
+  // 🔧 Correção emergencial de coach (admin): aloca qualquer coach ativo da unidade, ignorando a grade.
+  const [coachesUnidade, setCoachesUnidade] = useState<{ id: string; nome: string }[]>([])
+  const [modalCorrecao, setModalCorrecao] = useState<any | null>(null)
+  const [coachCorrecaoSel, setCoachCorrecaoSel] = useState('')
+  const [salvandoCorrecao, setSalvandoCorrecao] = useState(false)
+
   const scrollRef = useRef<number>(0)
   const dateInputRef = useRef<HTMLInputElement>(null)
   const hoje = hojeStr()
@@ -173,6 +179,16 @@ export default function AdminAgendaPage() {
       coachsFinal = (coachs || []).filter((c: any) => !feriasSet.has(c.coach_id))
     }
 
+    // 🔧 Coaches ativos habilitados nesta unidade (via coach_unidades) — fonte da correção emergencial.
+    const { data: cuRows } = await supabase.from('coach_unidades').select('coach_id').eq('unidade_id', unidadeAtiva.id).eq('ativo', true)
+    const coachUniIds = (cuRows || []).map((c: any) => c.coach_id)
+    let coachesUni: { id: string; nome: string }[] = []
+    if (coachUniIds.length) {
+      const { data: cs } = await supabase.from('coaches').select('id, nome').eq('ativo', true).in('id', coachUniIds).order('nome')
+      coachesUni = (cs || []) as any
+    }
+    setCoachesUnidade(coachesUni)
+
     setAgendamentos(ags || [])
     setCoaches(coachsFinal)
     setBloqueios(bloqs || [])
@@ -225,6 +241,23 @@ export default function AdminAgendaPage() {
     }
     await loadData(true)
     setAlocandoId(null)
+  }
+
+  // 🔧 Correção emergencial: grava o coach ignorando a grade; marca coach_correcao_manual=true.
+  // NÃO altera o status — funciona em realizado/falta (correção retroativa de quem atendeu).
+  async function corrigirCoach(agendamentoId: string, coachId: string) {
+    if (!coachId) return
+    setSalvandoCorrecao(true)
+    await supabase.from('agendamentos').update({
+      coach_id: coachId,
+      alocado_em: new Date().toISOString(),
+      alocado_por: perfil?.id,
+      coach_correcao_manual: true,
+    }).eq('id', agendamentoId)
+    setSalvandoCorrecao(false)
+    setModalCorrecao(null)
+    setCoachCorrecaoSel('')
+    await loadData(true)
   }
 
   async function marcarPresenca(agendamentoId: string) {
@@ -459,7 +492,8 @@ export default function AdminAgendaPage() {
                                 <span>{planoIcon} {planoLabel}</span>
                                 {ag.clientes?.telefone && <span>{ag.clientes.telefone}</span>}
                               </div>
-                              {coachNome && <div className="text-xs text-green-700 mt-1 font-medium">Coach: {coachNome}</div>}
+                              {coachNome && <div className="text-xs text-green-700 mt-1 font-medium">Coach: {coachNome}{ag.coach_correcao_manual && <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-amber-600">corrigido</span>}</div>}
+                              <button onClick={() => { setModalCorrecao(ag); setCoachCorrecaoSel(ag.coach_id || '') }} className="mt-1 text-xs font-medium text-amber-600 hover:text-amber-700 hover:underline">Corrigir coach</button>
                             </div>
                           </div>
                           {ag.status !== 'realizado' && ag.status !== 'falta' && (
@@ -640,6 +674,7 @@ export default function AdminAgendaPage() {
                                       {!ag.coach_id && coachesLivres.length === 0 && (
                                         <span className="text-xs text-gray-400">Nenhum coach livre neste horário</span>
                                       )}
+                                      <button onClick={() => { setModalCorrecao(ag); setCoachCorrecaoSel(ag.coach_id || '') }} className="ml-2 text-xs font-medium text-amber-600 hover:text-amber-700 hover:underline">Corrigir coach</button>
                                     </div>
                                   </div>
                                   {feito || faltou ? (
@@ -766,6 +801,35 @@ export default function AdminAgendaPage() {
               <button onClick={() => setModalDesbloquear(null)} className="btn flex-1 text-gray-500 border border-gray-200">Cancelar</button>
               <button onClick={confirmarDesbloqueio} disabled={desbloqueando} className="btn flex-1 bg-green-500 text-white hover:bg-green-600 gap-1">
                 <Unlock size={12} /> {desbloqueando ? 'Liberando...' : `Liberar ${qtdLiberar > 1 ? `${qtdLiberar} vagas` : '1 vaga'}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalCorrecao && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <div className="font-bold text-gray-900 flex items-center gap-2"><AlertCircle size={18} className="text-amber-500" /> Corrigir coach</div>
+                <div className="text-sm text-gray-400 mt-0.5">{modalCorrecao.clientes?.nome} · {norm(modalCorrecao.horario)}</div>
+              </div>
+              <button onClick={() => { setModalCorrecao(null); setCoachCorrecaoSel('') }} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 mb-4 text-xs text-amber-700 flex items-start gap-2">
+              <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
+              <span>Correção emergencial: escolha qualquer coach ativo da unidade, mesmo sem grade neste horário. Conta para o pagamento do coach.</span>
+            </div>
+            <label className="text-xs text-gray-500 mb-1 block font-medium">Coach que atendeu</label>
+            <select value={coachCorrecaoSel} onChange={e => setCoachCorrecaoSel(e.target.value)} className="input w-full mb-4">
+              <option value="">Selecione...</option>
+              {coachesUnidade.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+            </select>
+            <div className="flex gap-2">
+              <button onClick={() => { setModalCorrecao(null); setCoachCorrecaoSel('') }} className="btn flex-1 text-gray-500 border border-gray-200">Cancelar</button>
+              <button onClick={() => corrigirCoach(modalCorrecao.id, coachCorrecaoSel)} disabled={!coachCorrecaoSel || salvandoCorrecao} className="btn flex-1 bg-amber-500 text-white hover:bg-amber-600">
+                {salvandoCorrecao ? 'Salvando...' : 'Salvar correção'}
               </button>
             </div>
           </div>
