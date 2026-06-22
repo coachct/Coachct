@@ -19,7 +19,7 @@ import {
   type ClienteIdentificado,
 } from '@/lib/whatsapp/consultas'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { responderMensagem, executarAcaoConfirmada } from '@/lib/whatsapp/agente'
+import { responderMensagem, executarAcaoConfirmada, responderVisitante } from '@/lib/whatsapp/agente'
 import {
   enviarTexto,
   enviarBotoes,
@@ -402,11 +402,11 @@ async function resolverPorCadastro(
   // 2. A mensagem traz um CPF?
   const cpf = extrairCpf(texto)
   if (!cpf) {
-    // Sem CPF: se a pessoa sinaliza que não é aluno, manda info de não-cliente;
-    // senão, pede nome + CPF para tentar identificar.
-    return responder(pareceNaoCliente(texto)
-      ? MSG_NAO_CLIENTE
-      : 'Oi! 😊 Não encontrei seu número no nosso cadastro. Você já treina com a gente na Just Club & CT? Se sim, me manda seu *nome completo* e *CPF* numa mensagem só, que eu confiro aqui. Se ainda não for aluno(a), me avisa que eu te conto como começar!')
+    // Visitante (sem CPF): responde dúvidas gerais + ensina o passo a passo do
+    // site (agendar/ativar plano), e pede nome+CPF quando for coisa da conta.
+    const hist = await carregarHistorico(supabase, telefone)
+    const resp = await responderVisitante({ supabase, mensagem: texto, historico: hist })
+    return responder(resp)
   }
 
   // 3. Tem CPF: procura no cadastro.

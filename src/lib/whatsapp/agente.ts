@@ -606,3 +606,95 @@ export async function responderMensagem(params: {
   // Estourou o limite de iterações de tools.
   return { texto: 'Tive um probleminha para consultar seus dados agora. Pode tentar de novo em instantes?' }
 }
+
+// ---------------------------------------------------------------------------
+// Agente VISITANTE — para quem ainda NÃO está identificado no cadastro.
+// Responde dúvidas gerais (modalidades, planos/preços, endereços, horários,
+// passo a passo de agendar/ativar plano pelo site) e, para coisas da CONTA,
+// pede nome + CPF. Não acessa dados de cliente nem faz ações de escrita.
+// ---------------------------------------------------------------------------
+
+const TOOLS_VISITANTE: Anthropic.Tool[] = [
+  {
+    name: 'consultar_precos',
+    description: 'Catálogo de preços de planos e pacotes da Just Club & CT. Use sempre que perguntarem quanto custa algo, valores, planos ou pacotes.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+]
+
+export async function responderVisitante(params: {
+  supabase: SupabaseClient
+  mensagem: string
+  historico?: TurnoConversa[]
+}): Promise<string> {
+  const { supabase, mensagem, historico = [] } = params
+  const client = new Anthropic()
+
+  const [enderecos, faq] = await Promise.all([listarEnderecos(supabase), listarConhecimento(supabase)])
+  const enderecosTxt = enderecos.length
+    ? enderecos.map((u) => `- ${u.nome}: ${u.endereco ?? 'endereço não cadastrado'}`).join('\n')
+    : '- (endereços não disponíveis no momento)'
+  const faqTxt = faq.length ? faq.map((f) => `P: ${f.pergunta}\nR: ${f.resposta}`).join('\n\n') : '(nenhum item cadastrado ainda)'
+
+  const system = `Você é a voz da **Just Club & CT** no WhatsApp, falando com alguém que ainda NÃO está identificado no nosso cadastro (o número não bateu). Seja caloroso, descontraído, com a cara da Just. NUNCA se apresente como "assistente virtual", "bot" ou "IA".
+
+# O que fazer
+- Responda dúvidas GERAIS normalmente: modalidades (Lift, Lift for Girls, Running + Funcional, Coach CT, musculação livre), planos e PREÇOS (use a ferramenta consultar_precos — nunca chute valores), endereços, horários e a base abaixo.
+- Se a pessoa quiser AGENDAR/RESERVAR ou ATIVAR o plano (inclusive Wellhub/TotalPass), ENSINE o passo a passo self-service pelo site:
+  1. Entrar na conta em https://www.justclubct.com.br (criar cadastro se ainda não tiver).
+  2. Ativar o plano dela dentro do cadastro — se for Wellhub/TotalPass, ativar informando os limites.
+  3. Agendar os treinos/aulas pelos calendários do site.
+  4. No dia, fazer o check-in na unidade.
+- Para ver dados DA CONTA dela (saldo, agendamentos, ou reservar/cancelar por aqui comigo), você precisa identificá-la primeiro: peça com gentileza o NOME COMPLETO + CPF numa mensagem só.
+- Se ela ainda não for aluna, convide a começar pelo site: https://www.justclubct.com.br/cadastro.
+- NUNCA invente dados pessoais, preços (use a ferramenta) ou regras. Não diga que é automático.
+
+# Endereços das unidades
+${enderecosTxt}
+
+# Base de conhecimento (fonte para dúvidas gerais)
+${faqTxt}
+
+# Como responder
+Português do Brasil, caloroso e direto. Mensagens curtas (é WhatsApp). Pode *negrito* e emojis com parcimônia.`
+
+  const messages: Anthropic.MessageParam[] = [
+    ...historico.map((t) => ({ role: t.role, content: t.content })),
+    { role: 'user', content: mensagem },
+  ]
+
+  for (let i = 0; i < 4; i++) {
+    const resposta = await client.messages.create({
+      model: MODELO,
+      max_tokens: 900,
+      thinking: { type: 'disabled' },
+      system,
+      tools: TOOLS_VISITANTE,
+      messages,
+    })
+    if (resposta.stop_reason === 'tool_use') {
+      messages.push({ role: 'assistant', content: resposta.content })
+      const resultados: Anthropic.ToolResultBlockParam[] = []
+      for (const bloco of resposta.content) {
+        if (bloco.type === 'tool_use') {
+          let conteudo: string
+          try {
+            conteudo = bloco.name === 'consultar_precos'
+              ? JSON.stringify(await consultarPrecos(supabase))
+              : JSON.stringify({ erro: `ferramenta desconhecida: ${bloco.name}` })
+          } catch (e: any) { conteudo = JSON.stringify({ erro: e.message }) }
+          resultados.push({ type: 'tool_result', tool_use_id: bloco.id, content: conteudo })
+        }
+      }
+      messages.push({ role: 'user', content: resultados })
+      continue
+    }
+    const texto = resposta.content
+      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n')
+      .trim()
+    return texto || 'Oi! 😊 Me conta como posso te ajudar — dúvidas de planos, modalidades, horários, ou se você já é aluno(a) e quer ver sua conta (aí me manda nome completo + CPF).'
+  }
+  return 'Oi! 😊 Se sua dúvida é sobre planos/horários, manda que eu respondo. Se você já é aluno(a) e quer ver sua conta, me envia nome completo + CPF.'
+}
