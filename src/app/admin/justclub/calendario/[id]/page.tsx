@@ -114,6 +114,12 @@ export default function RecepcaoClubDetalhe() {
   const [filaPausada,   setFilaPausada]   = useState(false)
   const [salvandoPausa, setSalvandoPausa] = useState(false)
 
+  // NOVO: correção de coach SÓ desta ocorrência (não toca na grade recorrente)
+  const [coachesUnidade,   setCoachesUnidade]   = useState<{ id: string; nome: string }[]>([])
+  const [modalCoach,       setModalCoach]       = useState(false)
+  const [coachSelCorrecao, setCoachSelCorrecao] = useState('')
+  const [salvandoCoach,    setSalvandoCoach]    = useState(false)
+
   const isRunning = ocorrencia?.club_aulas?.tipo === 'running_funcional'
 
   useEffect(() => { if (ocId) carregarDados() }, [ocId])
@@ -158,6 +164,20 @@ export default function RecepcaoClubDetalhe() {
         (pos || []).filter((p: any) => p.bloqueado).map((p: any) => `${p.tipo}${String(p.numero).padStart(2, '0')}`)
       )
     }
+
+    // NOVO: coaches ativos habilitados nesta unidade (fonte da correção de coach)
+    const unidadeId = oc?.club_aulas?.unidade_id
+    if (unidadeId) {
+      const { data: cuRows } = await supabase.from('coach_unidades')
+        .select('coach_id').eq('unidade_id', unidadeId).eq('ativo', true)
+      const cIds = (cuRows || []).map((c: any) => c.coach_id)
+      if (cIds.length) {
+        const { data: cs } = await supabase.from('coaches')
+          .select('id, nome').eq('ativo', true).in('id', cIds).order('nome')
+        setCoachesUnidade((cs || []) as any)
+      } else setCoachesUnidade([])
+    }
+
     setLoadingData(false)
   }
 
@@ -254,6 +274,23 @@ export default function RecepcaoClubDetalhe() {
     showMsg(novo
       ? '⏸️ Fila pausada — ninguém é promovido automaticamente'
       : '▶️ Fila reativada')
+  }
+
+  // NOVO: grava o coach SÓ nesta ocorrência (club_ocorrencias.coach_id) — a grade
+  // recorrente (club_aulas.coach_id) não é tocada. Funciona em aula passada/hoje/futura
+  // e direciona o pagamento (o relatório lê o coach efetivo da ocorrência).
+  // coachSelCorrecao vazio = "voltar à grade" (volta a usar o coach recorrente).
+  async function corrigirCoach() {
+    setSalvandoCoach(true)
+    const { error } = await supabase.from('club_ocorrencias').update({
+      coach_id: coachSelCorrecao || null,
+      coach_correcao_manual: !!coachSelCorrecao,
+    }).eq('id', ocId)
+    if (error) { showMsg('Erro: ' + error.message); setSalvandoCoach(false); return }
+    setSalvandoCoach(false)
+    setModalCoach(false)
+    await carregarDados()
+    showMsg(coachSelCorrecao ? '✅ Coach corrigido nesta aula' : '↩️ Coach voltou para a grade')
   }
 
   async function buscarCliente() {
@@ -608,9 +645,17 @@ export default function RecepcaoClubDetalhe() {
             {nomeCoachExibir
               ? nomeCoachExibir
               : <span style={{ color:VERMELHO, fontWeight:700 }}>Coach a definir</span>}
+            {ocorrencia?.coach_correcao_manual && (
+              <span style={{ marginLeft:6, fontSize:10, fontWeight:700, color:AMARELO, textTransform:'uppercase', letterSpacing:0.5 }}>corrigido</span>
+            )}
             {' · '}
             {ocorrencia?.data ? new Date(ocorrencia.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'}) : ''}
           </div>
+          <button onClick={() => { setCoachSelCorrecao(ocorrencia?.coach_id || ''); setModalCoach(true) }}
+            style={{ marginTop:6, background:'transparent', border:'none', color:ACCENT, fontSize:12, fontWeight:600,
+              cursor:'pointer', textDecoration:'underline', padding:0, fontFamily:"'DM Sans', sans-serif" }}>
+            ✏️ Corrigir coach
+          </button>
         </div>
       </div>
 
@@ -1054,6 +1099,47 @@ export default function RecepcaoClubDetalhe() {
         <div style={{ background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:16,
           padding:'1.25rem 1.5rem', textAlign:'center', color:'#aaa', fontSize:13 }}>
           Aula encerrada — não é possível adicionar novas presenças.
+        </div>
+      )}
+
+      {/* NOVO: modal de correção de coach (só esta ocorrência) */}
+      {modalCoach && (
+        <div onClick={() => setModalCoach(false)}
+          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:60,
+            display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:380, padding:'1.5rem',
+              fontFamily:"'DM Sans', sans-serif" }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+              <div style={{ fontSize:16, fontWeight:700, color:'#111' }}>Corrigir coach</div>
+              <button onClick={() => setModalCoach(false)}
+                style={{ background:'transparent', border:'none', color:'#aaa', cursor:'pointer', fontSize:20 }}>✕</button>
+            </div>
+            <div style={{ background:`${AMARELO}12`, border:`1px solid ${AMARELO}40`, borderRadius:10,
+              padding:'0.75rem 1rem', fontSize:12, color:'#92600a', marginBottom:14, lineHeight:1.5 }}>
+              Define quem realmente deu esta aula, só neste dia. Não altera a grade recorrente e direciona o pagamento para o coach escolhido.
+            </div>
+            <label style={{ fontSize:12, fontWeight:600, color:'#555', display:'block', marginBottom:6 }}>Coach que atendeu</label>
+            <select value={coachSelCorrecao} onChange={e => setCoachSelCorrecao(e.target.value)}
+              style={{ width:'100%', border:'1px solid #e5e7eb', borderRadius:8, padding:'0.65rem 0.75rem',
+                fontSize:14, color:'#111', fontFamily:"'DM Sans', sans-serif" }}>
+              <option value="">— Voltar à grade (coach recorrente) —</option>
+              {coachesUnidade.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+            </select>
+            <div style={{ display:'flex', gap:8, marginTop:14 }}>
+              <button onClick={() => setModalCoach(false)}
+                style={{ flex:1, background:'#f3f4f6', border:'none', borderRadius:10, padding:'0.75rem',
+                  fontSize:13, color:'#555', cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
+                Cancelar
+              </button>
+              <button onClick={corrigirCoach} disabled={salvandoCoach}
+                style={{ flex:2, background:ACCENT, color:'#fff', border:'none', borderRadius:10, padding:'0.75rem',
+                  fontSize:13, fontWeight:700, cursor: salvandoCoach ? 'default' : 'pointer',
+                  opacity: salvandoCoach ? 0.7 : 1, fontFamily:"'DM Sans', sans-serif" }}>
+                {salvandoCoach ? 'Salvando...' : 'Salvar'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

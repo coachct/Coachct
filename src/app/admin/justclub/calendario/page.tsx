@@ -215,6 +215,9 @@ export default function AdminCalendarioClubPage() {
                     👤 {nomeCoach
                           ? nomeCoach
                           : <span style={{ color: VERMELHO, fontWeight:700 }}>Coach a definir</span>}
+                    {oc.coach_correcao_manual && (
+                      <span style={{ marginLeft:6, fontSize:9, fontWeight:700, color:AMARELO, textTransform:'uppercase', letterSpacing:0.5 }}>corrigido</span>
+                    )}
                     {' · '}{aula?.duracao_min || 50}min
                   </div>
                 </div>

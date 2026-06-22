@@ -119,31 +119,42 @@ export default function PagamentosCoachesPage() {
       setAulas(Object.values(sessoes).sort((a, b) =>
         a.data.localeCompare(b.data) || a.horario.localeCompare(b.horario)))
     } else {
-      // Club: ocorrências ativas das aulas do coach nessa unidade
-      const { data: aulasIds } = await supabase.from('club_aulas')
-        .select('id, tipo, horario')
-        .eq('coach_id', coachSel.id)
+      // Club: paga por OCORRÊNCIA, pelo coach EFETIVO daquele dia.
+      // Coach efetivo = coach corrigido na ocorrência (club_ocorrencias.coach_id) e,
+      // na ausência dele, o coach da grade recorrente (club_aulas.coach_id).
+      // Por isso buscamos TODAS as aulas da unidade (não só as deste coach): uma aula
+      // de outro coach pode ter sido corrigida para este coach naquele dia, e vice-versa.
+      const { data: aulasUnidade } = await supabase.from('club_aulas')
+        .select('id, tipo, horario, coach_id')
         .eq('unidade_id', unidadeSel.id)
         .eq('ativo', true)
-      const ids = (aulasIds || []).map((a: any) => a.id)
+      const ids = (aulasUnidade || []).map((a: any) => a.id)
       if (!ids.length) { setAulas([]); setLoadingAulas(false); return }
 
       const aulaMap: Record<string, any> = {}
-      for (const a of (aulasIds || [])) aulaMap[a.id] = a
+      for (const a of (aulasUnidade || [])) aulaMap[a.id] = a
 
       const { data: ocs } = await supabase.from('club_ocorrencias')
-        .select('id, data, aula_id, status')
+        .select('id, data, aula_id, coach_id, status')
         .in('aula_id', ids).gte('data', inicio).lte('data', fim)
         .eq('status', 'ativa').order('data')
 
-      setAulas((ocs || []).map((oc: any) => {
+      // Mantém só as ocorrências cujo coach efetivo é o coach selecionado.
+      const minhas = (ocs || []).filter((oc: any) => {
+        const coachEfetivo = oc.coach_id || aulaMap[oc.aula_id]?.coach_id || null
+        return coachEfetivo === coachSel.id
+      })
+
+      setAulas(minhas.map((oc: any) => {
         const tipoKey = aulaMap[oc.aula_id]?.tipo || ''
         return {
-          data:     oc.data,
-          horario:  aulaMap[oc.aula_id]?.horario || '',
-          tipo:     tipoLabelClub(tipoKey),
-          tipo_key: tipoKey,
-          valor:    valorMap[tipoKey] || 0,
+          data:      oc.data,
+          horario:   aulaMap[oc.aula_id]?.horario || '',
+          tipo:      tipoLabelClub(tipoKey),
+          tipo_key:  tipoKey,
+          valor:     valorMap[tipoKey] || 0,
+          // conta para este coach por correção pontual (a grade aponta para outro coach)
+          corrigido: !!oc.coach_id && aulaMap[oc.aula_id]?.coach_id !== coachSel.id,
         }
       }))
     }
@@ -367,7 +378,7 @@ export default function PagamentosCoachesPage() {
                         {new Date(a.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday:'short', day:'numeric', month:'short' })}
                       </div>
                       <div className="text-sm font-mono text-gray-700">{(a.horario || '').slice(0, 5)}</div>
-                      <div className="text-sm text-gray-600">{a.tipo}</div>
+                      <div className="text-sm text-gray-600">{a.tipo}{a.corrigido && <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600">corrigido</span>}</div>
                       <div className={`text-sm font-semibold text-right ${a.valor === 0 ? 'text-orange-500' : 'text-gray-900'}`}>
                         {a.valor === 0 ? '⚠️ sem valor' : `R$ ${Number(a.valor).toFixed(2).replace('.', ',')}`}
                       </div>
