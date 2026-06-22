@@ -366,10 +366,16 @@ export default function MinhaContaPage() {
     const diffHoras = (dataHora.getTime()-agora.getTime())/(1000*60*60)
     const faltaTxt = diffHoras >= 1 ? `~${Math.floor(diffHoras)}h` : 'menos de 1h'
     const multaTxt = item.tipo === 'ct' ? 'R$99,00' : 'R$49,90'
+    // Multa de no-show só vale para Wellhub/TotalPass. Demais (pacote/avulso/
+    // plano direto) NÃO têm multa — só perdem o crédito.
+    const temMulta = /^(wellhub|totalpass)_/.test(String(item.tipoCredito || ''))
+    const consequencia = temMulta
+      ? `Se não comparecer, conta como falta e gera multa de ${multaTxt}.`
+      : `Se não comparecer, você não tem multa — só perde o crédito deste treino.`
     let aviso = '', pode = true
     if (diffHoras <= 3) {
       pode = false
-      aviso = `Faltam ${faltaTxt} para o treino. Com menos de 3h o cancelamento não é permitido em nenhum caso. Se não comparecer, conta como falta e gera multa de ${multaTxt}.`
+      aviso = `Faltam ${faltaTxt} para o treino. Com menos de 3h o cancelamento não é permitido em nenhum caso. ${consequencia}`
     } else if (diffHoras <= 12) {
       aviso = `Faltam ${faltaTxt}. Verificando fila de espera...`
     } else {
@@ -386,7 +392,7 @@ export default function MinhaContaPage() {
       }
       if (!temFila) {
         pode = false
-        aviso = `Faltam ${faltaTxt}. Entre 3h e 12h o cancelamento só é permitido se houver alguém na fila de espera para este horário — e não há ninguém. Por isso não é possível cancelar agora. Se não comparecer, conta como falta e gera multa de ${multaTxt}.`
+        aviso = `Faltam ${faltaTxt}. Entre 3h e 12h o cancelamento só é permitido se houver alguém na fila de espera para este horário — e não há ninguém. Por isso não é possível cancelar agora. ${consequencia}`
       } else {
         aviso = `Faltam ${faltaTxt}. Nessa faixa (3h–12h) o cancelamento só é liberado se houver alguém na fila de espera — e há. Você pode cancelar; o crédito volta e a vaga passa para o próximo da fila.`
       }
