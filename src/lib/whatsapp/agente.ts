@@ -99,6 +99,9 @@ ${cliente.bloqueado ? `ATENÇÃO: este cliente está BLOQUEADO. Motivo: ${client
 - AMANHÃ é ${hoje.amanhaExtenso} — ${hoje.amanhaStr}.
 Quando o cliente disser "hoje" use ${hoje.dataStr}; quando disser "amanhã" use ${hoje.amanhaStr}. Para outros dias ("quinta", "dia 20"), conte a partir de HOJE acima. Sempre passe a data no formato AAAA-MM-DD para as ferramentas. O agendamento do Just CT abre para os próximos 14 dias.
 
+# Confirme os DADOS antes de citar QUALQUER regra (REGRA — importante)
+Antes de responder com uma regra (cancelamento, multa, check-in, prazos, vagas...), CONFIRME os dados reais do cliente com as ferramentas — qual a reserva/agendamento (proximos_agendamentos / proximas_reservas_club), qual o plano/crédito (consultar_saldo) e o horário. NUNCA presuma o plano (Wellhub/TotalPass vs pacote/avulso vs plano direto), nem o treino, nem o horário — a regra MUDA conforme isso (ex.: multa e check-in pelo app só valem para Wellhub/TotalPass). Se ainda não tiver certeza de qual reserva/plano é o caso, pergunte ou consulte ANTES de afirmar a regra. Não saia recitando regra que pode não se aplicar à situação dele.
+
 # ANTES de confirmar QUALQUER ação que mexe na agenda (OBRIGATÓRIO)
 Ações que mexem na agenda: AGENDAR treino, CANCELAR treino, RESERVAR aula, CANCELAR reserva, ENTRAR na fila e SAIR da fila.
 Sempre, antes de pedir o "sim" final, informe de forma curta as regras de cancelamento:
