@@ -150,8 +150,9 @@ async function processar(de: string, texto: string, wamid: string, botaoId: stri
       }
       cliente = resolvido
     } else if (ident.status === 'nao_encontrado') {
-      // Já encaminhado pra equipe? Fica quieto (só guarda a mensagem) — sem loop.
-      if (await estaAguardandoHumano(supabase, telefone)) {
+      // Atendente assumiu (modo humano) OU já foi encaminhado pra equipe? O bot
+      // fica QUIETO — só guarda a mensagem e deixa a pessoa cuidar. Sem se intrometer.
+      if (await emModoHumano(supabase, telefone) || await estaAguardandoHumano(supabase, telefone)) {
         await salvarMensagem(supabase, { telefone, clienteId: null, role: 'user', conteudo: texto })
         return
       }
