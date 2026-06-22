@@ -539,6 +539,14 @@ export async function agendarCt(
   if (data < hojeStr) return { ok: false, mensagem: 'Essa data já passou.' }
   if (data > somaDias(hojeStr, 14)) return { ok: false, mensagem: 'Só é possível agendar nos próximos 14 dias.' }
 
+  // 2b. Janela estendida (8º dia em diante) é EXCLUSIVA do Coach CT Pro.
+  // Wellhub/TotalPass/avulso só agendam dentro dos próximos 7 dias.
+  if (!tipoCredito.startsWith('coach_ct_pro') && data >= somaDias(hojeStr, 7)) {
+    const lim = somaDias(hojeStr, 6)
+    const limBr = `${lim.slice(8, 10)}/${lim.slice(5, 7)}`
+    return { ok: false, mensagem: `Com Wellhub, TotalPass ou avulso o agendamento abre só para os próximos 7 dias (até ${limBr}). Datas a partir daí (próxima semana) são exclusivas de quem tem o plano Coach CT Pro.` }
+  }
+
   // 3. Tem vaga nesse horário?
   const horarios = await horariosDisponiveisCt(supabase, data)
   const slot = horarios.find((h) => h.hora === hora)
@@ -612,6 +620,11 @@ export async function entrarFilaCt(
   const { dataStr: hojeStr } = agoraEmSaoPaulo()
   if (data < hojeStr) return { ok: false, mensagem: 'Essa data já passou.' }
   if (data > somaDias(hojeStr, 14)) return { ok: false, mensagem: 'Só dá para entrar na fila dos próximos 14 dias.' }
+  if (!tipoCredito.startsWith('coach_ct_pro') && data >= somaDias(hojeStr, 7)) {
+    const lim = somaDias(hojeStr, 6)
+    const limBr = `${lim.slice(8, 10)}/${lim.slice(5, 7)}`
+    return { ok: false, mensagem: `Com Wellhub, TotalPass ou avulso dá pra entrar na fila só dos próximos 7 dias (até ${limBr}). A partir daí (próxima semana) é exclusivo de quem tem o plano Coach CT Pro.` }
+  }
 
   // O horário precisa existir e estar lotado (senão é só agendar).
   const horarios = await horariosDisponiveisCt(supabase, data)
