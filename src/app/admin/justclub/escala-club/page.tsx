@@ -10,6 +10,10 @@ const VERDE    = '#2ddd8b'
 const AMARELO  = '#ffaa00'
 const VERMELHO = '#ff4444'
 
+// Auto-escala (motor "Montar sugestão") — constantes de calibração, fáceis de ajustar.
+const VARIETY_PEN = 30  // empurra a variar de tipo depois de 2+ aulas do mesmo tipo no dia
+const DESEMPATE   = 1   // peso do equilíbrio de carga no desempate (ocupação continua dominando)
+
 const DIAS_SEMANA_LABEL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
 
 function dataLocalStr(d: Date) {
@@ -71,8 +75,8 @@ export default function AdminEscalaClubPage() {
   const [modalAula, setModalAula] = useState<any>(null)
   const [salvando,  setSalvando]  = useState(false)
 
-  // NOVO: abas FDS / Feriados / Capacidade / Disponibilidade
-  const [aba, setAba] = useState<'fds' | 'feriados' | 'capacidade' | 'disponibilidade'>('fds')
+  // NOVO: abas FDS / Montar / Feriados / Capacidade / Disponibilidade
+  const [aba, setAba] = useState<'fds' | 'montar' | 'feriados' | 'capacidade' | 'disponibilidade'>('fds')
   const [feriados,              setFeriados]              = useState<any[]>([])
   const [ocorrenciasFeriadoMap, setOcorrenciasFeriadoMap] = useState<Record<string, any[]>>({}) // feriado_id -> ocorrências
   const [loadingFeriados,       setLoadingFeriados]       = useState(false)
@@ -98,6 +102,17 @@ export default function AdminEscalaClubPage() {
   // NOVO Fase 4: ocupação histórica (RPC). Chave: `${coachId}|${tipo}|${unidadeId}|${dow}` -> { media, n }.
   const [ocupMap, setOcupMap] = useState<Record<string, { media: number; n: number }>>({})
 
+  // NOVO (montagem inteligente do dia): visão das 2 unidades juntas + auto-escala.
+  const [mesMontar,     setMesMontar]     = useState<string>(mesSeguinte()) // default mês seguinte
+  const [diaMontar,     setDiaMontar]     = useState<string | null>(null)    // fds selecionado
+  const [coachesMontar, setCoachesMontar] = useState<any[]>([])              // todos coaches Club
+  const [ocsMontarMap,  setOcsMontarMap]  = useState<Record<string, any[]>>({}) // data -> ocorrências (ambas unidades)
+  const [dispMontar,    setDispMontar]    = useState<Set<string>>(new Set())            // `${coachId}|${data}`
+  const [tiposMontar,   setTiposMontar]   = useState<Record<string, Set<string>>>({})   // coachId -> Set<tipo>
+  const [feriasMontar,  setFeriasMontar]  = useState<Record<string, { ini: string; fim: string }[]>>({})
+  const [loadingMontar, setLoadingMontar] = useState(false)
+  const [montando,      setMontando]      = useState(false)
+
   useEffect(() => {
     if (!loading && perfil && perfil.role !== 'admin' && perfil.role !== 'coordenadora') router.push('/')
   }, [perfil, loading])
@@ -112,12 +127,13 @@ export default function AdminEscalaClubPage() {
       carregarFeriados()
     }
   }, [unidadeSel?.id])
-  // Capacidade e Disponibilidade não dependem de unidade (valem pra todo o Club).
+  // Capacidade, Disponibilidade e Montar não dependem da unidade selecionada (valem pra todo o Club).
   useEffect(() => {
     if (aba === 'capacidade'      && unidades.length > 0) carregarCapacidade()
     if (aba === 'disponibilidade' && unidades.length > 0) carregarDisponibilidade()
     if (aba === 'fds'             && unidades.length > 0) carregarElegibilidadeFds()
-  }, [aba, unidades.length, competencia])
+    if (aba === 'montar'          && unidades.length > 0) carregarMontar()
+  }, [aba, unidades.length, competencia, mesMontar])
 
   // Próximos 6 fins de semana (12 datas)
   const proximosFDS = (() => {
@@ -268,12 +284,13 @@ export default function AdminEscalaClubPage() {
     if (!error) {
       setModalAula(null)
       if (aba === 'feriados') await carregarFeriados()
+      else if (aba === 'montar') await carregarMontar()
       else await carregarOcorrencias()
     }
     setSalvando(false)
   }
 
-  // ─── Coaches Club (compartilhado por Capacidade e Disponibilidade) ───
+  // ─── Coaches Club (compartilhado por Capacidade, Disponibilidade e Montar) ───
   // Coach Club = ativo e com ≥1 unidade Club em coach_unidades. Independe da unidade selecionada.
   async function fetchCoachesClub(): Promise<any[]> {
     const clubIds = unidades.map((u: any) => u.id) // 'unidades' já vem filtrado pra tipo='club'
@@ -396,11 +413,165 @@ export default function AdminEscalaClubPage() {
     return { ok: true, motivo: '' }
   }
 
-  // Abre o modal e, no FDS, carrega quem já está ocupado no mesmo dia+horário (qualquer unidade Club).
+  // ─── Montagem inteligente do dia: visão 2 unidades + auto-escala ───
+  // Elegibilidade própria (escopo do mês alvo), estende a da aba FDS com as 2 regras novas:
+  // unidade única no dia e teto de 4 aulas no dia. Não toca o `elegibilidade` da aba FDS.
+  function nomeUnidade(id: string | null | undefined) {
+    return unidades.find((u: any) => u.id === id)?.nome || 'outra unidade'
+  }
+  // Coach efetivo da ocorrência no contexto Montar (resolve nome em coachesMontar).
+  function efetivoMontar(oc: any): { id: string | null; nome: string; origem: 'escalado' | 'grade' | 'indefinido' } {
+    const id = oc.coach_id || oc.club_aulas?.coaches?.id || null
+    if (!id) return { id: null, nome: 'Coach a definir', origem: 'indefinido' }
+    const nome = coachesMontar.find((c: any) => c.id === id)?.nome || oc.club_aulas?.coaches?.nome || 'Coach'
+    return { id, nome, origem: oc.coach_id ? 'escalado' : 'grade' }
+  }
+  function deFeriasMontar(coachId: string, data: string) {
+    return (feriasMontar[coachId] || []).some(p => p.ini <= data && data <= p.fim)
+  }
+  // Atribuições efetivas do dia (ambas unidades), derivadas das ocorrências carregadas.
+  function assignmentsDoDia(dia: string) {
+    return (ocsMontarMap[dia] || []).map((o: any) => {
+      const ef = efetivoMontar(o)
+      return { ocId: o.id, unidadeId: o.club_aulas?.unidade_id, tipo: o.club_aulas?.tipo, horario: o.club_aulas?.horario, coachId: ef.id }
+    })
+  }
+  function aulasNoDia(coachId: string, asg: any[]) { return asg.filter(a => a.coachId === coachId).length }
+  function unidadeDoCoachNoDia(coachId: string, asg: any[]) { const a = asg.find(x => x.coachId === coachId); return a ? a.unidadeId : null }
+  function tipoCountNoDia(coachId: string, tipo: string, asg: any[]) { return asg.filter(a => a.coachId === coachId && a.tipo === tipo).length }
+
+  // asg = atribuições já feitas no dia, EXCLUINDO a própria ocorrência sendo avaliada.
+  function elegibilidadeMontar(oc: any, coachId: string, asg: any[]): { ok: boolean; motivo: string } {
+    const data = oc?.data, tipo = oc?.club_aulas?.tipo, uId = oc?.club_aulas?.unidade_id, horario = oc?.club_aulas?.horario
+    if (deFeriasMontar(coachId, data))                                 return { ok: false, motivo: 'de férias' }
+    if (!(tiposMontar[coachId]?.has(tipo)))                            return { ok: false, motivo: 'não dá esse tipo' }
+    if (!dispMontar.has(`${coachId}|${data}`))                         return { ok: false, motivo: 'sem disponibilidade' }
+    if (asg.some(a => a.coachId === coachId && a.horario === horario)) return { ok: false, motivo: 'já escalado neste horário' }
+    const u = unidadeDoCoachNoDia(coachId, asg)
+    if (u && u !== uId)                                                return { ok: false, motivo: `já está em ${nomeUnidade(u)}` }
+    if (aulasNoDia(coachId, asg) >= 4)                                 return { ok: false, motivo: 'limite de 4 aulas no dia' }
+    return { ok: true, motivo: '' }
+  }
+
+  async function carregarMontar() {
+    setLoadingMontar(true)
+    const cs = await fetchCoachesClub()
+    setCoachesMontar(cs)
+    const datas = fdsDoMes(mesMontar).map(f => f.data)
+    setDiaMontar(prev => (prev && datas.includes(prev)) ? prev : (datas[0] || null))
+    if (cs.length === 0 || datas.length === 0) {
+      setOcsMontarMap({}); setDispMontar(new Set()); setTiposMontar({}); setFeriasMontar({}); setLoadingMontar(false); return
+    }
+    const clubIds = unidades.map((u: any) => u.id)
+    const { data: aulasIds } = await supabase.from('club_aulas').select('id').in('unidade_id', clubIds).eq('ativo', true)
+    const ids = (aulasIds || []).map((a: any) => a.id)
+    const mapa: Record<string, any[]> = {}
+    for (const d of datas) mapa[d] = []
+    if (ids.length > 0) {
+      const { data: ocs } = await supabase.from('club_ocorrencias')
+        .select('id, data, coach_id, club_aulas(id, tipo, horario, capacidade, unidade_id, coach_id, coaches(id, nome), grupos_musculares(nome))')
+        .in('aula_id', ids).in('data', datas).eq('status', 'ativa').order('data')
+      for (const oc of (ocs || [])) { if (!mapa[oc.data]) mapa[oc.data] = []; mapa[oc.data].push(oc) }
+      for (const d of Object.keys(mapa)) {
+        mapa[d].sort((a: any, b: any) => {
+          const ha = a.club_aulas?.horario || '', hb = b.club_aulas?.horario || ''
+          if (ha !== hb) return ha.localeCompare(hb)
+          return (a.club_aulas?.unidade_id || '').localeCompare(b.club_aulas?.unidade_id || '')
+        })
+      }
+    }
+    setOcsMontarMap(mapa)
+    const minD = datas[0], maxD = datas[datas.length - 1]
+    const [{ data: disp }, { data: tipos }, { data: fer }, { data: ocup }] = await Promise.all([
+      supabase.from('club_disponibilidade_fds').select('coach_id, data').in('data', datas),
+      supabase.from('coach_tipos').select('coach_id, tipo').eq('ativo', true),
+      supabase.from('coach_ferias').select('coach_id, data_inicio, data_fim').lte('data_inicio', maxD).gte('data_fim', minD),
+      supabase.rpc('coach_ocupacao_historica', { p_meses: 3 }),
+    ])
+    const ds = new Set<string>()
+    for (const d of (disp || [])) ds.add(`${d.coach_id}|${d.data}`)
+    setDispMontar(ds)
+    const tm: Record<string, Set<string>> = {}
+    for (const t of (tipos || [])) { if (!tm[t.coach_id]) tm[t.coach_id] = new Set<string>(); tm[t.coach_id].add(t.tipo) }
+    setTiposMontar(tm)
+    const fm: Record<string, { ini: string; fim: string }[]> = {}
+    for (const f of (fer || [])) { if (!fm[f.coach_id]) fm[f.coach_id] = []; fm[f.coach_id].push({ ini: f.data_inicio, fim: f.data_fim }) }
+    setFeriasMontar(fm)
+    const om: Record<string, { media: number; n: number }> = {}
+    for (const o of (ocup || [])) { om[`${o.coach_id}|${o.tipo}|${o.unidade_id}|${o.dia_semana}`] = { media: Number(o.ocupacao_media), n: o.n_aulas } }
+    setOcupMap(om)
+    setLoadingMontar(false)
+  }
+
+  // Motor "Montar sugestão" (auto-escala do dia visível). Greedy, idempotente.
+  // Ocupação manda; variar é o padrão pra quem dá 2+ tipos; equilíbrio só desempata.
+  async function montarSugestao() {
+    if (!diaMontar) return
+    const dia = diaMontar
+    setMontando(true)
+    const ocs = ocsMontarMap[dia] || []
+    const dow = new Date(dia + 'T12:00:00').getDay()
+    const assign: Record<string, string> = {} // ocId -> coachId (estado parcial do dia, começa vazio = limpo)
+    const asgList = () => ocs
+      .map((o: any) => ({ ocId: o.id, unidadeId: o.club_aulas?.unidade_id, tipo: o.club_aulas?.tipo, horario: o.club_aulas?.horario, coachId: assign[o.id] || null }))
+      .filter((a: any) => a.coachId)
+    // bolso estrutural = nº de coaches que dão o tipo E estão disponíveis na data (ataca os mais escassos primeiro)
+    const bolso = (oc: any) => coachesMontar.filter((c: any) =>
+      tiposMontar[c.id]?.has(oc.club_aulas?.tipo) &&
+      dispMontar.has(`${c.id}|${dia}`) &&
+      !deFeriasMontar(c.id, dia)).length
+    const slots = [...ocs].sort((a: any, b: any) => {
+      const ba = bolso(a), bb = bolso(b)
+      if (ba !== bb) return ba - bb
+      const ha = a.club_aulas?.horario || '', hb = b.club_aulas?.horario || ''
+      if (ha !== hb) return ha.localeCompare(hb)
+      return (a.club_aulas?.unidade_id || '').localeCompare(b.club_aulas?.unidade_id || '')
+    })
+    for (const oc of slots) {
+      const tipo = oc.club_aulas?.tipo, uId = oc.club_aulas?.unidade_id
+      const asg = asgList().filter((a: any) => a.ocId !== oc.id)
+      const cands = coachesMontar.filter((c: any) => elegibilidadeMontar(oc, c.id, asg).ok)
+      if (cands.length === 0) continue // deixa "Coach a definir"
+      const best = cands.map((c: any) => {
+        const o = ocupMap[`${c.id}|${tipo}|${uId}|${dow}`]
+        const base = (o && o.n >= 3) ? o.media * 100 : -1
+        const daVarios = (tiposMontar[c.id]?.size || 0) >= 2
+        const tc = tipoCountNoDia(c.id, tipo, asg)
+        const varietyPen = (daVarios && tc >= 2) ? VARIETY_PEN * (tc - 1) : 0
+        const score = base - varietyPen - DESEMPATE * aulasNoDia(c.id, asg)
+        return { id: c.id, score }
+      }).sort((a: any, b: any) => b.score - a.score)[0]
+      assign[oc.id] = best.id
+    }
+    // Persiste: cada ocorrência recebe o coach escolhido (ou null = "a definir").
+    await Promise.all(ocs.map((o: any) =>
+      supabase.from('club_ocorrencias').update({ coach_id: assign[o.id] || null }).eq('id', o.id)))
+    await carregarMontar()
+    setMontando(false)
+  }
+
+  // Zera as atribuições do dia visível (volta tudo à grade / "a definir").
+  async function limparDia() {
+    if (!diaMontar) return
+    setMontando(true)
+    const ocs = ocsMontarMap[diaMontar] || []
+    await Promise.all(ocs.map((o: any) =>
+      supabase.from('club_ocorrencias').update({ coach_id: null }).eq('id', o.id)))
+    await carregarMontar()
+    setMontando(false)
+  }
+
+  // Limpa um slot específico (volta à grade) sem abrir o modal.
+  async function limparSlot(ocId: string) {
+    await supabase.from('club_ocorrencias').update({ coach_id: null }).eq('id', ocId)
+    await carregarMontar()
+  }
+
+  // Abre o modal e, no FDS/Montar, carrega quem já está ocupado no mesmo dia+horário (qualquer unidade Club).
   async function abrirModal(oc: any) {
     setModalAula(oc)
     setConflitoSet(new Set())
-    if (aba !== 'fds') return
+    if (aba !== 'fds' && aba !== 'montar') return
     const horario = oc?.club_aulas?.horario || ''
     const { data: ocs } = await supabase.from('club_ocorrencias')
       .select('id, coach_id, club_aulas(horario, coach_id)')
@@ -446,6 +617,10 @@ export default function AdminEscalaClubPage() {
         <div style={{ background:`${AMARELO}12`, border:`1px solid ${AMARELO}50`, borderRadius:12, padding:'0.75rem 1rem', marginBottom:'1.5rem', fontSize:13, color:'#a16207' }}>
           💡 Marque <strong>quem está disponível</strong> em cada sábado/domingo do mês, conforme cada coach avisar. É o que filtra os coaches elegíveis na montagem.
         </div>
+      ) : aba === 'montar' ? (
+        <div style={{ background:`${ACCENT}0d`, border:`1px solid ${ACCENT}40`, borderRadius:12, padding:'0.75rem 1rem', marginBottom:'1.5rem', fontSize:13, color:'#b91c6b' }}>
+          💡 Monte o dia inteiro com as <strong>duas unidades lado a lado</strong>. O coach é recurso do dia: trava numa unidade e tem teto de 4 aulas. Use <strong>Montar sugestão</strong> pra auto-escalar e ajuste à mão.
+        </div>
       ) : aba === 'fds' ? (
         <div style={{ background:`${CYAN}10`, border:`1px solid ${CYAN}40`, borderRadius:12, padding:'0.75rem 1rem', marginBottom:'1.5rem', fontSize:13, color:'#0e7490' }}>
           💡 A escala aqui <strong>sobrescreve</strong> o coach da grade fixa só para o dia específico. Para limpar, clique no coach atual e escolha "Voltar à grade".
@@ -456,8 +631,8 @@ export default function AdminEscalaClubPage() {
         </div>
       )}
 
-      {/* Seletor de unidade */}
-      {aba !== 'capacidade' && aba !== 'disponibilidade' && unidades.length > 1 && (
+      {/* Seletor de unidade (Montar mostra as 2 juntas, não precisa de seletor) */}
+      {aba !== 'capacidade' && aba !== 'disponibilidade' && aba !== 'montar' && unidades.length > 1 && (
         <div style={{ display:'flex', gap:8, marginBottom:'1.5rem', flexWrap:'wrap' }}>
           {unidades.map((u: any) => (
             <button key={u.id} onClick={() => setUnidadeSel(u)}
@@ -472,10 +647,11 @@ export default function AdminEscalaClubPage() {
         </div>
       )}
 
-      {/* Abas: FDS / Feriados */}
+      {/* Abas: FDS / Montar / Feriados / Capacidade / Disponibilidade */}
       <div style={{ display:'flex', gap:8, borderBottom:'1px solid #e5e7eb', marginBottom:'1.5rem' }}>
         {[
           { key:'fds',             label:'Final de Semana' },
+          { key:'montar',          label:'Montar' },
           { key:'feriados',        label:'Feriados' },
           { key:'capacidade',      label:'Capacidade' },
           { key:'disponibilidade', label:'Disponibilidade' },
@@ -610,6 +786,232 @@ export default function AdminEscalaClubPage() {
                   </tbody>
                 </table>
               </div>
+            )}
+          </div>
+          )
+        })()
+      ) : aba === 'montar' ? (
+        /* ===== ABA MONTAR (visão 2 unidades + auto-escala) ===== */
+        (() => {
+          const fdsMes   = fdsDoMes(mesMontar)
+          const datasMes = fdsMes.map(f => f.data)
+          const dia      = diaMontar
+          const idx      = dia ? datasMes.indexOf(dia) : -1
+          const dow      = dia ? new Date(dia + 'T12:00:00').getDay() : 0
+          const dayAssignments = dia ? assignmentsDoDia(dia) : []
+          // Ocupação histórica do coach pra um slot (tipo+unidade+dia). Mín. 3 aulas pra ranquear.
+          const ocupDe = (coachId: string, tipo: string, uId: string) => {
+            const o = ocupMap[`${coachId}|${tipo}|${uId}|${dow}`]
+            return (o && o.n >= 3) ? o : null
+          }
+          const disponiveisHoje = dia ? coachesMontar.filter((c: any) => dispMontar.has(`${c.id}|${dia}`) && !deFeriasMontar(c.id, dia)) : []
+          const semDispHoje      = dia ? coachesMontar.filter((c: any) => !dispMontar.has(`${c.id}|${dia}`) && (tiposMontar[c.id]?.size || 0) > 0) : []
+          const totalOcsDia      = dia ? (ocsMontarMap[dia] || []).length : 0
+
+          return (
+          <div>
+            {/* Seletor de mês */}
+            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:'1rem' }}>
+              <button onClick={() => setMesMontar(c => addMes(c, -1))}
+                style={{ width:34, height:34, borderRadius:10, border:'1.5px solid #e5e7eb', background:'#fff', cursor:'pointer', fontSize:14, color:'#555' }}>◀</button>
+              <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:22, color:'#111', letterSpacing:0.5, textTransform:'capitalize', minWidth:200, textAlign:'center' }}>
+                {competenciaLabel(mesMontar)}
+              </div>
+              <button onClick={() => setMesMontar(c => addMes(c, 1))}
+                style={{ width:34, height:34, borderRadius:10, border:'1.5px solid #e5e7eb', background:'#fff', cursor:'pointer', fontSize:14, color:'#555' }}>▶</button>
+            </div>
+
+            {loadingMontar ? (
+              <div style={{ textAlign:'center', padding:'3rem', color:'#aaa', fontSize:14 }}>Carregando o dia...</div>
+            ) : coachesMontar.length === 0 ? (
+              <div style={{ background:'#f9fafb', border:'1px dashed #e5e7eb', borderRadius:16, padding:'3rem', textAlign:'center', color:'#aaa', fontSize:14 }}>
+                Nenhum coach Club ativo.<br/>
+                <span style={{ fontSize:12 }}>Habilite uma unidade Club no coach em <strong>Coaches → Unidades</strong>.</span>
+              </div>
+            ) : datasMes.length === 0 ? (
+              <div style={{ background:'#f9fafb', border:'1px dashed #e5e7eb', borderRadius:16, padding:'3rem', textAlign:'center', color:'#aaa', fontSize:14 }}>
+                Sem fins de semana neste mês.
+              </div>
+            ) : (
+              <>
+                {/* Navegação por dia */}
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:'1rem' }}>
+                  <button disabled={idx <= 0} onClick={() => idx > 0 && setDiaMontar(datasMes[idx - 1])}
+                    style={{ width:32, height:32, borderRadius:8, border:'1.5px solid #e5e7eb', background:'#fff',
+                      cursor: idx <= 0 ? 'default' : 'pointer', fontSize:16, color:'#555', opacity: idx <= 0 ? 0.4 : 1, flexShrink:0 }}>‹</button>
+                  <div style={{ display:'flex', gap:6, flexWrap:'wrap', flex:1 }}>
+                    {fdsMes.map(f => {
+                      const sel = f.data === dia
+                      return (
+                        <button key={f.data} onClick={() => setDiaMontar(f.data)}
+                          style={{ padding:'0.35rem 0.7rem', borderRadius:10,
+                            border:`1.5px solid ${sel ? ACCENT : '#e5e7eb'}`, background: sel ? `${ACCENT}12` : '#fff',
+                            color: sel ? ACCENT : '#555', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
+                          {f.data.slice(8, 10)} <span style={{ fontSize:10, fontWeight:700, opacity:0.8 }}>{f.dow === 6 ? 'Sáb' : 'Dom'}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <button disabled={idx >= datasMes.length - 1} onClick={() => idx < datasMes.length - 1 && setDiaMontar(datasMes[idx + 1])}
+                    style={{ width:32, height:32, borderRadius:8, border:'1.5px solid #e5e7eb', background:'#fff',
+                      cursor: idx >= datasMes.length - 1 ? 'default' : 'pointer', fontSize:16, color:'#555', opacity: idx >= datasMes.length - 1 ? 0.4 : 1, flexShrink:0 }}>›</button>
+                </div>
+
+                {/* Ações */}
+                <div style={{ display:'flex', gap:8, marginBottom:'1rem' }}>
+                  <button onClick={montarSugestao} disabled={montando || totalOcsDia === 0}
+                    style={{ padding:'0.6rem 1.25rem', borderRadius:10, border:'none', background:ACCENT, color:'#fff',
+                      fontSize:13, fontWeight:700, cursor: (montando || totalOcsDia === 0) ? 'default' : 'pointer',
+                      opacity: (montando || totalOcsDia === 0) ? 0.5 : 1, fontFamily:"'DM Sans', sans-serif" }}>
+                    {montando ? 'Montando…' : '⚡ Montar sugestão'}
+                  </button>
+                  <button onClick={limparDia} disabled={montando || totalOcsDia === 0}
+                    style={{ padding:'0.6rem 1.25rem', borderRadius:10, border:'1.5px solid #e5e7eb', background:'#fff', color:'#555',
+                      fontSize:13, fontWeight:600, cursor: (montando || totalOcsDia === 0) ? 'default' : 'pointer',
+                      opacity: (montando || totalOcsDia === 0) ? 0.5 : 1, fontFamily:"'DM Sans', sans-serif" }}>
+                    Limpar dia
+                  </button>
+                </div>
+
+                {/* Painel: Disponíveis nesse dia */}
+                <div style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:16, padding:'1rem 1.25rem', marginBottom:'1rem' }}>
+                  <div style={{ fontSize:11, color:'#aaa', textTransform:'uppercase', letterSpacing:1, marginBottom:10 }}>Disponíveis nesse dia</div>
+                  {disponiveisHoje.length === 0 ? (
+                    <div style={{ fontSize:12, color:'#aaa', fontStyle:'italic' }}>Ninguém marcou disponibilidade nesse dia.</div>
+                  ) : (
+                    <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                      {disponiveisHoje.map((c: any) => {
+                        const n      = aulasNoDia(c.id, dayAssignments)
+                        const uTrava = unidadeDoCoachNoDia(c.id, dayAssignments)
+                        const cheio  = n >= 4
+                        return (
+                          <div key={c.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'0.4rem 0.7rem', borderRadius:12,
+                            border:`1.5px solid ${cheio ? `${AMARELO}80` : '#eee'}`, background: cheio ? `${AMARELO}12` : '#fafafa' }}>
+                            <span style={{ fontSize:13, fontWeight:600, color:'#111' }}>{c.nome}</span>
+                            <span style={{ fontSize:10, fontWeight:700, color: cheio ? '#a16207' : '#888',
+                              background: cheio ? `${AMARELO}25` : '#eee', padding:'1px 7px', borderRadius:10 }}>
+                              {n}/4{cheio ? ' · cheio' : ''}
+                            </span>
+                            {uTrava && (
+                              <span style={{ fontSize:10, fontWeight:700, color:CYAN, background:`${CYAN}18`, padding:'1px 7px', borderRadius:10 }}>
+                                {nomeUnidade(uTrava)}
+                              </span>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                  {semDispHoje.length > 0 && (
+                    <div style={{ marginTop:10, fontSize:11, color:'#bbb' }}>
+                      <strong style={{ color:'#aaa' }}>Sem disponibilidade:</strong> {semDispHoje.map((c: any) => c.nome).join(', ')}
+                    </div>
+                  )}
+                </div>
+
+                {/* Aviso: dia sem ocorrências geradas */}
+                {totalOcsDia === 0 && (
+                  <div style={{ background:`${VERMELHO}0d`, border:`1px solid ${VERMELHO}40`, borderRadius:12, padding:'0.75rem 1rem', marginBottom:'1rem', fontSize:13, color:'#b91c1c' }}>
+                    Nenhuma aula gerada para este dia nas unidades Club. Confirme a geração das ocorrências do mês.
+                  </div>
+                )}
+
+                {/* Quadro: 2 unidades lado a lado */}
+                {totalOcsDia > 0 && dia && (
+                  <div style={{ display:'grid', gridTemplateColumns:`repeat(${Math.max(unidades.length, 1)}, 1fr)`, gap:'1rem' }}>
+                    {unidades.map((u: any) => {
+                      const ocsU = (ocsMontarMap[dia] || []).filter((o: any) => o.club_aulas?.unidade_id === u.id)
+                      return (
+                        <div key={u.id} style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:16, padding:'1.25rem' }}>
+                          <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:22, color:'#111', letterSpacing:0.5, marginBottom:'1rem', paddingBottom:'0.6rem', borderBottom:'1px solid #f3f4f6' }}>
+                            {u.nome}
+                          </div>
+                          {ocsU.length === 0 ? (
+                            <div style={{ fontSize:12, color:'#aaa', fontStyle:'italic', padding:'0.5rem 0' }}>Nenhuma aula neste dia</div>
+                          ) : (
+                            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                              {ocsU.map((oc: any) => {
+                                const aula = oc.club_aulas
+                                const ef   = efetivoMontar(oc)
+                                const cor  = tipoColor(aula?.tipo)
+                                const corOrigem = ef.origem === 'escalado' ? ACCENT : ef.origem === 'grade' ? '#888' : VERMELHO
+                                const asgEx = dayAssignments.filter(a => a.ocId !== oc.id)
+                                const livres = coachesMontar.filter((c: any) => elegibilidadeMontar(oc, c.id, asgEx).ok)
+                                const ranked = livres
+                                  .map((c: any) => ({ c, o: ocupDe(c.id, aula?.tipo, u.id) }))
+                                  .sort((a: any, b: any) => ((b.o?.media ?? -1) - (a.o?.media ?? -1)))
+                                const ghost  = ranked[0]
+                                const ocupEf = ef.id ? ocupDe(ef.id, aula?.tipo, u.id) : null
+                                const escassezCor = livres.length <= 1 ? VERMELHO : livres.length === 2 ? AMARELO : null
+
+                                return (
+                                  <div key={oc.id} onClick={() => abrirModal(oc)}
+                                    style={{ display:'flex', alignItems:'center', gap:10, padding:'0.6rem 0.75rem',
+                                      background:'#fafafa', border:'1px solid #f0f0f0', borderRadius:10, cursor:'pointer', transition:'all .15s' }}
+                                    onMouseEnter={e => (e.currentTarget.style.borderColor = ACCENT)}
+                                    onMouseLeave={e => (e.currentTarget.style.borderColor = '#f0f0f0')}>
+
+                                    <div style={{ fontFamily:"'DM Mono', monospace", fontSize:14, fontWeight:700, color:'#111', minWidth:46 }}>
+                                      {(aula?.horario || '').slice(0, 5)}
+                                    </div>
+
+                                    <div style={{ flex:1, minWidth:0 }}>
+                                      <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:2 }}>
+                                        <span style={{ fontSize:10, fontWeight:700, color:cor, background:`${cor}18`, padding:'1px 7px', borderRadius:14 }}>{tipoLabel(aula?.tipo)}</span>
+                                        <span style={{ fontSize:11, color:'#aaa', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                                          {aula?.grupos_musculares?.nome || ''}
+                                        </span>
+                                      </div>
+                                      {ef.origem === 'indefinido' ? (
+                                        ghost ? (
+                                          <div style={{ fontSize:12, color:'#999', fontStyle:'italic' }}>
+                                            sugerido: <span style={{ fontWeight:600, fontStyle:'normal', color:'#555' }}>{ghost.c.nome}</span>
+                                            {ghost.o ? <span style={{ color:VERDE, fontStyle:'normal', fontWeight:700 }}> · {Math.round(ghost.o.media * 100)}%</span> : null}
+                                          </div>
+                                        ) : (
+                                          <div style={{ fontSize:12, color:VERMELHO, fontWeight:600 }}>nenhum elegível livre</div>
+                                        )
+                                      ) : (
+                                        <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                                          <span style={{ fontSize:12, fontWeight:600, color:'#111' }}>{ef.nome}</span>
+                                          <span style={{ fontSize:9, fontWeight:700, color:corOrigem, background:`${corOrigem}15`, padding:'1px 6px', borderRadius:8, textTransform:'uppercase', letterSpacing:0.5 }}>
+                                            {ef.origem === 'escalado' ? 'escalado' : 'padrão'}
+                                          </span>
+                                          {ocupEf && (
+                                            <span style={{ fontSize:10, fontWeight:700, color:VERDE, background:`${VERDE}18`, padding:'1px 7px', borderRadius:10 }}>
+                                              {Math.round(ocupEf.media * 100)}% ocup.
+                                            </span>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {ef.origem === 'indefinido' ? (
+                                      <span style={{ fontSize:10, fontWeight:700, flexShrink:0,
+                                        color: escassezCor || '#bbb', background: escassezCor ? `${escassezCor}18` : '#f0f0f0', padding:'2px 8px', borderRadius:10 }}>
+                                        {livres.length} livre{livres.length === 1 ? '' : 's'}
+                                      </span>
+                                    ) : ef.origem === 'escalado' ? (
+                                      <button onClick={(e) => { e.stopPropagation(); limparSlot(oc.id) }}
+                                        title="Voltar à grade"
+                                        style={{ flexShrink:0, width:24, height:24, borderRadius:8, border:'1px solid #eee', background:'#fff',
+                                          color:'#aaa', fontSize:13, cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center' }}>
+                                        ×
+                                      </button>
+                                    ) : (
+                                      <div style={{ fontSize:14, color:'#ccc', flexShrink:0 }}>›</div>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </>
             )}
           </div>
           )
@@ -798,6 +1200,9 @@ export default function AdminEscalaClubPage() {
               </div>
               <div style={{ fontSize:12, color:'#888', marginTop:4 }}>
                 {modalAula.club_aulas?.grupos_musculares?.nome || ''}
+                {aba === 'montar' && modalAula.club_aulas?.unidade_id && (
+                  <span style={{ marginLeft:8, color:CYAN, fontWeight:600 }}>· {nomeUnidade(modalAula.club_aulas.unidade_id)}</span>
+                )}
               </div>
             </div>
 
@@ -825,32 +1230,41 @@ export default function AdminEscalaClubPage() {
             {/* Lista de coaches */}
             <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:'1rem' }}>
               {(() => {
-                const modoFds = aba === 'fds'
+                const modoFds    = aba === 'fds'
+                const modoMontar = aba === 'montar'
+                const modoEleg   = modoFds || modoMontar
                 const dow  = new Date(modalAula.data + 'T12:00:00').getDay()
                 const tipo = modalAula?.club_aulas?.tipo
-                const uId  = unidadeSel?.id
+                const uId  = modoMontar ? modalAula?.club_aulas?.unidade_id : unidadeSel?.id
+                const baseCoaches = modoMontar ? coachesMontar : coaches
+                // Atribuições do dia (montar), excluindo a própria ocorrência sendo escalada.
+                const asgManual = modoMontar ? assignmentsDoDia(modalAula.data).filter(a => a.ocId !== modalAula.id) : []
+                const elegFn = (cid: string) =>
+                  modoMontar ? elegibilidadeMontar(modalAula, cid, asgManual)
+                  : modoFds   ? elegibilidade(modalAula, cid)
+                  :             { ok: true, motivo: '' }
                 // Ocupação histórica do coach pra ESTE slot (tipo+unidade+dia). Mín. 3 aulas pra ranquear.
                 const ocupDe = (coachId: string) => {
                   const o = ocupMap[`${coachId}|${tipo}|${uId}|${dow}`]
                   return (o && o.n >= 3) ? o : null
                 }
                 // Ordena: elegíveis (sem conflito) primeiro; dentro, por ocupação desc; depois nome.
-                const lista = modoFds
-                  ? [...coaches].sort((a: any, b: any) => {
-                      const ea = elegibilidade(modalAula, a.id).ok && !conflitoSet.has(a.id)
-                      const eb = elegibilidade(modalAula, b.id).ok && !conflitoSet.has(b.id)
+                const lista = modoEleg
+                  ? [...baseCoaches].sort((a: any, b: any) => {
+                      const ea = elegFn(a.id).ok && !conflitoSet.has(a.id)
+                      const eb = elegFn(b.id).ok && !conflitoSet.has(b.id)
                       if (ea !== eb) return (eb ? 1 : 0) - (ea ? 1 : 0)
                       const oa = ocupDe(a.id)?.media ?? -1
                       const ob = ocupDe(b.id)?.media ?? -1
                       if (ob !== oa) return ob - oa
                       return (a.nome || '').localeCompare(b.nome || '')
                     })
-                  : coaches
+                  : baseCoaches
                 return lista.map((c: any) => {
                   const selecionado = modalAula.coach_id === c.id
-                  const el        = modoFds ? elegibilidade(modalAula, c.id) : { ok: true, motivo: '' }
-                  const conflito  = modoFds && conflitoSet.has(c.id)
-                  const bloqueado = modoFds && (!el.ok || conflito) && !selecionado
+                  const el        = modoEleg ? elegFn(c.id) : { ok: true, motivo: '' }
+                  const conflito  = modoEleg && conflitoSet.has(c.id)
+                  const bloqueado = modoEleg && (!el.ok || conflito) && !selecionado
                   const motivo    = conflito ? 'já escalado neste horário' : el.motivo
                   return (
                     <button key={c.id}
@@ -875,7 +1289,7 @@ export default function AdminEscalaClubPage() {
                       </div>
                       {selecionado ? (
                         <span style={{ fontSize:11, fontWeight:700, color:ACCENT, flexShrink:0 }}>✓ escalado</span>
-                      ) : modoFds && el.ok && !conflito ? (
+                      ) : modoEleg && el.ok && !conflito ? (
                         (() => {
                           const o = ocupDe(c.id)
                           return o ? (
