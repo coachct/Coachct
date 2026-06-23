@@ -13,6 +13,9 @@ import { registrarAcessoLgpd, agoraEmSaoPaulo, consultarSaldo } from './consulta
 export interface ResultadoAcao {
   ok: boolean
   mensagem: string
+  /** Falha técnica (erro de banco/exceção), não uma recusa por regra de negócio.
+   *  Quando true, o webhook escala pra equipe em vez de largar o cliente. */
+  erroTecnico?: boolean
 }
 
 // Unidade Just CT (personal) — mesma constante usada no app.
@@ -343,7 +346,7 @@ export async function reservarClub(
     if (error.message?.includes('já tem uma reserva')) {
       return { ok: false, mensagem: 'Você já tem uma reserva nessa unidade nesse dia com esse plano (cada plano permite uma reserva por dia por unidade).' }
     }
-    return { ok: false, mensagem: 'Tive um erro ao reservar. Pode tentar de novo?' }
+    return { ok: false, mensagem: 'Tive um erro ao reservar. Pode tentar de novo?', erroTecnico: true }
   }
 
   await registrarAcessoLgpd(supabase, {
@@ -372,7 +375,7 @@ export async function cancelarReservaClub(
     .select('id, cliente_id, status, ocorrencia_id, tipo_credito, club_ocorrencias(data, club_aulas(horario, tipo))')
     .eq('id', reservaId).maybeSingle()
 
-  if (error) return { ok: false, mensagem: 'Não consegui acessar essa reserva agora.' }
+  if (error) return { ok: false, mensagem: 'Não consegui acessar essa reserva agora.', erroTecnico: true }
   if (!rv || (rv as any).cliente_id !== clienteId) {
     return { ok: false, mensagem: 'Não encontrei essa reserva na sua conta.' }
   }
@@ -411,7 +414,7 @@ export async function cancelarReservaClub(
 
   const { error: e2 } = await supabase
     .from('club_reservas').update({ status: 'cancelado', cancelado_em: agora.toISOString() }).eq('id', reservaId)
-  if (e2) return { ok: false, mensagem: 'Tive um erro ao cancelar. Pode tentar de novo?' }
+  if (e2) return { ok: false, mensagem: 'Tive um erro ao cancelar. Pode tentar de novo?', erroTecnico: true }
 
   await registrarAcessoLgpd(supabase, { clienteId, acao: 'cancelar_reserva_club', detalhe: { reserva_id: reservaId } })
   return { ok: true, mensagem: `Pronto, cancelei sua aula de ${dataBr} às ${horario}. Seu crédito volta para o saldo.` }
@@ -486,7 +489,7 @@ export async function entrarFilaClub(
     ocorrencia_id: ocorrenciaId, cliente_id: clienteId, tipo_credito: tipoCredito,
     status: 'aguardando', data: dataStr, horario: horarioFull, unidade_id: aula.unidade_id,
   })
-  if (error) return { ok: false, mensagem: 'Tive um erro ao entrar na fila. Pode tentar de novo?' }
+  if (error) return { ok: false, mensagem: 'Tive um erro ao entrar na fila. Pode tentar de novo?', erroTecnico: true }
 
   // Posição na fila (após inserir).
   const { count: pos } = await supabase
@@ -583,7 +586,7 @@ export async function agendarCt(
     tipo_credito: tipoCredito,
     unidade_id: JUST_CT_UNIDADE_ID,
   })
-  if (error) return { ok: false, mensagem: 'Tive um erro ao agendar. Pode tentar de novo em instantes?' }
+  if (error) return { ok: false, mensagem: 'Tive um erro ao agendar. Pode tentar de novo em instantes?', erroTecnico: true }
 
   await registrarAcessoLgpd(supabase, {
     clienteId, acao: 'agendar_ct', detalhe: { data, hora, tipo_credito: tipoCredito },
@@ -657,7 +660,7 @@ export async function entrarFilaCt(
     cliente_id: clienteId, data, horario: hora + ':00', tipo_credito: tipoCredito,
     status: 'aguardando', unidade_id: JUST_CT_UNIDADE_ID,
   })
-  if (error) return { ok: false, mensagem: 'Tive um erro ao entrar na fila. Pode tentar de novo?' }
+  if (error) return { ok: false, mensagem: 'Tive um erro ao entrar na fila. Pode tentar de novo?', erroTecnico: true }
 
   await registrarAcessoLgpd(supabase, {
     clienteId, acao: 'entrar_fila_ct', detalhe: { data, hora, tipo_credito: tipoCredito },
@@ -676,12 +679,12 @@ export async function sairFila(
 ): Promise<ResultadoAcao> {
   const { data: f, error } = await supabase
     .from('fila_espera').select('id, cliente_id, status').eq('id', filaId).maybeSingle()
-  if (error) return { ok: false, mensagem: 'Não consegui acessar essa fila agora.' }
+  if (error) return { ok: false, mensagem: 'Não consegui acessar essa fila agora.', erroTecnico: true }
   if (!f || f.cliente_id !== clienteId) return { ok: false, mensagem: 'Não encontrei você nessa fila.' }
   if (f.status !== 'aguardando') return { ok: false, mensagem: 'Essa fila não está mais ativa.' }
 
   const { error: e2 } = await supabase.from('fila_espera').delete().eq('id', filaId)
-  if (e2) return { ok: false, mensagem: 'Tive um erro ao sair da fila. Pode tentar de novo?' }
+  if (e2) return { ok: false, mensagem: 'Tive um erro ao sair da fila. Pode tentar de novo?', erroTecnico: true }
 
   await registrarAcessoLgpd(supabase, { clienteId, acao: 'sair_fila', detalhe: { fila_id: filaId } })
   return { ok: true, mensagem: 'Pronto, te tirei da fila de espera.' }
@@ -708,7 +711,7 @@ export async function cancelarAgendamentoCt(
     .eq('id', agendamentoId)
     .maybeSingle()
 
-  if (error) return { ok: false, mensagem: 'Não consegui acessar esse agendamento agora.' }
+  if (error) return { ok: false, mensagem: 'Não consegui acessar esse agendamento agora.', erroTecnico: true }
   if (!ag || ag.cliente_id !== clienteId) {
     return { ok: false, mensagem: 'Não encontrei esse agendamento na sua conta.' }
   }
@@ -761,7 +764,7 @@ export async function cancelarAgendamentoCt(
     })
     .eq('id', agendamentoId)
 
-  if (e2) return { ok: false, mensagem: 'Tive um erro ao cancelar. Pode tentar de novo em instantes?' }
+  if (e2) return { ok: false, mensagem: 'Tive um erro ao cancelar. Pode tentar de novo em instantes?', erroTecnico: true }
 
   await registrarAcessoLgpd(supabase, {
     clienteId,
@@ -911,7 +914,7 @@ export async function atualizarCpfCliente(
 
   const { error } = await supabase.from('clientes').update({ cpf }).eq('id', clienteId)
   if (error) {
-    return { ok: false, mensagem: 'Tive um erro ao salvar seu CPF. Pode tentar de novo em instantes?' }
+    return { ok: false, mensagem: 'Tive um erro ao salvar seu CPF. Pode tentar de novo em instantes?', erroTecnico: true }
   }
 
   await registrarAcessoLgpd(supabase, { clienteId, acao: 'wa_atualizar_cpf', detalhe: { cpf } })

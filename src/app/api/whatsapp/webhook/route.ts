@@ -202,6 +202,17 @@ async function processar(de: string, texto: string, wamid: string, botaoId: stri
         await salvarMensagem(supabase, { telefone, clienteId: cliente.id, role: 'user', conteudo: texto })
         const alvoId = pendente.cliente_id || cliente.id
         const resultado = await executarAcaoConfirmada(supabase, alvoId, pendente.acao, pendente.params)
+        // Falha TÉCNICA (erro de banco/exceção): NUNCA largar o cliente com um "tente
+        // de novo" sem saída — escala pra equipe (aparece no painel) e avisa que
+        // alguém vai resolver. Recusa por regra de negócio NÃO entra aqui (é resposta
+        // válida) — só o erroTecnico dispara a escalada.
+        if (resultado.erroTecnico) {
+          await marcarAguardandoHumano(supabase, telefone)
+          const aviso = 'Opa, deu um probleminha técnico aqui do meu lado pra concluir isso 🙈. Mas não vou te deixar na mão: já passei pra nossa equipe e a gente resolve isso pra você por aqui mesmo, rapidinho. 🙏'
+          await salvarMensagem(supabase, { telefone, clienteId: cliente.id, role: 'assistant', conteudo: aviso })
+          await enviarTexto(de, aviso)
+          return
+        }
         await salvarMensagem(supabase, { telefone, clienteId: cliente.id, role: 'assistant', conteudo: resultado.texto })
         await enviarTexto(de, resultado.texto)
         return

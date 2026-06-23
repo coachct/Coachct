@@ -435,7 +435,7 @@ export async function executarAcaoConfirmada(
   clienteId: string,
   acao: string,
   params: any,
-): Promise<{ texto: string }> {
+): Promise<{ texto: string; ok: boolean; erroTecnico: boolean }> {
   const p = params ?? {}
   let r: ResultadoAcao
   switch (acao) {
@@ -478,7 +478,7 @@ export async function executarAcaoConfirmada(
     default:
       r = { ok: false, mensagem: 'Não consegui identificar a ação para confirmar. Pode me dizer de novo o que você quer fazer?' }
   }
-  return { texto: r.mensagem }
+  return { texto: r.mensagem, ok: r.ok, erroTecnico: !!r.erroTecnico }
 }
 
 // ---------------------------------------------------------------------------
