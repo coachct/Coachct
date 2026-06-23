@@ -14,6 +14,7 @@ import {
   identificarClientePorTelefone,
   buscarClientePorId,
   buscarClientePorCpf,
+  buscarClientePorEmail,
   normalizarTelefone,
   registrarAcessoLgpd,
   type ClienteIdentificado,
@@ -402,29 +403,49 @@ async function resolverPorCadastro(
 
   // 2. A mensagem traz um CPF?
   const cpf = extrairCpf(texto)
-  if (!cpf) {
-    // Visitante (sem CPF): responde dúvidas gerais + ensina o passo a passo do
-    // site (agendar/ativar plano), e pede nome+CPF quando for coisa da conta.
-    const hist = await carregarHistorico(supabase, telefone)
-    const resp = await responderVisitante({ supabase, mensagem: texto, historico: hist })
-    return responder(resp)
+  if (cpf) {
+    // Tem CPF: procura no cadastro.
+    const achado = await buscarClientePorCpf(supabase, cpf)
+    if (!achado) {
+      return responder(MSG_NAO_CLIENTE)
+    }
+    // Achou: por segurança, confere o nome na mesma mensagem.
+    if (!nomeBate(texto, achado.nome)) {
+      return responder('Achei um cadastro com esse CPF! 😊 Por segurança, me reenvia seu *nome completo* junto com o *CPF* na mesma mensagem, do jeitinho que está no cadastro, que eu confirmo que é você.')
+    }
+    // Confirmado. O vínculo é gravado pela salvarMensagem (com cliente_id) lá no
+    // fluxo principal — assim, nas próximas conversas, o passo 1 já reconhece.
+    await registrarAcessoLgpd(supabase, { clienteId: achado.id, telefone, acao: 'wa_vinculo_cpf' })
+    return achado
   }
 
-  // 3. Tem CPF: procura no cadastro.
-  const achado = await buscarClientePorCpf(supabase, cpf)
-  if (!achado) {
-    return responder(MSG_NAO_CLIENTE)
+  // 2b. Sem CPF, mas a mensagem traz um E-MAIL? Muita gente tem e-mail no
+  //     cadastro mas não tem CPF (ou não lembra) — identifica por e-mail.
+  const email = extrairEmail(texto)
+  if (email) {
+    const achadoEmail = await buscarClientePorEmail(supabase, email)
+    if (!achadoEmail) {
+      return responder('Não localizei esse e-mail no nosso cadastro 🤔. Confere se digitou certinho? Se preferir, me manda seu *nome completo* + *CPF* que eu te encontro por aí.')
+    }
+    // Confere o nome junto, como no CPF (segurança leve).
+    if (!nomeBate(texto, achadoEmail.nome)) {
+      return responder('Achei um cadastro com esse e-mail! 😊 Por segurança, me reenvia seu *nome completo* junto com o *e-mail*, na mesma mensagem, do jeitinho que está no cadastro.')
+    }
+    await registrarAcessoLgpd(supabase, { clienteId: achadoEmail.id, telefone, acao: 'wa_vinculo_email' })
+    return achadoEmail
   }
 
-  // 4. Achou: por segurança, confere o nome na mesma mensagem.
-  if (!nomeBate(texto, achado.nome)) {
-    return responder('Achei um cadastro com esse CPF! 😊 Por segurança, me reenvia seu *nome completo* junto com o *CPF* na mesma mensagem, do jeitinho que está no cadastro, que eu confirmo que é você.')
-  }
+  // 3. Nem CPF nem e-mail: visitante. Responde dúvidas gerais + ensina o passo a
+  //    passo do site, e pede nome + CPF OU e-mail quando for coisa da conta.
+  const hist = await carregarHistorico(supabase, telefone)
+  const resp = await responderVisitante({ supabase, mensagem: texto, historico: hist })
+  return responder(resp)
+}
 
-  // 5. Confirmado. O vínculo é gravado pela salvarMensagem (com cliente_id) lá no
-  //    fluxo principal — assim, nas próximas conversas, o passo 1 já reconhece.
-  await registrarAcessoLgpd(supabase, { clienteId: achado.id, telefone, acao: 'wa_vinculo_cpf' })
-  return achado
+/** Extrai o primeiro e-mail que aparecer na mensagem (ou null). */
+function extrairEmail(texto: string): string | null {
+  const m = String(texto ?? '').match(/[^\s@]+@[^\s@]+\.[^\s@]+/)
+  return m ? m[0].replace(/[.,;:)]+$/, '').toLowerCase() : null
 }
 
 /** Cliente já vinculado a este telefone numa mensagem anterior (cliente_id salvo). */

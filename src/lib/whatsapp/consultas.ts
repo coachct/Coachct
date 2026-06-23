@@ -141,6 +141,25 @@ export async function buscarClientePorCpf(
   return data[0] as ClienteIdentificado
 }
 
+/**
+ * Busca um cliente pelo e-mail (cadastro). Muita gente tem e-mail no cadastro
+ * mas não tem CPF (ou não lembra) — esse é o caminho alternativo de identificação.
+ * Retorna null se não achar ou se houver mais de um (não chuta).
+ */
+export async function buscarClientePorEmail(
+  supabase: SupabaseClient,
+  emailRaw: string,
+): Promise<ClienteIdentificado | null> {
+  const email = String(emailRaw ?? '').trim().toLowerCase()
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return null
+  const { data, error } = await supabase
+    .from('clientes')
+    .select('id, nome, email, telefone, bloqueado, motivo_bloqueio, whatsapp_opt_out, lgpd_consentimento_em')
+    .ilike('email', email)
+  if (error || !data || data.length !== 1) return null
+  return data[0] as ClienteIdentificado
+}
+
 // ---------------------------------------------------------------------------
 // Saldo de créditos
 // ---------------------------------------------------------------------------
