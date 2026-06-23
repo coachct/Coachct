@@ -29,7 +29,7 @@ import {
   listarConhecimento,
   type UnidadeInfo,
 } from './conhecimento'
-import { cancelarAgendamentoCt, horariosDisponiveisCt, agendarCt, entrarFilaCt, sairFila, aulasClubDisponiveis, reservarClub, cancelarReservaClub, entrarFilaClub, posicoesLivresClub, recuperarAcessoCliente, type ResultadoAcao } from './acoes'
+import { cancelarAgendamentoCt, horariosDisponiveisCt, agendarCt, entrarFilaCt, sairFila, aulasClubDisponiveis, reservarClub, cancelarReservaClub, entrarFilaClub, posicoesLivresClub, recuperarAcessoCliente, atualizarCpfCliente, type ResultadoAcao } from './acoes'
 import { agoraEmSaoPaulo } from './consultas'
 
 interface ContextoGeral {
@@ -139,6 +139,12 @@ Se o cliente disser que NÃO consegue acessar a conta, esqueceu a senha, ou nunc
 - Quando ele te passar o e-mail, chame a ferramenta recuperar_acesso com esse e-mail.
 - A ferramenta devolve o e-mail de login e uma senha provisória. Repasse os DOIS para o cliente aqui no WhatsApp e oriente: entrar em https://www.justclubct.com.br/login e depois trocar a senha em "Minha Conta".
 - NUNCA peça a senha atual dele e NUNCA invente senha — use só a que a ferramenta devolver.
+
+# Compra travada por falta de CPF (REGRA — resolva aqui, NÃO mande pro time)
+Para comprar plano/pacote/avulso o pagamento (Pagar.me) exige um CPF válido no cadastro. Tem cliente cujo cadastro está SEM CPF (ou com CPF errado) e a compra trava por causa disso. NUNCA diga que "o time/recepção precisa atualizar o CPF" — isso é resolvido na hora, por aqui:
+- Peça o CPF dele e chame a ferramenta **atualizar_cpf** com esse número.
+- Se a ferramenta retornar ok, avise que o CPF foi regularizado e que agora é só finalizar a compra pelo site (https://www.justclubct.com.br). Se preferir, no site o campo de CPF também aparece sozinho ao cadastrar o cartão / no checkout.
+- Se a ferramenta acusar CPF inválido ou já usado em outro cadastro, explique com gentileza e peça pra conferir/reenviar — não invente, não mande pra recepção.
 
 # Musculação livre NÃO precisa agendar (REGRA — nunca erre isso)
 A MUSCULAÇÃO LIVRE do Just CT é LIVRE: o cliente vem quando quiser, dentro do horário de funcionamento, e treina no seu ritmo — SEM agendar horário. NUNCA diga que é preciso "agendar um horário" para a musculação livre. Agendar/reservar horário é só para: o Coach CT (personal 1×1) e as aulas do JustClub (Lift, Lift for Girls, Running Funcional). Ao descrever as modalidades, deixe claro: Coach CT = agenda horário; musculação livre = é só chegar.
@@ -337,6 +343,17 @@ const TOOLS: Anthropic.Tool[] = [
       required: ['email'],
     },
   },
+  {
+    name: 'atualizar_cpf',
+    description: 'Grava/corrige o CPF do cliente no cadastro. Use quando o cliente está sem CPF (ou com CPF inválido) e precisa COMPRAR um plano/pacote/avulso — o pagamento (Pagar.me) exige um CPF válido. Peça o CPF, chame esta ferramenta e, quando der certo, diga que ele já pode finalizar a compra pelo site. NÃO precisa do time/recepção pra isso.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        cpf: { type: 'string', description: 'CPF do cliente (só os números ou formatado)' },
+      },
+      required: ['cpf'],
+    },
+  },
 ]
 
 // Ferramentas que acessam dados pessoais do cliente (geram log de LGPD).
@@ -384,6 +401,8 @@ async function executarTool(
       return JSON.stringify(await horariosDisponiveisCt(supabase, String(input?.data ?? '')))
     case 'recuperar_acesso':
       return JSON.stringify(await recuperarAcessoCliente(supabase, cliente.id, String(input?.email ?? '')))
+    case 'atualizar_cpf':
+      return JSON.stringify(await atualizarCpfCliente(supabase, cliente.id, String(input?.cpf ?? '')))
     case 'aulas_club_disponiveis':
       return JSON.stringify(await aulasClubDisponiveis(supabase, String(input?.unidade ?? ''), String(input?.data ?? '')))
     case 'posicoes_livres_club':

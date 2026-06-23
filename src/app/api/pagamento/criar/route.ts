@@ -48,7 +48,7 @@ function descreverErroPagarme(data: any): string {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { produto_id, cliente_id, metodo, parcelas, cartao } = body
+    const { produto_id, cliente_id, metodo, parcelas, cartao, cpf: cpfInformado } = body
 
     if (!produto_id || !cliente_id || !metodo) {
       return NextResponse.json({ error: 'Dados incompletos' }, { status: 400 })
@@ -91,12 +91,28 @@ export async function POST(req: NextRequest) {
     // is invalid." se o dígito verificador estiver errado. A maquininha física do balcão
     // não passa por essa validação, então um CPF inválido no cadastro só quebra aqui.
     // Barramos antes de criar order/pagamento_pendente, com mensagem clara pro cliente.
-    const cpfLimpo = (cliente.cpf || '').replace(/\D/g, '')
+    let cpfLimpo = (cliente.cpf || '').replace(/\D/g, '')
     if (!cpfValido(cpfLimpo)) {
-      return NextResponse.json(
-        { error: 'CPF do cadastro inválido. Atualize seu CPF nos seus dados para concluir a compra.' },
-        { status: 400 }
-      )
+      // O cadastro está sem CPF (ou inválido). Se o cliente informou um CPF agora
+      // (campo do checkout), validamos, conferimos que não pertence a outro cadastro
+      // e gravamos — daí a compra segue sem precisar sair da tela.
+      const cpfNovo = String(cpfInformado || '').replace(/\D/g, '')
+      if (!cpfValido(cpfNovo)) {
+        return NextResponse.json(
+          { error: 'CPF do cadastro inválido. Informe um CPF válido para concluir a compra.', precisa_cpf: true },
+          { status: 400 }
+        )
+      }
+      const { data: cpfEmUso } = await supabase
+        .from('clientes').select('id').eq('cpf', cpfNovo).neq('id', cliente.id).maybeSingle()
+      if (cpfEmUso) {
+        return NextResponse.json(
+          { error: 'Este CPF já está cadastrado em outra conta.', precisa_cpf: true },
+          { status: 400 }
+        )
+      }
+      await supabase.from('clientes').update({ cpf: cpfNovo }).eq('id', cliente.id)
+      cpfLimpo = cpfNovo
     }
 
     // GUARD anti-cobrança-duplicada (somente cartão): se já existe um pagamento recente

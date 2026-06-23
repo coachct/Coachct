@@ -866,3 +866,53 @@ export async function recuperarAcessoCliente(
 
   return { ok: true, mensagem: '', email, senha }
 }
+
+/** Valida CPF de verdade (11 dígitos + dígitos verificadores). */
+function cpfValido(valor: string): boolean {
+  const c = (valor || '').replace(/\D/g, '')
+  if (c.length !== 11) return false
+  if (/^(\d)\1{10}$/.test(c)) return false
+  let soma = 0
+  for (let i = 0; i < 9; i++) soma += parseInt(c[i]) * (10 - i)
+  let d1 = (soma * 10) % 11
+  if (d1 === 10) d1 = 0
+  if (d1 !== parseInt(c[9])) return false
+  soma = 0
+  for (let i = 0; i < 10; i++) soma += parseInt(c[i]) * (11 - i)
+  let d2 = (soma * 10) % 11
+  if (d2 === 10) d2 = 0
+  return d2 === parseInt(c[10])
+}
+
+/**
+ * Atualiza/regulariza o CPF do cliente no cadastro (o Pagar.me exige CPF válido
+ * como documento do comprador). Use quando o cliente está sem CPF (ou com CPF
+ * inválido) e precisa comprar. O cliente já vem identificado (telefone ou
+ * CPF+nome / e-mail+nome) — essa é a trava de segurança.
+ */
+export async function atualizarCpfCliente(
+  supabase: SupabaseClient,
+  clienteId: string,
+  cpfRaw: string,
+): Promise<ResultadoAcao> {
+  const cpf = String(cpfRaw ?? '').replace(/\D/g, '')
+  if (!cpfValido(cpf)) {
+    return { ok: false, mensagem: 'Esse CPF não parece válido (confere os 11 números?). Me manda de novo, por favor.' }
+  }
+
+  // O CPF já pertence a OUTRO cadastro? Não sobrescreve — evita duplicar identidade.
+  const { data: emUso } = await supabase
+    .from('clientes').select('id').eq('cpf', cpf).neq('id', clienteId).maybeSingle()
+  if (emUso) {
+    return { ok: false, mensagem: 'Esse CPF já está em outro cadastro nosso. Se você tem mais de um cadastro, me avisa que a gente acerta isso juntos.' }
+  }
+
+  const { error } = await supabase.from('clientes').update({ cpf }).eq('id', clienteId)
+  if (error) {
+    return { ok: false, mensagem: 'Tive um erro ao salvar seu CPF. Pode tentar de novo em instantes?' }
+  }
+
+  await registrarAcessoLgpd(supabase, { clienteId, acao: 'wa_atualizar_cpf', detalhe: { cpf } })
+
+  return { ok: true, mensagem: 'Pronto, seu CPF foi atualizado no cadastro! ✅ Agora é só finalizar a compra pelo site que vai funcionar.' }
+}

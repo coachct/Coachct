@@ -68,6 +68,9 @@ function CheckoutContent() {
   const [senha2, setSenha2] = useState('')
   const [loadingCadastro, setLoadingCadastro] = useState(false)
 
+  // CPF do cliente JÁ logado, quando o cadastro veio sem CPF (Pagar.me exige).
+  const [mostrarCpf, setMostrarCpf] = useState(false)
+
   useEffect(() => {
     if (!produtoId) { router.push('/comprar'); return }
     carregarProduto()
@@ -180,8 +183,19 @@ function CheckoutContent() {
     setLoadingCadastro(false)
   }
 
+  // Cadastro do cliente logado está sem CPF válido? (campo precisa aparecer)
+  const cpfCadastroLimpo = (cliente?.cpf || '').replace(/\D/g, '')
+  const semCpfCadastro = !!cliente && cpfCadastroLimpo.length !== 11
+  const precisaCpf = semCpfCadastro || mostrarCpf
+
   async function confirmarPagamento() {
     setErro('')
+
+    // Pagar.me exige CPF (customer.document) tanto no cartão quanto no PIX.
+    if (precisaCpf && cpf.replace(/\D/g, '').length !== 11) {
+      setErro('Informe seu CPF para concluir a compra.')
+      return
+    }
 
     if (metodo === 'cartao') {
       if (cartaoNumero.replace(/\s/g, '').length < 16) { setErro('Número do cartão inválido.'); return }
@@ -199,6 +213,9 @@ function CheckoutContent() {
         metodo: metodo === 'cartao' ? 'cartao_credito' : 'pix',
         parcelas,
       }
+
+      // Cadastro sem CPF: manda o CPF informado aqui pra API validar e gravar.
+      if (precisaCpf) payload.cpf = cpf.replace(/\D/g, '')
 
       if (metodo === 'cartao') {
         payload.cartao = {
@@ -220,6 +237,7 @@ function CheckoutContent() {
       const data = await res.json()
 
       if (!res.ok) {
+        if (data.precisa_cpf) setMostrarCpf(true) // revela o campo de CPF
         setErro(data.detalhes || data.error || 'Erro ao processar pagamento.')
         setEtapa('pagamento')
         return
@@ -481,6 +499,17 @@ function CheckoutContent() {
                   Copiar código PIX
                 </button>
                 <div style={{ fontSize: 12, color: '#555', marginTop: '1rem' }}>Após o pagamento, seus créditos serão liberados automaticamente.</div>
+              </div>
+            )}
+
+            {!pixQrCode && precisaCpf && (
+              <div style={{ ...card, marginBottom: '1.5rem' }}>
+                <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>Seus dados</div>
+                <label style={labelStyle}>CPF</label>
+                <input style={inputStyle} type="text" inputMode="numeric" placeholder="000.000.000-00" value={cpf} onChange={e => setCpf(formatarCPF(e.target.value))} />
+                <div style={{ fontSize: 12, color: '#888', marginTop: 6 }}>
+                  Seu cadastro está sem CPF. Informe-o para concluir a compra (exigência do pagamento).
+                </div>
               </div>
             )}
 
