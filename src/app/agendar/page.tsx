@@ -210,6 +210,10 @@ export default function AgendarPage() {
   // Modal de telefone (Pagar.me exige telefone no customer para cobrar multa)
   const [modalTelefone, setModalTelefone] = useState(false)
   const [pendingReserva, setPendingReserva] = useState<(() => void) | null>(null)
+  // Certificação de plano parceiro (Wellhub Diamond+ / TotalPass TP6+) na 1ª reserva com crédito de parceiro
+  const [jaUsouParceiro, setJaUsouParceiro] = useState(false)
+  const [modalCertParceiro, setModalCertParceiro] = useState(false)
+  const [aceiteCertParceiro, setAceiteCertParceiro] = useState(false)
 
   const janelaProximoMesAberta = dentroDaJanelaProximoMes()
   const temCoachCtProAtivo = Object.entries(saldoMesAtual).some(([c, i]: [string, any]) => c.startsWith('coach_ct_pro_') && i?.disponivel > 0)
@@ -261,6 +265,8 @@ export default function AgendarPage() {
     if (data) {
       const { count } = await supabase.from('agendamentos').select('*', { count: 'exact', head: true }).eq('cliente_id', data.id)
       setContratoAssinado((count || 0) > 0)
+      const { count: countParceiro } = await supabase.from('agendamentos').select('*', { count: 'exact', head: true }).eq('cliente_id', data.id).or('tipo_credito.ilike.wellhub*,tipo_credito.ilike.totalpass*')
+      setJaUsouParceiro((countParceiro || 0) > 0)
       setNotifFila(data.notificacao_preferida || 'whatsapp')
     }
   }
@@ -486,6 +492,15 @@ export default function AgendarPage() {
         body: JSON.stringify({ tipo: 'ct', agendamentoId }),
       }).catch(() => {})
     } catch {}
+  }
+  function handleConfirmarReserva() {
+    const ehParceiro = tipoCredito.startsWith('wellhub_') || tipoCredito.startsWith('totalpass_')
+    if (ehParceiro && !jaUsouParceiro) {
+      setAceiteCertParceiro(false)
+      setModalCertParceiro(true)
+      return
+    }
+    confirmarAgendamento()
   }
   async function confirmarAgendamento() {
     if (!tipoCredito) { setErroModal('Selecione como vai usar esta sessão.'); return }
@@ -1022,9 +1037,36 @@ export default function AgendarPage() {
             {erroModal && <div style={{ background: '#ff2d9b15', border: '1px solid #ff2d9b44', borderRadius: 8, padding: '0.6rem 1rem', fontSize: 13, color: ACCENT, marginBottom: '1rem' }}>{erroModal}</div>}
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => setModalSlot(null)} style={{ flex: 1, background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.85rem', color: '#888', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Cancelar</button>
-              <button onClick={confirmarAgendamento} disabled={confirmando || planosDisp.length === 0}
+              <button onClick={handleConfirmarReserva} disabled={confirmando || planosDisp.length === 0}
                 style={{ flex: 2, background: planosDisp.length === 0 ? '#222' : ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 600, fontSize: 15, cursor: confirmando || planosDisp.length === 0 ? 'default' : 'pointer', fontFamily: "'DM Sans', sans-serif", opacity: confirmando ? 0.7 : 1 }}>
                 {confirmando ? 'Confirmando...' : 'Confirmar reserva ✓'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalCertParceiro && (
+        <div style={{ position: 'fixed', inset: 0, background: '#000000e0', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#111', border: `1px solid ${AMARELO}55`, borderRadius: 20, width: '100%', maxWidth: 460, padding: '1.5rem', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: AMARELO, letterSpacing: 1, marginBottom: 4 }}>⚠️ CONFIRME SEU PLANO {tipoCredito.startsWith('wellhub_') ? 'WELLHUB' : 'TOTALPASS'}</div>
+            <div style={{ fontSize: 13, color: '#888', marginBottom: '1.25rem', lineHeight: 1.5 }}>Leia com atenção antes de confirmar sua primeira reserva com crédito de parceiro.</div>
+            <div style={{ background: '#1a1000', border: `1px solid ${AMARELO}44`, borderRadius: 12, padding: '1rem 1.1rem', marginBottom: '1.25rem', fontSize: 14, color: '#ddd', lineHeight: 1.7 }}>
+              Para treinar no <strong style={{ color: '#fff' }}>Coach CT</strong> pelo seu plano parceiro, você precisa ter:
+              <div style={{ marginTop: 10, marginBottom: 10, padding: '0.6rem 0.9rem', background: '#0a0a0a', borderRadius: 8, border: '1px solid #2a2a2a', color: '#fff', fontWeight: 600, textAlign: 'center' }}>
+                {tipoCredito.startsWith('wellhub_') ? 'Wellhub Diamond ou superior' : 'TotalPass TP6 ou superior'}
+              </div>
+              Se o seu plano for <strong style={{ color: VERMELHO }}>inferior</strong>, este treino <strong style={{ color: VERMELHO }}>não está coberto</strong> e será cobrado como <strong style={{ color: '#fff' }}>avulso: R$ 79,90</strong>.
+            </div>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer', marginBottom: '1.25rem' }}>
+              <input type="checkbox" checked={aceiteCertParceiro} onChange={e => setAceiteCertParceiro(e.target.checked)} style={{ marginTop: 2, accentColor: AMARELO, width: 18, height: 18, flexShrink: 0 }} />
+              <span style={{ fontSize: 13, color: '#bbb', lineHeight: 1.5 }}>Confirmo que possuo <strong style={{ color: '#fff' }}>{tipoCredito.startsWith('wellhub_') ? 'Wellhub Diamond ou superior' : 'TotalPass TP6 ou superior'}</strong> e estou ciente de que, se meu plano for inferior, este treino será cobrado como avulso (R$ 79,90).</span>
+            </label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setModalCertParceiro(false)} style={{ flex: 1, background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.85rem', color: '#888', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Voltar</button>
+              <button onClick={() => { if (aceiteCertParceiro && !confirmando) { setModalCertParceiro(false); confirmarAgendamento() } }} disabled={!aceiteCertParceiro || confirmando}
+                style={{ flex: 2, background: aceiteCertParceiro ? AMARELO : '#333', color: aceiteCertParceiro ? '#000' : '#666', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 700, fontSize: 15, cursor: aceiteCertParceiro && !confirmando ? 'pointer' : 'default', fontFamily: "'DM Sans', sans-serif" }}>
+                {confirmando ? 'Confirmando...' : 'Confirmar e reservar ✓'}
               </button>
             </div>
           </div>
