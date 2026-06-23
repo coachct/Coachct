@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
 import SiteHeader from '@/components/SiteHeader'
 import ModalTelefone from '@/components/ModalTelefone'
+import { nomeCoachPublico } from '@/lib/mascaraCoachPublico'
 
 const ACCENT  = '#ff2d9b'
 const VERDE   = '#2ddd8b'
@@ -108,7 +109,7 @@ function MapaPageInner() {
     setLoading(true)
     const [{ data: oc }, { data: pos }, { data: tomadas }, { data: bloqOc }] = await Promise.all([
       supabase.from('club_ocorrencias')
-        .select('*, club_aulas(tipo, horario, capacidade, coaches(nome), grupos_musculares(nome))')
+        .select('*, club_aulas(tipo, horario, capacidade, coaches(id, nome), grupos_musculares(nome))')
         .eq('id', ocId).maybeSingle(),
       supabase.from('club_posicoes').select('*')
         .eq('unidade_id', unidadeId).eq('ativo', true).order('tipo').order('numero'),
@@ -222,7 +223,7 @@ function MapaPageInner() {
 
   const aula    = ocorrencia?.club_aulas
   const horario = (aula?.horario||'').slice(0,5)
-  const coach   = aula?.coaches?.nome?.split(' ')[0] || '—'
+  const coach   = nomeCoachPublico(aula?.coaches?.id, aula?.coaches?.nome) || '—'
   const grupo   = aula?.grupos_musculares?.nome || '—'
   const dataStr = ocorrencia?.data || ''
   const dataFmt = dataStr ? new Date(dataStr+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short'}) : ''

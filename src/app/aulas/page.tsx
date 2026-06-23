@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
 import SiteHeader from '@/components/SiteHeader'
 import ModalTelefone from '@/components/ModalTelefone'
+import { nomeCoachPublico } from '@/lib/mascaraCoachPublico'
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(true)
@@ -67,10 +68,10 @@ function tipoColor(t: string) {
 
 // Prioridade: coach escalado pontualmente na ocorrência > coach da grade > null
 function primeiroNomeCoachOc(oc: any): string | null {
-  const escalado = oc?.coach_escalado?.nome
-  if (escalado) return String(escalado).split(' ')[0]
-  const grade = oc?.club_aulas?.coaches?.nome
-  if (grade) return String(grade).split(' ')[0]
+  const escaladoNome = oc?.coach_escalado?.nome
+  if (escaladoNome) return nomeCoachPublico(oc?.coach_escalado?.id, escaladoNome)
+  const gradeNome = oc?.club_aulas?.coaches?.nome
+  if (gradeNome) return nomeCoachPublico(oc?.club_aulas?.coaches?.id, gradeNome)
   return null
 }
 
@@ -206,7 +207,7 @@ function AulasPageInner() {
     // Inclui coach_escalado (FK coach_id da ocorrência) — sobrescreve o coach da grade quando definido
     const { data: ocs } = await supabase
       .from('club_ocorrencias')
-      .select('*, coach_escalado:coaches!coach_id(id, nome), club_aulas(id, tipo, horario, capacidade, duracao_min, so_mulheres, grupo_muscular_id, coaches(nome))')
+      .select('*, coach_escalado:coaches!coach_id(id, nome), club_aulas(id, tipo, horario, capacidade, duracao_min, so_mulheres, grupo_muscular_id, coaches(id, nome))')
       .in('aula_id', ids)
       .eq('status', 'ativa')
       .gte('data', dataInicio)
@@ -290,7 +291,7 @@ function AulasPageInner() {
     // Inclui coach_escalado (FK coach_id da ocorrência) — sobrescreve o coach da grade quando definido
     const { data: ocs } = await supabase
       .from('club_ocorrencias')
-      .select('*, coach_escalado:coaches!coach_id(id, nome), club_aulas(id, tipo, horario, capacidade, duracao_min, so_mulheres, grupo_muscular_id, coaches(nome))')
+      .select('*, coach_escalado:coaches!coach_id(id, nome), club_aulas(id, tipo, horario, capacidade, duracao_min, so_mulheres, grupo_muscular_id, coaches(id, nome))')
       .in('aula_id', ids).eq('data', data).eq('status', 'ativa')
 
     const ocsList = (ocs || []).sort((a: any, b: any) => (a.club_aulas?.horario||'').localeCompare(b.club_aulas?.horario||''))
