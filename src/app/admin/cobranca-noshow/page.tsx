@@ -16,6 +16,23 @@ type FiltroPeriodo = 'hoje' | 'semana' | 'mes' | 'tudo'
 type FiltroStatus  = 'todos' | 'pendente' | 'cobrado' | 'sem_cartao'
 type AbaAtiva      = 'ct' | 'club'
 
+// Converte a chave interna de controle de agendamento (tipo_credito) no nome do
+// pacote como ele aparece para o cliente. Mesma lógica do parsePlanoKey usado em /agendar.
+function nomePacote(key: string): string {
+  if (!key) return ''
+  const lower = key.toLowerCase()
+  let tipo = ''
+  if (lower.startsWith('coach_ct_pro')) tipo = 'Coach CT Pro'
+  else if (lower.startsWith('wellhub')) tipo = 'Wellhub'
+  else if (lower.startsWith('totalpass')) tipo = 'TotalPass'
+  else if (lower.startsWith('avulso') || lower.startsWith('credito')) tipo = 'Crédito Avulso'
+  else tipo = key
+  const slugUnidade = lower.startsWith('coach_ct_pro') ? key.substring('coach_ct_pro_'.length) : key.split('_').slice(1).join('_')
+  const nomeUnidade: Record<string, string> = { just_ct: 'Just CT', just_club_vila_olimpia: 'Vila Olímpia', just_club_pinheiros: 'Pinheiros' }
+  const unidade = nomeUnidade[slugUnidade] || slugUnidade.replace(/_/g, ' ')
+  return unidade ? `${tipo} — ${unidade}` : tipo
+}
+
 function formatarBR(data: string) { return new Date(data + 'T12:00:00').toLocaleDateString('pt-BR') }
 function formatarMoeda(v: number) { return `R$ ${Number(v).toFixed(2).replace('.', ',')}` }
 function hojeLocal(): string { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }
@@ -293,7 +310,7 @@ export default function CobrancaNoShowPage() {
                       </div>
                       <div className="text-xs text-gray-500 mt-1 flex items-center gap-2 flex-wrap">
                         {f.coaches?.nome && <span>Coach: <strong>{f.coaches.nome}</strong></span>}
-                        {f.tipo_credito && <span>· {f.tipo_credito}</span>}
+                        {f.tipo_credito && <span>· {nomePacote(f.tipo_credito)}</span>}
                         {temCartao && <span>· {cliente.pagarme_card_brand} •••• {cliente.pagarme_card_last4}</span>}
                       </div>
                       {cobrado && f.cobranca?.pago_em && (
