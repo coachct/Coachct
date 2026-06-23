@@ -186,6 +186,27 @@ export async function consultarSaldo(
   return data ?? {}
 }
 
+/**
+ * Horas (decimais) entre AGORA e uma aula/treino, no fuso de São Paulo.
+ * SP é UTC-3 o ano todo (sem horário de verão desde 2019), então ancoramos o
+ * horário da aula em -03:00 e comparamos com o epoch real. Determinístico —
+ * é a fonte de verdade da janela de cancelamento (o modelo NÃO deve calcular).
+ */
+export function horasAteSP(data: string, horario: string): number {
+  const hhmm = String(horario ?? '').slice(0, 5)
+  if (!data || !/^\d{2}:\d{2}$/.test(hhmm)) return NaN
+  const alvo = new Date(`${data}T${hhmm}:00-03:00`)
+  return (alvo.getTime() - Date.now()) / (1000 * 60 * 60)
+}
+
+/** Rótulo PRONTO da janela de cancelamento a partir das horas restantes. */
+export function regraCancelamento(horas: number): string {
+  if (!isFinite(horas)) return 'indefinido'
+  if (horas <= 3) return 'fora do prazo (faltam menos de 3h): NÃO dá mais para cancelar — só resta comparecer ou faltar'
+  if (horas <= 12) return 'entre 3h e 12h: só dá para cancelar SE houver fila de espera na aula; o sistema verifica na hora'
+  return 'mais de 12h: cancelamento livre, o crédito volta'
+}
+
 // ---------------------------------------------------------------------------
 // Agendamentos (Just CT) e reservas (JustClub)
 // ---------------------------------------------------------------------------
@@ -221,7 +242,10 @@ export async function proximosAgendamentos(
     .order('data', { ascending: true })
     .order('horario', { ascending: true })
   if (error) throw new Error(`agendamentos: ${error.message}`)
-  return data ?? []
+  return (data ?? []).map((a: any) => {
+    const horas = horasAteSP(a.data, a.horario)
+    return { ...a, horas_ate: Math.round(horas * 10) / 10, cancelamento: regraCancelamento(horas) }
+  })
 }
 
 /**
@@ -248,6 +272,10 @@ export async function proximasReservasClub(
       const ha = a.club_ocorrencias?.club_aulas?.horario ?? ''
       const hb = b.club_ocorrencias?.club_aulas?.horario ?? ''
       return ha < hb ? -1 : ha > hb ? 1 : 0
+    })
+    .map((r: any) => {
+      const horas = horasAteSP(r.club_ocorrencias?.data, r.club_ocorrencias?.club_aulas?.horario)
+      return { ...r, horas_ate: Math.round(horas * 10) / 10, cancelamento: regraCancelamento(horas) }
     })
 }
 

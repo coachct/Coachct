@@ -386,7 +386,8 @@ export async function cancelarReservaClub(
   if (!data || !horario) return { ok: false, mensagem: 'Não consegui ver a data/hora dessa aula.' }
   const dataBr = `${data.slice(8, 10)}/${data.slice(5, 7)}`
 
-  const dataHora = new Date(`${data}T${horario}:00`)
+  // SP é UTC-3 o ano todo: ancora a hora da aula em -03:00 (o servidor é UTC).
+  const dataHora = new Date(`${data}T${horario}:00-03:00`)
   const diffHoras = (dataHora.getTime() - agora.getTime()) / (1000 * 60 * 60)
 
   // Multa de no-show só existe para Wellhub/TotalPass. Demais (pacotes/avulso de
@@ -715,8 +716,9 @@ export async function cancelarAgendamentoCt(
     return { ok: false, mensagem: 'Esse agendamento não está ativo — pode já ter sido cancelado ou realizado.' }
   }
 
-  // 2. Janela de cancelamento (idêntica ao app).
-  const dataHora = new Date(`${ag.data}T${ag.horario}`)
+  // 2. Janela de cancelamento (idêntica ao app). SP = UTC-3 o ano todo: ancora
+  //    a hora do treino em -03:00 (o servidor roda em UTC).
+  const dataHora = new Date(`${String(ag.horario).length <= 5 ? `${ag.data}T${ag.horario}:00` : `${ag.data}T${ag.horario}`}-03:00`)
   const diffHoras = (dataHora.getTime() - agora.getTime()) / (1000 * 60 * 60)
 
   // Multa de no-show só existe para Wellhub/TotalPass. Demais (pacotes/avulso de
