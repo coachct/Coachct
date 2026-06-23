@@ -92,6 +92,8 @@ export default function CobrancaNoShowPage() {
         clientes(id, nome, cpf, email, telefone, bloqueado, pagarme_customer_id, pagarme_card_id, pagarme_card_last4, pagarme_card_brand),
         coaches(id, nome)`)
       .eq('status', 'falta').eq('unidade_id', unidadeAtiva!.id)
+      // Só plano parceiro gera multa. Crédito de pacote nosso (avulso/Coach CT Pro) só perde o crédito.
+      .or('tipo_credito.ilike.wellhub*,tipo_credito.ilike.totalpass*')
       .gte('data', de).lte('data', ate)
       .order('data', { ascending: false }).order('horario', { ascending: false })
 
@@ -120,6 +122,8 @@ export default function CobrancaNoShowPage() {
         clientes(id, nome, cpf, email, telefone, bloqueado, pagarme_customer_id, pagarme_card_id, pagarme_card_last4, pagarme_card_brand),
         club_ocorrencias(data, club_aulas(horario, tipo, unidades(nome)))`)
       .eq('status', 'falta')
+      // Só plano parceiro gera multa. Crédito de pacote nosso (avulso/Coach CT Pro) só perde o crédito.
+      .or('tipo_credito.ilike.wellhub*,tipo_credito.ilike.totalpass*')
       .in('ocorrencia_id', ocsIdList)
       .order('created_at', { ascending: false })
 
