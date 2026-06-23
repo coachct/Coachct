@@ -567,6 +567,14 @@ export async function agendarCt(
     return { ok: false, mensagem: 'Você já tem um treino com esse plano nesse dia.' }
   }
 
+  // 4b. Já está na fila desse mesmo plano nesse dia? (não pode fila + agendamento simultâneos)
+  const { data: naFilaDia } = await supabase
+    .from('fila_espera').select('id')
+    .eq('cliente_id', clienteId).eq('data', data).eq('tipo_credito', tipoCredito).eq('unidade_id', JUST_CT_UNIDADE_ID).eq('status', 'aguardando')
+  if ((naFilaDia ?? []).length > 0) {
+    return { ok: false, mensagem: 'Você está na fila de espera desse plano nesse dia. Saia da fila antes de agendar direto.' }
+  }
+
   // 5. Tem saldo nesse crédito (mês da data)?
   const d = new Date(data + 'T12:00:00')
   const saldo = await consultarSaldo(supabase, clienteId, {
@@ -645,6 +653,14 @@ export async function entrarFilaCt(
     .eq('unidade_id', JUST_CT_UNIDADE_ID).eq('status', 'aguardando')
   if ((jaFila ?? []).length > 0) {
     return { ok: false, mensagem: 'Você já está na fila desse horário.' }
+  }
+
+  // Já tem agendamento desse plano nesse dia? (não pode fila + agendamento simultâneos)
+  const { data: jaAgDia } = await supabase
+    .from('agendamentos').select('status')
+    .eq('cliente_id', clienteId).eq('data', data).eq('tipo_credito', tipoCredito).eq('unidade_id', JUST_CT_UNIDADE_ID)
+  if ((jaAgDia ?? []).some((a: any) => ['agendado', 'confirmado', 'realizado'].includes(a.status))) {
+    return { ok: false, mensagem: 'Você já tem um treino com esse plano nesse dia, então não dá pra entrar na fila também.' }
   }
 
   // Precisa ter saldo no plano (para usar a vaga se ela abrir).

@@ -517,6 +517,17 @@ export default function AgendarPage() {
       setErroModal('Saldo insuficiente.'); await carregarSaldos(cliente.id, unidadeAtiva.id); return
     }
     setConfirmando(true); setErroModal('')
+    // Guarda: não agendar se já está na fila do mesmo dia/tipo (evita fila + agendamento simultâneos).
+    const { data: naFilaDiaAg } = await supabase
+      .from('fila_espera').select('id')
+      .eq('cliente_id', cliente.id).eq('data', modalSlot.data)
+      .eq('tipo_credito', tipoCredito).eq('unidade_id', unidadeAtiva.id)
+      .eq('status', 'aguardando').limit(1)
+    if (naFilaDiaAg && naFilaDiaAg.length > 0) {
+      const { label } = parsePlanoKey(tipoCredito)
+      setErroModal(`Você está na fila de espera de ${label} neste dia. Saia da fila antes de agendar.`)
+      setConfirmando(false); return
+    }
     const payload: any = { cliente_id: cliente.id, data: modalSlot.data, horario: modalSlot.hora + ':00', status: 'agendado', tipo_credito: tipoCredito, unidade_id: unidadeAtiva.id }
     if (tipoCredito.startsWith('coach_ct_pro_') && coachEscolhido) { payload.coach_id = coachEscolhido; payload.alocado_por = perfil?.id || null; payload.alocado_em = new Date().toISOString() }
     const { data: novo, error } = await supabase.from('agendamentos').insert(payload).select('id').single()
@@ -539,6 +550,17 @@ export default function AgendarPage() {
       return
     }
     setEntrandoFila(true); setErroFila('')
+    // Guarda: não entrar na fila se já há agendamento no mesmo dia/tipo (evita fila + agendamento simultâneos).
+    const { data: jaAgDiaFila } = await supabase
+      .from('agendamentos').select('id')
+      .eq('cliente_id', cliente.id).eq('data', modalFila.data)
+      .eq('tipo_credito', tipoFilaCredito).eq('unidade_id', unidadeAtiva.id)
+      .neq('status', 'cancelado').limit(1)
+    if (jaAgDiaFila && jaAgDiaFila.length > 0) {
+      const { label } = parsePlanoKey(tipoFilaCredito)
+      setErroFila(`Você já tem um agendamento com ${label} neste dia. Não é possível também entrar na fila.`)
+      setEntrandoFila(false); return
+    }
     if (notifFila !== cliente.notificacao_preferida) {
       await supabase.from('clientes').update({ notificacao_preferida: notifFila }).eq('id', cliente.id)
       setCliente({ ...cliente, notificacao_preferida: notifFila })
