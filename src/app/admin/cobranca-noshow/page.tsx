@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
 import { useRouter } from 'next/navigation'
-import { AlertCircle, CreditCard, X, Check, AlertTriangle, Filter, DollarSign, Zap } from 'lucide-react'
+import { AlertCircle, CreditCard, X, Check, AlertTriangle, Filter, DollarSign, Zap, CheckSquare } from 'lucide-react'
 import UnidadeSelector from '@/components/UnidadeSelector'
 
 const VALOR_MULTA_CT    = 99.00
@@ -53,10 +53,19 @@ export default function CobrancaNoShowPage() {
   const [filtroPeriodo, setFiltroPeriodo] = useState<FiltroPeriodo>('hoje')
   const [filtroStatus,  setFiltroStatus]  = useState<FiltroStatus>('todos')
 
+  // Cobrança individual (modal existente — mantido intacto)
   const [modalCobranca,  setModalCobranca]  = useState<any>(null)
   const [cobrando,       setCobrando]       = useState(false)
   const [erroCobranca,   setErroCobranca]   = useState('')
   const [sucessoCobranca,setSucessoCobranca]= useState<any>(null)
+
+  // Seleção + cobrança em lote
+  const [selecionados,  setSelecionados]  = useState<Set<string>>(new Set())
+  const [erroLote,      setErroLote]      = useState<Record<string, string>>({}) // id -> motivo do último erro
+  const [modalLote,     setModalLote]     = useState(false)
+  const [loteRodando,   setLoteRodando]   = useState(false)
+  const [loteProgresso, setLoteProgresso] = useState({ atual: 0, total: 0 })
+  const [loteResultado, setLoteResultado] = useState<null | { cobrados: number; valorTotal: number; falhas: { nome: string; motivo: string }[] }>(null)
 
   useEffect(() => {
     if (loading) return
@@ -65,6 +74,14 @@ export default function CobrancaNoShowPage() {
   }, [loading, perfil])
 
   useEffect(() => { if (perfil && unidadeAtiva) carregarFaltas() }, [perfil, unidadeAtiva?.id, filtroPeriodo, aba])
+
+  function trocarAba(nova: AbaAtiva) {
+    setAba(nova)
+    setFaltas([])
+    setSelecionados(new Set())
+    setErroLote({})
+    setLoteResultado(null)
+  }
 
   function getRangeData() {
     const ate = hojeLocal()
@@ -75,6 +92,7 @@ export default function CobrancaNoShowPage() {
   async function carregarFaltas() {
     if (!unidadeAtiva) return
     setLoadingFaltas(true)
+    setSelecionados(new Set())
     const { de, ate } = getRangeData()
 
     if (aba === 'ct') {
@@ -193,10 +211,104 @@ export default function CobrancaNoShowPage() {
       })
       const data = await res.json()
       if (!res.ok) { setErroCobranca(data.error || 'Erro ao processar cobrança'); setCobrando(false); return }
+      // Sucesso individual: limpa qualquer erro anterior desse item
+      setErroLote(prev => { const n = { ...prev }; delete n[modalCobranca.id]; return n })
       setSucessoCobranca(data)
       await carregarFaltas()
     } catch { setErroCobranca('Erro de conexão. Tente novamente.') }
     finally { setCobrando(false) }
+  }
+
+  // ── Seleção ──────────────────────────────────────────────────────────────
+  function elegivel(f: any): boolean {
+    return !!f.clientes?.pagarme_card_id && f.statusCobranca !== 'cobrado'
+  }
+
+  function toggleSel(id: string) {
+    setSelecionados(prev => {
+      const n = new Set(prev)
+      n.has(id) ? n.delete(id) : n.add(id)
+      return n
+    })
+  }
+
+  // ── Cobrança em lote ─────────────────────────────────────────────────────
+  async function executarLote() {
+    const ids = Array.from(selecionados)
+    const alvos = faltas.filter(f => ids.includes(f.id) && elegivel(f))
+    if (!alvos.length) return
+
+    setLoteRodando(true)
+    setLoteResultado(null)
+    setLoteProgresso({ atual: 0, total: alvos.length })
+
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.access_token) {
+      setLoteRodando(false)
+      setLoteResultado({ cobrados: 0, valorTotal: 0, falhas: [{ nome: '—', motivo: 'Sessão expirada. Faça login novamente.' }] })
+      return
+    }
+
+    const endpoint = aba === 'ct' ? '/api/admin/cobrar-cartao-salvo' : '/api/admin/cobrar-noshow-club'
+    const valor    = aba === 'ct' ? VALOR_MULTA_CT : VALOR_MULTA_CLUB
+
+    let cobrados = 0
+    let valorTotal = 0
+    const falhas: { nome: string; motivo: string }[] = []
+    const novosErros: Record<string, string> = {}
+    const sucessoIds: string[] = []
+
+    for (let i = 0; i < alvos.length; i++) {
+      const f = alvos[i]
+      setLoteProgresso({ atual: i + 1, total: alvos.length })
+      const body = aba === 'ct'
+        ? { agendamento_id: f.id, valor: VALOR_MULTA_CT }
+        : { reserva_id: f.id, valor: VALOR_MULTA_CLUB }
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+          body: JSON.stringify(body),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (res.ok) {
+          cobrados++
+          valorTotal += Number(data?.valor || valor)
+          sucessoIds.push(f.id)
+        } else {
+          const motivo = data?.error || `Erro ${res.status}`
+          falhas.push({ nome: f.clientes?.nome || 'Cliente', motivo })
+          novosErros[f.id] = motivo
+        }
+      } catch {
+        const motivo = 'Erro de conexão'
+        falhas.push({ nome: f.clientes?.nome || 'Cliente', motivo })
+        novosErros[f.id] = motivo
+      }
+    }
+
+    // Registra erros (persistem após reload) e limpa erros de quem foi cobrado agora
+    setErroLote(prev => {
+      const n = { ...prev, ...novosErros }
+      for (const id of sucessoIds) delete n[id]
+      return n
+    })
+    setSelecionados(new Set())
+    setLoteResultado({ cobrados, valorTotal, falhas })
+    await carregarFaltas() // recarrega: cobrados migram para a seção "Cobrados"
+    setLoteRodando(false)
+  }
+
+  function abrirModalLote() {
+    if (selecionados.size === 0) return
+    setLoteResultado(null)
+    setModalLote(true)
+  }
+
+  function fecharModalLote() {
+    if (loteRodando) return
+    setModalLote(false)
+    setLoteResultado(null)
   }
 
   const valorMulta      = aba === 'ct' ? VALOR_MULTA_CT : VALOR_MULTA_CLUB
@@ -205,6 +317,93 @@ export default function CobrancaNoShowPage() {
   const totalCobrado    = faltas.filter(f => f.statusCobranca === 'cobrado').length
   const totalPendente   = faltas.filter(f => f.statusCobranca === 'pendente').length
   const totalSemCartao  = faltas.filter(f => f.statusCobranca === 'sem_cartao').length
+
+  // Agrupamento na tela: cobrados x não cobrados
+  const cobradosList    = faltasFiltradas.filter(f => f.statusCobranca === 'cobrado')
+  const naoCobradosList = faltasFiltradas.filter(f => f.statusCobranca !== 'cobrado')
+
+  // Seleção em massa (respeita o filtro ativo)
+  const elegiveisFiltrados   = naoCobradosList.filter(elegivel)
+  const todosElegSelecionados = elegiveisFiltrados.length > 0 && elegiveisFiltrados.every(f => selecionados.has(f.id))
+  const totalSelecionado     = selecionados.size * valorMulta
+
+  function toggleTodos() {
+    if (todosElegSelecionados) {
+      setSelecionados(new Set())
+    } else {
+      setSelecionados(new Set(elegiveisFiltrados.map(f => f.id)))
+    }
+  }
+
+  // ── Render de uma linha de falta ─────────────────────────────────────────
+  function renderFalta(f: any) {
+    const cliente   = f.clientes
+    const temCartao = !!cliente?.pagarme_card_id
+    const cobrado   = f.statusCobranca === 'cobrado'
+    const eleg      = elegivel(f)
+    const erro      = erroLote[f.id]
+    const sel       = selecionados.has(f.id)
+    return (
+      <div key={f.id} className={`card border-l-4 ${cobrado ? 'border-l-green-400' : erro ? 'border-l-red-500' : !temCartao ? 'border-l-red-400' : sel ? 'border-l-orange-500' : 'border-l-orange-400'} ${sel ? 'ring-2 ring-orange-200' : ''}`}>
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Checkbox de seleção — só para elegíveis */}
+          {eleg ? (
+            <input
+              type="checkbox"
+              checked={sel}
+              onChange={() => toggleSel(f.id)}
+              className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-400 cursor-pointer flex-shrink-0"
+            />
+          ) : (
+            <div className="w-4 flex-shrink-0" />
+          )}
+
+          <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center flex-shrink-0 ${cobrado ? 'bg-green-50' : !temCartao ? 'bg-red-50' : 'bg-orange-50'}`}>
+            <div className={`text-sm font-bold leading-none ${cobrado ? 'text-green-700' : !temCartao ? 'text-red-700' : 'text-orange-700'}`}>
+              {f.data ? new Date(f.data + 'T12:00:00').getDate() : '—'}
+            </div>
+            <div className={`text-xs uppercase ${cobrado ? 'text-green-500' : !temCartao ? 'text-red-500' : 'text-orange-500'}`}>
+              {f.data ? new Date(f.data + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' }) : ''}
+            </div>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-semibold text-gray-900">{cliente?.nome || 'Cliente removido'}</span>
+              <span className="font-mono text-xs text-gray-500">{(f.horario || '').slice(0, 5)}</span>
+              {aba === 'club' && f.unidadeNome && <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-700 font-semibold">{f.unidadeNome}</span>}
+              {cobrado && <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-semibold flex items-center gap-1"><Check size={10}/> Cobrado</span>}
+              {!cobrado && erro && <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold flex items-center gap-1"><AlertCircle size={10}/> Erro na cobrança</span>}
+              {!cobrado && !erro && !temCartao && <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold">Sem cartão</span>}
+              {!cobrado && !erro && temCartao && <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-semibold">Pendente</span>}
+            </div>
+            <div className="text-xs text-gray-500 mt-1 flex items-center gap-2 flex-wrap">
+              {f.coaches?.nome && <span>Coach: <strong>{f.coaches.nome}</strong></span>}
+              {f.tipo_credito && <span>· {nomePacote(f.tipo_credito)}</span>}
+              {temCartao && <span>· {cliente.pagarme_card_brand} •••• {cliente.pagarme_card_last4}</span>}
+            </div>
+            {!cobrado && erro && (
+              <div className="text-xs text-red-600 mt-1 flex items-start gap-1"><AlertCircle size={11} className="mt-0.5 flex-shrink-0"/> {erro}</div>
+            )}
+            {cobrado && f.cobranca?.pago_em && (
+              <div className="text-xs text-green-600 mt-1">Cobrado em {new Date(f.cobranca.pago_em).toLocaleDateString('pt-BR')} · {formatarMoeda(f.cobranca.valor || valorMulta)}</div>
+            )}
+          </div>
+          <div className="flex-shrink-0">
+            {cobrado ? (
+              <div className="text-xs text-green-700 font-bold">✓ {formatarMoeda(f.cobranca?.valor || valorMulta)}</div>
+            ) : !temCartao ? (
+              <button disabled className="btn btn-sm bg-gray-100 text-gray-400 cursor-not-allowed">Sem cartão</button>
+            ) : (
+              <button onClick={() => { setModalCobranca(f); setErroCobranca(''); setSucessoCobranca(null) }}
+                className="btn btn-sm gap-1 bg-orange-500 text-white hover:bg-orange-600">
+                <CreditCard size={12}/> {erro ? 'Tentar de novo' : `Cobrar ${formatarMoeda(valorMulta)}`}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   if (loading || loadingUnidade || !perfil) return (
     <div className="flex items-center justify-center h-screen">
@@ -227,11 +426,11 @@ export default function CobrancaNoShowPage() {
 
         {/* Abas CT / JustClub */}
         <div className="flex gap-2 mb-5">
-          <button onClick={() => { setAba('ct'); setFaltas([]) }}
+          <button onClick={() => trocarAba('ct')}
             className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all border ${aba === 'ct' ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}>
             Just CT
           </button>
-          <button onClick={() => { setAba('club'); setFaltas([]) }}
+          <button onClick={() => trocarAba('club')}
             className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all border ${aba === 'club' ? 'bg-cyan-500 text-white border-cyan-500' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}>
             <Zap size={14} /> JustClub
           </button>
@@ -277,6 +476,29 @@ export default function CobrancaNoShowPage() {
           </div>
         </div>
 
+        {/* Barra de ação em lote (sticky quando há seleção) */}
+        {selecionados.size > 0 && (
+          <div className="sticky top-[73px] z-20 mb-3">
+            <div className="bg-orange-600 text-white rounded-2xl shadow-lg px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2 text-sm">
+                <CheckSquare size={16}/>
+                <strong>{selecionados.size}</strong> selecionado{selecionados.size > 1 ? 's' : ''}
+                <span className="opacity-80">· {formatarMoeda(totalSelecionado)}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setSelecionados(new Set())}
+                  className="btn btn-sm bg-orange-500/40 text-white hover:bg-orange-500/60 border border-white/20">
+                  Limpar
+                </button>
+                <button onClick={abrirModalLote}
+                  className="btn btn-sm bg-white text-orange-700 hover:bg-orange-50 font-semibold gap-1">
+                  <CreditCard size={14}/> Cobrar selecionados
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Lista */}
         {loadingFaltas ? (
           <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-primary-400 border-t-transparent rounded-full animate-spin"/></div>
@@ -287,61 +509,46 @@ export default function CobrancaNoShowPage() {
             <div className="text-xs text-gray-400 mt-1">{filtroStatus === 'todos' ? 'Não há faltas no período.' : `Não há faltas com status "${filtroStatus}".`}</div>
           </div>
         ) : (
-          <div className="space-y-2">
-            {faltasFiltradas.map((f: any) => {
-              const cliente  = f.clientes
-              const temCartao = !!cliente?.pagarme_card_id
-              const cobrado   = f.statusCobranca === 'cobrado'
-              return (
-                <div key={f.id} className={`card border-l-4 ${cobrado ? 'border-l-green-400' : !temCartao ? 'border-l-red-400' : 'border-l-orange-400'}`}>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center flex-shrink-0 ${cobrado ? 'bg-green-50' : !temCartao ? 'bg-red-50' : 'bg-orange-50'}`}>
-                      <div className={`text-sm font-bold leading-none ${cobrado ? 'text-green-700' : !temCartao ? 'text-red-700' : 'text-orange-700'}`}>
-                        {f.data ? new Date(f.data + 'T12:00:00').getDate() : '—'}
-                      </div>
-                      <div className={`text-xs uppercase ${cobrado ? 'text-green-500' : !temCartao ? 'text-red-500' : 'text-orange-500'}`}>
-                        {f.data ? new Date(f.data + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' }) : ''}
-                      </div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-semibold text-gray-900">{cliente?.nome || 'Cliente removido'}</span>
-                        <span className="font-mono text-xs text-gray-500">{(f.horario || '').slice(0, 5)}</span>
-                        {aba === 'club' && f.unidadeNome && <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-700 font-semibold">{f.unidadeNome}</span>}
-                        {cobrado && <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-semibold flex items-center gap-1"><Check size={10}/> Cobrado</span>}
-                        {!temCartao && !cobrado && <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold">Sem cartão</span>}
-                        {temCartao && !cobrado && <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-semibold">Pendente</span>}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1 flex items-center gap-2 flex-wrap">
-                        {f.coaches?.nome && <span>Coach: <strong>{f.coaches.nome}</strong></span>}
-                        {f.tipo_credito && <span>· {nomePacote(f.tipo_credito)}</span>}
-                        {temCartao && <span>· {cliente.pagarme_card_brand} •••• {cliente.pagarme_card_last4}</span>}
-                      </div>
-                      {cobrado && f.cobranca?.pago_em && (
-                        <div className="text-xs text-green-600 mt-1">Cobrado em {new Date(f.cobranca.pago_em).toLocaleDateString('pt-BR')} · {formatarMoeda(f.cobranca.valor || valorMulta)}</div>
-                      )}
-                    </div>
-                    <div className="flex-shrink-0">
-                      {cobrado ? (
-                        <div className="text-xs text-green-700 font-bold">✓ {formatarMoeda(f.cobranca?.valor || valorMulta)}</div>
-                      ) : !temCartao ? (
-                        <button disabled className="btn btn-sm bg-gray-100 text-gray-400 cursor-not-allowed">Sem cartão</button>
-                      ) : (
-                        <button onClick={() => { setModalCobranca(f); setErroCobranca(''); setSucessoCobranca(null) }}
-                          className="btn btn-sm gap-1 bg-orange-500 text-white hover:bg-orange-600">
-                          <CreditCard size={12}/> Cobrar {formatarMoeda(valorMulta)}
-                        </button>
-                      )}
-                    </div>
+          <div className="space-y-6">
+
+            {/* Seção: Não cobrados */}
+            {naoCobradosList.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-2 px-1">
+                  <div className="text-xs font-bold text-gray-500 uppercase tracking-wide flex items-center gap-2">
+                    <AlertTriangle size={13} className="text-orange-500"/> Não cobrados ({naoCobradosList.length})
                   </div>
+                  {elegiveisFiltrados.length > 0 && (
+                    <button onClick={toggleTodos}
+                      className="text-xs font-semibold text-orange-600 hover:text-orange-700 flex items-center gap-1">
+                      <CheckSquare size={13}/>
+                      {todosElegSelecionados ? 'Desmarcar todos' : `Selecionar todos elegíveis (${elegiveisFiltrados.length})`}
+                    </button>
+                  )}
                 </div>
-              )
-            })}
+                <div className="space-y-2">
+                  {naoCobradosList.map(renderFalta)}
+                </div>
+              </div>
+            )}
+
+            {/* Seção: Cobrados */}
+            {cobradosList.length > 0 && (
+              <div>
+                <div className="text-xs font-bold text-gray-500 uppercase tracking-wide flex items-center gap-2 mb-2 px-1">
+                  <Check size={13} className="text-green-500"/> Cobrados ({cobradosList.length})
+                </div>
+                <div className="space-y-2">
+                  {cobradosList.map(renderFalta)}
+                </div>
+              </div>
+            )}
+
           </div>
         )}
       </div>
 
-      {/* Modal cobrança */}
+      {/* Modal cobrança individual */}
       {modalCobranca && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6">
@@ -391,6 +598,95 @@ export default function CobrancaNoShowPage() {
                   </div>
                 </div>
                 <button onClick={() => { setModalCobranca(null); setErroCobranca(''); setSucessoCobranca(null) }} className="w-full btn bg-primary-600 text-white hover:bg-primary-700">Entendi</button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal cobrança em lote */}
+      {modalLote && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="font-bold text-gray-900 flex items-center gap-2">
+                <CreditCard size={18} className="text-orange-600"/>
+                {loteResultado ? 'Resultado da cobrança' : loteRodando ? 'Cobrando...' : 'Cobrar selecionados'}
+              </div>
+              <button onClick={fecharModalLote} disabled={loteRodando}
+                className="text-gray-400 hover:text-gray-600 disabled:opacity-30"><X size={18}/></button>
+            </div>
+
+            {/* Estado 1: confirmação */}
+            {!loteResultado && !loteRodando && (
+              <>
+                <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-4">
+                  <div className="text-sm text-orange-900 leading-relaxed">
+                    Cobrar <strong>{formatarMoeda(valorMulta)}</strong> em cada uma das <strong>{selecionados.size}</strong> falta{selecionados.size > 1 ? 's' : ''} selecionada{selecionados.size > 1 ? 's' : ''}.
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-orange-200 text-sm text-orange-900">
+                    Total estimado: <strong>{formatarMoeda(totalSelecionado)}</strong>
+                  </div>
+                </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs text-blue-800">
+                  As cobranças são feitas <strong>uma por uma</strong>. Se alguma falhar, ela é <strong>pulada</strong> e o restante continua. No fim você vê o resumo.
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={fecharModalLote} className="btn flex-1 text-gray-500 border border-gray-200">Cancelar</button>
+                  <button onClick={executarLote}
+                    className="btn flex-1 bg-orange-500 text-white hover:bg-orange-600 gap-1">
+                    <CreditCard size={14}/> Cobrar {selecionados.size}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* Estado 2: rodando */}
+            {loteRodando && (
+              <div className="py-2">
+                <div className="text-sm text-gray-700 mb-2 text-center">
+                  Cobrando <strong>{loteProgresso.atual}</strong> de <strong>{loteProgresso.total}</strong>...
+                </div>
+                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-orange-500 transition-all duration-300"
+                    style={{ width: `${loteProgresso.total ? (loteProgresso.atual / loteProgresso.total) * 100 : 0}%` }} />
+                </div>
+                <div className="text-xs text-gray-400 mt-3 text-center">Não feche esta janela.</div>
+              </div>
+            )}
+
+            {/* Estado 3: resultado */}
+            {loteResultado && (
+              <>
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-3 text-center">
+                  <Check size={32} className="text-green-600 mx-auto mb-2"/>
+                  <div className="text-sm font-bold text-green-900">
+                    {loteResultado.cobrados} cobrança{loteResultado.cobrados !== 1 ? 's' : ''} aprovada{loteResultado.cobrados !== 1 ? 's' : ''}
+                  </div>
+                  {loteResultado.cobrados > 0 && (
+                    <div className="text-xs text-green-700 mt-1">{formatarMoeda(loteResultado.valorTotal)} no total · clientes desbloqueados</div>
+                  )}
+                </div>
+
+                {loteResultado.falhas.length > 0 && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-3">
+                    <div className="text-sm font-bold text-red-800 flex items-center gap-1 mb-2">
+                      <AlertCircle size={14}/> {loteResultado.falhas.length} não cobrada{loteResultado.falhas.length > 1 ? 's' : ''}
+                    </div>
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                      {loteResultado.falhas.map((fa, i) => (
+                        <div key={i} className="text-xs text-red-700">
+                          <strong>{fa.nome}</strong> — {fa.motivo}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="text-xs text-red-600 mt-2 pt-2 border-t border-red-200">
+                      Essas faltas continuam na lista marcadas como <strong>Erro na cobrança</strong>. Você pode tentar de novo individualmente.
+                    </div>
+                  </div>
+                )}
+
+                <button onClick={fecharModalLote} className="w-full btn bg-primary-600 text-white hover:bg-primary-700">Entendi</button>
               </>
             )}
           </div>
