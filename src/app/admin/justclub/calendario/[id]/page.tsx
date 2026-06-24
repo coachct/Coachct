@@ -120,6 +120,9 @@ export default function RecepcaoClubDetalhe() {
   const [coachSelCorrecao, setCoachSelCorrecao] = useState('')
   const [salvandoCoach,    setSalvandoCoach]    = useState(false)
 
+  // NOVO: aulas vizinhas (mesma unidade, mesmo dia, por horário) para navegar ‹ ›
+  const [vizinhas, setVizinhas] = useState<{ prev: any; next: any }>({ prev: null, next: null })
+
   const isRunning = ocorrencia?.club_aulas?.tipo === 'running_funcional'
 
   useEffect(() => { if (ocId) carregarDados() }, [ocId])
@@ -177,6 +180,25 @@ export default function RecepcaoClubDetalhe() {
         setCoachesUnidade((cs || []) as any)
       } else setCoachesUnidade([])
     }
+
+    // NOVO: aulas vizinhas — mesma unidade, mesmo dia, ordenadas por horário (igual ao calendário)
+    if (unidadeId && oc?.data) {
+      const { data: aIds } = await supabase.from('club_aulas').select('id')
+        .eq('unidade_id', unidadeId).eq('ativo', true)
+      const ids = (aIds || []).map((a: any) => a.id)
+      if (ids.length) {
+        const { data: irmas } = await supabase.from('club_ocorrencias')
+          .select('id, club_aulas(horario, tipo)')
+          .in('aula_id', ids).eq('data', oc.data).eq('status', 'ativa')
+        const ordenadas = (irmas || []).sort((a: any, b: any) =>
+          (a.club_aulas?.horario || '').localeCompare(b.club_aulas?.horario || ''))
+        const idx = ordenadas.findIndex((o: any) => o.id === ocId)
+        setVizinhas({
+          prev: idx > 0 ? ordenadas[idx - 1] : null,
+          next: idx >= 0 && idx < ordenadas.length - 1 ? ordenadas[idx + 1] : null,
+        })
+      } else setVizinhas({ prev: null, next: null })
+    } else setVizinhas({ prev: null, next: null })
 
     setLoadingData(false)
   }
@@ -655,6 +677,36 @@ export default function RecepcaoClubDetalhe() {
             style={{ marginTop:6, background:'transparent', border:'none', color:ACCENT, fontSize:12, fontWeight:600,
               cursor:'pointer', textDecoration:'underline', padding:0, fontFamily:"'DM Sans', sans-serif" }}>
             ✏️ Corrigir coach
+          </button>
+        </div>
+
+        {/* NOVO: navegar para a aula anterior / próxima (mesmo dia e unidade, por horário) */}
+        <div style={{ display:'flex', gap:6, flexShrink:0, alignItems:'center' }}>
+          <button
+            onClick={() => vizinhas.prev && router.push(`/admin/justclub/calendario/${vizinhas.prev.id}`)}
+            disabled={!vizinhas.prev}
+            title={vizinhas.prev ? `Aula anterior — ${(vizinhas.prev.club_aulas?.horario||'').slice(0,5)}` : 'Primeira aula do dia'}
+            style={{ display:'flex', alignItems:'center', gap:5, height:36, padding:'0 0.7rem',
+              borderRadius:8, border:'none', background:'#f3f4f6',
+              color: vizinhas.prev ? '#555' : '#ccc', fontSize:13, fontWeight:600,
+              cursor: vizinhas.prev ? 'pointer' : 'default', fontFamily:"'DM Sans', sans-serif" }}>
+            <span style={{ fontSize:18, lineHeight:1 }}>‹</span>
+            {vizinhas.prev && (
+              <span style={{ fontFamily:"'DM Mono', monospace" }}>{(vizinhas.prev.club_aulas?.horario||'').slice(0,5)}</span>
+            )}
+          </button>
+          <button
+            onClick={() => vizinhas.next && router.push(`/admin/justclub/calendario/${vizinhas.next.id}`)}
+            disabled={!vizinhas.next}
+            title={vizinhas.next ? `Próxima aula — ${(vizinhas.next.club_aulas?.horario||'').slice(0,5)}` : 'Última aula do dia'}
+            style={{ display:'flex', alignItems:'center', gap:5, height:36, padding:'0 0.7rem',
+              borderRadius:8, border:'none', background:'#f3f4f6',
+              color: vizinhas.next ? '#555' : '#ccc', fontSize:13, fontWeight:600,
+              cursor: vizinhas.next ? 'pointer' : 'default', fontFamily:"'DM Sans', sans-serif" }}>
+            {vizinhas.next && (
+              <span style={{ fontFamily:"'DM Mono', monospace" }}>{(vizinhas.next.club_aulas?.horario||'').slice(0,5)}</span>
+            )}
+            <span style={{ fontSize:18, lineHeight:1 }}>›</span>
           </button>
         </div>
       </div>
