@@ -1475,42 +1475,54 @@ export default function AdminClientesPage() {
                   <div className="card text-center py-12 text-gray-400 text-sm">Nenhum histórico encontrado.</div>
                 ) : (
                   <div className="space-y-2">
-                    {agendamentosPassados.map(ag => (
+                    {agendamentosPassados.map(ag => {
+                      const cred = creditoLabel(ag.tipo_credito)
+                      return (
                       <div key={ag.id} className={`card flex items-center gap-3 border-l-4 ${ag.status === 'realizado' ? 'border-l-green-400' : ag.status === 'falta' ? 'border-l-orange-400' : 'border-l-gray-200'}`}>
                         <div className={`w-10 h-10 rounded-xl flex flex-col items-center justify-center flex-shrink-0 ${ag.status === 'realizado' ? 'bg-green-50' : ag.status === 'falta' ? 'bg-orange-50' : 'bg-gray-50'}`}>
                           <div className={`text-sm font-bold leading-none ${ag.status === 'realizado' ? 'text-green-700' : ag.status === 'falta' ? 'text-orange-700' : 'text-gray-500'}`}>{new Date(ag.data + 'T12:00:00').getDate()}</div>
                           <div className={`text-xs uppercase ${ag.status === 'realizado' ? 'text-green-500' : ag.status === 'falta' ? 'text-orange-500' : 'text-gray-400'}`}>{new Date(ag.data + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' })}</div>
                         </div>
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-medium text-gray-700 capitalize">{new Date(ag.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long' })}</span>
-                            <span className="font-mono text-xs text-gray-400">{(ag.horario || '').slice(0,5)}</span>
+                            <span className="text-base font-bold text-gray-900">Coach CT</span>
                             <span className={`text-xs px-2 py-0.5 rounded-full ${statusConfig[ag.status]?.color}`}>{statusConfig[ag.status]?.label}</span>
-                            {ag.unidades?.nome && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{ag.unidades.nome}</span>}
                           </div>
-                          <div className="text-xs text-gray-400 mt-0.5">{creditoLabel(ag.tipo_credito).icon} {creditoLabel(ag.tipo_credito).label}</div>
+                          <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-500 mt-0.5">
+                            <span className="capitalize">{new Date(ag.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long' })}</span>
+                            <span className="text-gray-300">·</span>
+                            <span className="font-mono">{(ag.horario || '').slice(0,5)}</span>
+                            {ag.unidades?.nome && <><span className="text-gray-300">·</span><span>{ag.unidades.nome}</span></>}
+                          </div>
+                          {cred.label && <div className="text-xs text-gray-500 mt-1">{cred.icon} {cred.label}</div>}
                         </div>
                       </div>
-                    ))}
+                      )
+                    })}
                     {clubReservasPassadas.map(cr => {
                       const oc = cr.club_ocorrencias
                       const aula = oc?.club_aulas
                       const data = oc?.data || ''
+                      const cred = creditoLabel(cr.tipo_credito)
                       return (
                         <div key={cr.id} className={`card flex items-center gap-3 border-l-4 ${cr.status === 'presente' ? 'border-l-green-400' : cr.status === 'falta' ? 'border-l-orange-400' : 'border-l-purple-200'}`}>
                           <div className={`w-10 h-10 rounded-xl flex flex-col items-center justify-center flex-shrink-0 ${cr.status === 'presente' ? 'bg-green-50' : cr.status === 'falta' ? 'bg-orange-50' : 'bg-purple-50'}`}>
                             <div className={`text-sm font-bold leading-none ${cr.status === 'presente' ? 'text-green-700' : cr.status === 'falta' ? 'text-orange-700' : 'text-purple-700'}`}>{data ? new Date(data + 'T12:00:00').getDate() : '—'}</div>
                             <div className={`text-xs uppercase ${cr.status === 'presente' ? 'text-green-500' : cr.status === 'falta' ? 'text-orange-500' : 'text-purple-500'}`}>{data ? new Date(data + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' }) : ''}</div>
                           </div>
-                          <div className="flex-1">
+                          <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-base font-bold text-gray-900">{tipoAulaLabel(aula?.tipo) || 'Club'}</span>
                               <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">Club</span>
-                              <span className="text-sm font-medium text-gray-700 capitalize">{data ? new Date(data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long' }) : '—'}</span>
-                              <span className="font-mono text-xs text-gray-400">{(aula?.horario || '').slice(0,5)}</span>
                               <span className={`text-xs px-2 py-0.5 rounded-full ${statusConfig[cr.status]?.color || 'bg-gray-100 text-gray-600'}`}>{statusConfig[cr.status]?.label || cr.status}</span>
-                              {aula?.unidades?.nome && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{aula.unidades.nome}</span>}
                             </div>
-                            <div className="text-xs text-gray-400 mt-0.5">{tipoAulaLabel(aula?.tipo)} · {creditoLabel(cr.tipo_credito).icon} {creditoLabel(cr.tipo_credito).label}</div>
+                            <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-500 mt-0.5">
+                              <span className="capitalize">{data ? new Date(data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long' }) : '—'}</span>
+                              <span className="text-gray-300">·</span>
+                              <span className="font-mono">{(aula?.horario || '').slice(0,5)}</span>
+                              {aula?.unidades?.nome && <><span className="text-gray-300">·</span><span>{aula.unidades.nome}</span></>}
+                            </div>
+                            {cred.label && <div className="text-xs text-gray-500 mt-1">{cred.icon} {cred.label}</div>}
                           </div>
                         </div>
                       )
