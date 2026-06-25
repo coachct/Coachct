@@ -393,22 +393,17 @@ export async function cancelarReservaClub(
   const dataHora = new Date(`${data}T${horario}:00-03:00`)
   const diffHoras = (dataHora.getTime() - agora.getTime()) / (1000 * 60 * 60)
 
-  // Multa de no-show só existe para Wellhub/TotalPass. Demais (pacotes/avulso de
-  // treino, plano direto) NÃO têm multa — só perdem o crédito.
-  const tc = String((rv as any).tipo_credito ?? '')
-  const consequencia = (tc.startsWith('wellhub_') || tc.startsWith('totalpass_'))
-    ? 'Se não comparecer, conta como falta (multa de R$ 49,90).'
-    : 'Se não comparecer, você não tem multa — só perde o crédito dessa aula.'
-
+  // Mensagem de recusa CURTA e sem multa (multa só se o cliente perguntar — o
+  // tom é tratado no agente). Cancelamento livre só >12h; 3-12h exige fila; -3h não.
   if (diffHoras <= 3) {
-    return { ok: false, mensagem: `Faltam menos de 3h para a aula (${horario}, ${dataBr}) — não dá mais para cancelar. ${consequencia}` }
+    return { ok: false, mensagem: 'A essa altura não é mais possível cancelar essa reserva 🙏.' }
   }
   if (diffHoras <= 12) {
     const { data: f } = await supabase
       .from('fila_espera').select('id')
       .eq('ocorrencia_id', (rv as any).ocorrencia_id).eq('status', 'aguardando').limit(1)
     if (!(f ?? []).length) {
-      return { ok: false, mensagem: `Entre 3h e 12h só dá para cancelar se houver fila de espera para essa aula — e não há ninguém agora. ${consequencia}` }
+      return { ok: false, mensagem: 'A essa altura não é mais possível cancelar essa reserva 🙏.' }
     }
   }
 
@@ -740,17 +735,11 @@ export async function cancelarAgendamentoCt(
   const dataHora = new Date(`${String(ag.horario).length <= 5 ? `${ag.data}T${ag.horario}:00` : `${ag.data}T${ag.horario}`}-03:00`)
   const diffHoras = (dataHora.getTime() - agora.getTime()) / (1000 * 60 * 60)
 
-  // Multa de no-show só existe para Wellhub/TotalPass. Demais (pacotes/avulso de
-  // treino, plano direto) NÃO têm multa — só perdem o crédito.
-  const tcCt = String((ag as any).tipo_credito ?? '')
-  const consequenciaCt = (tcCt.startsWith('wellhub_') || tcCt.startsWith('totalpass_'))
-    ? 'Se não comparecer, conta como falta (multa de R$ 99,00).'
-    : 'Se não comparecer, você não tem multa — só perde o crédito desse treino.'
-
+  // Mensagem de recusa CURTA e sem multa (multa só se o cliente perguntar).
   if (diffHoras <= 3) {
     return {
       ok: false,
-      mensagem: `Faltam menos de 3h para o treino — não dá mais para cancelar. ${consequenciaCt}`,
+      mensagem: 'A essa altura não é mais possível cancelar esse treino 🙏.',
     }
   }
   if (diffHoras <= 12) {
@@ -765,7 +754,7 @@ export async function cancelarAgendamentoCt(
     if (!temFila) {
       return {
         ok: false,
-        mensagem: `Entre 3h e 12h o cancelamento só é liberado se houver alguém na fila de espera deste horário — e não há ninguém agora. ${consequenciaCt}`,
+        mensagem: 'A essa altura não é mais possível cancelar esse treino 🙏.',
       }
     }
   }
