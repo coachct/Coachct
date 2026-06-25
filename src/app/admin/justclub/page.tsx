@@ -113,6 +113,11 @@ export default function JustClubAdminPage() {
   const [form,        setForm]        = useState({ ...FORM_VAZIO })
   const [salvando,    setSalvando]    = useState(false)
 
+  // Troca de coach da grade: confirma a data de corte (congela passado, repinta futuro).
+  const [confirmCoach, setConfirmCoach] = useState<null | {
+    oldId: string | null; newId: string | null; oldNome: string; newNome: string; data: string
+  }>(null)
+
   const [formReplicar, setFormReplicar] = useState(false)
   const [formMeses,    setFormMeses]    = useState(1)
   const [formInicio,   setFormInicio]   = useState(dataLocalStr(new Date()))
@@ -391,6 +396,21 @@ export default function JustClubAdminPage() {
   async function salvar() {
     if (!unidadeAtiva) return
     if (!form.grupo_muscular_id) { showMsg('Selecione o grupo muscular.'); return }
+
+    // Editou e trocou o coach da grade → pede a data de corte antes de salvar.
+    // Sem corte, a troca repintaria o histórico (relatório lê oc.coach_id || aula.coach_id).
+    if (editando && !feriadoCtx && (editando.coach_id || null) !== (form.coach_id || null) && !confirmCoach) {
+      const nomeDe = (id: string | null) => id ? (coaches.find((c: any) => c.id === id)?.nome || 'Coach') : 'Coach a definir'
+      setConfirmCoach({
+        oldId: editando.coach_id || null,
+        newId: form.coach_id || null,
+        oldNome: nomeDe(editando.coach_id || null),
+        newNome: nomeDe(form.coach_id || null),
+        data: dataLocalStr(new Date()),
+      })
+      return
+    }
+
     // coach é opcional — pode salvar sem (vai como NULL = "Coach a definir")
     setSalvando(true)
 
@@ -457,6 +477,20 @@ export default function JustClubAdminPage() {
           }
         }
       }
+
+      // Troca de coach com data de corte: congela o passado e repinta o futuro.
+      // Passado sem coach explícito → carimba o coach ANTIGO (vira valor gravado, não some no relatório).
+      // Futuro que estava no coach antigo → passa pro coach NOVO. Futuro sem coach segue a grade nova.
+      // Dias futuros num TERCEIRO coach (escala pontual) não são tocados — esses usam "corrigir coach".
+      if (confirmCoach && aulaId && confirmCoach.oldId) {
+        const corte = confirmCoach.data
+        await supabase.from('club_ocorrencias')
+          .update({ coach_id: confirmCoach.oldId })
+          .eq('aula_id', aulaId).lt('data', corte).is('coach_id', null)
+        await supabase.from('club_ocorrencias')
+          .update({ coach_id: confirmCoach.newId })
+          .eq('aula_id', aulaId).gte('data', corte).eq('coach_id', confirmCoach.oldId)
+      }
     } else {
       const { data: nova, error } = await supabase.from('club_aulas').insert(payload).select('id').maybeSingle()
       if (error) { showMsg('Erro: '+error.message); setSalvando(false); return }
@@ -467,11 +501,15 @@ export default function JustClubAdminPage() {
       if (datas.length > 0) await supabase.from('club_ocorrencias').insert(datas.map(data => ({ aula_id: aulaId, data, status: 'ativa' })))
       showMsg(`Aula criada e ${datas.length} ocorrência${datas.length!==1?'s':''} gerada${datas.length!==1?'s':''}!`)
     } else if (editando) {
-      showMsg(diaMudou ? 'Aula atualizada — ocorrências futuras movidas para o novo dia.' : 'Aula atualizada!')
+      showMsg(
+        confirmCoach
+          ? `Coach trocado a partir de ${confirmCoach.data.split('-').reverse().join('/')} — passado preservado.`
+          : diaMudou ? 'Aula atualizada — ocorrências futuras movidas para o novo dia.' : 'Aula atualizada!'
+      )
     } else {
       showMsg('Aula criada!')
     }
-    setSalvando(false); setModalAberto(false); setEditando(null)
+    setSalvando(false); setModalAberto(false); setEditando(null); setConfirmCoach(null)
     await carregarAulas()
     if (abaAtiva==='calendario') carregarOcorrencias(diasCalendario)
   }
@@ -1180,6 +1218,41 @@ export default function JustClubAdminPage() {
               <button onClick={()=>{setModalAberto(false);setEditando(null);setFeriadoCtx(null)}} className="btn flex-1 text-gray-500 border border-gray-200">Cancelar</button>
               <button onClick={salvar} disabled={salvando} className="btn flex-1 bg-primary-600 text-white hover:bg-primary-700 gap-1 disabled:opacity-60">
                 <Save size={13}/> {salvando?'Salvando...':editando?'Atualizar aula':feriadoCtx?'Criar aula do feriado':'Criar aula'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CONFIRMAR TROCA DE COACH (data de corte) */}
+      {confirmCoach && (
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-xl">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h2 className="font-semibold text-gray-900 flex items-center gap-2"><Users size={16} className="text-primary-600"/> Trocar coach da recorrência</h2>
+              <button onClick={()=>setConfirmCoach(null)} className="text-gray-400 hover:text-gray-600 p-1"><X size={18}/></button>
+            </div>
+            <div className="px-6 py-4 space-y-4">
+              <div className="text-sm text-gray-600">
+                Trocando de <strong className="text-gray-900">{confirmCoach.oldNome}</strong> para <strong className="text-gray-900">{confirmCoach.newNome}</strong>.
+              </div>
+              <div>
+                <label className="label">Trocar a partir de</label>
+                <input type="date" className="input" value={confirmCoach.data}
+                  onChange={e=>setConfirmCoach(c=>c?{...c, data:e.target.value}:c)}/>
+              </div>
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-xs text-amber-800 flex gap-2">
+                <AlertCircle size={14} className="flex-shrink-0 mt-0.5"/>
+                <span>
+                  Aulas <strong>antes</strong> dessa data ficam com {confirmCoach.oldNome}. Dessa data em diante passam pra {confirmCoach.newNome}.
+                  Dias futuros já escalados pra outro coach não são alterados.
+                </span>
+              </div>
+            </div>
+            <div className="flex gap-2 px-6 pb-5">
+              <button onClick={()=>setConfirmCoach(null)} className="btn flex-1 text-gray-500 border border-gray-200">Cancelar</button>
+              <button onClick={salvar} disabled={salvando} className="btn flex-1 bg-primary-600 text-white hover:bg-primary-700 gap-1 disabled:opacity-60">
+                <Save size={13}/> {salvando?'Aplicando...':'Confirmar troca'}
               </button>
             </div>
           </div>
