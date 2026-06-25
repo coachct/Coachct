@@ -113,10 +113,12 @@ export default function AdminEscalaClubPage() {
   const [loadingMontar, setLoadingMontar] = useState(false)
   const [montando,      setMontando]      = useState(false)
 
-  // NOVO: Resumo do mês (copiável p/ WhatsApp) — um bloco por unidade e um por coach.
+  // NOVO: Resumo do mês (copiável p/ WhatsApp) — só FDS de escala (sáb/dom), nunca a grade da semana.
+  // Três grupos, cada bloco com cópia individual: por unidade, por fim de semana e por coach.
   const [mesResumo,     setMesResumo]     = useState<string>(mesSeguinte()) // default mês seguinte
-  const [txtUnidade,    setTxtUnidade]    = useState('')
-  const [txtCoach,      setTxtCoach]      = useState('')
+  const [blocosUni,     setBlocosUni]     = useState<any[]>([]) // { id, titulo, sub, texto }
+  const [blocosFds,     setBlocosFds]     = useState<any[]>([])
+  const [blocosCoach,   setBlocosCoach]   = useState<any[]>([])
   const [loadingResumo, setLoadingResumo] = useState(false)
   const [copiado,       setCopiado]       = useState<string | null>(null)   // qual bloco foi copiado
 
@@ -575,44 +577,55 @@ export default function AdminEscalaClubPage() {
     await carregarMontar()
   }
 
-  // ─── Resumo do mês (copiável p/ WhatsApp): por unidade e por coach ───
+  // ─── Resumo do mês (copiável p/ WhatsApp): só FDS de escala (sáb/dom) ───
   // Nome de unidade enxuto p/ o resumo por coach (tira o prefixo "JustClub").
   function unidadeCurta(id: string | null | undefined) {
     const n = nomeUnidade(id)
     return n.replace(/justclub/i, '').trim() || n
   }
-  function rotuloDataResumo(dataStr: string, isFeriado: boolean) {
+  function rotuloDia(dataStr: string) {
     const d = new Date(dataStr + 'T12:00:00')
     const wd = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'][d.getDay()]
-    return `${wd} ${dataStr.slice(8, 10)}/${dataStr.slice(5, 7)}${isFeriado ? ' (feriado)' : ''}`
+    return `${wd} ${dataStr.slice(8, 10)}/${dataStr.slice(5, 7)}`
+  }
+  // Sábado de referência do fim de semana de uma data (domingo agrupa com o sábado anterior).
+  function sabadoDoFds(dataStr: string) {
+    const d = new Date(dataStr + 'T12:00:00')
+    if (d.getDay() === 0) d.setDate(d.getDate() - 1)
+    return dataLocalStr(d)
   }
 
-  // Carrega TODAS as ocorrências ativas do mês (fds + feriados, ambas unidades) e monta os 2 textos.
+  // Carrega só as ocorrências de SÁBADO/DOMINGO do mês (escala de FDS, nunca a grade da semana),
+  // das duas unidades, e monta os blocos copiáveis por unidade, por fim de semana e por coach.
   // Coach efetivo = escalado (coach_id) ou, na falta, o coach da grade. Reflete a escala já salva.
   async function carregarResumo() {
     setLoadingResumo(true)
     const clubIds = unidades.map((u: any) => u.id)
-    if (clubIds.length === 0) { setTxtUnidade(''); setTxtCoach(''); setLoadingResumo(false); return }
-    const [y, m] = mesResumo.split('-').map(Number)
-    const first = dataLocalStr(new Date(y, m - 1, 1))
-    const last  = dataLocalStr(new Date(y, m, 0)) // dia 0 do mês seguinte = último dia do mês alvo
+    const datas = fdsDoMes(mesResumo).map(f => f.data) // só sáb/dom do mês
+    if (clubIds.length === 0 || datas.length === 0) {
+      setBlocosUni([]); setBlocosFds([]); setBlocosCoach([]); setLoadingResumo(false); return
+    }
     const cs = await fetchCoachesClub()
     const nomeById: Record<string, string> = {}
     for (const c of cs) nomeById[c.id] = c.nome
 
-    const { data: ocs } = await supabase.from('club_ocorrencias')
-      .select('id, data, coach_id, club_aulas!inner(tipo, horario, unidade_id, feriado_id, coach_id, coaches(id, nome))')
-      .gte('data', first).lte('data', last).eq('status', 'ativa')
-      .in('club_aulas.unidade_id', clubIds).order('data')
+    const { data: aulasIds } = await supabase.from('club_aulas').select('id').in('unidade_id', clubIds).eq('ativo', true)
+    const ids = (aulasIds || []).map((a: any) => a.id)
+    let ocs: any[] = []
+    if (ids.length > 0) {
+      const r = await supabase.from('club_ocorrencias')
+        .select('id, data, coach_id, club_aulas(tipo, horario, unidade_id, coach_id, coaches(id, nome))')
+        .in('aula_id', ids).in('data', datas).eq('status', 'ativa').order('data')
+      ocs = r.data || []
+    }
 
-    const itens = (ocs || []).map((o: any) => {
+    const itens = ocs.map((o: any) => {
       const id = o.coach_id || o.club_aulas?.coaches?.id || null
       return {
         data: o.data,
         horario: (o.club_aulas?.horario || '').slice(0, 5),
         tipo: o.club_aulas?.tipo,
         unidadeId: o.club_aulas?.unidade_id,
-        feriado: !!o.club_aulas?.feriado_id,
         coachId: id,
         coachNome: id ? (nomeById[id] || o.club_aulas?.coaches?.nome || 'Coach') : null,
       }
@@ -622,26 +635,46 @@ export default function AdminEscalaClubPage() {
       return (a.unidadeId || '').localeCompare(b.unidadeId || '')
     })
 
-    const feriadoDatas = new Set<string>()
-    for (const it of itens) if (it.feriado) feriadoDatas.add(it.data)
     const mesTxt = competenciaLabel(mesResumo)
-
-    // ── Por unidade ──
-    const bU: string[] = [`*ESCALA — ${mesTxt}*`, '_Fins de semana + feriados_', '']
-    for (const u of unidades) {
-      const its = itens.filter((it: any) => it.unidadeId === u.id)
-      bU.push(`*${u.nome.toUpperCase()}*`)
-      if (its.length === 0) { bU.push('_(sem aulas no mês)_', ''); continue }
-      let lastData = ''
+    const plural = (n: number) => `${n} aula${n === 1 ? '' : 's'}`
+    // Linhas de "• HH:MM Tipo — sufixo" agrupadas por dia, pra uma lista de itens.
+    const linhasPorDia = (its: any[], sufixo: (it: any) => string) => {
+      const out: string[] = []
+      let last = ''
       for (const it of its) {
-        if (it.data !== lastData) { bU.push(rotuloDataResumo(it.data, feriadoDatas.has(it.data))); lastData = it.data }
-        bU.push(`• ${it.horario} ${tipoLabel(it.tipo)} — ${it.coachNome || 'A definir'}`)
+        if (it.data !== last) { out.push(rotuloDia(it.data)); last = it.data }
+        out.push(`• ${it.horario} ${tipoLabel(it.tipo)} ${sufixo(it)}`)
       }
-      bU.push('')
+      return out
     }
-    setTxtUnidade(bU.join('\n').trim())
 
-    // ── Por coach ──
+    // ── Por unidade (mês todo) ──
+    const bUni = unidades.map((u: any) => {
+      const its = itens.filter((it: any) => it.unidadeId === u.id)
+      const linhas = [`*ESCALA FDS — ${u.nome.toUpperCase()}*`, mesTxt, '']
+      if (its.length === 0) linhas.push('_(sem aulas de fim de semana no mês)_')
+      else linhas.push(...linhasPorDia(its, it => `— ${it.coachNome || 'A definir'}`))
+      return { id: `uni:${u.id}`, titulo: u.nome, sub: plural(its.length), texto: linhas.join('\n').trim() }
+    })
+
+    // ── Por fim de semana (sáb + dom juntos), as duas unidades ──
+    const sabKeys = Array.from(new Set(datas.map(sabadoDoFds))).sort()
+    const bFds = sabKeys.map((sab: string) => {
+      const diasWk = datas.filter(d => sabadoDoFds(d) === sab).sort()
+      const itsWk = itens.filter((it: any) => diasWk.includes(it.data))
+      const titulo = diasWk.map(rotuloDia).join(' + ')
+      const linhas = [`*ESCALA FDS — ${titulo}*`, '']
+      for (const u of unidades) {
+        const itsU = itsWk.filter((it: any) => it.unidadeId === u.id)
+        if (itsU.length === 0) continue
+        linhas.push(`*${u.nome.toUpperCase()}*`)
+        linhas.push(...linhasPorDia(itsU, it => `— ${it.coachNome || 'A definir'}`))
+        linhas.push('')
+      }
+      return { id: `fds:${sab}`, titulo, sub: plural(itsWk.length), texto: linhas.join('\n').trim() }
+    })
+
+    // ── Por coach (mês todo) ──
     const porCoach: Record<string, any[]> = {}
     const semCoach: any[] = []
     for (const it of itens) {
@@ -649,22 +682,20 @@ export default function AdminEscalaClubPage() {
       if (!porCoach[it.coachId]) porCoach[it.coachId] = []
       porCoach[it.coachId].push(it)
     }
-    const ordem = Object.keys(porCoach).sort((a, b) =>
-      (porCoach[a][0].coachNome || '').localeCompare(porCoach[b][0].coachNome || ''))
-    const bC: string[] = [`*ESCALA POR COACH — ${mesTxt}*`, '_Fins de semana + feriados_', '']
-    const dumpCoach = (titulo: string, its: any[]) => {
-      bC.push(`*${titulo}* — ${its.length} aula${its.length === 1 ? '' : 's'}`)
-      let lastData = ''
-      for (const it of its) {
-        if (it.data !== lastData) { bC.push(rotuloDataResumo(it.data, feriadoDatas.has(it.data))); lastData = it.data }
-        bC.push(`• ${it.horario} ${tipoLabel(it.tipo)} · ${unidadeCurta(it.unidadeId)}`)
-      }
-      bC.push('')
+    const mkCoach = (titulo: string, its: any[], id: string) => {
+      const linhas = [`*${titulo} — ${mesTxt}*`, '']
+      linhas.push(...linhasPorDia(its, it => `· ${unidadeCurta(it.unidadeId)}`))
+      linhas.push('', `Total: ${plural(its.length)}`)
+      return { id, titulo, sub: plural(its.length), texto: linhas.join('\n').trim() }
     }
-    for (const cid of ordem) dumpCoach(porCoach[cid][0].coachNome, porCoach[cid])
-    if (semCoach.length > 0) dumpCoach('A definir', semCoach)
-    setTxtCoach(bC.join('\n').trim())
+    const bCoach = Object.keys(porCoach)
+      .sort((a, b) => (porCoach[a][0].coachNome || '').localeCompare(porCoach[b][0].coachNome || ''))
+      .map(cid => mkCoach(porCoach[cid][0].coachNome, porCoach[cid], `coach:${cid}`))
+    if (semCoach.length > 0) bCoach.push(mkCoach('A definir', semCoach, 'coach:_indef'))
 
+    setBlocosUni(bUni)
+    setBlocosFds(bFds)
+    setBlocosCoach(bCoach)
     setLoadingResumo(false)
   }
 
@@ -730,7 +761,7 @@ export default function AdminEscalaClubPage() {
         </div>
       ) : aba === 'resumo' ? (
         <div style={{ background:`${VERDE}10`, border:`1px solid ${VERDE}40`, borderRadius:12, padding:'0.75rem 1rem', marginBottom:'1.5rem', fontSize:13, color:'#0f766e' }}>
-          💡 Resumo do mês pronto pra <strong>copiar e mandar no WhatsApp</strong> — um bloco por unidade e um por coach. Reflete a escala já salva (sugestão + ajustes), com os <code>*negritos*</code> que o WhatsApp formata.
+          💡 Só a escala de <strong>fim de semana (sáb/dom)</strong>, nunca a grade da semana. Cada bloco tem seu <strong>Copiar</strong> — por unidade, por fim de semana e por coach — pronto pro WhatsApp (com os <code>*negritos*</code> que ele formata). Reflete a escala já salva (sugestão + ajustes).
         </div>
       ) : aba === 'fds' ? (
         <div style={{ background:`${CYAN}10`, border:`1px solid ${CYAN}40`, borderRadius:12, padding:'0.75rem 1rem', marginBottom:'1.5rem', fontSize:13, color:'#0e7490' }}>
@@ -1144,34 +1175,51 @@ export default function AdminEscalaClubPage() {
 
           {loadingResumo ? (
             <div style={{ textAlign:'center', padding:'3rem', color:'#aaa', fontSize:14 }}>Gerando resumo...</div>
-          ) : (
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem' }}>
-              {[
-                { id:'unidade', titulo:'Por unidade', sub:'Escala de cada unidade pra avisar a equipe', texto:txtUnidade },
-                { id:'coach',   titulo:'Por coach',   sub:'Aulas de cada coach no mês, pra mandar individual', texto:txtCoach },
-              ].map(b => (
-                <div key={b.id} style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:16, padding:'1.25rem', display:'flex', flexDirection:'column' }}>
-                  <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:10, marginBottom:10 }}>
-                    <div>
-                      <div style={{ fontSize:14, fontWeight:700, color:'#111' }}>{b.titulo}</div>
-                      <div style={{ fontSize:11, color:'#aaa', marginTop:1 }}>{b.sub}</div>
-                    </div>
-                    <button onClick={() => copiarResumo(b.texto, b.id)} disabled={!b.texto}
-                      style={{ flexShrink:0, padding:'0.45rem 0.9rem', borderRadius:10, border:'none',
-                        background: copiado === b.id ? VERDE : ACCENT, color:'#fff', fontSize:12, fontWeight:700,
-                        cursor: b.texto ? 'pointer' : 'default', opacity: b.texto ? 1 : 0.5, fontFamily:"'DM Sans', sans-serif" }}>
-                      {copiado === b.id ? '✓ Copiado' : 'Copiar'}
-                    </button>
+          ) : (() => {
+            // Card de um bloco copiável (título + Copiar + prévia do texto).
+            const card = (b: any) => (
+              <div key={b.id} style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:16, padding:'1rem 1.1rem', display:'flex', flexDirection:'column' }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, marginBottom:8 }}>
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:'#111', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{b.titulo}</div>
+                    <div style={{ fontSize:11, color:'#aaa', marginTop:1 }}>{b.sub}</div>
                   </div>
-                  <textarea readOnly value={b.texto || '(sem aulas no mês)'}
-                    onFocus={e => e.currentTarget.select()}
-                    style={{ width:'100%', minHeight:380, resize:'vertical', borderRadius:10, border:'1px solid #eee',
-                      background:'#fafafa', padding:'0.75rem', fontFamily:"'DM Mono', monospace", fontSize:12,
-                      color:'#333', lineHeight:1.5, whiteSpace:'pre-wrap', boxSizing:'border-box' }} />
+                  <button onClick={() => copiarResumo(b.texto, b.id)}
+                    style={{ flexShrink:0, padding:'0.4rem 0.85rem', borderRadius:10, border:'none',
+                      background: copiado === b.id ? VERDE : ACCENT, color:'#fff', fontSize:12, fontWeight:700,
+                      cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
+                    {copiado === b.id ? '✓ Copiado' : 'Copiar'}
+                  </button>
                 </div>
-              ))}
-            </div>
-          )}
+                <pre style={{ margin:0, maxHeight:220, overflow:'auto', borderRadius:10, border:'1px solid #eee',
+                  background:'#fafafa', padding:'0.7rem', fontFamily:"'DM Mono', monospace", fontSize:11.5,
+                  color:'#333', lineHeight:1.5, whiteSpace:'pre-wrap' }}>{b.texto}</pre>
+              </div>
+            )
+            // Uma seção (título + descrição + grade de cards).
+            const secao = (titulo: string, desc: string, blocos: any[], cols: number) => (
+              <div style={{ marginBottom:'1.75rem' }}>
+                <div style={{ display:'flex', alignItems:'baseline', gap:8, marginBottom:'0.75rem' }}>
+                  <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:18, color:'#111', letterSpacing:0.5 }}>{titulo}</div>
+                  <div style={{ fontSize:12, color:'#aaa' }}>{desc}</div>
+                </div>
+                {blocos.length === 0 ? (
+                  <div style={{ fontSize:13, color:'#aaa', fontStyle:'italic' }}>Sem aulas de fim de semana neste mês.</div>
+                ) : (
+                  <div style={{ display:'grid', gridTemplateColumns:`repeat(${cols}, 1fr)`, gap:'0.85rem' }}>
+                    {blocos.map(card)}
+                  </div>
+                )}
+              </div>
+            )
+            return (
+              <>
+                {secao('Por unidade', 'cada unidade, mês todo', blocosUni, 2)}
+                {secao('Por fim de semana', 'cada FDS, as duas unidades', blocosFds, 2)}
+                {secao('Por coach', 'cada coach, mês todo — mandar individual', blocosCoach, 3)}
+              </>
+            )
+          })()}
         </div>
       ) : !unidadeSel ? (
         <div style={{ background:'#f9fafb', border:'1px dashed #e5e7eb', borderRadius:16, padding:'3rem', textAlign:'center', color:'#aaa' }}>
