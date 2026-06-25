@@ -75,8 +75,8 @@ export default function AdminEscalaClubPage() {
   const [modalAula, setModalAula] = useState<any>(null)
   const [salvando,  setSalvando]  = useState(false)
 
-  // NOVO: abas FDS / Montar / Feriados / Capacidade / Disponibilidade
-  const [aba, setAba] = useState<'fds' | 'montar' | 'feriados' | 'capacidade' | 'disponibilidade'>('fds')
+  // NOVO: abas FDS / Montar / Resumo / Feriados / Capacidade / Disponibilidade
+  const [aba, setAba] = useState<'fds' | 'montar' | 'resumo' | 'feriados' | 'capacidade' | 'disponibilidade'>('fds')
   const [feriados,              setFeriados]              = useState<any[]>([])
   const [ocorrenciasFeriadoMap, setOcorrenciasFeriadoMap] = useState<Record<string, any[]>>({}) // feriado_id -> ocorrências
   const [loadingFeriados,       setLoadingFeriados]       = useState(false)
@@ -113,6 +113,13 @@ export default function AdminEscalaClubPage() {
   const [loadingMontar, setLoadingMontar] = useState(false)
   const [montando,      setMontando]      = useState(false)
 
+  // NOVO: Resumo do mês (copiável p/ WhatsApp) — um bloco por unidade e um por coach.
+  const [mesResumo,     setMesResumo]     = useState<string>(mesSeguinte()) // default mês seguinte
+  const [txtUnidade,    setTxtUnidade]    = useState('')
+  const [txtCoach,      setTxtCoach]      = useState('')
+  const [loadingResumo, setLoadingResumo] = useState(false)
+  const [copiado,       setCopiado]       = useState<string | null>(null)   // qual bloco foi copiado
+
   useEffect(() => {
     if (!loading && perfil && perfil.role !== 'admin' && perfil.role !== 'coordenadora') router.push('/')
   }, [perfil, loading])
@@ -133,7 +140,8 @@ export default function AdminEscalaClubPage() {
     if (aba === 'disponibilidade' && unidades.length > 0) carregarDisponibilidade()
     if (aba === 'fds'             && unidades.length > 0) carregarElegibilidadeFds()
     if (aba === 'montar'          && unidades.length > 0) carregarMontar()
-  }, [aba, unidades.length, competencia, mesMontar])
+    if (aba === 'resumo'          && unidades.length > 0) carregarResumo()
+  }, [aba, unidades.length, competencia, mesMontar, mesResumo])
 
   // Próximos 6 fins de semana (12 datas)
   const proximosFDS = (() => {
@@ -567,6 +575,105 @@ export default function AdminEscalaClubPage() {
     await carregarMontar()
   }
 
+  // ─── Resumo do mês (copiável p/ WhatsApp): por unidade e por coach ───
+  // Nome de unidade enxuto p/ o resumo por coach (tira o prefixo "JustClub").
+  function unidadeCurta(id: string | null | undefined) {
+    const n = nomeUnidade(id)
+    return n.replace(/justclub/i, '').trim() || n
+  }
+  function rotuloDataResumo(dataStr: string, isFeriado: boolean) {
+    const d = new Date(dataStr + 'T12:00:00')
+    const wd = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'][d.getDay()]
+    return `${wd} ${dataStr.slice(8, 10)}/${dataStr.slice(5, 7)}${isFeriado ? ' (feriado)' : ''}`
+  }
+
+  // Carrega TODAS as ocorrências ativas do mês (fds + feriados, ambas unidades) e monta os 2 textos.
+  // Coach efetivo = escalado (coach_id) ou, na falta, o coach da grade. Reflete a escala já salva.
+  async function carregarResumo() {
+    setLoadingResumo(true)
+    const clubIds = unidades.map((u: any) => u.id)
+    if (clubIds.length === 0) { setTxtUnidade(''); setTxtCoach(''); setLoadingResumo(false); return }
+    const [y, m] = mesResumo.split('-').map(Number)
+    const first = dataLocalStr(new Date(y, m - 1, 1))
+    const last  = dataLocalStr(new Date(y, m, 0)) // dia 0 do mês seguinte = último dia do mês alvo
+    const cs = await fetchCoachesClub()
+    const nomeById: Record<string, string> = {}
+    for (const c of cs) nomeById[c.id] = c.nome
+
+    const { data: ocs } = await supabase.from('club_ocorrencias')
+      .select('id, data, coach_id, club_aulas!inner(tipo, horario, unidade_id, feriado_id, coach_id, coaches(id, nome))')
+      .gte('data', first).lte('data', last).eq('status', 'ativa')
+      .in('club_aulas.unidade_id', clubIds).order('data')
+
+    const itens = (ocs || []).map((o: any) => {
+      const id = o.coach_id || o.club_aulas?.coaches?.id || null
+      return {
+        data: o.data,
+        horario: (o.club_aulas?.horario || '').slice(0, 5),
+        tipo: o.club_aulas?.tipo,
+        unidadeId: o.club_aulas?.unidade_id,
+        feriado: !!o.club_aulas?.feriado_id,
+        coachId: id,
+        coachNome: id ? (nomeById[id] || o.club_aulas?.coaches?.nome || 'Coach') : null,
+      }
+    }).sort((a: any, b: any) => {
+      if (a.data !== b.data)       return a.data.localeCompare(b.data)
+      if (a.horario !== b.horario) return a.horario.localeCompare(b.horario)
+      return (a.unidadeId || '').localeCompare(b.unidadeId || '')
+    })
+
+    const feriadoDatas = new Set<string>()
+    for (const it of itens) if (it.feriado) feriadoDatas.add(it.data)
+    const mesTxt = competenciaLabel(mesResumo)
+
+    // ── Por unidade ──
+    const bU: string[] = [`*ESCALA — ${mesTxt}*`, '_Fins de semana + feriados_', '']
+    for (const u of unidades) {
+      const its = itens.filter((it: any) => it.unidadeId === u.id)
+      bU.push(`*${u.nome.toUpperCase()}*`)
+      if (its.length === 0) { bU.push('_(sem aulas no mês)_', ''); continue }
+      let lastData = ''
+      for (const it of its) {
+        if (it.data !== lastData) { bU.push(rotuloDataResumo(it.data, feriadoDatas.has(it.data))); lastData = it.data }
+        bU.push(`• ${it.horario} ${tipoLabel(it.tipo)} — ${it.coachNome || 'A definir'}`)
+      }
+      bU.push('')
+    }
+    setTxtUnidade(bU.join('\n').trim())
+
+    // ── Por coach ──
+    const porCoach: Record<string, any[]> = {}
+    const semCoach: any[] = []
+    for (const it of itens) {
+      if (!it.coachId) { semCoach.push(it); continue }
+      if (!porCoach[it.coachId]) porCoach[it.coachId] = []
+      porCoach[it.coachId].push(it)
+    }
+    const ordem = Object.keys(porCoach).sort((a, b) =>
+      (porCoach[a][0].coachNome || '').localeCompare(porCoach[b][0].coachNome || ''))
+    const bC: string[] = [`*ESCALA POR COACH — ${mesTxt}*`, '_Fins de semana + feriados_', '']
+    const dumpCoach = (titulo: string, its: any[]) => {
+      bC.push(`*${titulo}* — ${its.length} aula${its.length === 1 ? '' : 's'}`)
+      let lastData = ''
+      for (const it of its) {
+        if (it.data !== lastData) { bC.push(rotuloDataResumo(it.data, feriadoDatas.has(it.data))); lastData = it.data }
+        bC.push(`• ${it.horario} ${tipoLabel(it.tipo)} · ${unidadeCurta(it.unidadeId)}`)
+      }
+      bC.push('')
+    }
+    for (const cid of ordem) dumpCoach(porCoach[cid][0].coachNome, porCoach[cid])
+    if (semCoach.length > 0) dumpCoach('A definir', semCoach)
+    setTxtCoach(bC.join('\n').trim())
+
+    setLoadingResumo(false)
+  }
+
+  async function copiarResumo(texto: string, qual: string) {
+    try { await navigator.clipboard.writeText(texto) } catch (e) {}
+    setCopiado(qual)
+    setTimeout(() => setCopiado(c => (c === qual ? null : c)), 2000)
+  }
+
   // Abre o modal e, no FDS/Montar, carrega quem já está ocupado no mesmo dia+horário (qualquer unidade Club).
   async function abrirModal(oc: any) {
     setModalAula(oc)
@@ -621,6 +728,10 @@ export default function AdminEscalaClubPage() {
         <div style={{ background:`${ACCENT}0d`, border:`1px solid ${ACCENT}40`, borderRadius:12, padding:'0.75rem 1rem', marginBottom:'1.5rem', fontSize:13, color:'#b91c6b' }}>
           💡 Monte o dia inteiro com as <strong>duas unidades lado a lado</strong>. O coach é recurso do dia: trava numa unidade e tem teto de 4 aulas. Use <strong>Montar sugestão</strong> pra auto-escalar e ajuste à mão.
         </div>
+      ) : aba === 'resumo' ? (
+        <div style={{ background:`${VERDE}10`, border:`1px solid ${VERDE}40`, borderRadius:12, padding:'0.75rem 1rem', marginBottom:'1.5rem', fontSize:13, color:'#0f766e' }}>
+          💡 Resumo do mês pronto pra <strong>copiar e mandar no WhatsApp</strong> — um bloco por unidade e um por coach. Reflete a escala já salva (sugestão + ajustes), com os <code>*negritos*</code> que o WhatsApp formata.
+        </div>
       ) : aba === 'fds' ? (
         <div style={{ background:`${CYAN}10`, border:`1px solid ${CYAN}40`, borderRadius:12, padding:'0.75rem 1rem', marginBottom:'1.5rem', fontSize:13, color:'#0e7490' }}>
           💡 A escala aqui <strong>sobrescreve</strong> o coach da grade fixa só para o dia específico. Para limpar, clique no coach atual e escolha "Voltar à grade".
@@ -632,7 +743,7 @@ export default function AdminEscalaClubPage() {
       )}
 
       {/* Seletor de unidade (Montar mostra as 2 juntas, não precisa de seletor) */}
-      {aba !== 'capacidade' && aba !== 'disponibilidade' && aba !== 'montar' && unidades.length > 1 && (
+      {aba !== 'capacidade' && aba !== 'disponibilidade' && aba !== 'montar' && aba !== 'resumo' && unidades.length > 1 && (
         <div style={{ display:'flex', gap:8, marginBottom:'1.5rem', flexWrap:'wrap' }}>
           {unidades.map((u: any) => (
             <button key={u.id} onClick={() => setUnidadeSel(u)}
@@ -652,6 +763,7 @@ export default function AdminEscalaClubPage() {
         {[
           { key:'fds',             label:'Final de Semana' },
           { key:'montar',          label:'Montar' },
+          { key:'resumo',          label:'Resumo' },
           { key:'feriados',        label:'Feriados' },
           { key:'capacidade',      label:'Capacidade' },
           { key:'disponibilidade', label:'Disponibilidade' },
@@ -1016,6 +1128,51 @@ export default function AdminEscalaClubPage() {
           </div>
           )
         })()
+      ) : aba === 'resumo' ? (
+        /* ===== ABA RESUMO (copiável p/ WhatsApp) ===== */
+        <div>
+          {/* Seletor de mês */}
+          <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:'1.25rem' }}>
+            <button onClick={() => setMesResumo(c => addMes(c, -1))}
+              style={{ width:34, height:34, borderRadius:10, border:'1.5px solid #e5e7eb', background:'#fff', cursor:'pointer', fontSize:14, color:'#555' }}>◀</button>
+            <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:22, color:'#111', letterSpacing:0.5, textTransform:'capitalize', minWidth:200, textAlign:'center' }}>
+              {competenciaLabel(mesResumo)}
+            </div>
+            <button onClick={() => setMesResumo(c => addMes(c, 1))}
+              style={{ width:34, height:34, borderRadius:10, border:'1.5px solid #e5e7eb', background:'#fff', cursor:'pointer', fontSize:14, color:'#555' }}>▶</button>
+          </div>
+
+          {loadingResumo ? (
+            <div style={{ textAlign:'center', padding:'3rem', color:'#aaa', fontSize:14 }}>Gerando resumo...</div>
+          ) : (
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem' }}>
+              {[
+                { id:'unidade', titulo:'Por unidade', sub:'Escala de cada unidade pra avisar a equipe', texto:txtUnidade },
+                { id:'coach',   titulo:'Por coach',   sub:'Aulas de cada coach no mês, pra mandar individual', texto:txtCoach },
+              ].map(b => (
+                <div key={b.id} style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:16, padding:'1.25rem', display:'flex', flexDirection:'column' }}>
+                  <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:10, marginBottom:10 }}>
+                    <div>
+                      <div style={{ fontSize:14, fontWeight:700, color:'#111' }}>{b.titulo}</div>
+                      <div style={{ fontSize:11, color:'#aaa', marginTop:1 }}>{b.sub}</div>
+                    </div>
+                    <button onClick={() => copiarResumo(b.texto, b.id)} disabled={!b.texto}
+                      style={{ flexShrink:0, padding:'0.45rem 0.9rem', borderRadius:10, border:'none',
+                        background: copiado === b.id ? VERDE : ACCENT, color:'#fff', fontSize:12, fontWeight:700,
+                        cursor: b.texto ? 'pointer' : 'default', opacity: b.texto ? 1 : 0.5, fontFamily:"'DM Sans', sans-serif" }}>
+                      {copiado === b.id ? '✓ Copiado' : 'Copiar'}
+                    </button>
+                  </div>
+                  <textarea readOnly value={b.texto || '(sem aulas no mês)'}
+                    onFocus={e => e.currentTarget.select()}
+                    style={{ width:'100%', minHeight:380, resize:'vertical', borderRadius:10, border:'1px solid #eee',
+                      background:'#fafafa', padding:'0.75rem', fontFamily:"'DM Mono', monospace", fontSize:12,
+                      color:'#333', lineHeight:1.5, whiteSpace:'pre-wrap', boxSizing:'border-box' }} />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       ) : !unidadeSel ? (
         <div style={{ background:'#f9fafb', border:'1px dashed #e5e7eb', borderRadius:16, padding:'3rem', textAlign:'center', color:'#aaa' }}>
           Nenhuma unidade Club encontrada.
