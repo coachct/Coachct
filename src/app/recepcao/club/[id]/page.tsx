@@ -192,8 +192,11 @@ export default function RecepcaoClubDetalhe() {
     setVagasBloqueadas(oc?.vagas_bloqueadas || 0)
     setVagasWellhub(oc?.vagas_wellhub ?? null)
     setWellhubEstado((oc as any)?.club_aulas?.unidades?.wellhub_estado ?? null)
-    const { data: whCfg } = await supabase.from('wellhub_config').select('vagas_default').maybeSingle()
-    if (whCfg?.vagas_default != null) setVagasDefaultWh(whCfg.vagas_default)
+    // Blindado: a integração Wellhub NUNCA pode afetar o carregamento desta tela.
+    try {
+      const { data: whCfg } = await supabase.from('wellhub_config').select('vagas_default').maybeSingle()
+      if (whCfg?.vagas_default != null) setVagasDefaultWh(whCfg.vagas_default)
+    } catch { /* ignora: a tela segue normal mesmo se a config Wellhub falhar */ }
 
     const { data: res } = await supabase
       .from('club_reservas')
