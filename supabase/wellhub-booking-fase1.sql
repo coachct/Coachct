@@ -128,15 +128,31 @@ $$;
 -- "Burro" de propósito: sempre enfileira. O worker filtra por unidade integrada.
 -- Coalescing pelo PK garante 1 linha pendente por ocorrência.
 -- DEPENDE de M6.
+--
+-- CRÍTICO: roda em TODA escrita de club_reservas, então NUNCA pode derrubar uma
+-- reserva. Por isso:
+--   * SECURITY DEFINER → o INSERT na fila roda como o dono (bypassa a RLS da
+--     fila); senão a reserva feita por um cliente (role authenticated) quebra
+--     com "new row violates row-level security policy".
+--   * BEGIN/EXCEPTION → se o enfileiramento falhar por qualquer motivo, é
+--     ignorado e a reserva passa; o cron de sync reconcilia depois.
 -- ───────────────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION enfileirar_sync_wellhub()
-RETURNS trigger LANGUAGE plpgsql AS $$
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 DECLARE v_oc uuid;
 BEGIN
   v_oc := COALESCE(NEW.ocorrencia_id, OLD.ocorrencia_id);
-  INSERT INTO wellhub_slot_sync_queue (ocorrencia_id, enfileirado_em)
-  VALUES (v_oc, now())
-  ON CONFLICT (ocorrencia_id) DO UPDATE SET enfileirado_em = now();
+  BEGIN
+    INSERT INTO wellhub_slot_sync_queue (ocorrencia_id, enfileirado_em)
+    VALUES (v_oc, now())
+    ON CONFLICT (ocorrencia_id) DO UPDATE SET enfileirado_em = now();
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING '[wellhub] enfileirar_sync falhou (ignorado): %', SQLERRM;
+  END;
   RETURN NULL;
 END $$;
 
