@@ -141,7 +141,9 @@ export default function CobrancaNoShowPage() {
         club_ocorrencias(data, club_aulas(horario, tipo, unidades(nome)))`)
       .eq('status', 'falta')
       // Só plano parceiro gera multa. Crédito de pacote nosso (avulso/Coach CT Pro) só perde o crédito.
+      // Reservas via app do Wellhub (via_app) NÃO entram: a punição é do Wellhub, e não temos cartão.
       .or('tipo_credito.ilike.wellhub*,tipo_credito.ilike.totalpass*')
+      .eq('via_app', false)
       .in('ocorrencia_id', ocsIdList)
       .order('created_at', { ascending: false })
 

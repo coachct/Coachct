@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
     const { data: reserva, error: errRes } = await supabase
       .from('club_reservas')
       .select(`
-        id, cliente_id, status,
+        id, cliente_id, status, via_app,
         club_ocorrencias(data, club_aulas(horario, unidade_id, unidades(nome)))
       `)
       .eq('id', reserva_id)
@@ -84,6 +84,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Reserva não encontrada' }, { status: 404 })
     if (reserva.status !== 'falta')
       return NextResponse.json({ error: 'Reserva não está marcada como falta' }, { status: 400 })
+    // Reserva via app do Wellhub nunca é cobrada pelo estúdio: a punição é do Wellhub
+    // e não temos cartão do cliente. Defesa extra além do filtro da tela de no-show.
+    if ((reserva as any).via_app === true)
+      return NextResponse.json({ error: 'Reserva via app do Wellhub não é cobrada pelo estúdio' }, { status: 400 })
 
     const oc          = (reserva as any).club_ocorrencias
     const dataAula    = oc?.data || ''

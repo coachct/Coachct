@@ -102,7 +102,8 @@ export default function JustClubAdminPage() {
   const [loadingOcs,  setLoadingOcs]  = useState(false)
   const [msg,         setMsg]         = useState('')
 
-  const [abaAtiva, setAbaAtiva] = useState<'lista' | 'grade' | 'calendario' | 'grupos' | 'feriados'>('lista')
+  const [abaAtiva, setAbaAtiva] = useState<'lista' | 'grade' | 'calendario' | 'grupos' | 'feriados' | 'wellhub'>('lista')
+  const [salvandoWellhub, setSalvandoWellhub] = useState(false)
   const [filtroTipo,  setFiltroTipo]  = useState('todos')
   const [filtroCoach, setFiltroCoach] = useState('todos')
   const [diasCalendario, setDiasCalendario] = useState<7|15|30>(7)
@@ -168,10 +169,33 @@ export default function JustClubAdminPage() {
 
   async function carregarUnidades() {
     setLoadingUnidades(true)
-    const { data } = await supabase.from('unidades').select('id, nome, tipo').eq('tipo', 'club').eq('ativo', true).order('nome')
+    const { data } = await supabase.from('unidades').select('id, nome, tipo, wellhub_estado').eq('tipo', 'club').eq('ativo', true).order('nome')
     setUnidades(data || [])
     setLoadingUnidades(false)
   }
+
+  // Kill switch Wellhub: chama a rota server (muda o estado + esconde/mostra classes).
+  async function aplicarEstadoWellhub(payload: { unidade_id?: string; estado?: 'ativo'|'pausado'; pausar_tudo?: boolean }) {
+    setSalvandoWellhub(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) { alert('Sessão expirada. Faça login de novo.'); return }
+      const res = await fetch('/api/admin/wellhub-estado', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json()
+      if (!res.ok) { alert(data?.error || 'Erro ao atualizar o estado no Wellhub.'); return }
+      // Recarrega unidades preservando a selecionada (pra refletir o novo estado).
+      const { data: novas } = await supabase.from('unidades').select('id, nome, tipo, wellhub_estado').eq('tipo','club').eq('ativo',true).order('nome')
+      setUnidades(novas || [])
+      setUnidadeAtiva((prev: any) => (novas || []).find((u: any) => u.id === prev?.id) || prev)
+    } finally {
+      setSalvandoWellhub(false)
+    }
+  }
+
   async function carregarGrupos() {
     const { data } = await supabase.from('grupos_musculares').select('id, nome, ativo').order('nome')
     setGrupos(data || [])
@@ -727,13 +751,14 @@ export default function JustClubAdminPage() {
           )}
 
           <div className="flex items-center gap-2 mb-3 flex-wrap">
-            {(['lista','grade','calendario','grupos','feriados'] as const).map(aba => {
+            {(['lista','grade','calendario','grupos','feriados','wellhub'] as const).map(aba => {
               const cfg = {
                 lista:      { label: 'Lista',         icon: <List size={14}/> },
                 grade:      { label: 'Grade semanal', icon: <Calendar size={14}/> },
                 calendario: { label: 'Calendário',    icon: <CalendarDays size={14}/> },
                 grupos:     { label: 'Grupos',        icon: <Tag size={14}/> },
                 feriados:   { label: 'Feriados',      icon: <CalendarX size={14}/> },
+                wellhub:    { label: 'Wellhub',       icon: <Power size={14}/> },
               }
               const count = aba==='lista'?aulas.filter(a=>a.ativo).length:aba==='grupos'?gruposAtivos.length:aba==='calendario'?ocsFiltered.length:aba==='feriados'?feriados.length:0
               return (
@@ -745,7 +770,7 @@ export default function JustClubAdminPage() {
                 </button>
               )
             })}
-            {abaAtiva!=='grupos' && abaAtiva!=='feriados' && (
+            {abaAtiva!=='grupos' && abaAtiva!=='feriados' && abaAtiva!=='wellhub' && (
               <button onClick={abrirNovaAula}
                 className="ml-auto flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-primary-600 text-white hover:bg-primary-700 transition-all">
                 <Plus size={14}/> Nova aula
@@ -789,6 +814,52 @@ export default function JustClubAdminPage() {
             </div>
           ) : (
             <>
+              {abaAtiva==='wellhub' && (
+                <div className="space-y-4">
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-xs text-blue-700">
+                    💡 Controla se esta unidade aparece no <strong>app do Wellhub</strong>. <strong>Pausar</strong> esconde as aulas e para de empurrar vagas; <strong>retomar</strong> volta a sincronizar. O estado também é respeitado no recebimento de reservas.
+                  </div>
+
+                  {(() => {
+                    const estado = unidadeAtiva?.wellhub_estado || 'desativado'
+                    const cor = estado==='ativo' ? 'text-green-700 bg-green-50 border-green-200'
+                      : estado==='pausado' ? 'text-amber-700 bg-amber-50 border-amber-200'
+                      : 'text-gray-500 bg-gray-50 border-gray-200'
+                    const label = estado==='ativo' ? 'Ativo' : estado==='pausado' ? 'Pausado' : 'Desativado'
+                    return (
+                      <div className="card">
+                        <div className="flex items-center justify-between flex-wrap gap-3">
+                          <div>
+                            <div className="text-sm font-medium text-gray-800">{unidadeAtiva?.nome}</div>
+                            <span className={`inline-block mt-1 text-xs px-2 py-0.5 rounded-full border ${cor}`}>{label}</span>
+                          </div>
+                          {estado==='desativado' ? (
+                            <div className="text-xs text-gray-400">Integração não habilitada nesta unidade.</div>
+                          ) : estado==='ativo' ? (
+                            <button onClick={()=>aplicarEstadoWellhub({ unidade_id: unidadeAtiva.id, estado:'pausado' })} disabled={salvandoWellhub}
+                              className="px-4 py-2 rounded-xl text-sm font-medium bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50">
+                              ⏸ Pausar no Wellhub
+                            </button>
+                          ) : (
+                            <button onClick={()=>aplicarEstadoWellhub({ unidade_id: unidadeAtiva.id, estado:'ativo' })} disabled={salvandoWellhub}
+                              className="px-4 py-2 rounded-xl text-sm font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50">
+                              ▶ Retomar no Wellhub
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })()}
+
+                  <div className="card flex items-center justify-between flex-wrap gap-3">
+                    <div className="text-xs text-gray-500">Emergência: pausa a integração em <strong>todas</strong> as unidades ativas de uma vez.</div>
+                    <button onClick={()=>{ if (confirm('Pausar a integração Wellhub em TODAS as unidades ativas?')) aplicarEstadoWellhub({ pausar_tudo: true }) }} disabled={salvandoWellhub}
+                      className="px-4 py-2 rounded-xl text-sm font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-50">
+                      ⏸ Pausar tudo
+                    </button>
+                  </div>
+                </div>
+              )}
               {abaAtiva==='lista' && (
                 <div className="space-y-3">
                   {todasAulas.length===0 ? (
