@@ -80,6 +80,7 @@ const nav = [
       { label: 'Fornecedores',         href: '/admin/financeiro/fornecedores' },
       { label: 'Pagamentos',           href: '/admin/relatorios/pagamentos' },
       { label: 'Custo × Retorno',      href: '/admin/relatorios/custo' },
+      { label: 'Custo × Retorno · Club', href: '/admin/relatorios/custo-club' },
       { label: 'Analytics de Coaches', href: '/admin/analytics' },
     ],
   },
