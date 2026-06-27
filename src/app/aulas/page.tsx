@@ -144,6 +144,9 @@ function AulasPageInner() {
 
   const [modalReserva,   setModalReserva]   = useState<any>(null)
   const [modalFila,      setModalFila]      = useState<any>(null)
+  // true quando a fila foi aberta porque a trava de capacidade barrou a reserva
+  // (alguém pegou a última vaga durante a decisão) — mostra o aviso amigável.
+  const [avisoLotou,     setAvisoLotou]     = useState(false)
   const [modalSemCartao, setModalSemCartao] = useState(false)
   const [tipoCredito,    setTipoCredito]    = useState('')
   const [posicaoSel,     setPosicaoSel]     = useState('')
@@ -380,10 +383,10 @@ function AulasPageInner() {
     if (cliente?.bloqueado) return
     if (precisaCartao) { setModalSemCartao(true); return }
     if (!skipTel && precisaTelefone()) { setPendingReserva(() => () => tentarFila(oc, true)); setModalTelefone(true); return }
-    setModalFila(oc); setTipoCredito(''); setFilaAceite(false); setErroModal('')
+    setModalFila(oc); setTipoCredito(''); setFilaAceite(false); setErroModal(''); setAvisoLotou(false)
   }
   async function abrirModalReserva(oc: any, soAvulso: boolean = false) {
-    setModalReserva(oc); setPosicaoSel(''); setErroModal(''); setModalSoAvulso(soAvulso)
+    setModalReserva(oc); setPosicaoSel(''); setErroModal(''); setModalSoAvulso(soAvulso); setAvisoLotou(false)
     // ClassPass usa crédito fixo 'classpass'; em modo só-avulso pré-seleciona o avulso disponível
     setTipoCredito(cliente?.is_classpass ? 'classpass' : (soAvulso ? (avulsoDisponiveis[0] || '') : ''))
     if (oc.club_aulas?.tipo === 'running_funcional') await carregarPosicoes(oc.id)
@@ -412,6 +415,19 @@ function AulasPageInner() {
     if (posicaoSel) payload.posicao = posicaoSel
     const { data: nova, error } = await supabase.from('club_reservas').insert(payload).select('id').single()
     if (error) {
+      // Trava de capacidade server-side (trigger trg_club_reservas_capacidade):
+      // alguém pegou a última vaga enquanto este cliente decidia. Em vez do erro
+      // genérico, fecha a reserva e abre a fila pra mesma aula (mantém o plano já
+      // escolhido) com o aviso amigável, e atualiza a contagem da lista.
+      if (error.message?.includes('AULA_LOTADA')) {
+        const oc = modalReserva
+        setConfirmando(false)
+        setModalReserva(null); setModalSoAvulso(false)
+        setFilaAceite(false); setErroModal('')
+        setAvisoLotou(true); setModalFila(oc)
+        await carregarOcorrencias(dataSelStr)
+        return
+      }
       const msg = error.message?.includes('já tem uma reserva')
         ? 'Você já tem uma reserva nesta unidade neste dia com este plano. Cada plano permite apenas uma reserva por dia por unidade.'
         : 'Erro ao reservar: ' + error.message
@@ -1009,6 +1025,12 @@ function AulasPageInner() {
               </div>
               <button onClick={() => setModalFila(null)} style={{ background:'transparent', border:'none', color:'#555', fontSize:20, cursor:'pointer' }}>✕</button>
             </div>
+            {avisoLotou && (
+              <div style={{ background:`${AMARELO}12`, border:`1px solid ${AMARELO}44`, borderRadius:10, padding:'1rem', marginBottom:'1.25rem', fontSize:14, color:'#fff', lineHeight:1.6 }}>
+                <div style={{ fontWeight:700, color:AMARELO, marginBottom:4 }}>Ops! Alguém foi mais rápido ⚡</div>
+                Reservaram a última vaga enquanto você decidia. Você pode entrar na fila agora ou escolher outro horário.
+              </div>
+            )}
             <div style={{ background:'#1a1000', border:`1px solid ${AMARELO}22`, borderRadius:10, padding:'1rem', marginBottom:'1.25rem', fontSize:13, color:'#888', lineHeight:1.7 }}>
               <div style={{ color:AMARELO, fontWeight:600, marginBottom:6 }}>⚠️ Atenção</div>
               <ul style={{ paddingLeft:'1.2rem', display:'flex', flexDirection:'column', gap:5 }}>
@@ -1054,7 +1076,7 @@ function AulasPageInner() {
             </label>
             {erroModal && <div style={{ background:'#ffaa0015', border:'1px solid #ffaa0044', borderRadius:8, padding:'0.6rem 1rem', fontSize:13, color:AMARELO, marginBottom:'1rem' }}>{erroModal}</div>}
             <div style={{ display:'flex', gap:8 }}>
-              <button onClick={() => setModalFila(null)} style={{ flex:1, background:'transparent', border:'1px solid #2a2a2a', borderRadius:10, padding:'0.85rem', color:'#555', fontSize:14, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>Cancelar</button>
+              <button onClick={() => setModalFila(null)} style={{ flex:1, background:'transparent', border:'1px solid #2a2a2a', borderRadius:10, padding:'0.85rem', color:'#555', fontSize:14, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>{avisoLotou ? 'Ver outro horário' : 'Cancelar'}</button>
               <button onClick={() => confirmarFila()} disabled={entrandoFila}
                 style={{ flex:2, background:AMARELO, color:'#000', border:'none', borderRadius:10, padding:'0.85rem', fontWeight:700, fontSize:15, cursor:entrandoFila?'default':'pointer', fontFamily:"'DM Sans', sans-serif", opacity:entrandoFila?0.7:1 }}>
                 {entrandoFila?'Entrando...':'Entrar na fila ⏳'}
