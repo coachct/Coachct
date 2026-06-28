@@ -346,7 +346,11 @@ export default function AgendarPage() {
         const bloq = bloqueadasMap[hora] || 0
         const ocup = ocupados[hora] || 0
         return { hora, total, ocupados: ocup, bloqueadas: bloq, livres: Math.max(0, total - ocup - bloq) }
-      }).sort((a, b) => a.hora.localeCompare(b.hora))
+      })
+        // Horário com 100% das vagas bloqueadas (e nenhum aluno agendado) some do site —
+        // não vira "LOTADO" fantasma. Equipe continua vendo na recepção/admin.
+        .filter(h => h.bloqueadas < h.total)
+        .sort((a, b) => a.hora.localeCompare(b.hora))
       setHorarios(resultado)
       setAgendamentosNoDia(agCliente || [])
       setFilasDoCliente(filas || [])
