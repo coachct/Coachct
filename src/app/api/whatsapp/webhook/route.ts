@@ -488,18 +488,27 @@ function extrairCpf(texto: string): string | null {
 }
 
 /**
- * Confere se o nome do cadastro aparece na mensagem (segurança leve junto do CPF).
- * Exige o primeiro nome e, havendo sobrenome, também o último. Sem acento/caixa.
+ * Confere se o nome do cadastro aparece na mensagem (segurança LEVE junto do CPF,
+ * que já é o identificador forte de 11 dígitos). Exige o primeiro nome e, havendo
+ * sobrenome, pelo menos UM outro componente do nome — com tolerância a pequenas
+ * variações de grafia (ex.: Gomes/Gomez, Sacchi/Sacche), porque cliente digita o
+ * nome de memória e diverge do cadastro por uma letra. Sem acento/caixa.
  */
 function nomeBate(texto: string, nome: string): boolean {
   const norm = (s: string) =>
     String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9\s]/g, ' ')
-  const tokens = new Set(norm(texto).split(/\s+/).filter((w) => w.length >= 3))
+  const msgTokens = norm(texto).split(/\s+/).filter((w) => w.length >= 3)
   const partes = norm(nome).split(/\s+/).filter((w) => w.length >= 3)
   if (!partes.length) return false
-  const temPrimeiro = tokens.has(partes[0])
-  if (partes.length === 1) return temPrimeiro
-  return temPrimeiro && tokens.has(partes[partes.length - 1])
+  // Match tolerante: igual, ou um é prefixo do outro, ou diferem nas últimas
+  // letras mantendo um prefixo comum de 4+ (cobre Gomes/Gomez, Sacchi/Sacche).
+  const aprox = (a: string, b: string) =>
+    a === b ||
+    (a.length >= 4 && b.length >= 4 && (a.startsWith(b) || b.startsWith(a) || a.slice(0, 4) === b.slice(0, 4)))
+  const bate = (parte: string) => msgTokens.some((t) => aprox(t, parte))
+  if (!bate(partes[0])) return false              // primeiro nome é obrigatório
+  if (partes.length === 1) return true
+  return partes.slice(1).some((p) => bate(p))     // + ao menos mais um componente
 }
 
 /** Heurística: a mensagem sinaliza que a pessoa ainda NÃO é aluno(a)? */
