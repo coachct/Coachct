@@ -32,6 +32,7 @@ export default function AdminVendasPage() {
   const [filtroStatus, setFiltroStatus] = useState<string>('todos')
   const [filtroPeriodo, setFiltroPeriodo] = useState<string>('mes_atual')
   const [filtroUnidade, setFiltroUnidade] = useState<string>('todas')
+  const [filtroOrigem, setFiltroOrigem] = useState<string>('todas')
   const [dataInicio, setDataInicio] = useState('')
   const [dataFim, setDataFim] = useState('')
 
@@ -226,13 +227,15 @@ export default function AdminVendasPage() {
     return { label: 'Balcão', icon: Store, color: 'text-orange-600 bg-orange-50 border-orange-200' }
   }
 
-  const filtrados = filtroStatus === 'todos' ? vendas : vendas.filter(v => v.status === filtroStatus)
+  const vendasOrigem = filtroOrigem === 'todas' ? vendas : vendas.filter(v => v.origem === filtroOrigem)
+
+  const filtrados = filtroStatus === 'todos' ? vendasOrigem : vendasOrigem.filter(v => v.status === filtroStatus)
 
   const totais = {
-    recebido: vendas.filter(v => v.status === 'pago').reduce((acc, v) => acc + v.valor_total, 0),
-    qtd_pago: vendas.filter(v => v.status === 'pago').length,
-    qtd_pendente: vendas.filter(v => v.status === 'pendente').length,
-    qtd_falhou: vendas.filter(v => v.status === 'falhou').length,
+    recebido: vendasOrigem.filter(v => v.status === 'pago').reduce((acc, v) => acc + v.valor_total, 0),
+    qtd_pago: vendasOrigem.filter(v => v.status === 'pago').length,
+    qtd_pendente: vendasOrigem.filter(v => v.status === 'pendente').length,
+    qtd_falhou: vendasOrigem.filter(v => v.status === 'falhou').length,
   }
 
   const periodos = [
@@ -297,6 +300,23 @@ export default function AdminVendasPage() {
               <button key={u.id} onClick={() => setFiltroUnidade(u.id)}
                 className={`btn btn-sm ${filtroUnidade === u.id ? 'bg-primary-600 text-white' : 'border border-gray-200 text-gray-500'}`}>
                 {u.nome}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Filtro de origem */}
+        <div className="mb-3">
+          <div className="text-xs text-gray-400 mb-1">Origem</div>
+          <div className="flex gap-2 flex-wrap">
+            {[
+              { key: 'todas', label: 'Todas' },
+              { key: 'site', label: 'Site' },
+              { key: 'balcao', label: 'Balcão' },
+            ].map(o => (
+              <button key={o.key} onClick={() => setFiltroOrigem(o.key)}
+                className={`btn btn-sm ${filtroOrigem === o.key ? 'bg-primary-600 text-white' : 'border border-gray-200 text-gray-500'}`}>
+                {o.label}
               </button>
             ))}
           </div>
