@@ -75,6 +75,7 @@ export default function RecepcaoClientesPage() {
   const [saldoMes, setSaldoMes] = useState<Record<string, any>>({})
   const [vendas, setVendas] = useState<any[]>([])
   const [planosCliente, setPlanosCliente] = useState<any[]>([])
+  const [avulsosPacotes, setAvulsosPacotes] = useState<any[]>([])
   const [planosDisponiveis, setPlanosDisponiveis] = useState<any[]>([])
   const [todasUnidades, setTodasUnidades] = useState<any[]>([])
 
@@ -182,6 +183,7 @@ export default function RecepcaoClientesPage() {
       carregarHistorico(cliente.id),
       carregarVendas(cliente.id),
       carregarPlanosCliente(cliente.id),
+      carregarAvulsos(cliente.id),
     ])
   }
 
@@ -243,6 +245,34 @@ export default function RecepcaoClientesPage() {
       produtos(id, nome, subtipo, unidade_id, unidades(id, nome, tipo), dias_validade)
     `).eq('cliente_id', clienteId).order('contrato_aceito_em', { ascending: false })
     setPlanosCliente(data || [])
+  }
+
+  async function carregarAvulsos(clienteId: string) {
+    const { data } = await supabase.from('creditos_avulsos')
+      .select('id, tipo, unidade_id, usado, validade, observacao, unidades(nome, tipo)')
+      .eq('cliente_id', clienteId)
+    const linhas = data || []
+    const grupos: Record<string, any> = {}
+    for (const c of linhas) {
+      const chave = `${c.observacao || ''}|${c.validade || ''}|${c.unidade_id || 'global'}|${c.tipo || ''}`
+      if (!grupos[chave]) {
+        grupos[chave] = {
+          chave,
+          observacao: c.observacao ?? null,
+          validade: c.validade ?? null,
+          unidade_id: c.unidade_id ?? null,
+          tipo: c.tipo ?? null,
+          unidade_nome: (c.unidades as any)?.nome ?? null,
+          unidade_tipo: (c.unidades as any)?.tipo ?? null,
+          total: 0, usados: 0, disponiveis: 0,
+        }
+      }
+      grupos[chave].total++
+      if (c.usado) grupos[chave].usados++
+      else grupos[chave].disponiveis++
+    }
+    const lista = Object.values(grupos).sort((a: any, b: any) => (a.validade || '').localeCompare(b.validade || ''))
+    setAvulsosPacotes(lista)
   }
 
   // ─── CT: carregar horários de coach ───────────────────────────────────────
@@ -1009,6 +1039,41 @@ export default function RecepcaoClientesPage() {
                           </button>
                         ))}
                       </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* ─── CRÉDITOS AVULSOS / PACOTES (somente leitura — recepção) ─── */}
+                <div>
+                  <div className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2 flex items-center gap-2"><Package size={12} /> Créditos avulsos / Pacotes</div>
+                  {avulsosPacotes.length === 0 ? (
+                    <div className="card text-center py-6 text-gray-400 text-sm">Nenhum crédito avulso.</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {avulsosPacotes.map(pac => {
+                        const venc = pac.validade ? new Date(pac.validade + 'T12:00:00') : null
+                        const vigente = venc ? venc >= new Date(new Date().toDateString()) : true
+                        return (
+                          <div key={pac.chave} className={`card border-l-4 ${pac.disponiveis > 0 && vigente ? 'border-l-blue-400' : 'border-l-gray-300 opacity-70'}`}>
+                            <div className="flex items-start gap-3">
+                              <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center flex-shrink-0"><Package size={18} /></div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-semibold text-gray-900">{pac.observacao || 'Créditos avulsos'}</span>
+                                  {!vigente && <span className="text-xs px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">Vencido</span>}
+                                  {pac.unidade_nome
+                                    ? <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">{pac.unidade_nome}</span>
+                                    : <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">Todas as unidades</span>}
+                                </div>
+                                <div className="text-xs text-gray-500 mt-1 space-y-0.5">
+                                  <div>Validade: <strong className={vigente ? 'text-blue-700' : 'text-red-600'}>{pac.validade ? formatarBR(pac.validade) : '—'}</strong></div>
+                                  <div><span className="font-bold text-blue-600">{pac.disponiveis}</span> disponíveis<span className="text-gray-400"> · {pac.usados} usados · {pac.total} no total</span></div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
                 </div>
