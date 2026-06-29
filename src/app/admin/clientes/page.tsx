@@ -505,9 +505,11 @@ export default function AdminClientesPage() {
       if (!res.ok) {
         setErroCriar('Cliente cadastrado, mas houve um erro ao criar o acesso: ' + (result.error || 'desconhecido') + '. Acesse o cliente e tente criar o acesso novamente.')
         setCriando(false); setNovoCliente(false); setFormNovo({ nome: '', email: '', telefone: '', cpf: '' }); setBusca(''); setClientes([])
+        await abrirCliente(novoClienteData)
         return
       }
       setNovoCliente(false); setFormNovo({ nome: '', email: '', telefone: '', cpf: '' }); setBusca(''); setClientes([])
+      await abrirCliente(novoClienteData)
       setModalAcessoCriado({ email: emailLimpo, senha: result.sucesso_parcial ? result.senha_provisoria : undefined, sucessoEmail: !!result.email_enviado })
     } catch (e: any) { setErroCriar('Cliente criado, mas falha ao criar acesso: ' + (e.message || 'desconhecido')) }
     finally { setCriando(false) }

@@ -482,12 +482,12 @@ export default function RecepcaoClientesPage() {
 
   async function criarCliente() {
     setCriando(true); setErroCriar('')
-    const { error } = await supabase.from('clientes').insert({
+    const { data: novoClienteData, error } = await supabase.from('clientes').insert({
       nome: formNovo.nome, email: formNovo.email || null,
       telefone: formNovo.telefone, cpf: formNovo.cpf.replace(/\D/g,''), bloqueado: false,
-    })
-    if (error) { setErroCriar('Erro ao cadastrar. Verifique os dados.') }
-    else { setNovoCliente(false); setFormNovo({ nome:'',email:'',telefone:'',cpf:'' }); setBusca(''); setClientes([]) }
+    }).select().single()
+    if (error || !novoClienteData) { setErroCriar('Erro ao cadastrar. Verifique os dados.') }
+    else { setNovoCliente(false); setFormNovo({ nome:'',email:'',telefone:'',cpf:'' }); setBusca(''); setClientes([]); await abrirCliente(novoClienteData) }
     setCriando(false)
   }
 
