@@ -200,7 +200,7 @@ export default function AgendarPage() {
   const [entrandoFila, setEntrandoFila] = useState(false)
   const [erroFila, setErroFila] = useState('')
   const [filaAceite, setFilaAceite] = useState(false)
-  const [notifFila, setNotifFila] = useState<'whatsapp' | 'email' | 'nenhuma'>('whatsapp')
+  const [notifFila, setNotifFila] = useState<'whatsapp' | 'email' | 'nenhuma'>('email')
   const [mostrarContrato, setMostrarContrato] = useState(false)
   const [contratoAssinado, setContratoAssinado] = useState(false)
   const [aceiteCheck, setAceiteCheck] = useState(false)
@@ -267,7 +267,7 @@ export default function AgendarPage() {
       setContratoAssinado((count || 0) > 0)
       const { count: countParceiro } = await supabase.from('agendamentos').select('*', { count: 'exact', head: true }).eq('cliente_id', data.id).or('tipo_credito.ilike.wellhub*,tipo_credito.ilike.totalpass*')
       setJaUsouParceiro((countParceiro || 0) > 0)
-      setNotifFila(data.notificacao_preferida || 'whatsapp')
+      setNotifFila('email')
     }
   }
 
@@ -435,9 +435,7 @@ export default function AgendarPage() {
   }
 
   const notifOpcoes = [
-    { key: 'whatsapp', label: 'WhatsApp', icon: '💬' },
     { key: 'email', label: 'Email', icon: '📧' },
-    { key: 'nenhuma', label: 'Sem aviso', icon: '🔕' },
   ]
 
   // ── FIX: inclui !loadingSaldos na checagem para evitar falso positivo ─────
@@ -475,7 +473,7 @@ export default function AgendarPage() {
     const dataStr = dataLocalStr(diasSemana[diaSel])
     setModalFila({ data: dataStr, hora })
     setTipoFilaCredito(''); setErroFila(''); setFilaAceite(false)
-    setNotifFila(cliente?.notificacao_preferida || 'whatsapp')
+    setNotifFila('email')
     if (!contratoAssinado) setMostrarContrato(true)
   }
 

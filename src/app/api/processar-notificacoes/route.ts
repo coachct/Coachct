@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
-import { enviarTexto } from '@/lib/whatsapp/canal'
 
 const REMETENTE = 'Just Club & CT <nao-responda@justct.com.br>'
 const BASE_URL  = process.env.NEXT_PUBLIC_BASE_URL || 'https://coach-ct.vercel.app'
@@ -172,26 +171,13 @@ export async function POST(req: NextRequest) {
   for (const notif of notifs) {
     const cliente = clienteMap[notif.cliente_id]
 
-    // ── Canal WhatsApp (promoção da fila): tenta WhatsApp e cai para email se
-    //    não houver telefone válido ou a Meta recusar (ex.: fora da janela de 24h).
-    if (notif.canal === 'whatsapp') {
-      const tel = String(notif.destino || cliente?.telefone || '').replace(/\D/g, '')
-      const telValido = tel.length === 10 || tel.length === 11
-      const enviadoWa = telValido ? await enviarTexto('55' + tel, notif.mensagem) : false
-
-      if (enviadoWa) {
-        await marcar(notif.id, { status: 'enviado', enviado_em: new Date().toISOString() })
-        enviadas++
-        continue
-      }
-      // Sem telefone ou WhatsApp falhou → segue para o fallback de email abaixo.
-    }
+    // Canal único: email. (WhatsApp removido — avisos de fila saem só por email.)
 
     // ── Canal email (padrão, e fallback do WhatsApp)
     if (!cliente?.email) {
       await marcar(notif.id, {
         status: 'erro',
-        erro: 'Cliente sem telefone/email para o canal solicitado',
+        erro: 'Cliente sem email cadastrado',
         enviado_em: new Date().toISOString(),
       })
       erros++

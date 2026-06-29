@@ -176,7 +176,7 @@ function CheckoutContent() {
     const { error: clienteError } = await supabase.from('clientes').insert({
       user_id: userId, nome: nome.trim(), cpf: cpfLimpo,
       telefone: telefone.replace(/\D/g, ''), whatsapp: telefone.replace(/\D/g, ''),
-      email: emailCadastro.trim(), notificacao_preferida: 'whatsapp', bloqueado: false, ativo: true,
+      email: emailCadastro.trim(), notificacao_preferida: 'email', bloqueado: false, ativo: true,
     })
 
     if (clienteError) { setErro('Erro ao finalizar cadastro.'); setLoadingCadastro(false); return }

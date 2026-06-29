@@ -24,7 +24,7 @@ export default function CadastroPage() {
   const [senha, setSenha] = useState('')
   const [senha2, setSenha2] = useState('')
   const [sexo, setSexo] = useState<'M' | 'F' | ''>('')
-  const [notificacao, setNotificacao] = useState<'whatsapp' | 'email' | 'nenhuma'>('whatsapp')
+  const [notificacao, setNotificacao] = useState<'whatsapp' | 'email' | 'nenhuma'>('email')
 
   useEffect(() => {
     if (loadingAuth) return
@@ -121,9 +121,7 @@ export default function CadastroPage() {
     textTransform: 'uppercase' as const, letterSpacing: 1,
   }
   const notifOpcoes = [
-    { key: 'whatsapp', label: 'WhatsApp', icon: '💬', desc: 'Aviso pelo número cadastrado' },
     { key: 'email',    label: 'Email',    icon: '📧', desc: 'Aviso no seu email' },
-    { key: 'nenhuma',  label: 'Nenhuma',  icon: '🔕', desc: 'Sem notificações' },
   ]
 
   return (
