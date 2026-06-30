@@ -133,12 +133,20 @@ export async function POST(req: NextRequest) {
   )
   const resend = new Resend(process.env.RESEND_API_KEY)
 
+  // Salvaguarda: só envia avisos recentes (últimas 24h). Em operação normal o
+  // cron roda a cada minuto, então toda notificação nova sai em ~1 min — bem
+  // antes desse corte. O corte só evita disparar de uma vez um backlog antigo
+  // represado (ex.: avisos de aulas que já passaram).
+  const CORTE_HORAS = 24
+  const corte = new Date(Date.now() - CORTE_HORAS * 60 * 60 * 1000).toISOString()
+
   // Busca notificações pendentes (máximo 50 por rodada)
   const { data: notifs, error: errNotifs } = await supabase
     .from('notificacoes_pendentes')
     .select('*')
     .eq('status', 'pendente')
     .is('enviado_em', null)
+    .gte('criado_em', corte)
     .order('criado_em', { ascending: true })
     .limit(50)
 
