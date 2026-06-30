@@ -9,6 +9,15 @@ import type { TurnoConversa } from './agente'
 const GRAPH_VERSION = 'v21.0'
 
 /**
+ * Rede de segurança: o modelo às vezes inventa o domínio com um "e" a mais
+ * ("justclubect.com.br"). Aqui forçamos a grafia certa (justclubct) em TODA
+ * mensagem que sai, independente do que o modelo escreveu.
+ */
+export function corrigirDominioSite(texto: string): string {
+  return String(texto ?? '').replace(/justclube*ct/gi, 'justclubct')
+}
+
+/**
  * Envia uma mensagem de texto pelo WhatsApp (Meta Graph API).
  * Retorna true se a Meta aceitou o envio, false caso contrário (config ausente,
  * fora da janela de 24h, etc.) — permite ao chamador cair para um canal alternativo.
@@ -30,7 +39,7 @@ export async function enviarTexto(para: string, texto: string): Promise<boolean>
       messaging_product: 'whatsapp',
       to: para,
       type: 'text',
-      text: { body: texto },
+      text: { body: corrigirDominioSite(texto) },
     }),
   })
   if (!resp.ok) {
@@ -81,7 +90,7 @@ export async function enviarBotoes(
       type: 'interactive',
       interactive: {
         type: 'button',
-        body: { text: texto.slice(0, 1024) },
+        body: { text: corrigirDominioSite(texto).slice(0, 1024) },
         action: {
           buttons: botoesValidos.map((b) => ({ type: 'reply', reply: { id: b.id, title: b.titulo } })),
         },

@@ -5,6 +5,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { TurnoConversa } from './agente-info'
+import { corrigirDominioSite } from '@/lib/whatsapp/canal'
 
 const GRAPH_VERSION = 'v21.0'
 
@@ -28,7 +29,7 @@ export async function enviarTextoInstagram(igsid: string, texto: string): Promis
     },
     body: JSON.stringify({
       recipient: { id: igsid },
-      message: { text: texto },
+      message: { text: corrigirDominioSite(texto) },
       messaging_type: 'RESPONSE',
     }),
   })
