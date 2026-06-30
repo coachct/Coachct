@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
 import SiteHeader from '@/components/SiteHeader'
+import AvisoUnidade from '@/components/AvisoUnidade'
 import ModalTelefone from '@/components/ModalTelefone'
 import { nomeCoachPublico } from '@/lib/mascaraCoachPublico'
 
@@ -257,6 +258,7 @@ function MapaPageInner() {
       `}</style>
 
       <SiteHeader/>
+      <AvisoUnidade unidadeId={unidadeId} />
 
       <div style={{ maxWidth:700, margin:'0 auto', padding:'5.5rem 1rem 6rem' }}>
 

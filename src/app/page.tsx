@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
 import SiteHeader from '@/components/SiteHeader'
+import AvisoUnidade from '@/components/AvisoUnidade'
 
 const ACCENT = '#ff2d9b'
 
@@ -132,6 +133,7 @@ export default function LandingPage() {
       `}</style>
 
       <SiteHeader />
+      <AvisoUnidade />
 
       {/* HERO — frase de efeito da Just (grafite style) */}
       <div style={{ background: '#080808', paddingTop: 64 }}>
