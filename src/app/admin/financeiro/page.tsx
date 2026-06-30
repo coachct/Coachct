@@ -54,6 +54,7 @@ export default function FinanceiroDREPage() {
   const [ano, setAno] = useState(agora.getFullYear())
   const [mes, setMes] = useState(agora.getMonth() + 1)
   const [modo, setModo] = useState<'competencia' | 'caixa'>('competencia')
+  const [unidadeFiltro, setUnidadeFiltro] = useState<string>('todas')
 
   const anos = [agora.getFullYear() - 1, agora.getFullYear(), agora.getFullYear() + 1]
 
@@ -63,9 +64,8 @@ export default function FinanceiroDREPage() {
   const [unidades, setUnidades] = useState<Unidade[]>([])
   const [faturamento, setFaturamento] = useState<FatRow[]>([])
   const [despesasRows, setDespesasRows] = useState<DespRow[]>([])
-  const [comparativo, setComparativo] = useState<
-    { label: string; fat: number; desp: number; res: number }[]
-  >([])
+  const [resultadoPrev1, setResultadoPrev1] = useState<ResRow[]>([])
+  const [resultadoPrev2, setResultadoPrev2] = useState<ResRow[]>([])
 
   async function carregar() {
     setCarregando(true)
@@ -104,35 +104,16 @@ export default function FinanceiroDREPage() {
     setFaturamento(fat)
     setDespesasRows(desp)
 
-    const somaRes = (rows: any[]) => {
-      let f = 0
-      let d = 0
-      ;(rows || []).forEach((r) => {
-        f += Number(r.faturamento || 0)
-        d += Number(r.despesas || 0)
-      })
-      return { fat: f, desp: d, res: f - d }
-    }
+    const mapRes = (rows: any[]): ResRow[] =>
+      ((rows as any[]) || []).map((r) => ({
+        unidade_id: r.unidade_id ?? null,
+        faturamento: Number(r.faturamento || 0),
+        despesas: Number(r.despesas || 0),
+        resultado: Number(r.resultado || (Number(r.faturamento || 0) - Number(r.despesas || 0))),
+      }))
 
-    const totalFatAtual = fat.reduce((a, r) => a + r.total, 0)
-    const totalDespAtual = desp.reduce((a, r) => a + r.total, 0)
-
-    setComparativo([
-      {
-        label: `${MESES[prev2.mes - 1].slice(0, 3)}/${String(prev2.ano).slice(2)}`,
-        ...somaRes((resR2.data as any[]) || []),
-      },
-      {
-        label: `${MESES[prev1.mes - 1].slice(0, 3)}/${String(prev1.ano).slice(2)}`,
-        ...somaRes((resR1.data as any[]) || []),
-      },
-      {
-        label: `${MESES[mes - 1].slice(0, 3)}/${String(ano).slice(2)}`,
-        fat: totalFatAtual,
-        desp: totalDespAtual,
-        res: totalFatAtual - totalDespAtual,
-      },
-    ])
+    setResultadoPrev1(mapRes((resR1.data as any[]) || []))
+    setResultadoPrev2(mapRes((resR2.data as any[]) || []))
 
     setCarregando(false)
   }
@@ -150,6 +131,11 @@ export default function FinanceiroDREPage() {
   }, [faturamento, despesasRows])
 
   const colunas = useMemo(() => {
+    if (unidadeFiltro !== 'todas') {
+      if (unidadeFiltro === 'geral') return [{ key: 'geral', label: 'Geral' }]
+      const u = unidades.find((x) => x.id === unidadeFiltro)
+      return [{ key: unidadeFiltro, label: u?.nome || 'Unidade' }]
+    }
     const cols: { key: string; label: string }[] = unidades.map((u) => ({
       key: u.id,
       label: u.nome,
@@ -157,7 +143,7 @@ export default function FinanceiroDREPage() {
     if (temGeral) cols.push({ key: 'geral', label: 'Geral' })
     cols.push({ key: 'total', label: 'Total' })
     return cols
-  }, [unidades, temGeral])
+  }, [unidades, temGeral, unidadeFiltro])
 
   const keyDe = (unidade_id: string | null) => (unidade_id === null ? 'geral' : unidade_id)
 
@@ -212,12 +198,55 @@ export default function FinanceiroDREPage() {
   }, [despesasRows])
 
   const resumo = useMemo(() => {
-    const fat = fatPorColuna.total || 0
-    const desp = despPorColuna.total || 0
+    const chave = unidadeFiltro === 'todas' ? 'total' : unidadeFiltro
+    const fat = fatPorColuna[chave] || 0
+    const desp = despPorColuna[chave] || 0
     const res = fat - desp
     const margem = fat > 0 ? (res / fat) * 100 : 0
     return { fat, desp, res, margem }
-  }, [fatPorColuna, despPorColuna])
+  }, [fatPorColuna, despPorColuna, unidadeFiltro])
+
+  const comparativo = useMemo(() => {
+    const prev1 = recuar(ano, mes, 1)
+    const prev2 = recuar(ano, mes, 2)
+
+    const bate = (uid: string | null) => {
+      if (unidadeFiltro === 'todas') return true
+      if (unidadeFiltro === 'geral') return uid === null
+      return uid === unidadeFiltro
+    }
+
+    const somaRes = (rows: ResRow[]) => {
+      let f = 0
+      let d = 0
+      ;(rows || []).forEach((r) => {
+        if (!bate(r.unidade_id)) return
+        f += r.faturamento
+        d += r.despesas
+      })
+      return { fat: f, desp: d, res: f - d }
+    }
+
+    const fatAtual = faturamento.reduce((a, r) => a + (bate(r.unidade_id) ? r.total : 0), 0)
+    const despAtual = despesasRows.reduce((a, r) => a + (bate(r.unidade_id) ? r.total : 0), 0)
+
+    return [
+      {
+        label: `${MESES[prev2.mes - 1].slice(0, 3)}/${String(prev2.ano).slice(2)}`,
+        ...somaRes(resultadoPrev2),
+      },
+      {
+        label: `${MESES[prev1.mes - 1].slice(0, 3)}/${String(prev1.ano).slice(2)}`,
+        ...somaRes(resultadoPrev1),
+      },
+      {
+        label: `${MESES[mes - 1].slice(0, 3)}/${String(ano).slice(2)}`,
+        fat: fatAtual,
+        desp: despAtual,
+        res: fatAtual - despAtual,
+      },
+    ]
+  }, [ano, mes, unidadeFiltro, faturamento, despesasRows, resultadoPrev1, resultadoPrev2])
 
   const maxComparativo = useMemo(
     () => Math.max(1, ...comparativo.map((c) => Math.max(c.fat, c.desp))),
@@ -249,6 +278,20 @@ export default function FinanceiroDREPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            <select
+              value={unidadeFiltro}
+              onChange={(e) => setUnidadeFiltro(e.target.value)}
+              className={inputCls}
+            >
+              <option value="todas">Todas as unidades</option>
+              {unidades.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.nome}
+                </option>
+              ))}
+              {temGeral && <option value="geral">Geral</option>}
+            </select>
+
             <div className="flex gap-2">
               <select value={mes} onChange={(e) => setMes(Number(e.target.value))} className={inputCls}>
                 {MESES.map((m, i) => (
