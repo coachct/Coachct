@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase'
 import { Coach } from '@/types'
 import { fmt, DIAS_SEMANA, HORARIOS } from '@/lib/utils'
@@ -28,6 +28,12 @@ export default function CoachesPage() {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(EMPTY)
   const [editForm, setEditForm] = useState<Partial<Coach> | null>(null)
+  const editFormRef = useRef<HTMLDivElement>(null)
+  // O scroll real é no <main> do layout (não na window), então window.scrollTo não funciona.
+  // Rola o formulário de edição pra dentro da viewport quando abre/troca de coach.
+  useEffect(() => {
+    if (editForm) editFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [editForm?.id])
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
   const [expandedUnidades, setExpandedUnidades] = useState<string | null>(null)
@@ -337,7 +343,7 @@ export default function CoachesPage() {
 
       {/* ── Formulário edição ── */}
       {editForm && (
-        <div className="card mb-6" style={{borderColor:'#EF9F27'}}>
+        <div ref={editFormRef} className="card mb-6" style={{borderColor:'#EF9F27'}}>
           <h2 className="text-sm font-semibold text-gray-900 mb-4">Editar — {editForm.nome}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
             <div><label className="label">Nome</label><input className="input" value={editForm.nome} onChange={e => setEditForm(f=>({...f!,nome:e.target.value}))} /></div>
@@ -388,7 +394,7 @@ export default function CoachesPage() {
                   {!inativo && (
                     <>
                       <button onClick={() => { setSenhaModal(coach); setNovaSenha(''); setMsgSenha('') }} className="btn btn-sm gap-1"><KeyRound size={12}/> Senha</button>
-                      <button onClick={() => { setEditForm(coach); setShowForm(false); window.scrollTo(0,0) }} className="btn btn-sm">Editar</button>
+                      <button onClick={() => { setEditForm(coach); setShowForm(false) }} className="btn btn-sm">Editar</button>
                       <button onClick={() => {
                         const abrindo = expandedUnidades !== coach.id
                         setExpandedUnidades(abrindo ? coach.id : null)
