@@ -279,17 +279,23 @@ export async function proximasReservasClub(
     })
 }
 
-/** Histórico de treinos realizados (personal), mais recentes primeiro. */
+/**
+ * Histórico recente de treinos PERSONAL (Coach CT), mais recentes primeiro.
+ * Inclui os REALIZADOS e também as FALTAS (no-show) — assim o agente consegue
+ * ver, por exemplo, "você faltou no treino de hoje 06:30" (uma falta NÃO aparece
+ * em proximos_agendamentos, que só traz agendado/confirmado futuro). O campo
+ * `status` distingue 'realizado' de 'falta'.
+ */
 export async function historicoTreinos(
   supabase: SupabaseClient,
   clienteId: string,
-  limite = 5,
+  limite = 6,
 ): Promise<any[]> {
   const { data, error } = await supabase
     .from('agendamentos')
-    .select('id, data, horario, tipo_credito, coach_id, unidades(nome)')
+    .select('id, data, horario, status, tipo_credito, coach_id, unidades(nome)')
     .eq('cliente_id', clienteId)
-    .eq('status', 'realizado')
+    .in('status', ['realizado', 'falta'])
     .order('data', { ascending: false })
     .order('horario', { ascending: false })
     .limit(limite)
