@@ -495,27 +495,30 @@ async function resolverPorCadastro(
     return null
   }
 
-  // 2. A mensagem traz um CPF?
+  // 2. A mensagem traz um CPF? (identificador forte). Extraímos também o e-mail,
+  //    que serve de reforço se o CPF não bater (e, na recuperação de senha, é o
+  //    e-mail que o cliente QUER usar pra criar o acesso).
   const cpf = extrairCpf(texto)
+  const email = extrairEmail(texto)
   if (cpf) {
-    // Tem CPF: procura no cadastro.
     const achado = await buscarClientePorCpf(supabase, cpf)
-    if (!achado) {
-      return responder(MSG_NAO_CLIENTE)
+    if (achado) {
+      // Achou: por segurança, confere o nome na mesma mensagem.
+      if (!nomeBate(texto, achado.nome)) {
+        return responder('Achei um cadastro com esse CPF! 😊 Por segurança, me reenvia seu *nome completo* junto com o *CPF* na mesma mensagem, do jeitinho que está no cadastro, que eu confirmo que é você.')
+      }
+      // Confirmado. O vínculo é gravado pela salvarMensagem (com cliente_id) lá no
+      // fluxo principal — assim, nas próximas conversas, o passo 1 já reconhece.
+      await registrarAcessoLgpd(supabase, { clienteId: achado.id, telefone, acao: 'wa_vinculo_cpf' })
+      return achado
     }
-    // Achou: por segurança, confere o nome na mesma mensagem.
-    if (!nomeBate(texto, achado.nome)) {
-      return responder('Achei um cadastro com esse CPF! 😊 Por segurança, me reenvia seu *nome completo* junto com o *CPF* na mesma mensagem, do jeitinho que está no cadastro, que eu confirmo que é você.')
-    }
-    // Confirmado. O vínculo é gravado pela salvarMensagem (com cliente_id) lá no
-    // fluxo principal — assim, nas próximas conversas, o passo 1 já reconhece.
-    await registrarAcessoLgpd(supabase, { clienteId: achado.id, telefone, acao: 'wa_vinculo_cpf' })
-    return achado
+    // CPF não encontrado: se NÃO veio um e-mail pra tentar, encerra como não-cliente.
+    if (!email) return responder(MSG_NAO_CLIENTE)
+    // senão, cai no bloco de e-mail abaixo (reforço).
   }
 
-  // 2b. Sem CPF, mas a mensagem traz um E-MAIL? Muita gente tem e-mail no
-  //     cadastro mas não tem CPF (ou não lembra) — identifica por e-mail.
-  const email = extrairEmail(texto)
+  // 2b. E-mail (sem CPF, ou CPF que não bateu): muita gente tem e-mail no cadastro
+  //     mas não tem CPF — identifica por e-mail.
   if (email) {
     const achadoEmail = await buscarClientePorEmail(supabase, email)
     if (!achadoEmail) {
@@ -559,14 +562,20 @@ async function clienteVinculadoPorHistorico(
   return await buscarClientePorId(supabase, id)
 }
 
-/** Extrai um CPF (11 dígitos) da mensagem — aceita formatado (000.000.000-00) ou solto. */
+/**
+ * Extrai um CPF (11 dígitos) da mensagem. Tolera QUALQUER separador comum entre
+ * os grupos — ponto, traço, espaço ou nenhum — inclusive a digitação errada
+ * "000.000.000.00" (ponto antes dos 2 últimos, em vez de traço), que era a causa
+ * de o CPF não ser reconhecido e o cliente cair no looping.
+ */
 function extrairCpf(texto: string): string | null {
-  const fmt = texto.match(/\d{3}\.?\d{3}\.?\d{3}-?\d{2}/)
+  const t = String(texto ?? '')
+  const fmt = t.match(/\d{3}[.\-\s]?\d{3}[.\-\s]?\d{3}[.\-\s]?\d{2}/)
   if (fmt) {
     const d = fmt[0].replace(/\D/g, '')
     if (d.length === 11) return d
   }
-  const solto = texto.replace(/\D/g, ' ').match(/(?:^|\s)(\d{11})(?:\s|$)/)
+  const solto = t.replace(/\D/g, ' ').match(/(?:^|\s)(\d{11})(?:\s|$)/)
   return solto ? solto[1] : null
 }
 
