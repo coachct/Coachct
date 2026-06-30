@@ -170,18 +170,17 @@ export default function PagamentosCoachesPage() {
     if (!coachSel || !unidadeSel || totalAulas === 0) return
     setLancando(true)
 
-    // 1) Registro do pagamento do coach (inalterado)
-    const { data: pag, error } = await supabase.from('coach_pagamentos').insert({
-      coach_id:       coachSel.id,
-      unidade_id:     unidadeSel.id,
-      periodo_inicio: inicio,
-      periodo_fim:    fim,
-      total_aulas:    totalAulas,
-      valor_por_aula: totalBonus / totalAulas,
-      valor_total:    totalFinal,
-      status:         'pendente',
-      observacao:     `${coachSel.nome} — ${totalAulas} aulas em ${unidadeSel.nome} (${formatarData(inicio)} a ${formatarData(fim)})${incluirFixo ? ` + fixo R$ ${salarioFixo.toFixed(2).replace('.', ',')}` : ''}`,
-    }).select('id').maybeSingle()
+    // 1) Registro do pagamento do coach (via RPC SECURITY DEFINER — valida admin e contorna RLS)
+    const { data: pagId, error } = await supabase.rpc('registrar_pagamento_coach', {
+      p_coach_id:       coachSel.id,
+      p_unidade_id:     unidadeSel.id,
+      p_periodo_inicio: inicio,
+      p_periodo_fim:    fim,
+      p_total_aulas:    totalAulas,
+      p_valor_por_aula: totalBonus / totalAulas,
+      p_valor_total:    totalFinal,
+      p_observacao:     `${coachSel.nome} — ${totalAulas} aulas em ${unidadeSel.nome} (${formatarData(inicio)} a ${formatarData(fim)})${incluirFixo ? ` + fixo R$ ${salarioFixo.toFixed(2).replace('.', ',')}` : ''}`,
+    })
 
     if (error) { setLancando(false); showMsg('Erro: ' + error.message); return }
 
@@ -205,7 +204,7 @@ export default function PagamentosCoachesPage() {
       vencimento,
       pago:               false,
       origem:             'coach',
-      coach_pagamento_id: pag?.id || null,
+      coach_pagamento_id: pagId || null,
     })
 
     setLancando(false)
