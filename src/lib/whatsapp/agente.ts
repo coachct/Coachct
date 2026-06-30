@@ -103,7 +103,7 @@ ${cliente.bloqueado ? `ATENÇÃO: este cliente está BLOQUEADO. Motivo: ${client
 # Data de hoje (fuso de São Paulo — use SEMPRE estas, nunca calcule por conta própria)
 - HOJE é ${hoje.extenso} — ${hoje.dataStr}.
 - AMANHÃ é ${hoje.amanhaExtenso} — ${hoje.amanhaStr}.
-Quando o cliente disser "hoje" use ${hoje.dataStr}; quando disser "amanhã" use ${hoje.amanhaStr}. Para outros dias ("quinta", "dia 20"), conte a partir de HOJE acima. Sempre passe a data no formato AAAA-MM-DD para as ferramentas.
+Quando o cliente disser "hoje" use ${hoje.dataStr}; quando disser "amanhã" use ${hoje.amanhaStr}. Para outros dias ("quinta", "dia 20"), conte a partir de HOJE acima. Sempre passe a data no formato AAAA-MM-DD para as ferramentas. JAMAIS pergunte "que dia é hoje?" nem diga que não sabe a data — você sabe (está acima). E você TEM acesso aos horários/aulas pelas ferramentas (aulas_club_disponiveis para o Club, horarios_disponiveis para o Coach CT): NUNCA diga que "não tem acesso ao calendário/em tempo real". Quando o cliente quiser ver a GRADE de aulas do dia numa unidade, você pode consultar e mostrar — e também pode indicar que no site (https://www.justclubct.com.br) ele vê tudo atualizado e já reserva.
 
 JANELA DE AGENDAMENTO DO JUST CT (REGRA — atenção, varia por plano):
 - Wellhub, TotalPass e avulso: só os PRÓXIMOS 7 DIAS (de hoje até o 7º dia).
@@ -678,6 +678,20 @@ const TOOLS_VISITANTE: Anthropic.Tool[] = [
   },
 ]
 
+/** Datas de hoje/amanhã no fuso de SP, prontas (evita o "bug noturno" de conta de data). */
+function calcularHoje(): { dataStr: string; extenso: string; amanhaStr: string; amanhaExtenso: string } {
+  const { dataStr } = agoraEmSaoPaulo()
+  const extensoFmt = new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' })
+  const hojeNoon = new Date(dataStr + 'T12:00:00Z')
+  const amanhaNoon = new Date(hojeNoon.getTime() + 24 * 60 * 60 * 1000)
+  return {
+    dataStr,
+    extenso: extensoFmt.format(hojeNoon),
+    amanhaStr: amanhaNoon.toISOString().slice(0, 10),
+    amanhaExtenso: extensoFmt.format(amanhaNoon),
+  }
+}
+
 export async function responderVisitante(params: {
   supabase: SupabaseClient
   mensagem: string
@@ -685,6 +699,7 @@ export async function responderVisitante(params: {
 }): Promise<string> {
   const { supabase, mensagem, historico = [] } = params
   const client = new Anthropic()
+  const hoje = calcularHoje()
 
   const [enderecos, faq] = await Promise.all([listarEnderecos(supabase), listarConhecimento(supabase)])
   const enderecosTxt = enderecos.length
@@ -694,8 +709,12 @@ export async function responderVisitante(params: {
 
   const system = `Você é a voz da **Just Club & CT** no WhatsApp, falando com alguém que ainda NÃO está identificado no nosso cadastro (o número não bateu). Seja caloroso, descontraído, com a cara da Just. NUNCA se apresente como "assistente virtual", "bot" ou "IA".
 
+# Data de hoje (você SABE que dia é — NUNCA pergunte)
+- HOJE é ${hoje.extenso} — ${hoje.dataStr}. Quando o cliente disser "hoje", é esse dia. JAMAIS pergunte "que dia é hoje?" nem diga que não sabe a data: você sabe.
+
 # O que fazer
 - Responda dúvidas GERAIS normalmente: modalidades (Lift, Lift for Girls, Running + Funcional, Coach CT, musculação livre), planos e PREÇOS (use a ferramenta consultar_precos — nunca chute valores), endereços, horários e a base abaixo.
+- HORÁRIOS DAS AULAS DO DIA (REGRA): quando perguntarem os horários/aulas de um dia numa unidade (ex.: "aulas de hoje na Vila Olímpia"), a forma MAIS RÁPIDA de ver — e já reservar a vaga — é no nosso site, sempre atualizado. Responda assim, de forma positiva e curta: "Os horários das aulas você vê rapidinho — e já reserva sua vaga! — direto no nosso site, que fica sempre atualizado 👉 https://www.justclubct.com.br 😊". NUNCA diga "não tenho acesso ao calendário/em tempo real", NUNCA pareça impotente e NUNCA pergunte que dia é hoje — apenas indique o site com simpatia.
 - Se a pessoa quiser AGENDAR/RESERVAR ou ATIVAR o plano (inclusive Wellhub/TotalPass), ENSINE o passo a passo self-service pelo site:
   1. Entrar na conta em https://www.justclubct.com.br (criar cadastro se ainda não tiver).
   2. Ativar o plano dela dentro do cadastro — se for Wellhub/TotalPass, ativar informando os limites.
