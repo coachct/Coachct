@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
 import SiteHeader from '@/components/SiteHeader'
-import AvisoUnidade from '@/components/AvisoUnidade'
+import AvisoUnidade, { AvisoPopupPinheiros } from '@/components/AvisoUnidade'
 import ModalTelefone from '@/components/ModalTelefone'
 import { nomeCoachPublico } from '@/lib/mascaraCoachPublico'
 
@@ -509,6 +509,7 @@ function AulasPageInner() {
       `}</style>
       <SiteHeader/>
       <AvisoUnidade unidadeId={unidadeId} />
+      <AvisoPopupPinheiros unidadeId={unidadeId} />
       <div style={{ maxWidth: isMobile ? 700 : 1400, margin:'0 auto', padding: isMobile ? '6rem 1.5rem 4rem' : '6rem 2rem 4rem' }}>
 
         <div style={{ display:'flex', alignItems:'center', gap:'1rem', marginBottom:'2rem' }}>
