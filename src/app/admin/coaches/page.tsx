@@ -180,7 +180,7 @@ export default function CoachesPage() {
     setLoadingAulas(true)
     const inicio = new Date(ano, mes - 1, 1).toISOString()
     const fim = new Date(ano, mes, 0, 23, 59, 59).toISOString()
-    const { data } = await supabase.from('aulas').select('*, alunos(nome), treinos(nome)')
+    const { data } = await supabase.from('aulas').select('*, clientes:cliente_id(nome), treinos(nome)')
       .eq('coach_id', coach.id).in('status', ['finalizada', 'em_andamento'])
       .gte('horario_agendado', inicio).lte('horario_agendado', fim)
       .order('horario_agendado', { ascending: false })
@@ -632,7 +632,7 @@ export default function CoachesPage() {
                     <div key={aula.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 border border-gray-100">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-medium text-gray-900 truncate">{aula.alunos?.nome||'Aluno'}</span>
+                          <span className="text-sm font-medium text-gray-900 truncate">{aula.clientes?.nome||'Aluno'}</span>
                           <span className="text-xs text-gray-400">·</span>
                           <span className="text-xs text-gray-500 truncate">{aula.treinos?.nome||'—'}</span>
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${aula.status==='finalizada'?'bg-green-100 text-green-700':'bg-orange-100 text-orange-700'}`}>
