@@ -31,6 +31,7 @@ import {
   salvarAcaoPendente,
   limparAcaoPendente,
   marcarAguardandoHumano,
+  baixarMidiaMeta,
 } from '@/lib/whatsapp/canal'
 
 export const runtime = 'nodejs'
@@ -98,6 +99,23 @@ export async function POST(req: NextRequest) {
 
   const de = String(msg.from ?? '')
   const wamid = String(msg.id ?? '') // id único do inbound (Meta) — usado na dedup
+
+  // Anexo (imagem/documento/áudio/vídeo/figurinha): trata em separado — baixa o
+  // arquivo, guarda no painel e escala pra equipe (o bot não processa arquivos).
+  const MIDIA_TIPOS = ['image', 'document', 'audio', 'video', 'sticker']
+  if (MIDIA_TIPOS.includes(msg.type)) {
+    const obj = msg[msg.type] ?? {}
+    const midia = {
+      tipo: String(msg.type),
+      id: String(obj.id ?? ''),
+      mime: String(obj.mime_type ?? ''),
+      filename: String(obj.filename ?? ''),
+      caption: String(obj.caption ?? '').trim(),
+    }
+    if (midia.id) waitUntil(processarMidia(de, wamid, midia))
+    return new NextResponse('OK', { status: 200 })
+  }
+
   let texto = ''
   let botaoId = '' // id do botão clicado (ex.: "confirmar" / "negar"), quando houver
   if (msg.type === 'text') {
@@ -264,6 +282,71 @@ async function processar(de: string, texto: string, wamid: string, botaoId: stri
   } catch (e: any) {
     console.error('[whatsapp/webhook] erro no processamento:', e?.message)
     try { await enviarTexto(de, 'Tive um erro aqui. Pode tentar de novo em instantes?') } catch {}
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Recebimento de ANEXO (mídia) — o bot não processa arquivos: guarda no painel
+// e escala pra equipe. O binário vai pro Storage; o histórico guarda o ponteiro.
+// ---------------------------------------------------------------------------
+async function processarMidia(
+  de: string,
+  wamid: string,
+  midia: { tipo: string; id: string; mime: string; filename: string; caption: string },
+): Promise<void> {
+  try {
+    const supabase = createServiceSupabase()
+    const telefone = normalizarTelefone(de)
+
+    // Idempotência (a Meta reentrega).
+    if (!(await registrarProcessada(supabase, wamid))) return
+
+    // Identifica o cliente (telefone direto ou vínculo do histórico) — best-effort.
+    let clienteId: string | null = null
+    const ident = await identificarClientePorTelefone(supabase, de)
+    if (ident.status === 'ok') clienteId = ident.cliente.id
+    else {
+      const v = await clienteVinculadoPorHistorico(supabase, telefone)
+      if (v) clienteId = v.id
+    }
+
+    // Baixa o arquivo da Meta e guarda no bucket privado. Não fatal se falhar.
+    let midiaPath: string | null = null
+    try {
+      const { bytes, mime } = await baixarMidiaMeta(midia.id)
+      const nome = midia.filename || `${midia.tipo}`
+      const safe = nome.replace(/[^\w.\-]+/g, '_').slice(0, 80)
+      midiaPath = `${telefone}/in-${Date.now()}-${safe}`
+      await supabase.storage
+        .from('whatsapp-midia')
+        .upload(midiaPath, bytes, { contentType: midia.mime || mime || 'application/octet-stream', upsert: false })
+    } catch (e) {
+      console.error('[whatsapp/webhook] falha ao baixar/guardar mídia:', (e as any)?.message)
+    }
+
+    // Registra a mensagem (role=user) com o ponteiro do anexo.
+    const { error: insErr } = await supabase.from('whatsapp_mensagens').insert({
+      telefone,
+      cliente_id: clienteId,
+      role: 'user',
+      conteudo: midia.caption || '',
+      midia_tipo: midia.tipo,
+      midia_path: midiaPath,
+      midia_nome: midia.filename || null,
+      midia_mime: midia.mime || null,
+    })
+    if (insErr) console.error('[whatsapp/webhook] insert mídia:', insErr.message)
+
+    // O bot não lê arquivos → escala pra equipe e avisa o cliente (se não estiver
+    // já em atendimento humano, pra não atropelar o atendente).
+    if (!(await emModoHumano(supabase, telefone))) {
+      await marcarAguardandoHumano(supabase, telefone)
+      try {
+        await enviarTexto(de, 'Recebi seu arquivo aqui! 👍 Já encaminhei pra nossa equipe dar uma olhada — em breve te respondem por aqui, tá? 🙏')
+      } catch {}
+    }
+  } catch (e: any) {
+    console.error('[whatsapp/webhook] erro ao processar mídia:', e?.message)
   }
 }
 

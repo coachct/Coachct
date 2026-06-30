@@ -105,6 +105,87 @@ export async function enviarBotoes(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Mídia (anexos): download de inbound + envio de arquivo
+// ---------------------------------------------------------------------------
+
+/** Tipo de mensagem do WhatsApp a partir do MIME (image/audio/video/document). */
+export function tipoMidiaPorMime(mime: string): 'image' | 'audio' | 'video' | 'document' {
+  const m = String(mime ?? '').toLowerCase()
+  if (m.startsWith('image/')) return 'image'
+  if (m.startsWith('audio/')) return 'audio'
+  if (m.startsWith('video/')) return 'video'
+  return 'document'
+}
+
+/**
+ * Baixa um anexo recebido (inbound) da Meta: 1) GET /{media_id} devolve uma URL
+ * temporária; 2) GET nessa URL (com o token) devolve os bytes. Retorna bytes + mime.
+ */
+export async function baixarMidiaMeta(mediaId: string): Promise<{ bytes: ArrayBuffer; mime: string }> {
+  const token = process.env.WHATSAPP_TOKEN
+  if (!token) throw new Error('WHATSAPP_TOKEN ausente')
+  const metaResp = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${mediaId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!metaResp.ok) throw new Error(`meta da mídia (${metaResp.status})`)
+  const info = await metaResp.json()
+  const binResp = await fetch(String(info?.url ?? ''), { headers: { Authorization: `Bearer ${token}` } })
+  if (!binResp.ok) throw new Error(`download da mídia (${binResp.status})`)
+  return { bytes: await binResp.arrayBuffer(), mime: String(info?.mime_type ?? '') }
+}
+
+/**
+ * Envia um ARQUIVO (documento/imagem/áudio/vídeo) pelo WhatsApp:
+ * 1) sobe os bytes para a Meta (POST /media) → media_id;
+ * 2) envia a mensagem referenciando o media_id.
+ * Retorna { ok, tipo }. Só funciona dentro da janela de 24h do WhatsApp.
+ */
+export async function enviarMidiaWhatsApp(
+  para: string,
+  opts: { bytes: ArrayBuffer; mime: string; filename: string; caption?: string },
+): Promise<{ ok: boolean; tipo: 'image' | 'audio' | 'video' | 'document' }> {
+  const tipo = tipoMidiaPorMime(opts.mime)
+  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID
+  const token = process.env.WHATSAPP_TOKEN
+  if (!phoneId || !token) {
+    console.error('[whatsapp/canal] WHATSAPP_PHONE_NUMBER_ID ou WHATSAPP_TOKEN ausente')
+    return { ok: false, tipo }
+  }
+
+  // 1) Upload para a Meta (multipart).
+  const form = new FormData()
+  form.append('messaging_product', 'whatsapp')
+  form.append('type', opts.mime || 'application/octet-stream')
+  form.append('file', new Blob([opts.bytes], { type: opts.mime || 'application/octet-stream' }), opts.filename || 'arquivo')
+  const up = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${phoneId}/media`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  })
+  if (!up.ok) {
+    console.error('[whatsapp/canal] falha no upload da mídia:', await up.text().catch(() => ''))
+    return { ok: false, tipo }
+  }
+  const mediaId = String((await up.json())?.id ?? '')
+  if (!mediaId) return { ok: false, tipo }
+
+  // 2) Envia a mensagem referenciando o media_id.
+  const conteudoMidia: any = { id: mediaId }
+  if (opts.caption) conteudoMidia.caption = corrigirDominioSite(opts.caption)
+  if (tipo === 'document') conteudoMidia.filename = opts.filename || 'arquivo'
+  const send = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${phoneId}/messages`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messaging_product: 'whatsapp', to: para, type: tipo, [tipo]: conteudoMidia }),
+  })
+  if (!send.ok) {
+    console.error('[whatsapp/canal] falha ao enviar mídia:', await send.text().catch(() => ''))
+    return { ok: false, tipo }
+  }
+  return { ok: true, tipo }
+}
+
 /** Carrega os últimos turnos da conversa desse telefone (ordem cronológica). */
 export async function carregarHistorico(
   supabase: SupabaseClient,

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
-import { MessageCircle, Search, Bot, User, Send, Headset } from 'lucide-react'
+import { MessageCircle, Search, Bot, User, Send, Headset, Paperclip, FileText } from 'lucide-react'
 
 // Quantas mensagens trazer (volume ainda baixo; subir depois se precisar).
 const LIMITE_MSGS = 3000
@@ -16,6 +16,10 @@ type Msg = {
   conteudo: string
   criado_em: string
   autor?: string | null
+  midia_tipo?: string | null
+  midia_path?: string | null
+  midia_nome?: string | null
+  midia_mime?: string | null
 }
 
 type Conversa = {
@@ -48,6 +52,17 @@ function diaStr(iso: string) {
   return new Date(iso).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
 }
 
+function rotuloMidia(tipo?: string | null) {
+  switch (tipo) {
+    case 'image': return '🖼️ Imagem'
+    case 'document': return '📎 Documento'
+    case 'audio': return '🎵 Áudio'
+    case 'video': return '🎥 Vídeo'
+    case 'sticker': return 'Figurinha'
+    default: return '📎 Arquivo'
+  }
+}
+
 export default function ConversasPage() {
   const { perfil, loading } = useAuth()
   const router = useRouter()
@@ -62,6 +77,8 @@ export default function ConversasPage() {
   const [telSel, setTelSel] = useState<string | null>(null)
   const [rascunho, setRascunho] = useState('')
   const [enviando, setEnviando] = useState(false)
+  const [enviandoArquivo, setEnviandoArquivo] = useState(false)
+  const [midiaUrls, setMidiaUrls] = useState<Record<string, string>>({}) // path -> URL assinada
 
   useEffect(() => {
     if (!loading && perfil && perfil.role !== 'admin' && perfil.role !== 'coordenadora') router.push('/')
@@ -153,6 +170,32 @@ export default function ConversasPage() {
     }
   }
 
+  async function enviarArquivo(file: File) {
+    if (!file || !telSel || enviandoArquivo) return
+    setEnviandoArquivo(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const fd = new FormData()
+      fd.append('telefone', telSel)
+      fd.append('file', file)
+      const resp = await fetch('/api/admin/whatsapp/enviar-arquivo', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session?.access_token ?? ''}` },
+        body: fd,
+      })
+      if (resp.ok) {
+        await carregar()
+      } else {
+        const e = await resp.json().catch(() => ({}))
+        alert(e.error || 'Falha ao enviar o arquivo.')
+      }
+    } catch {
+      alert('Falha ao enviar o arquivo.')
+    } finally {
+      setEnviandoArquivo(false)
+    }
+  }
+
   // Agrupa por telefone → lista de conversas (mais recente primeiro).
   const conversas = useMemo<Conversa[]>(() => {
     const porTel: Record<string, Conversa> = {}
@@ -161,7 +204,7 @@ export default function ConversasPage() {
         porTel[m.telefone] = {
           telefone: m.telefone,
           nome: (m as any)._nome ?? null,
-          ultima: m.conteudo,
+          ultima: m.conteudo || (m.midia_tipo ? rotuloMidia(m.midia_tipo) : ''),
           ultimaEm: m.criado_em,
           total: 0,
         }
@@ -197,6 +240,33 @@ export default function ConversasPage() {
     if (!telSel) return [] as Msg[]
     return msgs.filter((m) => m.telefone === telSel).slice().sort((a, b) => a.criado_em.localeCompare(b.criado_em))
   }, [msgs, telSel])
+
+  // Busca URLs assinadas (temporárias) dos anexos da conversa aberta, sob demanda.
+  useEffect(() => {
+    const pend = thread.map((m) => m.midia_path).filter((p): p is string => !!p && !midiaUrls[p])
+    if (!pend.length) return
+    let cancel = false
+    ;(async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token ?? ''
+      const novos: Record<string, string> = {}
+      await Promise.all(
+        pend.map(async (path) => {
+          try {
+            const r = await fetch('/api/admin/whatsapp/midia', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ path }),
+            })
+            if (r.ok) { const d = await r.json(); if (d.url) novos[path] = d.url }
+          } catch {}
+        }),
+      )
+      if (!cancel && Object.keys(novos).length) setMidiaUrls((m) => ({ ...m, ...novos }))
+    })()
+    return () => { cancel = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [thread])
 
   const convSel = conversas.find((c) => c.telefone === telSel) || null
   const humanoAtivo = telSel ? !!controle[telSel] : false
@@ -351,7 +421,27 @@ export default function ConversasPage() {
                               {ehCliente ? <User size={11} /> : ehHumano ? <Headset size={11} /> : <Bot size={11} />}
                               {quem}
                             </div>
-                            <div className="text-sm whitespace-pre-wrap break-words">{m.conteudo}</div>
+                            {m.midia_tipo && (
+                              <div className="mb-1">
+                                {m.midia_tipo === 'image' && m.midia_path && midiaUrls[m.midia_path] ? (
+                                  <a href={midiaUrls[m.midia_path]} target="_blank" rel="noreferrer">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src={midiaUrls[m.midia_path]} alt={m.midia_nome || 'imagem'} className="rounded-lg max-h-60 object-contain" />
+                                  </a>
+                                ) : (
+                                  <a
+                                    href={m.midia_path ? midiaUrls[m.midia_path] : undefined}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm ${ehCliente ? 'bg-gray-100 text-gray-700' : 'bg-white/15'} ${m.midia_path && midiaUrls[m.midia_path] ? '' : 'pointer-events-none opacity-80'}`}
+                                  >
+                                    <FileText size={16} className="flex-shrink-0" />
+                                    <span className="truncate">{m.midia_nome || rotuloMidia(m.midia_tipo)}</span>
+                                  </a>
+                                )}
+                              </div>
+                            )}
+                            {m.conteudo && <div className="text-sm whitespace-pre-wrap break-words">{m.conteudo}</div>}
                             <div className={`text-[10px] mt-1 text-right ${horaCor}`}>{fmtHora(m.criado_em)}</div>
                           </div>
                         </div>
@@ -363,6 +453,18 @@ export default function ConversasPage() {
                 {/* Rodapé: responder (modo humano) ou aviso (modo assistente) */}
                 {humanoAtivo ? (
                   <div className="border-t border-gray-100 p-3 flex items-end gap-2">
+                    <label
+                      className={`flex-shrink-0 p-2 rounded-lg ${enviandoArquivo ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600 cursor-pointer'}`}
+                      title="Enviar arquivo (documento, imagem...)"
+                    >
+                      <Paperclip size={18} />
+                      <input
+                        type="file"
+                        className="hidden"
+                        disabled={enviandoArquivo}
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) enviarArquivo(f); e.currentTarget.value = '' }}
+                      />
+                    </label>
                     <textarea
                       value={rascunho}
                       onChange={(e) => setRascunho(e.target.value)}
