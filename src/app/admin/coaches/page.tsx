@@ -1,10 +1,10 @@
 'use client'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { Coach } from '@/types'
 import { fmt, DIAS_SEMANA, HORARIOS } from '@/lib/utils'
 import { PageHeader, Spinner, EmptyState } from '@/components/ui'
-import { Plus, ChevronDown, ChevronUp, Save, Trash2, X, ClipboardList, KeyRound, Building2, CalendarOff } from 'lucide-react'
+import { Plus, ChevronDown, ChevronUp, Save, Trash2, X, ClipboardList, KeyRound, Building2, CalendarOff, Settings2 } from 'lucide-react'
 
 const EMPTY = {
   nome: '', cpf: '', email: '', senha: '',
@@ -27,33 +27,31 @@ export default function CoachesPage() {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(EMPTY)
-  const [editForm, setEditForm] = useState<Partial<Coach> | null>(null)
-  const editFormRef = useRef<HTMLDivElement>(null)
-  // O scroll real é no <main> do layout (não na window), então window.scrollTo não funciona.
-  // Rola o formulário de edição pra dentro da viewport quando abre/troca de coach.
-  useEffect(() => {
-    if (editForm) editFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [editForm?.id])
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
-  const [expandedUnidades, setExpandedUnidades] = useState<string | null>(null)
-  const [expandedGrade,    setExpandedGrade]    = useState<string | null>(null)
+
+  // Painel único expansível por coach
+  const [expandedCoach, setExpandedCoach] = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState<Partial<Coach>>({})
+
+  // Grade
   const [horarios, setHorarios] = useState<Record<string, Set<string>>>({})
 
+  // Unidades + valores
   const [unidades,        setUnidades]        = useState<any[]>([])
   const [coachUnidades,   setCoachUnidades]   = useState<Record<string, Set<string>>>({})
   const [salvandoUnidade, setSalvandoUnidade] = useState<string | null>(null)
-
-  // Valores por tipo/unidade: chave = `${coachId}-${unidadeId}-${tipoAula}`
   const [valoresLocais,  setValoresLocais]  = useState<Record<string, number>>({})
   const [salvandoValor,  setSalvandoValor]  = useState<string | null>(null)
 
-  const [aulaModal, setAulaModal] = useState<{ coach: Coach; aulas: any[] } | null>(null)
+  // Aulas (inline no painel)
+  const [aulasLista,   setAulasLista]   = useState<any[]>([])
   const [loadingAulas, setLoadingAulas] = useState(false)
-  const [excluindo, setExcluindo] = useState<string | null>(null)
-  const [mesAulas, setMesAulas] = useState(new Date().getMonth() + 1)
-  const [anoAulas, setAnoAulas] = useState(new Date().getFullYear())
+  const [excluindo,    setExcluindo]    = useState<string | null>(null)
+  const [mesAulas,     setMesAulas]     = useState(new Date().getMonth() + 1)
+  const [anoAulas,     setAnoAulas]     = useState(new Date().getFullYear())
 
+  // Senha (pop-up acionado pelo rodapé do painel)
   const [senhaModal, setSenhaModal] = useState<Coach | null>(null)
   const [novaSenha, setNovaSenha] = useState('')
   const [salvandoSenha, setSalvandoSenha] = useState(false)
@@ -61,7 +59,6 @@ export default function CoachesPage() {
   const [excluindoCoach, setExcluindoCoach] = useState<string | null>(null)
 
   // ─── Férias / Ausências (exclusivo CT) ───
-  const [expandedFerias,  setExpandedFerias]  = useState<string | null>(null)
   const [feriasPorCoach,  setFeriasPorCoach]  = useState<Record<string, any[]>>({})
   const [feriasForm,      setFeriasForm]      = useState<{ data_inicio: string; data_fim: string; motivo: string }>({ data_inicio: '', data_fim: '', motivo: '' })
   const [salvandoFerias,  setSalvandoFerias]  = useState<string | null>(null)
@@ -82,6 +79,21 @@ export default function CoachesPage() {
   async function carregarUnidades() {
     const { data } = await supabase.from('unidades').select('id, nome, tipo').eq('ativo', true).order('tipo').order('nome')
     setUnidades(data || [])
+  }
+
+  // ─── Abrir / fechar painel do coach ───
+  function toggleCoach(coach: Coach) {
+    const abrindo = expandedCoach !== coach.id
+    if (!abrindo) { setExpandedCoach(null); return }
+    setExpandedCoach(coach.id)
+    setEditDraft({ id: coach.id, nome: coach.nome, cpf: coach.cpf, salario_fixo: coach.salario_fixo })
+    loadCoachUnidades(coach.id)
+    loadHorarios(coach.id)
+    loadFerias(coach.id)
+    setFeriasForm({ data_inicio: '', data_fim: '', motivo: '' })
+    setAvisoFerias(null)
+    setAulasLista([])
+    buscarAulasCoach(coach, mesAulas, anoAulas)
   }
 
   // ─── Horários ───
@@ -161,7 +173,6 @@ export default function CoachesPage() {
   async function saveValor(coachId: string, unidadeId: string, tipoAula: string, valor: number) {
     const key = `${coachId}-${unidadeId}-${tipoAula}`
     setSalvandoValor(key)
-    // Atualiza estado local também
     setValoresLocais(prev => ({ ...prev, [key]: valor }))
     const { error } = await supabase.from('coach_valores').upsert({
       coach_id: coachId, unidade_id: unidadeId, tipo_aula: tipoAula, valor_por_aula: valor,
@@ -170,21 +181,89 @@ export default function CoachesPage() {
     setSalvandoValor(null)
   }
 
-  // ─── Aulas ───
-  async function abrirAulas(coach: Coach) {
-    setAulaModal({ coach, aulas: [] }); setLoadingAulas(true)
-    await buscarAulas(coach, mesAulas, anoAulas)
-  }
-
-  async function buscarAulas(coach: Coach, mes: number, ano: number) {
+  // ─── Aulas (CT lê de `aulas`; Club lê de `club_ocorrencias` pelo coach efetivo) ───
+  async function buscarAulasCoach(coach: Coach, mes: number, ano: number) {
     setLoadingAulas(true)
-    const inicio = new Date(ano, mes - 1, 1).toISOString()
-    const fim = new Date(ano, mes, 0, 23, 59, 59).toISOString()
-    const { data } = await supabase.from('aulas').select('*, clientes:cliente_id(nome), treinos(nome)')
-      .eq('coach_id', coach.id).in('status', ['finalizada', 'em_andamento'])
-      .gte('horario_agendado', inicio).lte('horario_agendado', fim)
-      .order('horario_agendado', { ascending: false })
-    setAulaModal({ coach, aulas: data || [] }); setLoadingAulas(false)
+
+    // Período em string YYYY-MM-DD (evita o bug de timezone do toISOString para datas Club).
+    const mm        = String(mes).padStart(2, '0')
+    const ultimoDia = new Date(ano, mes, 0).getDate()
+    const inicioStr = `${ano}-${mm}-01`
+    const fimStr    = `${ano}-${mm}-${String(ultimoDia).padStart(2, '0')}`
+
+    // Unidades do coach buscadas direto no banco (não do estado, p/ evitar race no open).
+    const { data: cu } = await supabase.from('coach_unidades')
+      .select('unidade_id').eq('coach_id', coach.id).eq('ativo', true)
+    const unidIds = (cu || []).map((x: any) => x.unidade_id)
+    const unidadesCoach = unidades.filter(u => unidIds.includes(u.id))
+    const temCT        = unidadesCoach.some(u => u.tipo === 'ct')
+    const unidadesClub = unidadesCoach.filter(u => u.tipo === 'club')
+
+    const linhas: any[] = []
+
+    // CT — sessões de personal (tabela `aulas`, por coach)
+    if (temCT) {
+      const inicioTs = new Date(ano, mes - 1, 1).toISOString()
+      const fimTs    = new Date(ano, mes, 0, 23, 59, 59).toISOString()
+      const { data } = await supabase.from('aulas').select('*, clientes:cliente_id(nome), treinos(nome)')
+        .eq('coach_id', coach.id).in('status', ['finalizada', 'em_andamento'])
+        .gte('horario_agendado', inicioTs).lte('horario_agendado', fimTs)
+        .order('horario_agendado', { ascending: false })
+      for (const a of (data || [])) {
+        linhas.push({
+          key: `ct-${a.id}`,
+          kind: 'ct',
+          aulaId: a.id,
+          dataOrd: a.horario_agendado,
+          titulo: a.clientes?.nome || 'Aluno',
+          sub: a.treinos?.nome || '—',
+          status: a.status,
+          unidadeNome: 'Coach CT',
+          quando: new Date(a.horario_agendado).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+        })
+      }
+    }
+
+    // Club — paga por OCORRÊNCIA, pelo coach EFETIVO daquele dia
+    // (correção pontual em club_ocorrencias.coach_id; na ausência, o da grade em club_aulas.coach_id).
+    for (const u of unidadesClub) {
+      const { data: aulasUnidade } = await supabase.from('club_aulas')
+        .select('id, tipo, horario, coach_id').eq('unidade_id', u.id).eq('ativo', true)
+      const ids = (aulasUnidade || []).map((a: any) => a.id)
+      if (!ids.length) continue
+      const aulaMap: Record<string, any> = {}
+      for (const a of (aulasUnidade || [])) aulaMap[a.id] = a
+
+      const { data: ocs } = await supabase.from('club_ocorrencias')
+        .select('id, data, aula_id, coach_id, status')
+        .in('aula_id', ids).gte('data', inicioStr).lte('data', fimStr)
+        .eq('status', 'ativa').order('data')
+
+      const minhas = (ocs || []).filter((oc: any) => {
+        const efetivo = oc.coach_id || aulaMap[oc.aula_id]?.coach_id || null
+        return efetivo === coach.id
+      })
+
+      for (const oc of minhas) {
+        const a = aulaMap[oc.aula_id] || {}
+        const tipoLabel = (TIPOS_CLUB.find(t => t.key === a.tipo)?.label) || a.tipo || 'Aula'
+        const corrigido = !!oc.coach_id && a.coach_id !== coach.id
+        linhas.push({
+          key: `club-${oc.id}`,
+          kind: 'club',
+          dataOrd: `${oc.data}T${a.horario || '00:00'}`,
+          titulo: tipoLabel,
+          sub: a.horario || '',
+          unidadeNome: u.nome,
+          corrigido,
+          quando: `${fmtData(oc.data)}${a.horario ? ' às ' + a.horario : ''}`,
+        })
+      }
+    }
+
+    linhas.sort((a, b) => String(b.dataOrd || '').localeCompare(String(a.dataOrd || '')))
+    setAulasLista(linhas)
+    setLoadingAulas(false)
   }
 
   async function excluirAula(aulaId: string) {
@@ -192,7 +271,7 @@ export default function CoachesPage() {
     setExcluindo(aulaId)
     await supabase.from('registros_carga').delete().eq('aula_id', aulaId)
     await supabase.from('aulas').delete().eq('id', aulaId)
-    setAulaModal(prev => prev ? { ...prev, aulas: prev.aulas.filter(a => a.id !== aulaId) } : null)
+    setAulasLista(prev => prev.filter(a => a.aulaId !== aulaId))
     setExcluindo(null)
   }
 
@@ -214,7 +293,7 @@ export default function CoachesPage() {
     const res = await fetch('/api/excluir-coach', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ coach_id: coach.id, user_id: coach.user_id }) })
     const json = await res.json()
     setExcluindoCoach(null)
-    if (json.ok) { setMsg(`${coach.nome} foi desativado.`); loadCoaches() }
+    if (json.ok) { setMsg(`${coach.nome} foi desativado.`); setExpandedCoach(null); loadCoaches() }
     else setMsg('Erro: ' + json.error)
     setTimeout(() => setMsg(''), 3000)
   }
@@ -285,14 +364,14 @@ export default function CoachesPage() {
   }
 
   async function handleEdit() {
-    if (!editForm?.id) return
+    if (!editDraft?.id) return
     setSaving(true)
     const { error } = await supabase.from('coaches').update({
-      nome: editForm.nome, cpf: editForm.cpf,
-      salario_fixo: editForm.salario_fixo || 0,
-    }).eq('id', editForm.id)
+      nome: editDraft.nome, cpf: editDraft.cpf,
+      salario_fixo: editDraft.salario_fixo || 0,
+    }).eq('id', editDraft.id)
     if (error) setMsg('Erro: ' + error.message)
-    else { setMsg('Coach atualizado!'); setEditForm(null); loadCoaches() }
+    else { setMsg('Coach atualizado!'); loadCoaches() }
     setSaving(false); setTimeout(() => setMsg(''), 2000)
   }
 
@@ -311,7 +390,7 @@ export default function CoachesPage() {
 
       {msg && <div className={`px-4 py-2 rounded-lg text-sm mb-4 ${msg.startsWith('Erro') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-800'}`}>{msg}</div>}
 
-      <button onClick={() => { setShowForm(!showForm); setEditForm(null) }} className="btn btn-primary mb-4 gap-2">
+      <button onClick={() => setShowForm(!showForm)} className="btn btn-primary mb-4 gap-2">
         <Plus size={14} /> Novo coach
       </button>
 
@@ -341,35 +420,17 @@ export default function CoachesPage() {
         </div>
       )}
 
-      {/* ── Formulário edição ── */}
-      {editForm && (
-        <div ref={editFormRef} className="card mb-6" style={{borderColor:'#EF9F27'}}>
-          <h2 className="text-sm font-semibold text-gray-900 mb-4">Editar — {editForm.nome}</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-            <div><label className="label">Nome</label><input className="input" value={editForm.nome} onChange={e => setEditForm(f=>({...f!,nome:e.target.value}))} /></div>
-            <div><label className="label">CPF</label><input className="input" value={editForm.cpf||''} onChange={e => setEditForm(f=>({...f!,cpf:e.target.value}))} /></div>
-          </div>
-          <div className="max-w-xs mb-4">
-            <label className="label">Salário fixo/mês (R$) <span className="text-gray-400 font-normal">— opcional</span></label>
-            <input className="input" type="number" value={editForm.salario_fixo||0} onChange={e => setEditForm(f=>({...f!,salario_fixo:+e.target.value}))} placeholder="0" />
-          </div>
-          <p className="text-xs text-gray-400 mb-4">💡 Para alterar valores por tipo de aula, use a seção <strong>Unidades</strong> do coach.</p>
-          <div className="flex gap-2">
-            <button onClick={handleEdit} disabled={saving} className="btn btn-primary gap-2"><Save size={12}/>{saving?'Salvando...':'Salvar'}</button>
-            <button onClick={() => setEditForm(null)} className="btn">Cancelar</button>
-          </div>
-        </div>
-      )}
-
       {/* ── Lista coaches ── */}
       <div className="space-y-3">
         {coaches.length === 0 && <EmptyState message="Nenhum coach cadastrado ainda." />}
         {coaches.map(coach => {
           const inativo  = !coach.ativo
           const qtdUnids = coachUnidades[coach.id]?.size || 0
+          const aberto   = expandedCoach === coach.id
 
           return (
-            <div key={coach.id} className={`card ${inativo?'opacity-60 border-dashed':''}`}>
+            <div key={coach.id} className={`card ${inativo?'opacity-60 border-dashed':''} ${aberto?'ring-1 ring-primary-200':''}`}>
+              {/* ── Linha principal (sempre visível, limpa) ── */}
               <div className="flex items-center gap-3">
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0 ${inativo?'bg-gray-100 text-gray-400':'bg-primary-100 text-primary-800'}`}>
                   {coach.nome.slice(0,2).toUpperCase()}
@@ -386,216 +447,263 @@ export default function CoachesPage() {
                   </div>
                   <div className="text-xs text-gray-400">
                     {Number(coach.salario_fixo) > 0 ? `Fixo ${fmt(coach.salario_fixo)}/mês` : 'Sem fixo'}
-                    {' · valores por aula configurados nas unidades'}
+                    {' · valores por aula nas unidades'}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
-                  <button onClick={() => abrirAulas(coach)} className="btn btn-sm gap-1"><ClipboardList size={12}/> Aulas</button>
-                  {!inativo && (
-                    <>
-                      <button onClick={() => { setSenhaModal(coach); setNovaSenha(''); setMsgSenha('') }} className="btn btn-sm gap-1"><KeyRound size={12}/> Senha</button>
-                      <button onClick={() => { setEditForm(coach); setShowForm(false) }} className="btn btn-sm">Editar</button>
-                      <button onClick={() => {
-                        const abrindo = expandedUnidades !== coach.id
-                        setExpandedUnidades(abrindo ? coach.id : null)
-                        if (abrindo) loadCoachUnidades(coach.id)
-                      }} className={`btn btn-sm gap-1 ${expandedUnidades===coach.id?'bg-cyan-50 text-cyan-700 border border-cyan-200':''}`}>
-                        <Building2 size={12}/> Unidades {expandedUnidades===coach.id?<ChevronUp size={12}/>:<ChevronDown size={12}/>}
-                      </button>
-                      <button onClick={() => {
-                        const abrindo = expandedGrade !== coach.id
-                        setExpandedGrade(abrindo ? coach.id : null)
-                        if (abrindo) loadHorarios(coach.id)
-                      }} className={`btn btn-sm gap-1 ${expandedGrade===coach.id?'bg-primary-50 text-primary-700 border border-primary-200':''}`}>
-                        Grade {expandedGrade===coach.id?<ChevronUp size={12}/>:<ChevronDown size={12}/>}
-                      </button>
-                      <button onClick={() => {
-                        const abrindo = expandedFerias !== coach.id
-                        setExpandedFerias(abrindo ? coach.id : null)
-                        if (abrindo) { loadFerias(coach.id); setFeriasForm({ data_inicio:'', data_fim:'', motivo:'' }); setAvisoFerias(null) }
-                      }} className={`btn btn-sm gap-1 ${expandedFerias===coach.id?'bg-amber-50 text-amber-700 border border-amber-200':''}`}>
-                        <CalendarOff size={12}/> Férias {expandedFerias===coach.id?<ChevronUp size={12}/>:<ChevronDown size={12}/>}
-                      </button>
-                      <button onClick={() => excluirCoach(coach)} disabled={excluindoCoach===coach.id} className="btn btn-sm text-red-500 hover:bg-red-50 disabled:opacity-50">
-                        {excluindoCoach===coach.id?<div className="w-3 h-3 border-2 border-red-400 border-t-transparent rounded-full animate-spin"/>:<Trash2 size={12}/>}
-                      </button>
-                    </>
-                  )}
-                </div>
+                <button onClick={() => toggleCoach(coach)}
+                  className={`btn btn-sm gap-1.5 flex-shrink-0 ${aberto?'bg-primary-50 text-primary-700 border border-primary-200':''}`}>
+                  <Settings2 size={13}/> Gerenciar {aberto?<ChevronUp size={13}/>:<ChevronDown size={13}/>}
+                </button>
               </div>
 
-              {/* ── Seção Unidades + Valores ── */}
-              {expandedUnidades === coach.id && !inativo && (
-                <div className="mt-4 pt-4 border-t border-cyan-100">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Building2 size={14} className="text-cyan-600"/>
-                    <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Unidades e valores por tipo de aula</span>
-                  </div>
-                  <div className="space-y-3">
-                    {unidades.map(u => {
-                      const ativo      = coachUnidades[coach.id]?.has(u.id) || false
-                      const carregando = salvandoUnidade === u.id
-                      const tipos      = tiposParaUnidade(u)
-                      return (
-                        <div key={u.id} className={`rounded-xl border transition-all ${ativo?'bg-cyan-50 border-cyan-200':'bg-gray-50 border-gray-200'}`}>
-                          {/* Toggle da unidade */}
-                          <button onClick={() => toggleCoachUnidade(coach.id, u.id)} disabled={carregando}
-                            className="w-full flex items-center gap-3 px-4 py-3 text-left disabled:opacity-60">
-                            {carregando ? (
-                              <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin flex-shrink-0"/>
-                            ) : (
-                              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${ativo?'bg-cyan-500 border-cyan-500':'border-gray-300'}`}>
-                                {ativo && <div className="w-2 h-2 rounded-full bg-white"/>}
+              {/* ── Painel expandido (seções empilhadas) ── */}
+              {aberto && (
+                <div className="mt-4 space-y-5">
+
+                  {/* Seção: Dados */}
+                  <section>
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Dados do coach</span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                      <div><label className="label">Nome</label><input className="input" value={editDraft.nome||''} onChange={e => setEditDraft(f=>({...f,nome:e.target.value}))} /></div>
+                      <div><label className="label">CPF</label><input className="input" value={editDraft.cpf||''} onChange={e => setEditDraft(f=>({...f,cpf:e.target.value}))} /></div>
+                    </div>
+                    <div className="max-w-xs mb-3">
+                      <label className="label">Salário fixo/mês (R$) <span className="text-gray-400 font-normal">— opcional</span></label>
+                      <input className="input" type="number" value={editDraft.salario_fixo||0} onChange={e => setEditDraft(f=>({...f,salario_fixo:+e.target.value}))} placeholder="0" />
+                    </div>
+                    <button onClick={handleEdit} disabled={saving} className="btn btn-primary btn-sm gap-2"><Save size={12}/>{saving?'Salvando...':'Salvar dados'}</button>
+                  </section>
+
+                  {/* Seção: Unidades + Valores */}
+                  <section className="pt-5 border-t border-gray-100">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Building2 size={14} className="text-cyan-600"/>
+                      <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Unidades e valores por tipo de aula</span>
+                    </div>
+                    <div className="space-y-3">
+                      {unidades.map(u => {
+                        const ativo      = coachUnidades[coach.id]?.has(u.id) || false
+                        const carregando = salvandoUnidade === u.id
+                        const tipos      = tiposParaUnidade(u)
+                        return (
+                          <div key={u.id} className={`rounded-xl border transition-all ${ativo?'bg-cyan-50 border-cyan-200':'bg-gray-50 border-gray-200'}`}>
+                            <button onClick={() => toggleCoachUnidade(coach.id, u.id)} disabled={carregando}
+                              className="w-full flex items-center gap-3 px-4 py-3 text-left disabled:opacity-60">
+                              {carregando ? (
+                                <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin flex-shrink-0"/>
+                              ) : (
+                                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${ativo?'bg-cyan-500 border-cyan-500':'border-gray-300'}`}>
+                                  {ativo && <div className="w-2 h-2 rounded-full bg-white"/>}
+                                </div>
+                              )}
+                              <span className={`text-sm font-medium flex-1 ${ativo?'text-cyan-800':'text-gray-600'}`}>{u.nome}</span>
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${tipoUnidadeBadge(u.tipo)}`}>
+                                {tipoUnidadeLabel(u.tipo)}
+                              </span>
+                            </button>
+                            {ativo && (
+                              <div className="px-4 pb-3 border-t border-cyan-200">
+                                <div className="text-xs text-cyan-700 font-semibold mt-2 mb-2 uppercase tracking-wide">Valor por aula (R$)</div>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                  {tipos.map(tipo => {
+                                    const vkey = `${coach.id}-${u.id}-${tipo.key}`
+                                    const salvando = salvandoValor === vkey
+                                    return (
+                                      <div key={tipo.key} className="bg-white rounded-lg border border-cyan-100 px-3 py-2">
+                                        <div className="text-xs text-gray-500 mb-1">{tipo.label}</div>
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-xs text-gray-400">R$</span>
+                                          <input
+                                            type="number" min={0} step="0.01"
+                                            className="input py-1 text-sm flex-1 min-w-0"
+                                            value={getValorLocal(coach.id, u.id, tipo.key) || ''}
+                                            placeholder="0,00"
+                                            onChange={e => setValorLocal(coach.id, u.id, tipo.key, parseFloat(e.target.value) || 0)}
+                                            onBlur={(e) => saveValor(coach.id, u.id, tipo.key, parseFloat(e.target.value) || 0)}
+                                          />
+                                          {salvando && <div className="w-3 h-3 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin flex-shrink-0"/>}
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                                <p className="text-xs text-gray-400 mt-2">Salvo automaticamente ao sair do campo.</p>
                               </div>
                             )}
-                            <span className={`text-sm font-medium flex-1 ${ativo?'text-cyan-800':'text-gray-600'}`}>{u.nome}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${tipoUnidadeBadge(u.tipo)}`}>
-                              {tipoUnidadeLabel(u.tipo)}
-                            </span>
-                          </button>
-
-                          {/* Valores por tipo — só aparece quando unidade está ativa */}
-                          {ativo && (
-                            <div className="px-4 pb-3 border-t border-cyan-200">
-                              <div className="text-xs text-cyan-700 font-semibold mt-2 mb-2 uppercase tracking-wide">
-                                Valor por aula (R$)
-                              </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                {tipos.map(tipo => {
-                                  const vkey = `${coach.id}-${u.id}-${tipo.key}`
-                                  const salvando = salvandoValor === vkey
-                                  return (
-                                    <div key={tipo.key} className="bg-white rounded-lg border border-cyan-100 px-3 py-2">
-                                      <div className="text-xs text-gray-500 mb-1">{tipo.label}</div>
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-xs text-gray-400">R$</span>
-                                        <input
-                                          type="number"
-                                          min={0}
-                                          step="0.01"
-                                          className="input py-1 text-sm flex-1 min-w-0"
-                                          value={getValorLocal(coach.id, u.id, tipo.key) || ''}
-                                          placeholder="0,00"
-                                          onChange={e => setValorLocal(coach.id, u.id, tipo.key, parseFloat(e.target.value) || 0)}
-                                          onBlur={(e) => saveValor(coach.id, u.id, tipo.key, parseFloat(e.target.value) || 0)}
-                                        />
-                                        {salvando && (
-                                          <div className="w-3 h-3 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin flex-shrink-0"/>
-                                        )}
-                                      </div>
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                              <p className="text-xs text-gray-400 mt-2">Salvo automaticamente ao sair do campo.</p>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* ── Seção Grade ── */}
-              {expandedGrade === coach.id && !inativo && (
-                <div className="mt-4 pt-4 border-t border-gray-100">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Grade de horários — Coach CT</span>
-                    <span className="text-xs text-gray-400">{horarios[coach.id]?.size || 0} slots/semana</span>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="text-xs w-full">
-                      <thead>
-                        <tr>
-                          <th className="text-gray-400 font-normal w-14 text-left pb-2 pr-2">Hora</th>
-                          {DIAS_SEMANA.map(d => <th key={d} className="text-gray-400 font-normal text-center pb-2 px-0.5 min-w-[32px]">{d}</th>)}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {HORARIOS.map(hora => (
-                          <tr key={hora}>
-                            <td className="text-gray-400 py-0.5 pr-2 whitespace-nowrap">{hora}</td>
-                            {[0,1,2,3,4,5,6].map(dia => {
-                              const key = `${dia}-${hora}`
-                              const on  = horarios[coach.id]?.has(key)
-                              return (
-                                <td key={dia} className="px-0.5 py-0.5">
-                                  <button onClick={() => toggleHorario(coach.id, key)}
-                                    className={`w-full h-6 rounded text-xs transition-colors ${on?'bg-primary-100 text-primary-800 border border-primary-300':'bg-gray-50 border border-gray-100 hover:bg-gray-100'}`}>
-                                    {on?'✓':''}
-                                  </button>
-                                </td>
-                              )
-                            })}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="flex gap-2 mt-3 flex-wrap">
-                    <button onClick={() => saveHorarios(coach.id)} className="btn btn-primary btn-sm gap-1"><Save size={12}/>Salvar grade</button>
-                    <button onClick={() => { const all = new Set<string>(); HORARIOS.forEach(h => [0,1,2,3,4,5,6].forEach(d => all.add(`${d}-${h}`))); setHorarios(prev=>({...prev,[coach.id]:all})) }} className="btn btn-sm">Marcar todos</button>
-                    <button onClick={() => setHorarios(prev=>({...prev,[coach.id]:new Set()}))} className="btn btn-sm">Limpar</button>
-                  </div>
-                </div>
-              )}
-
-              {/* ── Seção Férias / Ausências ── */}
-              {expandedFerias === coach.id && !inativo && (
-                <div className="mt-4 pt-4 border-t border-amber-100">
-                  <div className="flex items-center gap-2 mb-3">
-                    <CalendarOff size={14} className="text-amber-600"/>
-                    <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Férias / Ausências — Coach CT</span>
-                  </div>
-                  <p className="text-xs text-gray-400 mb-3">Enquanto o período estiver vigente, a grade deste coach não sobe no CT (não conta vaga, não aparece como selecionável). Volta sozinho quando o período passa.</p>
-
-                  {/* Lista de períodos cadastrados */}
-                  {(feriasPorCoach[coach.id]?.length ?? 0) === 0 ? (
-                    <p className="text-xs text-gray-400 italic mb-4">Nenhum período cadastrado.</p>
-                  ) : (
-                    <div className="space-y-2 mb-4">
-                      {feriasPorCoach[coach.id]!.map(f => (
-                        <div key={f.id} className="flex items-center gap-3 px-3 py-2 rounded-xl bg-amber-50 border border-amber-100">
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-gray-800">{fmtData(f.data_inicio)} → {fmtData(f.data_fim)}</div>
-                            {f.motivo && <div className="text-xs text-gray-500 mt-0.5">{f.motivo}</div>}
                           </div>
-                          <button onClick={() => removeFerias(f.id, coach.id)} disabled={removendoFerias===f.id}
-                            className="flex-shrink-0 p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50">
-                            {removendoFerias===f.id?<div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin"/>:<Trash2 size={14}/>}
-                          </button>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
-                  )}
+                  </section>
 
-                  {/* Aviso — agendamentos existentes no intervalo (não bloqueia) */}
-                  {avisoFerias && avisoFerias.length > 0 && (
-                    <div className="mb-4 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3">
-                      <div className="text-xs font-semibold text-orange-800 mb-1">⚠️ {avisoFerias.length} agendamento{avisoFerias.length!==1?'s':''} já existe{avisoFerias.length!==1?'m':''} neste intervalo</div>
-                      <p className="text-xs text-orange-700 mb-2">Os agendamentos NÃO foram cancelados. Verifique e trate manualmente:</p>
-                      <ul className="text-xs text-orange-800 space-y-0.5 max-h-32 overflow-y-auto">
-                        {avisoFerias.map((a, i) => <li key={i}>• {fmtData(a.data)} às {a.horario}</li>)}
-                      </ul>
+                  {/* Seção: Grade */}
+                  <section className="pt-5 border-t border-gray-100">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Grade de horários — Coach CT</span>
+                      <span className="text-xs text-gray-400">{horarios[coach.id]?.size || 0} slots/semana</span>
                     </div>
-                  )}
+                    <div className="overflow-x-auto">
+                      <table className="text-xs w-full">
+                        <thead>
+                          <tr>
+                            <th className="text-gray-400 font-normal w-14 text-left pb-2 pr-2">Hora</th>
+                            {DIAS_SEMANA.map(d => <th key={d} className="text-gray-400 font-normal text-center pb-2 px-0.5 min-w-[32px]">{d}</th>)}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {HORARIOS.map(hora => (
+                            <tr key={hora}>
+                              <td className="text-gray-400 py-0.5 pr-2 whitespace-nowrap">{hora}</td>
+                              {[0,1,2,3,4,5,6].map(dia => {
+                                const key = `${dia}-${hora}`
+                                const on  = horarios[coach.id]?.has(key)
+                                return (
+                                  <td key={dia} className="px-0.5 py-0.5">
+                                    <button onClick={() => toggleHorario(coach.id, key)}
+                                      className={`w-full h-6 rounded text-xs transition-colors ${on?'bg-primary-100 text-primary-800 border border-primary-300':'bg-gray-50 border border-gray-100 hover:bg-gray-100'}`}>
+                                      {on?'✓':''}
+                                    </button>
+                                  </td>
+                                )
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="flex gap-2 mt-3 flex-wrap">
+                      <button onClick={() => saveHorarios(coach.id)} className="btn btn-primary btn-sm gap-1"><Save size={12}/>Salvar grade</button>
+                      <button onClick={() => { const all = new Set<string>(); HORARIOS.forEach(h => [0,1,2,3,4,5,6].forEach(d => all.add(`${d}-${h}`))); setHorarios(prev=>({...prev,[coach.id]:all})) }} className="btn btn-sm">Marcar todos</button>
+                      <button onClick={() => setHorarios(prev=>({...prev,[coach.id]:new Set()}))} className="btn btn-sm">Limpar</button>
+                    </div>
+                  </section>
 
-                  {/* Form de adicionar período */}
-                  <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-                    <div className="text-xs font-semibold text-gray-700 mb-3 uppercase tracking-wide">Adicionar período</div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-                      <div><label className="label">Início *</label><input type="date" className="input" value={feriasForm.data_inicio} onChange={e=>setFeriasForm(f=>({...f,data_inicio:e.target.value}))}/></div>
-                      <div><label className="label">Fim *</label><input type="date" className="input" value={feriasForm.data_fim} onChange={e=>setFeriasForm(f=>({...f,data_fim:e.target.value}))}/></div>
+                  {/* Seção: Férias / Ausências */}
+                  <section className="pt-5 border-t border-gray-100">
+                    <div className="flex items-center gap-2 mb-3">
+                      <CalendarOff size={14} className="text-amber-600"/>
+                      <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Férias / Ausências — Coach CT</span>
                     </div>
-                    <div className="mb-3">
-                      <label className="label">Motivo <span className="text-gray-400 font-normal">— opcional</span></label>
-                      <input className="input" value={feriasForm.motivo} placeholder="Férias, atestado, folga…" onChange={e=>setFeriasForm(f=>({...f,motivo:e.target.value}))}/>
+                    <p className="text-xs text-gray-400 mb-3">Enquanto o período estiver vigente, a grade deste coach não sobe no CT (não conta vaga, não aparece como selecionável). Volta sozinho quando o período passa.</p>
+
+                    {(feriasPorCoach[coach.id]?.length ?? 0) === 0 ? (
+                      <p className="text-xs text-gray-400 italic mb-4">Nenhum período cadastrado.</p>
+                    ) : (
+                      <div className="space-y-2 mb-4">
+                        {feriasPorCoach[coach.id]!.map(f => (
+                          <div key={f.id} className="flex items-center gap-3 px-3 py-2 rounded-xl bg-amber-50 border border-amber-100">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium text-gray-800">{fmtData(f.data_inicio)} → {fmtData(f.data_fim)}</div>
+                              {f.motivo && <div className="text-xs text-gray-500 mt-0.5">{f.motivo}</div>}
+                            </div>
+                            <button onClick={() => removeFerias(f.id, coach.id)} disabled={removendoFerias===f.id}
+                              className="flex-shrink-0 p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50">
+                              {removendoFerias===f.id?<div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin"/>:<Trash2 size={14}/>}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {avisoFerias && avisoFerias.length > 0 && (
+                      <div className="mb-4 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3">
+                        <div className="text-xs font-semibold text-orange-800 mb-1">⚠️ {avisoFerias.length} agendamento{avisoFerias.length!==1?'s':''} já existe{avisoFerias.length!==1?'m':''} neste intervalo</div>
+                        <p className="text-xs text-orange-700 mb-2">Os agendamentos NÃO foram cancelados. Verifique e trate manualmente:</p>
+                        <ul className="text-xs text-orange-800 space-y-0.5 max-h-32 overflow-y-auto">
+                          {avisoFerias.map((a, i) => <li key={i}>• {fmtData(a.data)} às {a.horario}</li>)}
+                        </ul>
+                      </div>
+                    )}
+
+                    <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                      <div className="text-xs font-semibold text-gray-700 mb-3 uppercase tracking-wide">Adicionar período</div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                        <div><label className="label">Início *</label><input type="date" className="input" value={feriasForm.data_inicio} onChange={e=>setFeriasForm(f=>({...f,data_inicio:e.target.value}))}/></div>
+                        <div><label className="label">Fim *</label><input type="date" className="input" value={feriasForm.data_fim} onChange={e=>setFeriasForm(f=>({...f,data_fim:e.target.value}))}/></div>
+                      </div>
+                      <div className="mb-3">
+                        <label className="label">Motivo <span className="text-gray-400 font-normal">— opcional</span></label>
+                        <input className="input" value={feriasForm.motivo} placeholder="Férias, atestado, folga…" onChange={e=>setFeriasForm(f=>({...f,motivo:e.target.value}))}/>
+                      </div>
+                      <button onClick={() => addFerias(coach.id)} disabled={salvandoFerias===coach.id} className="btn btn-primary btn-sm gap-1">
+                        {salvandoFerias===coach.id?<div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"/>:<Save size={12}/>}
+                        {salvandoFerias===coach.id?'Salvando...':'Adicionar período'}
+                      </button>
                     </div>
-                    <button onClick={() => addFerias(coach.id)} disabled={salvandoFerias===coach.id} className="btn btn-primary btn-sm gap-1">
-                      {salvandoFerias===coach.id?<div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"/>:<Save size={12}/>}
-                      {salvandoFerias===coach.id?'Salvando...':'Adicionar período'}
+                  </section>
+
+                  {/* Seção: Aulas do mês (CT + Club) */}
+                  <section className="pt-5 border-t border-gray-100">
+                    <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <ClipboardList size={14} className="text-primary-600"/>
+                        <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Aulas do mês</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <select className="input w-auto py-1 text-sm" value={mesAulas} onChange={e=>{const m=+e.target.value;setMesAulas(m);buscarAulasCoach(coach,m,anoAulas)}}>
+                          {MESES.map((m,i)=><option key={i} value={i+1}>{m}</option>)}
+                        </select>
+                        <select className="input w-auto py-1 text-sm" value={anoAulas} onChange={e=>{const a=+e.target.value;setAnoAulas(a);buscarAulasCoach(coach,mesAulas,a)}}>
+                          {[2025,2026,2027].map(a=><option key={a} value={a}>{a}</option>)}
+                        </select>
+                        <span className="text-xs text-gray-400">{aulasLista.length} aula{aulasLista.length!==1?'s':''}</span>
+                      </div>
+                    </div>
+                    {loadingAulas ? (
+                      <div className="flex items-center justify-center py-10"><div className="w-6 h-6 border-4 border-primary-400 border-t-transparent rounded-full animate-spin"/></div>
+                    ) : aulasLista.length===0 ? (
+                      <div className="text-center py-10 text-sm text-gray-400 italic">Nenhuma aula registrada neste mês.</div>
+                    ) : (
+                      <div className="space-y-2">
+                        {aulasLista.map(aula => (
+                          <div key={aula.key} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 border border-gray-100">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-medium text-gray-900 truncate">{aula.titulo}</span>
+                                {aula.kind==='ct' ? (
+                                  <>
+                                    <span className="text-xs text-gray-400">·</span>
+                                    <span className="text-xs text-gray-500 truncate">{aula.sub}</span>
+                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${aula.status==='finalizada'?'bg-green-100 text-green-700':'bg-orange-100 text-orange-700'}`}>
+                                      {aula.status==='finalizada'?'Finalizada':'Em andamento'}
+                                    </span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-cyan-100 text-cyan-700">{aula.unidadeNome}</span>
+                                    {aula.corrigido && <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700">correção pontual</span>}
+                                  </>
+                                )}
+                              </div>
+                              <div className="text-xs text-gray-400 mt-0.5">{aula.quando}</div>
+                            </div>
+                            {aula.kind==='ct' && (
+                              <button onClick={()=>excluirAula(aula.aulaId)} disabled={excluindo===aula.aulaId}
+                                className="flex-shrink-0 p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50">
+                                {excluindo===aula.aulaId?<div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin"/>:<Trash2 size={14}/>}
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+
+                  {/* Rodapé: ações secundárias discretas */}
+                  <div className="pt-4 border-t border-gray-100 flex items-center justify-between gap-2 flex-wrap">
+                    <button onClick={() => { setSenhaModal(coach); setNovaSenha(''); setMsgSenha('') }}
+                      className="text-xs text-gray-500 hover:text-gray-800 flex items-center gap-1.5">
+                      <KeyRound size={13}/> Trocar senha
                     </button>
+                    {!inativo && (
+                      <button onClick={() => excluirCoach(coach)} disabled={excluindoCoach===coach.id}
+                        className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1.5 disabled:opacity-50">
+                        {excluindoCoach===coach.id?<div className="w-3 h-3 border-2 border-red-400 border-t-transparent rounded-full animate-spin"/>:<Trash2 size={13}/>}
+                        Desativar coach
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -604,60 +712,7 @@ export default function CoachesPage() {
         })}
       </div>
 
-      {/* ── Modal aulas ── */}
-      {aulaModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-              <div><h2 className="font-semibold text-gray-900">Aulas — {aulaModal.coach.nome}</h2><p className="text-xs text-gray-400 mt-0.5">Selecione o mês para filtrar</p></div>
-              <button onClick={() => setAulaModal(null)} className="p-1.5 hover:bg-gray-100 rounded-lg"><X size={18} className="text-gray-500"/></button>
-            </div>
-            <div className="flex gap-2 px-5 py-3 border-b border-gray-100">
-              <select className="input w-auto" value={mesAulas} onChange={e=>{const m=+e.target.value;setMesAulas(m);buscarAulas(aulaModal.coach,m,anoAulas)}}>
-                {MESES.map((m,i)=><option key={i} value={i+1}>{m}</option>)}
-              </select>
-              <select className="input w-auto" value={anoAulas} onChange={e=>{const a=+e.target.value;setAnoAulas(a);buscarAulas(aulaModal.coach,mesAulas,a)}}>
-                {[2025,2026,2027].map(a=><option key={a} value={a}>{a}</option>)}
-              </select>
-              <span className="text-xs text-gray-400 self-center">{aulaModal.aulas.length} aula{aulaModal.aulas.length!==1?'s':''}</span>
-            </div>
-            <div className="overflow-y-auto flex-1 px-5 py-3">
-              {loadingAulas ? (
-                <div className="flex items-center justify-center py-12"><div className="w-6 h-6 border-4 border-primary-400 border-t-transparent rounded-full animate-spin"/></div>
-              ) : aulaModal.aulas.length===0 ? (
-                <div className="text-center py-12 text-sm text-gray-400 italic">Nenhuma aula registrada neste mês.</div>
-              ) : (
-                <div className="space-y-2">
-                  {aulaModal.aulas.map(aula => (
-                    <div key={aula.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 border border-gray-100">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-medium text-gray-900 truncate">{aula.clientes?.nome||'Aluno'}</span>
-                          <span className="text-xs text-gray-400">·</span>
-                          <span className="text-xs text-gray-500 truncate">{aula.treinos?.nome||'—'}</span>
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${aula.status==='finalizada'?'bg-green-100 text-green-700':'bg-orange-100 text-orange-700'}`}>
-                            {aula.status==='finalizada'?'Finalizada':'Em andamento'}
-                          </span>
-                        </div>
-                        <div className="text-xs text-gray-400 mt-0.5">
-                          {new Date(aula.horario_agendado).toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}
-                        </div>
-                      </div>
-                      <button onClick={()=>excluirAula(aula.id)} disabled={excluindo===aula.id}
-                        className="flex-shrink-0 p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50">
-                        {excluindo===aula.id?<div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin"/>:<Trash2 size={14}/>}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="px-5 py-3 border-t border-gray-100"><button onClick={()=>setAulaModal(null)} className="btn w-full">Fechar</button></div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Modal senha ── */}
+      {/* ── Pop-up senha (acionado pelo rodapé do painel) ── */}
       {senhaModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm">
