@@ -116,10 +116,13 @@ export default function RecepcaoWalkIn() {
   function nomeExibicao(r: Entrada): string {
     const nome = nomeCliente(r)
     if (nome) return nome
-    // Sem cliente vinculado (ex.: Wellhub): usa o nome que veio no payload.
+    // Sem cliente vinculado: usa o nome que veio no payload.
+    // Wellhub -> event_data.user.first_name/last_name; TotalPass -> user.name.
     const u = r.raw?.event_data?.user
-    const nomePayload = [u?.first_name, u?.last_name].filter(Boolean).join(' ').trim()
-    if (nomePayload) return nomePayload
+    const nomeWellhub = [u?.first_name, u?.last_name].filter(Boolean).join(' ').trim()
+    if (nomeWellhub) return nomeWellhub
+    const nomeTotalpass = r.raw?.user?.name?.trim()
+    if (nomeTotalpass) return nomeTotalpass
     const label = ORIGENS[r.origem]?.label ?? r.origem
     return r.id_externo ? `${label} · ${r.id_externo}` : label
   }

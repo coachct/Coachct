@@ -63,9 +63,12 @@ function nomeExibicao(r: Checkin): string {
   const c = r.clientes
   const nomeCliente = Array.isArray(c) ? c[0]?.nome : c?.nome
   if (nomeCliente) return nomeCliente
+  // Wellhub -> event_data.user.first_name/last_name; TotalPass -> user.name.
   const u = r.raw?.event_data?.user
-  const nomePayload = [u?.first_name, u?.last_name].filter(Boolean).join(' ').trim()
-  if (nomePayload) return nomePayload
+  const nomeWellhub = [u?.first_name, u?.last_name].filter(Boolean).join(' ').trim()
+  if (nomeWellhub) return nomeWellhub
+  const nomeTotalpass = r.raw?.user?.name?.trim()
+  if (nomeTotalpass) return nomeTotalpass
   const label = ORIGEM_LABEL[r.origem] ?? r.origem
   return r.id_externo ? `${label} · ${r.id_externo}` : label
 }
