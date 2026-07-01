@@ -36,7 +36,10 @@ const MODALIDADES = [
 
 export async function POST(req: NextRequest) {
   const auth = req.headers.get('authorization') || ''
-  if (CRON_SECRET && auth !== `Bearer ${CRON_SECRET}`) {
+  // Aceita o segredo pelo header (cron) OU por ?secret= na URL (disparo manual de teste).
+  const secretQuery = new URL(req.url).searchParams.get('secret') || ''
+  const autorizado = !CRON_SECRET || auth === `Bearer ${CRON_SECRET}` || secretQuery === CRON_SECRET
+  if (!autorizado) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
 
