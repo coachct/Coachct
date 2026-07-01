@@ -32,6 +32,11 @@ const TITULO: Record<string, string> = {
   running_funcional: 'Running Funcional',
 }
 
+// Modalidades habilitadas HOJE. Running fica de fora até termos a lógica de
+// posição (auto-primeira-esteira-depois-funcional) — senão a reserva viria sem
+// posição. Adicionar 'running_funcional' aqui quando essa lógica existir.
+const MODALIDADES_ATIVAS = new Set(['lift', 'lift_for_girls'])
+
 // horario "HH:MM" (24h) -> "HH:MM AM/PM" (formato que a TotalPass espera).
 function to12h(hhmm: string): string {
   const [hRaw, mRaw] = (hhmm || '00:00').slice(0, 5).split(':')
@@ -110,6 +115,7 @@ async function garantirOcorrencias(supabase: SupabaseClient) {
     if (mapeadas.has((oc as any).id)) continue
     const aula = aulaById[(oc as any).aula_id]
     if (!aula) continue
+    if (!MODALIDADES_ATIVAS.has(aula.tipo)) continue // Running fica de fora até ter posição
     const titulo = TITULO[aula.tipo] || aula.tipo
     const responsible =
       (oc as any).coach_escalado?.nome || aula.coaches?.nome || 'Equipe Just Club'
