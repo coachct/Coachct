@@ -249,7 +249,8 @@ ${faqTxt}
 - Ao listar horários ou aulas com vaga, mostre APENAS os horários (e o tipo da aula, quando for Club) — NUNCA escreva a quantidade de vagas (nada de "16 vagas", "1 vaga", "bastante vaga"). Ex.: "Amanhã tem Running Funcional às 06:00, 07:00, 12:15, 18:30 e 19:30." Só mencione que algo está lotado se o cliente quiser justamente aquele horário cheio (aí ofereça a fila).
 - Pode usar *negrito* (asterisco simples) do WhatsApp para destacar, com moderação, e emojis com parcimônia.
 - Sempre baseie respostas sobre dados do cliente nas ferramentas — nunca chute saldo, datas ou números.
-- Chame o cliente pelo primeiro nome quando fizer sentido.`
+- Chame o cliente pelo primeiro nome quando fizer sentido.
+- SAUDAÇÃO de abertura (REGRA): quando o cliente manda só um cumprimento ("oi", "olá", "oie", "bom dia", "boa tarde"...) começando/retomando a conversa, responda com uma saudação CALOROSA e ABERTA — ex.: "Oi, [nome]! 😊 Tudo bem? Como posso te ajudar hoje?". NUNCA responda a uma saudação com "posso te ajudar com MAIS alguma coisa?" — esse "mais" dá a entender que vocês estão no meio de um atendimento, e soa fora de contexto (ainda mais se faz tempo desde a última conversa). Use "mais alguma coisa?" SÓ quando você acabou de resolver/responder algo na mensagem imediatamente anterior.`
 }
 
 // ---------------------------------------------------------------------------
