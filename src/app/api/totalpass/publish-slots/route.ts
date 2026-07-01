@@ -32,10 +32,9 @@ const TITULO: Record<string, string> = {
   running_funcional: 'Running Funcional',
 }
 
-// Modalidades habilitadas HOJE. Running fica de fora até termos a lógica de
-// posição (auto-primeira-esteira-depois-funcional) — senão a reserva viria sem
-// posição. Adicionar 'running_funcional' aqui quando essa lógica existir.
-const MODALIDADES_ATIVAS = new Set(['lift', 'lift_for_girls'])
+// Modalidades habilitadas. Running incluído: o pull-bookings auto-atribui a
+// posição (primeira esteira livre, depois funcional) na hora da reserva.
+const MODALIDADES_ATIVAS = new Set(['lift', 'lift_for_girls', 'running_funcional'])
 
 // horario "HH:MM" (24h) -> "HH:MM AM/PM" (formato que a TotalPass espera).
 function to12h(hhmm: string): string {

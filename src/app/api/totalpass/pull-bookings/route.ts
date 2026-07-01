@@ -148,16 +148,32 @@ async function registrarReserva(
     return 'rejeitada'
   }
 
+  // Posição: Running exige posição. Auto-atribui a primeira esteira livre, depois
+  // funcional. Sem posição livre → sem vaga real → cancela o slot deles.
+  const { data: ocInfo } = await supabase
+    .from('club_ocorrencias')
+    .select('club_aulas(tipo, unidade_id)')
+    .eq('id', ocorrenciaId).maybeSingle()
+  const tipo = (ocInfo as any)?.club_aulas?.tipo
+  const unidadeId = (ocInfo as any)?.club_aulas?.unidade_id
+  let posicao: string | null = null
+  if (tipo === 'running_funcional') {
+    posicao = await escolherPosicao(supabase, ocorrenciaId, unidadeId)
+    if (!posicao) { await cancelarSlot(s.slotId!); return 'rejeitada' }
+  }
+
   // Insere. Trava de 1/dia/unidade (P0001) vale no app → rejeita limpo cancelando o slot.
   // 23505 = já existe (reentrega) → trata como criada.
-  const { error: errIns } = await supabase.from('club_reservas').insert({
+  const payload: any = {
     ocorrencia_id: ocorrenciaId,
     cliente_id: clienteId,
     tipo_credito: 'totalpass_app',
     status: 'reservado',
     via_app: true,
     totalpass_slot_id: s.slotId,
-  })
+  }
+  if (posicao) payload.posicao = posicao
+  const { error: errIns } = await supabase.from('club_reservas').insert(payload)
   if (errIns) {
     if ((errIns as any).code === '23505') return 'ja'
     console.warn('[totalpass/pull] insert recusado:', (errIns as any).code, (errIns as any).message)
@@ -165,6 +181,37 @@ async function registrarReserva(
     return 'rejeitada'
   }
   return 'criada'
+}
+
+// Escolhe a primeira posição LIVRE de uma ocorrência de Running: esteira (tipo
+// 'R') antes de funcional ('F'), menor número primeiro. Rótulo = tipo+numero(2
+// dígitos), ex.: 'R01', 'F03' — mesmo formato do site. null = tudo ocupado.
+async function escolherPosicao(
+  supabase: SupabaseClient, ocorrenciaId: string, unidadeId: string
+): Promise<string | null> {
+  if (!unidadeId) return null
+  const rotulo = (p: any) => `${p.tipo}${String(p.numero).padStart(2, '0')}`
+
+  const { data: pos } = await supabase
+    .from('club_posicoes')
+    .select('tipo, numero, bloqueado')
+    .eq('unidade_id', unidadeId).eq('ativo', true)
+  const { data: tomadas } = await supabase
+    .from('club_reservas')
+    .select('posicao')
+    .eq('ocorrencia_id', ocorrenciaId).in('status', ['reservado', 'presente'])
+
+  const ocupadas = new Set<string>((tomadas || []).map((t: any) => t.posicao).filter(Boolean))
+  for (const p of (pos || [])) if ((p as any).bloqueado) ocupadas.add(rotulo(p)) // bloqueada = indisponível
+
+  const livres = (pos || [])
+    .filter((p: any) => !p.bloqueado)
+    .sort((a: any, b: any) => (a.tipo !== b.tipo ? (a.tipo === 'R' ? -1 : 1) : a.numero - b.numero))
+  for (const p of livres) {
+    const l = rotulo(p)
+    if (!ocupadas.has(l)) return l
+  }
+  return null
 }
 
 // Reservas TotalPass nossas (ativas) cujo slot não veio mais na listagem = canceladas
