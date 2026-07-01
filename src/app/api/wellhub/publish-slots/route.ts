@@ -79,7 +79,8 @@ async function resolverProdutoId(gymId: string): Promise<{ id: number | null; st
   if (process.env.WELLHUB_PRODUCT_ID) return { id: Number(process.env.WELLHUB_PRODUCT_ID), status: 0, body: 'env' }
   const r = await getProducts(gymId)
   const lista = r.body?.products ?? []
-  const first = Array.isArray(lista) && lista.length ? lista[0] : null
+  // Preferir produto presencial (virtual=false) — as aulas Club são presenciais.
+  const first = Array.isArray(lista) ? (lista.find((p: any) => p.virtual === false) ?? lista[0]) : null
   return { id: first?.product_id ?? null, status: r.status, body: r.body }
 }
 
