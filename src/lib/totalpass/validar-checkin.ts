@@ -45,17 +45,22 @@ export async function validarCheckinTotalpass(input: ValidarInput): Promise<void
     console.warn('[totalpass/validar] payload sem endpoint de confirmacao');
   }
 
-  // 2. Valor do plano (por produto_id = plan_code). null se ainda não mapeado.
-  const valor = await buscarValor(supabase, planCode);
+  // 2. Valor + nome legível do plano (por produto_id = plan_code).
+  const { valor, descricao } = await buscarProduto(supabase, planCode);
 
   // 3. Marca validado. O check-in já é válido por definição (CHECK_IN_CREATED).
+  //    Grava o nome legível no 'produto' (pras telas) quando conhecido; se não,
+  //    mantém o plan_code que já está lá.
+  const patch: Record<string, unknown> = {
+    status: 'validado',
+    validado_em: startedAt ?? new Date().toISOString(),
+    valor,
+  };
+  if (descricao) patch.produto = descricao;
+
   const { error } = await supabase
     .from('entradas_walkin')
-    .update({
-      status: 'validado',
-      validado_em: startedAt ?? new Date().toISOString(),
-      valor,
-    })
+    .update(patch)
     .eq('id', entradaId);
   if (error) console.error('[totalpass/validar] erro ao gravar validado:', error);
 }
@@ -85,25 +90,32 @@ async function confirmarNaTotalpass(endpoint: string, cpf: string | null): Promi
   }
 }
 
-// Valor por check-in do plano TotalPass. Casa por produto_id = plan_code.
-// Sem match, retorna null e loga (plan_code novo a mapear em valores_checkin).
-async function buscarValor(
+// Valor + nome legível do plano TotalPass. Casa por produto_id = plan_code.
+// O payload do TotalPass NÃO traz o nome do plano (só o code), então o nome
+// legível pra exibir nas telas vem daqui (valores_checkin.descricao).
+// Sem match, retorna nulos e loga (plan_code novo a mapear em valores_checkin).
+async function buscarProduto(
   supabase: SupabaseClient,
   planCode: string | null
-): Promise<number | null> {
+): Promise<{ valor: number | null; descricao: string | null }> {
   if (planCode) {
     const { data } = await supabase
       .from('valores_checkin')
-      .select('valor')
+      .select('valor, descricao')
       .eq('origem', 'totalpass')
       .eq('produto_id', planCode)
       .eq('ativo', true)
       .maybeSingle();
-    if (data) return Number((data as any).valor);
+    if (data) {
+      return {
+        valor: Number((data as any).valor),
+        descricao: (data as any).descricao ?? null,
+      };
+    }
   }
 
   console.warn(
     `[totalpass/validar] plan_code sem valor cadastrado (plan_code=${planCode}) — mapear em valores_checkin`
   );
-  return null;
+  return { valor: null, descricao: null };
 }
