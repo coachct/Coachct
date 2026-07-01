@@ -14,9 +14,10 @@
 // kill switch TOTALPASS_BOOKING_ATIVO. Este módulo só FALA com a API — não decide
 // nada nem grava no banco.
 //
-// ⚠️ Limitação da doc: o PUT de ocorrência NÃO atualiza `slots` (capacidade). Pra
-// mudar a capacidade exposta (pool), a Fase 2 vai recriar a ocorrência (ou usar o
-// endpoint de capacidade que a doc insinua). Aqui só deixamos os tijolos prontos.
+// ✅ Confirmado empiricamente (a doc dizia o contrário): o PUT de ocorrência
+// ATUALIZA `slots` (capacidade) — resposta 200 com o novo valor. Então o pool
+// compartilhado sincroniza via PUT, sem recriar. DELETE de ocorrência também
+// funciona (200 {"message":"Event deleted"}).
 
 const API_BASE_PADRAO = 'https://booking-api.totalpass.com';
 const VALIDADE_MS = 23 * 60 * 60 * 1000; // renova o JWT com folga (vale 24h)
@@ -127,13 +128,19 @@ export function criarOcorrencia(dados: NovaOcorrencia): Promise<TPResult> {
   });
 }
 
-// ── Ocorrência: atualiza dados (⚠️ NÃO atualiza `slots`/capacidade — ver topo) ─
-// PUT /partner/event-occurrence/{occurrenceUuid}
+// ── Ocorrência: atualiza dados, INCLUINDO `slots` (capacidade — confirmado) ────
+// PUT /partner/event-occurrence/{occurrenceUuid}. É o que o pool usa pra ajustar
+// as vagas expostas quando reservas mudam.
 export function atualizarOcorrencia(
   occurrenceUuid: string,
-  dados: Partial<Pick<NovaOcorrencia, 'title' | 'responsible' | 'duration' | 'description' | 'externalReference' | 'bookingWindow'>>
+  dados: Partial<Pick<NovaOcorrencia, 'title' | 'responsible' | 'duration' | 'slots' | 'description' | 'externalReference' | 'bookingWindow'>>
 ): Promise<TPResult> {
   return tpFetch(`/partner/event-occurrence/${occurrenceUuid}`, 'PUT', dados);
+}
+
+// ── Ocorrência: deleta (tira da grade). DELETE /partner/event-occurrence/{uuid} ─
+export function deletarOcorrencia(occurrenceUuid: string): Promise<TPResult> {
+  return tpFetch(`/partner/event-occurrence/${occurrenceUuid}`, 'DELETE');
 }
 
 // ── Eventos: lista o que existe no place (diagnóstico / kill switch) ──────────
