@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { nome, email, senha, cpf, contrato, salario_fixo, adicional_por_aula, valor_cliente_aula } = body
+    const { nome, email, senha, cpf, contrato, salario_fixo, cargo, valor_hora, adicional_por_aula, valor_cliente_aula } = body
 
     if  (!nome || !email || !senha) {
       return NextResponse.json({ error: 'Campos obrigatórios faltando.' }, { status: 400 })
@@ -34,6 +34,8 @@ export async function POST(req: NextRequest) {
       nome, cpf, email,
       contrato: contrato || 'CLT',
       salario_fixo: salario_fixo || 0,
+      cargo: cargo || 'estagiario',
+      valor_hora: valor_hora || 0,
       adicional_por_aula: adicional_por_aula || 0,
       valor_cliente_aula: valor_cliente_aula || 0,
       ativo: true,

@@ -16,6 +16,8 @@ export interface Coach {
   email: string
   contrato: 'CLT' | 'PJ' | 'Autônomo'
   salario_fixo: number
+  cargo: 'estagiario' | 'professor'
+  valor_hora: number
   adicional_por_aula: number
   valor_cliente_aula: number
   ativo: boolean

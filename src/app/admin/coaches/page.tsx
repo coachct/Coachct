@@ -9,6 +9,8 @@ import { Plus, ChevronDown, ChevronUp, Save, Trash2, X, ClipboardList, KeyRound,
 const EMPTY = {
   nome: '', cpf: '', email: '', senha: '',
   salario_fixo: 0,
+  cargo: 'estagiario' as 'estagiario' | 'professor',
+  valor_hora: 0,
 }
 
 const TIPOS_CT    = [{ key: 'ct', label: 'Coach CT' }]
@@ -86,7 +88,7 @@ export default function CoachesPage() {
     const abrindo = expandedCoach !== coach.id
     if (!abrindo) { setExpandedCoach(null); return }
     setExpandedCoach(coach.id)
-    setEditDraft({ id: coach.id, nome: coach.nome, cpf: coach.cpf, salario_fixo: coach.salario_fixo })
+    setEditDraft({ id: coach.id, nome: coach.nome, cpf: coach.cpf, salario_fixo: coach.salario_fixo, cargo: coach.cargo, valor_hora: coach.valor_hora })
     loadCoachUnidades(coach.id)
     loadHorarios(coach.id)
     loadFerias(coach.id)
@@ -368,7 +370,9 @@ export default function CoachesPage() {
     setSaving(true)
     const { error } = await supabase.from('coaches').update({
       nome: editDraft.nome, cpf: editDraft.cpf,
+      cargo: editDraft.cargo || 'estagiario',
       salario_fixo: editDraft.salario_fixo || 0,
+      valor_hora: editDraft.valor_hora || 0,
     }).eq('id', editDraft.id)
     if (error) setMsg('Erro: ' + error.message)
     else { setMsg('Coach atualizado!'); loadCoaches() }
@@ -405,13 +409,28 @@ export default function CoachesPage() {
             <div><label className="label">Senha inicial *</label><input className="input" type="password" value={form.senha} onChange={e => setForm(f=>({...f,senha:e.target.value}))} placeholder="Mínimo 6 caracteres" /></div>
           </div>
           <div className="bg-gray-50 rounded-xl p-4 mb-4">
-            <div className="text-xs font-semibold text-gray-700 mb-1 uppercase tracking-wide">Salário fixo</div>
-            <p className="text-xs text-gray-400 mb-3">Opcional — deixe 0 para coaches que recebem apenas por aulas</p>
-            <div className="max-w-xs">
-              <label className="label">Salário fixo/mês (R$)</label>
-              <input className="input" type="number" value={form.salario_fixo} onChange={e => setForm(f=>({...f,salario_fixo:+e.target.value}))} placeholder="0" />
+            <div className="text-xs font-semibold text-gray-700 mb-1 uppercase tracking-wide">Cargo & remuneração</div>
+            <p className="text-xs text-gray-400 mb-3">Estagiário: salário fixo/mês. Professor: valor por hora trabalhada (grade do CT).</p>
+            <div className="flex gap-2 mb-3">
+              {(['estagiario','professor'] as const).map(c => (
+                <button key={c} type="button" onClick={() => setForm(f=>({...f,cargo:c}))}
+                  className={`btn btn-sm ${form.cargo===c ? 'bg-primary-600 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}>
+                  {c === 'estagiario' ? 'Estagiário' : 'Professor'}
+                </button>
+              ))}
             </div>
-            <p className="text-xs text-gray-400 mt-2">💡 Os valores por tipo de aula são configurados na seção <strong>Unidades</strong> de cada coach após o cadastro.</p>
+            {form.cargo === 'estagiario' ? (
+              <div className="max-w-xs">
+                <label className="label">Salário fixo/mês (R$)</label>
+                <input className="input" type="number" value={form.salario_fixo} onChange={e => setForm(f=>({...f,salario_fixo:+e.target.value}))} placeholder="0" />
+              </div>
+            ) : (
+              <div className="max-w-xs">
+                <label className="label">Valor por hora (R$)</label>
+                <input className="input" type="number" value={form.valor_hora} onChange={e => setForm(f=>({...f,valor_hora:+e.target.value}))} placeholder="0" />
+              </div>
+            )}
+            <p className="text-xs text-gray-400 mt-2">💡 O bônus por aula é configurado na seção <strong>Unidades</strong> de cada coach após o cadastro.</p>
           </div>
           <div className="flex gap-2">
             <button onClick={handleCreate} disabled={saving} className="btn btn-primary gap-2"><Save size={14}/>{saving?'Criando...':'Criar coach'}</button>
@@ -438,6 +457,9 @@ export default function CoachesPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <div className="font-medium text-gray-900 text-sm">{coach.nome}</div>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${coach.cargo === 'professor' ? 'bg-purple-50 text-purple-700 border border-purple-100' : 'bg-amber-50 text-amber-700 border border-amber-100'}`}>
+                      {coach.cargo === 'professor' ? 'Professor' : 'Estagiário'}
+                    </span>
                     {inativo && <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Inativo</span>}
                     {!inativo && qtdUnids > 0 && (
                       <span className="text-xs bg-cyan-50 text-cyan-700 border border-cyan-100 px-2 py-0.5 rounded-full flex items-center gap-1">
@@ -446,8 +468,10 @@ export default function CoachesPage() {
                     )}
                   </div>
                   <div className="text-xs text-gray-400">
-                    {Number(coach.salario_fixo) > 0 ? `Fixo ${fmt(coach.salario_fixo)}/mês` : 'Sem fixo'}
-                    {' · valores por aula nas unidades'}
+                    {coach.cargo === 'professor'
+                      ? `Professor · ${fmt(coach.valor_hora)}/hora`
+                      : (Number(coach.salario_fixo) > 0 ? `Estagiário · Fixo ${fmt(coach.salario_fixo)}/mês` : 'Estagiário · Sem fixo')}
+                    {' · bônus por aula nas unidades'}
                   </div>
                 </div>
                 <button onClick={() => toggleCoach(coach)}
@@ -469,10 +493,28 @@ export default function CoachesPage() {
                       <div><label className="label">Nome</label><input className="input" value={editDraft.nome||''} onChange={e => setEditDraft(f=>({...f,nome:e.target.value}))} /></div>
                       <div><label className="label">CPF</label><input className="input" value={editDraft.cpf||''} onChange={e => setEditDraft(f=>({...f,cpf:e.target.value}))} /></div>
                     </div>
-                    <div className="max-w-xs mb-3">
-                      <label className="label">Salário fixo/mês (R$) <span className="text-gray-400 font-normal">— opcional</span></label>
-                      <input className="input" type="number" value={editDraft.salario_fixo||0} onChange={e => setEditDraft(f=>({...f,salario_fixo:+e.target.value}))} placeholder="0" />
+                    <div className="mb-3">
+                      <label className="label">Cargo</label>
+                      <div className="flex gap-2 mt-1">
+                        {(['estagiario','professor'] as const).map(c => (
+                          <button key={c} type="button" onClick={() => setEditDraft(f=>({...f,cargo:c}))}
+                            className={`btn btn-sm ${(editDraft.cargo||'estagiario')===c ? 'bg-primary-600 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}>
+                            {c === 'estagiario' ? 'Estagiário' : 'Professor'}
+                          </button>
+                        ))}
+                      </div>
                     </div>
+                    {(editDraft.cargo||'estagiario') === 'estagiario' ? (
+                      <div className="max-w-xs mb-3">
+                        <label className="label">Salário fixo/mês (R$) <span className="text-gray-400 font-normal">— opcional</span></label>
+                        <input className="input" type="number" value={editDraft.salario_fixo||0} onChange={e => setEditDraft(f=>({...f,salario_fixo:+e.target.value}))} placeholder="0" />
+                      </div>
+                    ) : (
+                      <div className="max-w-xs mb-3">
+                        <label className="label">Valor por hora (R$)</label>
+                        <input className="input" type="number" value={editDraft.valor_hora||0} onChange={e => setEditDraft(f=>({...f,valor_hora:+e.target.value}))} placeholder="0" />
+                      </div>
+                    )}
                     <button onClick={handleEdit} disabled={saving} className="btn btn-primary btn-sm gap-2"><Save size={12}/>{saving?'Salvando...':'Salvar dados'}</button>
                   </section>
 
