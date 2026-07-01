@@ -86,8 +86,11 @@ export default function RecepcaoMusculacaoLivrePage() {
       const c = Array.isArray(r.clientes) ? r.clientes[0] : r.clientes
       const label = ORIGENS[r.origem]?.label || r.origem
       // Nome real do payload quando não há cliente cadastrado vinculado.
+      // Wellhub -> event_data.user.first_name/last_name; TotalPass -> user.name.
       const u = r.raw?.event_data?.user
-      const nomePayload = [u?.first_name, u?.last_name].filter(Boolean).join(' ').trim()
+      const nomeWellhub = [u?.first_name, u?.last_name].filter(Boolean).join(' ').trim()
+      const nomeTotalpass = r.raw?.user?.name?.trim()
+      const nomePayload = nomeWellhub || nomeTotalpass || ''
       // Tipo do check-in: descrição limpa do produto (sem o "id —" na frente).
       const tipo = r.raw?.event_data?.gym?.product?.description || r.produto || null
       return {
