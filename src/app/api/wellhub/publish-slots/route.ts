@@ -80,7 +80,11 @@ async function garantirClasses(supabase: SupabaseClient, ativas: any[]): Promise
       if (tiposExistentes.has(mod.tipo)) continue
 
       const categoryId = await resolverCategoria(gymId)
-      if (!categoryId) { erros.push({ etapa: 'getCategories', gymId, tipo: mod.tipo, motivo: 'sem category_id' }); continue }
+      if (!categoryId) {
+        const cat = await getCategories(gymId)
+        erros.push({ etapa: 'getCategories', gymId, tipo: mod.tipo, status: cat.status, erro: cat.erro, resposta: cat.body })
+        continue
+      }
 
       const r = await createClass(gymId, { name: mod.name, description: mod.description, category_id: categoryId })
       const classId = extrairId(r.body)
