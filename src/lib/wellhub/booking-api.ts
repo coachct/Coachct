@@ -166,3 +166,8 @@ export function getCategories(gymId: string): Promise<WellhubResult> {
 export function getProducts(gymId: string): Promise<WellhubResult> {
   return wellhubFetch(SPEC.paths.products(gymId), 'GET');
 }
+
+// GET das classes já existentes — usado só pra diagnóstico (o Marco confirmou 200).
+export function listClasses(gymId: string): Promise<WellhubResult> {
+  return wellhubFetch(SPEC.paths.classes(gymId), 'GET');
+}

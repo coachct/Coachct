@@ -16,7 +16,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
-import { createClass, createSlot, getCategories } from '@/lib/wellhub/booking-api'
+import { createClass, createSlot, getCategories, listClasses } from '@/lib/wellhub/booking-api'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -49,6 +49,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Variáveis de ambiente não configuradas' }, { status: 500 })
   }
   const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+
+  // DIAGNÓSTICO: ?probe=1 só testa os GETs (categories + classes) e retorna cru, sem criar nada.
+  if (new URL(req.url).searchParams.get('probe')) {
+    const { data: u } = await supabase.from('unidades').select('wellhub_gym_id')
+      .eq('wellhub_estado', 'ativo').not('wellhub_gym_id', 'is', null).limit(1).maybeSingle()
+    const gym = (u as any)?.wellhub_gym_id || '465'
+    const cats = await getCategories(gym)
+    const cls = await listClasses(gym)
+    return NextResponse.json({ probe: true, gym,
+      categories: { status: cats.status, body: cats.body },
+      classes: { status: cls.status, body: cls.body } })
+  }
 
   // Unidades integradas e ativas.
   const { data: unidades } = await supabase
