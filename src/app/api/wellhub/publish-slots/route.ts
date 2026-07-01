@@ -53,9 +53,11 @@ export async function POST(req: NextRequest) {
     const cats = await getCategories(gym)
     const cls = await listClasses(gym)
     return NextResponse.json({ probe: true, gym,
-      products: { status: prods.status, body: prods.body },
-      categories: { status: cats.status, body: cats.body },
-      classes: { status: cls.status, body: cls.body } })
+      temToken: !!(process.env.WELLHUB_BOOKING_API_KEY ?? process.env.WELLHUB_API_KEY),
+      base: process.env.WELLHUB_BOOKING_API_BASE ?? '(default sandbox)',
+      products: { status: prods.status, erro: prods.erro, body: prods.body },
+      categories: { status: cats.status, erro: cats.erro, body: cats.body },
+      classes: { status: cls.status, erro: cls.erro, body: cls.body } })
   }
 
   // Unidades integradas e ativas.
