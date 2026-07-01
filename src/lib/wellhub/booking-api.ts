@@ -28,13 +28,13 @@ const SANDBOX_BASE = 'https://apitesting.partners.gympass.com';
 const SPEC = {
   // Paths por recurso. {gym}/{class}/{slot}/{booking} são interpolados.
   paths: {
-    classes:    (gym: string) => `/booking/v1/gyms/${gym}/classes`,
-    class:      (gym: string, cls: string) => `/booking/v1/gyms/${gym}/classes/${cls}`,
-    slots:      (gym: string, cls: string) => `/booking/v1/gyms/${gym}/classes/${cls}/slots`,
-    slot:       (gym: string, cls: string, slot: string) => `/booking/v1/gyms/${gym}/classes/${cls}/slots/${slot}`,
-    booking:    (gym: string, bk: string) => `/booking/v2/gyms/${gym}/bookings/${bk}`,
-    categories: (gym: string) => `/booking/v1/gyms/${gym}/categories`,
-    products:   (gym: string) => `/booking/v1/gyms/${gym}/products`,
+    classes:    (gym: string) => `/gyms/${gym}/classes`,
+    class:      (gym: string, cls: string) => `/gyms/${gym}/classes/${cls}`,
+    slots:      (gym: string, cls: string) => `/gyms/${gym}/classes/${cls}/slots`,
+    slot:       (gym: string, cls: string, slot: string) => `/gyms/${gym}/classes/${cls}/slots/${slot}`,
+    booking:    (gym: string, bk: string) => `/gyms/${gym}/bookings/${bk}`,
+    categories: (gym: string) => `/gyms/${gym}/categories`,
+    products:   (gym: string) => `/gyms/${gym}/products`,
   },
   // Valores literais que o Wellhub espera no PATCH de booking. ⚠️ confirmar caixa.
   bookingStatus: {
