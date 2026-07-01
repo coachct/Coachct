@@ -47,8 +47,11 @@ export type WellhubResult = { ok: boolean; status: number; body: any; erro?: str
 
 const TIMEOUT_MS = 5000;
 
+// Credenciais PRÓPRIAS do Booking, isoladas do Access Control (check-in) que já
+// roda em produção. Assim o teste de Booking no sandbox NÃO encosta no check-in
+// atual. Default = sandbox, então nunca vai pra produção por acidente.
 function apiBase(): string {
-  return process.env.WELLHUB_API_BASE ?? SANDBOX_BASE;
+  return process.env.WELLHUB_BOOKING_API_BASE ?? SANDBOX_BASE;
 }
 
 // Núcleo: monta auth + timeout, lê o corpo uma vez, devolve resultado padronizado.
@@ -57,10 +60,10 @@ async function wellhubFetch(
   method: 'GET' | 'POST' | 'PATCH' | 'PUT',
   body?: unknown
 ): Promise<WellhubResult> {
-  const apiKey = process.env.WELLHUB_API_KEY;
+  const apiKey = process.env.WELLHUB_BOOKING_API_KEY ?? process.env.WELLHUB_API_KEY;
   if (!apiKey) {
-    console.error('[wellhub/booking] WELLHUB_API_KEY ausente');
-    return { ok: false, status: 0, body: null, erro: 'WELLHUB_API_KEY ausente' };
+    console.error('[wellhub/booking] token ausente (WELLHUB_BOOKING_API_KEY / WELLHUB_API_KEY)');
+    return { ok: false, status: 0, body: null, erro: 'token ausente' };
   }
 
   const controller = new AbortController();

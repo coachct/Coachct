@@ -53,10 +53,10 @@ export async function POST(req: NextRequest) {
   const ativas = (unidades || []).filter((u: any) => u.wellhub_gym_id)
   if (!ativas.length) return NextResponse.json({ ok: true, msg: 'nenhuma unidade ativa' })
 
-  const classesCriadas = await garantirClasses(supabase, ativas)
+  const classes = await garantirClasses(supabase, ativas)
   const slots = await garantirSlots(supabase, ativas)
 
-  return NextResponse.json({ ok: true, classesCriadas, ...slots })
+  return NextResponse.json({ ok: true, classesCriadas: classes.criadas, classesErros: classes.erros, ...slots })
 }
 
 export async function GET(req: NextRequest) {
@@ -64,8 +64,9 @@ export async function GET(req: NextRequest) {
 }
 
 // ── Fase 1: classes (1x por gym × modalidade) ────────────────────────────────
-async function garantirClasses(supabase: SupabaseClient, ativas: any[]): Promise<number> {
+async function garantirClasses(supabase: SupabaseClient, ativas: any[]): Promise<{ criadas: number; erros: any[] }> {
   let criadas = 0
+  const erros: any[] = []
   for (const u of ativas) {
     const gymId = u.wellhub_gym_id as string
     const { data: jaMapeadas } = await supabase
@@ -76,12 +77,12 @@ async function garantirClasses(supabase: SupabaseClient, ativas: any[]): Promise
       if (tiposExistentes.has(mod.tipo)) continue
 
       const categoryId = await resolverCategoria(gymId)
-      if (!categoryId) { console.warn('[wellhub/publish] sem category_id pra', gymId); continue }
+      if (!categoryId) { erros.push({ etapa: 'getCategories', gymId, tipo: mod.tipo, motivo: 'sem category_id' }); continue }
 
       const r = await createClass(gymId, { name: mod.name, description: mod.description, category_id: categoryId })
       const classId = extrairId(r.body)
       if (!r.ok || !classId) {
-        console.warn('[wellhub/publish] createClass falhou:', gymId, mod.tipo, r.status, r.erro)
+        erros.push({ etapa: 'createClass', gymId, tipo: mod.tipo, status: r.status, resposta: r.body })
         continue
       }
       const { error } = await supabase.from('wellhub_class_map')
@@ -89,7 +90,7 @@ async function garantirClasses(supabase: SupabaseClient, ativas: any[]): Promise
       if (!error) criadas++
     }
   }
-  return criadas
+  return { criadas, erros }
 }
 
 // ── Fase 2: slots (ocorrências futuras ainda sem mapa) ───────────────────────
@@ -126,6 +127,7 @@ async function garantirSlots(supabase: SupabaseClient, ativas: any[]) {
   for (const c of (classMaps || [])) classByKey[classKey((c as any).gym_id, (c as any).tipo_aula)] = (c as any).wellhub_class_id
 
   let slotsCriados = 0, slotErros = 0
+  const errosSlots: any[] = []
   for (const oc of futuras) {
     if (mapeadas.has((oc as any).id)) continue
     const aula = aulaById[(oc as any).aula_id]
@@ -144,7 +146,7 @@ async function garantirSlots(supabase: SupabaseClient, ativas: any[]) {
     })
     const slotId = extrairId(r.body)
     if (!r.ok || !slotId) {
-      console.warn('[wellhub/publish] createSlot falhou:', (oc as any).id, r.status, r.erro)
+      if (errosSlots.length < 3) errosSlots.push({ etapa: 'createSlot', ocorrencia: (oc as any).id, status: r.status, resposta: r.body })
       slotErros++
       continue
     }
@@ -156,7 +158,7 @@ async function garantirSlots(supabase: SupabaseClient, ativas: any[]) {
       .upsert({ ocorrencia_id: (oc as any).id, enfileirado_em: new Date().toISOString() }, { onConflict: 'ocorrencia_id' })
     slotsCriados++
   }
-  return { slotsCriados, slotErros }
+  return { slotsCriados, slotErros, slotsErrosDetalhe: errosSlots }
 }
 
 // ── Helpers SPEC (⚠️ confirmar no sandbox) ───────────────────────────────────
