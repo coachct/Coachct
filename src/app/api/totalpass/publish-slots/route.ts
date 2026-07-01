@@ -64,10 +64,18 @@ export async function POST(req: NextRequest) {
   }
   const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
 
-  // DIAGNÓSTICO: ?probe=1 só lista os eventos existentes na TotalPass, sem criar.
+  // DIAGNÓSTICO: ?probe=1 lista as env TOTALPASS* que a função enxerga (só nomes)
+  // e testa a API, sem criar nada.
   if (new URL(req.url).searchParams.get('probe')) {
+    const envTotalpass = Object.keys(process.env).filter((k) => k.startsWith('TOTALPASS'))
     const ev = await listarEventos()
-    return NextResponse.json({ probe: true, status: ev.status, erro: ev.erro, qtd: Array.isArray(ev.body) ? ev.body.length : null })
+    return NextResponse.json({
+      probe: true,
+      envTotalpass,
+      temPlaceKey: !!process.env.TOTALPASS_PINH_PLACE_API_KEY,
+      status: ev.status, erro: ev.erro,
+      qtd: Array.isArray(ev.body) ? ev.body.length : null,
+    })
   }
 
   const r = await garantirOcorrencias(supabase)
