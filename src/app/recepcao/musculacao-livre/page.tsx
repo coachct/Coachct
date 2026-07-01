@@ -46,7 +46,7 @@ export default function RecepcaoMusculacaoLivrePage() {
   useEffect(() => {
     if (loading) return
     if (!perfil) { router.push('/'); return }
-    if ((perfil.role as any) !== 'recepcao' && (perfil.role as any) !== 'admin') { router.push('/'); return }
+    if (!['recepcao', 'admin', 'coordenadora'].includes(perfil.role as any)) { router.push('/'); return }
   }, [loading, perfil])
 
   // ─── Carregar acessos de hoje ───

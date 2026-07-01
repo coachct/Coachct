@@ -222,7 +222,7 @@ export default function CheckinsWellhubPage() {
               <CheckCircle2 size={20} />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900">Check-ins Wellhub</h1>
+              <h1 className="text-xl font-bold text-gray-900">Check-ins Apps</h1>
               <p className="text-sm text-gray-500">
                 Check-ins dos agregadores com valor por check-in e receita esperada
               </p>
