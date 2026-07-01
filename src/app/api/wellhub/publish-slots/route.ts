@@ -1,22 +1,17 @@
 // src/app/api/wellhub/publish-slots/route.ts
 //
-// Publica a grade Club no catálogo do Wellhub (outbound). Fluxo do Wellhub:
-//   1) garantir a CLASSE (modalidade) por gym  → wellhub_class_map
-//   2) garantir o SLOT (horário) por ocorrência → wellhub_slot_map + enfileira sync
-//   3) o PATCH de totais quem faz é o worker sync-slots (via fila).
+// Publica a grade Club no catálogo do Wellhub (outbound). Fluxo (doc oficial):
+//   1) product_id do gym (GET /setup/v1/.../products)
+//   2) CLASSE (modalidade) por gym  → wellhub_class_map
+//   3) SLOT (horário) por ocorrência → wellhub_slot_map + enfileira sync
+//   4) o PATCH de totais quem faz é o worker sync-slots (via fila).
 //
 // Idempotente: nunca recria classe/slot já mapeado. Protegido pelo segredo do
-// cron (Authorization: Bearer CRON_SECRET). Rodar 1x/hora + manualmente no setup.
-//
-// ┌──────────────────────────────────────────────────────────────────────────┐
-// │ ⚠️  É a etapa que MAIS depende de confirmação no sandbox. Os pontos estão  │
-// │     centralizados nos helpers SPEC abaixo (resolverCategoria, extrairId,   │
-// │     montarDatetime) e nos nomes/descrições de MODALIDADES.                 │
-// └──────────────────────────────────────────────────────────────────────────┘
+// cron (Authorization: Bearer CRON_SECRET) OU ?secret= na URL (teste manual).
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
-import { createClass, createSlot, getCategories, listClasses } from '@/lib/wellhub/booking-api'
+import { createClass, createSlot, getProducts, getCategories, listClasses } from '@/lib/wellhub/booking-api'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -26,8 +21,7 @@ const CRON_SECRET = process.env.CRON_SECRET || ''
 const LOTE_SLOTS = 100
 
 // Modalidades espelhadas. tipo = club_aulas.tipo. name/description = como aparece
-// no app do Wellhub (decisão de negócio). Descrição final com grupos musculares
-// está pendente da definição do Ricardo (fora de escopo Fase 1).
+// no app do Wellhub. Descrição final com grupos musculares pendente do Ricardo.
 const MODALIDADES = [
   { tipo: 'lift',               name: 'Lift',              description: 'Treino de força em circuito.' },
   { tipo: 'lift_for_girls',     name: 'Lift for Girls',    description: 'Treino de força em circuito (turma feminina).' },
@@ -50,14 +44,16 @@ export async function POST(req: NextRequest) {
   }
   const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
 
-  // DIAGNÓSTICO: ?probe=1 só testa os GETs (categories + classes) e retorna cru, sem criar nada.
+  // DIAGNÓSTICO: ?probe=1 só testa os GETs e retorna cru, sem criar nada.
   if (new URL(req.url).searchParams.get('probe')) {
     const { data: u } = await supabase.from('unidades').select('wellhub_gym_id')
       .eq('wellhub_estado', 'ativo').not('wellhub_gym_id', 'is', null).limit(1).maybeSingle()
     const gym = (u as any)?.wellhub_gym_id || '465'
+    const prods = await getProducts(gym)
     const cats = await getCategories(gym)
     const cls = await listClasses(gym)
     return NextResponse.json({ probe: true, gym,
+      products: { status: prods.status, body: prods.body },
       categories: { status: cats.status, body: cats.body },
       classes: { status: cls.status, body: cls.body } })
   }
@@ -78,6 +74,31 @@ export async function GET(req: NextRequest) {
   return POST(req)
 }
 
+// product_id do gym (obrigatório em createClass/createSlot). Override por env.
+async function resolverProdutoId(gymId: string): Promise<{ id: number | null; status: number; body: any }> {
+  if (process.env.WELLHUB_PRODUCT_ID) return { id: Number(process.env.WELLHUB_PRODUCT_ID), status: 0, body: 'env' }
+  const r = await getProducts(gymId)
+  const lista = r.body?.products ?? []
+  const first = Array.isArray(lista) && lista.length ? lista[0] : null
+  return { id: first?.product_id ?? null, status: r.status, body: r.body }
+}
+
+// Ids nas respostas: createClass → { classes:[{id}] } ; createSlot → { results:[{id}] }
+const extrairClassId = (body: any): string | null => {
+  const id = body?.classes?.[0]?.id ?? body?.id
+  return id != null ? String(id) : null
+}
+const extrairSlotId = (body: any): string | null => {
+  const id = body?.results?.[0]?.id ?? body?.id
+  return id != null ? String(id) : null
+}
+
+// occur_date no fuso de São Paulo (-03:00 fixo; Brasil sem horário de verão).
+function montarOccurDate(data: string, horario: string): string {
+  const hhmmss = (horario || '00:00').length === 5 ? `${horario}:00` : (horario || '00:00:00')
+  return `${data}T${hhmmss}-03:00`
+}
+
 // ── Fase 1: classes (1x por gym × modalidade) ────────────────────────────────
 async function garantirClasses(supabase: SupabaseClient, ativas: any[]): Promise<{ criadas: number; erros: any[] }> {
   let criadas = 0
@@ -87,19 +108,15 @@ async function garantirClasses(supabase: SupabaseClient, ativas: any[]): Promise
     const { data: jaMapeadas } = await supabase
       .from('wellhub_class_map').select('tipo_aula').eq('gym_id', gymId)
     const tiposExistentes = new Set((jaMapeadas || []).map((c: any) => c.tipo_aula))
+    const faltando = MODALIDADES.filter((m) => !tiposExistentes.has(m.tipo))
+    if (!faltando.length) continue
 
-    for (const mod of MODALIDADES) {
-      if (tiposExistentes.has(mod.tipo)) continue
+    const prod = await resolverProdutoId(gymId)
+    if (!prod.id) { erros.push({ etapa: 'getProducts', gymId, status: prod.status, resposta: prod.body }); continue }
 
-      const categoryId = await resolverCategoria(gymId)
-      if (!categoryId) {
-        const cat = await getCategories(gymId)
-        erros.push({ etapa: 'getCategories', gymId, tipo: mod.tipo, status: cat.status, erro: cat.erro, resposta: cat.body })
-        continue
-      }
-
-      const r = await createClass(gymId, { name: mod.name, description: mod.description, category_id: categoryId })
-      const classId = extrairId(r.body)
+    for (const mod of faltando) {
+      const r = await createClass(gymId, { name: mod.name, description: mod.description, product_id: prod.id })
+      const classId = extrairClassId(r.body)
       if (!r.ok || !classId) {
         erros.push({ etapa: 'createClass', gymId, tipo: mod.tipo, status: r.status, resposta: r.body })
         continue
@@ -119,27 +136,27 @@ async function garantirSlots(supabase: SupabaseClient, ativas: any[]) {
   const unidadeIds = ativas.map((u: any) => u.id)
   const hoje = new Date().toISOString().slice(0, 10)
 
-  // Aulas das unidades ativas.
+  // product_id por gym (obrigatório no slot).
+  const prodPorGym: Record<string, number | null> = {}
+  for (const u of ativas) prodPorGym[u.wellhub_gym_id] = (await resolverProdutoId(u.wellhub_gym_id)).id
+
   const { data: aulas } = await supabase
-    .from('club_aulas').select('id, tipo, horario, unidade_id').in('unidade_id', unidadeIds)
+    .from('club_aulas').select('id, tipo, horario, unidade_id, duracao_min').in('unidade_id', unidadeIds)
   const aulaById: Record<string, any> = {}
   for (const a of (aulas || [])) aulaById[(a as any).id] = a
   const aulaIds = (aulas || []).map((a: any) => a.id)
-  if (!aulaIds.length) return { slotsCriados: 0, slotErros: 0 }
+  if (!aulaIds.length) return { slotsCriados: 0, slotErros: 0, slotsErrosDetalhe: [] }
 
-  // Ocorrências futuras dessas aulas.
   const { data: ocs } = await supabase
     .from('club_ocorrencias').select('id, data, aula_id, status')
     .in('aula_id', aulaIds).gte('data', hoje).limit(LOTE_SLOTS)
   const futuras = (ocs || []).filter((o: any) => o.status !== 'cancelada')
-  if (!futuras.length) return { slotsCriados: 0, slotErros: 0 }
+  if (!futuras.length) return { slotsCriados: 0, slotErros: 0, slotsErrosDetalhe: [] }
 
-  // Já mapeadas → pular.
   const { data: jaMapeados } = await supabase
     .from('wellhub_slot_map').select('ocorrencia_id').in('ocorrencia_id', futuras.map((o: any) => o.id))
   const mapeadas = new Set((jaMapeados || []).map((m: any) => m.ocorrencia_id))
 
-  // Classes por (gym, tipo).
   const { data: classMaps } = await supabase.from('wellhub_class_map').select('gym_id, tipo_aula, wellhub_class_id')
   const classKey = (gym: string, tipo: string) => `${gym}::${tipo}`
   const classByKey: Record<string, string> = {}
@@ -154,16 +171,20 @@ async function garantirSlots(supabase: SupabaseClient, ativas: any[]) {
     const gymId = gymPorUnidade[aula.unidade_id]
     const classId = classByKey[classKey(gymId, aula.tipo)]
     if (!classId) continue // classe dessa modalidade ainda não publicada
+    const productId = prodPorGym[gymId]
+    if (!productId) continue
 
     const { data: numsRaw } = await supabase.rpc('wellhub_slot_numbers', { p_ocorrencia_id: (oc as any).id })
     const nums = Array.isArray(numsRaw) ? numsRaw[0] : numsRaw
-    const totalCapacity = nums?.total_capacity ?? 0
 
     const r = await createSlot(gymId, classId, {
-      datetime: montarDatetime((oc as any).data, aula.horario),
-      total_capacity: totalCapacity,
+      occur_date: montarOccurDate((oc as any).data, aula.horario),
+      length_in_minutes: aula.duracao_min ?? 50,
+      total_capacity: nums?.total_capacity ?? 0,
+      total_booked: nums?.total_booked ?? 0,
+      product_id: productId,
     })
-    const slotId = extrairId(r.body)
+    const slotId = extrairSlotId(r.body)
     if (!r.ok || !slotId) {
       if (errosSlots.length < 3) errosSlots.push({ etapa: 'createSlot', ocorrencia: (oc as any).id, status: r.status, resposta: r.body })
       slotErros++
@@ -172,37 +193,9 @@ async function garantirSlots(supabase: SupabaseClient, ativas: any[]) {
     const { error } = await supabase.from('wellhub_slot_map')
       .insert({ ocorrencia_id: (oc as any).id, gym_id: gymId, wellhub_class_id: classId, wellhub_slot_id: slotId })
     if (error) { slotErros++; continue }
-    // Enfileira pro worker empurrar total_capacity/total_booked atuais.
     await supabase.from('wellhub_slot_sync_queue')
       .upsert({ ocorrencia_id: (oc as any).id, enfileirado_em: new Date().toISOString() }, { onConflict: 'ocorrencia_id' })
     slotsCriados++
   }
   return { slotsCriados, slotErros, slotsErrosDetalhe: errosSlots }
-}
-
-// ── Helpers SPEC (⚠️ confirmar no sandbox) ───────────────────────────────────
-
-// Resolve o category_id que createClass exige. O shape de getCategories ainda
-// não foi capturado — tenta as formas mais prováveis e permite override por env.
-async function resolverCategoria(gymId: string): Promise<string | null> {
-  if (process.env.WELLHUB_CATEGORY_ID) return process.env.WELLHUB_CATEGORY_ID
-  const r = await getCategories(gymId)
-  if (!r.ok) return null
-  const lista = Array.isArray(r.body) ? r.body : (r.body?.categories ?? r.body?.data ?? [])
-  const primeira = Array.isArray(lista) ? lista[0] : null
-  return primeira ? String(primeira.id ?? primeira.category_id ?? primeira.uuid) : null
-}
-
-// Extrai o id criado da resposta de createClass/createSlot (nomes a confirmar).
-function extrairId(body: any): string | null {
-  if (!body) return null
-  const id = body.id ?? body.class_id ?? body.slot_id ?? body.uuid ?? body?.data?.id
-  return id != null ? String(id) : null
-}
-
-// Monta o datetime do slot no fuso de São Paulo (-03:00 fixo; Brasil sem horário
-// de verão). ⚠️ confirmar o formato exato que o Wellhub espera.
-function montarDatetime(data: string, horario: string): string {
-  const hhmmss = (horario || '00:00').length === 5 ? `${horario}:00` : (horario || '00:00:00')
-  return `${data}T${hhmmss}-03:00`
 }

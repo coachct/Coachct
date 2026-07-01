@@ -1,45 +1,28 @@
 // src/lib/wellhub/booking-api.ts
 //
 // Cliente HTTP da Booking API do Wellhub (SAÍDA — chamadas que NÓS fazemos).
+// Shapes confirmados na doc oficial: https://developers.wellhub.com/product/booking-api/1.0/endpoints
 //
-// Reutiliza o MESMO token do Access Control (WELLHUB_API_KEY) — confirmado pelo
-// contato Wellhub que ele serve também à Booking API. Alterna sandbox <-> prod
-// por env (WELLHUB_API_BASE), igual ao validate.ts.
-//
-// Toda função devolve um resultado claro { ok, status, body } e NUNCA lança pra
-// cima — quem chama decide o que fazer. Timeout curto pra não estourar o tempo
-// das rotas/worker.
-//
-// ┌─────────────────────────────────────────────────────────────────────────┐
-// │ ⚠️  PONTOS A CONFIRMAR NO 1º TESTE DE SANDBOX (capturados da doc, não de  │
-// │     uma chamada real). Estão TODOS centralizados no bloco SPEC abaixo,    │
-// │     então ajustar é trocar uma linha — sem caçar pelo arquivo.           │
-// │       1. Versões/paths exatos de cada endpoint.                          │
-// │       2. Nomes dos campos no body (createClass/createSlot/patch*).       │
-// │       3. Valores literais do status de booking (confirmar/rejeitar).     │
-// │       4. Se precisa header X-Gym-Id (validate usa) ou se o gym no path   │
-// │          basta. Por ora NÃO mandamos (path já tem gym_id).               │
-// │       5. Se POST/PATCH exigem assinatura HMAC de saída (validate não).   │
-// └─────────────────────────────────────────────────────────────────────────┘
+// Credenciais PRÓPRIAS do Booking (WELLHUB_BOOKING_API_BASE / _KEY), isoladas do
+// Access Control (check-in) que roda em produção — o teste no sandbox não encosta
+// no check-in. Default = sandbox.
 
 const SANDBOX_BASE = 'https://apitesting.partners.gympass.com';
 
-// ── SPEC: tudo que é "idioma do Wellhub" e pode mudar no teste fica aqui ──────
 const SPEC = {
-  // Paths por recurso. {gym}/{class}/{slot}/{booking} são interpolados.
   paths: {
-    classes:    (gym: string) => `/gyms/${gym}/classes`,
-    class:      (gym: string, cls: string) => `/gyms/${gym}/classes/${cls}`,
-    slots:      (gym: string, cls: string) => `/gyms/${gym}/classes/${cls}/slots`,
-    slot:       (gym: string, cls: string, slot: string) => `/gyms/${gym}/classes/${cls}/slots/${slot}`,
-    booking:    (gym: string, bk: string) => `/gyms/${gym}/bookings/${bk}`,
-    categories: (gym: string) => `/gyms/${gym}/categories`,
-    products:   (gym: string) => `/gyms/${gym}/products`,
+    classes:    (gym: string) => `/booking/v1/gyms/${gym}/classes`,
+    class:      (gym: string, cls: string) => `/booking/v1/gyms/${gym}/classes/${cls}`,
+    slots:      (gym: string, cls: string) => `/booking/v1/gyms/${gym}/classes/${cls}/slots`,
+    slot:       (gym: string, cls: string, slot: string) => `/booking/v1/gyms/${gym}/classes/${cls}/slots/${slot}`,
+    booking:    (gym: string, bk: string) => `/booking/v2/gyms/${gym}/bookings/${bk}`,
+    categories: (gym: string) => `/booking/v1/gyms/${gym}/categories`,
+    products:   (gym: string) => `/setup/v1/gyms/${gym}/products`,
   },
-  // Valores literais que o Wellhub espera no PATCH de booking. ⚠️ confirmar caixa.
+  // Status aceitos pelo PATCH de booking (doc). RESERVED = confirma, REJECTED = rejeita.
   bookingStatus: {
-    confirmar: 'confirmed',
-    rejeitar:  'rejected',
+    confirmar: 'RESERVED',
+    rejeitar:  'REJECTED',
   },
 } as const;
 
@@ -47,17 +30,13 @@ export type WellhubResult = { ok: boolean; status: number; body: any; erro?: str
 
 const TIMEOUT_MS = 5000;
 
-// Credenciais PRÓPRIAS do Booking, isoladas do Access Control (check-in) que já
-// roda em produção. Assim o teste de Booking no sandbox NÃO encosta no check-in
-// atual. Default = sandbox, então nunca vai pra produção por acidente.
 function apiBase(): string {
   return process.env.WELLHUB_BOOKING_API_BASE ?? SANDBOX_BASE;
 }
 
-// Núcleo: monta auth + timeout, lê o corpo uma vez, devolve resultado padronizado.
 async function wellhubFetch(
   path: string,
-  method: 'GET' | 'POST' | 'PATCH' | 'PUT',
+  method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
   body?: unknown
 ): Promise<WellhubResult> {
   const apiKey = process.env.WELLHUB_BOOKING_API_KEY ?? process.env.WELLHUB_API_KEY;
@@ -76,6 +55,7 @@ async function wellhubFetch(
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        Accept: 'application/json',
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
       signal: controller.signal,
@@ -102,20 +82,24 @@ async function wellhubFetch(
   return { ok: res.ok, status: res.status, body: corpo, erro: res.ok ? undefined : `HTTP ${res.status}` };
 }
 
-// ── Booking: confirmar ou rejeitar uma reserva vinda do app ──────────────────
-// PATCH /booking/v2/gyms/:gym/bookings/:booking_number  (janela de 15 min!)
+// ── Booking: confirmar (RESERVED) ou rejeitar (REJECTED) uma reserva ─────────
+// PATCH /booking/v2/gyms/:gym/bookings/:booking_number   (janela de 15 min!)
 export function patchBookingStatus(
   gymId: string,
   bookingNumber: string,
-  status: 'confirmar' | 'rejeitar'
+  status: 'confirmar' | 'rejeitar',
+  reasonCategory: string = 'SPOT_NOT_AVAILABLE'
 ): Promise<WellhubResult> {
-  return wellhubFetch(SPEC.paths.booking(gymId, bookingNumber), 'PATCH', {
-    status: SPEC.bookingStatus[status],
-  });
+  const body: any = { status: SPEC.bookingStatus[status] };
+  if (status === 'rejeitar') {
+    body.reason_category = reasonCategory; // obrigatório quando REJECTED
+    body.reason = 'Sem vaga disponível';
+  }
+  return wellhubFetch(SPEC.paths.booking(gymId, bookingNumber), 'PATCH', body);
 }
 
-// ── Slot: empurra os números absolutos do pool (passo 3 do fluxo Wellhub) ─────
-// PATCH .../classes/:class/slots/:slot   body: { total_capacity, total_booked }
+// ── Slot: empurra os números absolutos do pool (PATCH capacity) ──────────────
+// PATCH .../slots/:slot   body: { total_capacity, total_booked }   → 204
 export function patchSlotNumbers(
   gymId: string,
   classId: string,
@@ -128,46 +112,72 @@ export function patchSlotNumbers(
   });
 }
 
-// ── Classe: cria a modalidade no catálogo do Wellhub (1x por gym) ────────────
-// POST /booking/v1/gyms/:gym/classes   body: { name, description, category_id }
+// ── Classe: cria a modalidade no catálogo do Wellhub ─────────────────────────
+// POST /booking/v1/gyms/:gym/classes   body: { classes: [{ ... }] }
+// product_id é OBRIGATÓRIO (vem de getProducts). categories é opcional.
 export function createClass(
   gymId: string,
-  data: { name: string; description: string; category_id: string }
+  data: { name: string; description: string; product_id: number; categories?: number[] }
 ): Promise<WellhubResult> {
-  return wellhubFetch(SPEC.paths.classes(gymId), 'POST', data);
+  return wellhubFetch(SPEC.paths.classes(gymId), 'POST', {
+    classes: [
+      {
+        name: data.name,
+        description: data.description,
+        bookable: true,
+        visible: true,
+        product_id: data.product_id,
+        ...(data.categories?.length ? { categories: data.categories } : {}),
+      },
+    ],
+  });
 }
 
 // ── Slot: cria um horário específico daquela classe ──────────────────────────
-// POST .../classes/:class/slots   body: { datetime, total_capacity }
+// POST .../classes/:class/slots   → 201 { results: [{ id, ... }] }
 export function createSlot(
   gymId: string,
   classId: string,
-  data: { datetime: string; total_capacity: number }
+  data: {
+    occur_date: string;
+    length_in_minutes: number;
+    total_capacity: number;
+    total_booked: number;
+    product_id: number;
+  }
 ): Promise<WellhubResult> {
-  return wellhubFetch(SPEC.paths.slots(gymId, classId), 'POST', data);
+  return wellhubFetch(SPEC.paths.slots(gymId, classId), 'POST', {
+    occur_date: data.occur_date,
+    length_in_minutes: data.length_in_minutes,
+    total_capacity: data.total_capacity,
+    total_booked: data.total_booked,
+    product_id: data.product_id,
+  });
 }
 
-// ── Kill switch: o Wellhub não deleta classe, esconde por visibilidade ───────
-// PUT da classe com visibility=false/true.  ⚠️ confirmar se é PUT parcial ou
-// se exige o objeto completo da classe (como o customer do Pagar.me exige).
+// ── Kill switch: PUT da classe com visible=false/true ────────────────────────
+// ⚠️ O PUT exige o objeto COMPLETO da classe (name, description, bookable,
+// visible, product_id). Ajustar no kill switch pra reenviar os dados atuais.
 export function setClassVisibility(
   gymId: string,
   classId: string,
   visible: boolean
 ): Promise<WellhubResult> {
-  return wellhubFetch(SPEC.paths.class(gymId, classId), 'PUT', { visibility: visible });
+  return wellhubFetch(SPEC.paths.class(gymId, classId), 'PUT', { visible });
 }
 
-// ── Setup: lê categorias/produtos do gym (pra montar createClass) ────────────
-export function getCategories(gymId: string): Promise<WellhubResult> {
-  return wellhubFetch(SPEC.paths.categories(gymId), 'GET');
-}
-
+// ── Setup ────────────────────────────────────────────────────────────────────
+// GET /setup/v1/gyms/:gym/products  → { products: [{ product_id, name, ... }] }
 export function getProducts(gymId: string): Promise<WellhubResult> {
   return wellhubFetch(SPEC.paths.products(gymId), 'GET');
 }
 
-// GET das classes já existentes — usado só pra diagnóstico (o Marco confirmou 200).
+// GET /booking/v1/gyms/:gym/categories?locale=pt  → { results: [{ id, name }] }
+export function getCategories(gymId: string, locale: string = 'pt'): Promise<WellhubResult> {
+  return wellhubFetch(`${SPEC.paths.categories(gymId)}?locale=${locale}`, 'GET');
+}
+
+// GET das classes já existentes — usado pra diagnóstico e pro kill switch.
 export function listClasses(gymId: string): Promise<WellhubResult> {
   return wellhubFetch(SPEC.paths.classes(gymId), 'GET');
 }
