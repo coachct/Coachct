@@ -1,5 +1,7 @@
 {
   "crons": [
-    { "path": "/api/processar-notificacoes", "schedule": "* * * * *" }
+    { "path": "/api/processar-notificacoes", "schedule": "* * * * *" },
+    { "path": "/api/totalpass/publish-slots", "schedule": "0 5 * * *" },
+    { "path": "/api/totalpass/sync-slots", "schedule": "*/2 * * * *" }
   ]
 }
