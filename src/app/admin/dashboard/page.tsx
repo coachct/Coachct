@@ -284,6 +284,10 @@ function DashboardCT({ unidadeId, unidadeNome }: { unidadeId: string; unidadeNom
   const [vendasMes, setVendasMes] = useState(0)
   const [loading, setLoading]     = useState(true)
   const [aberto, setAberto]       = useState<'hoje' | 'amanha' | null>(null)
+  const [checkinsDia, setCheckinsDia] = useState<Record<'wellhub' | 'totalpass', { count: number; valor: number }>>({
+    wellhub: { count: 0, valor: 0 },
+    totalpass: { count: 0, valor: 0 },
+  })
 
   useEffect(() => {
     if (!unidadeId) return
@@ -296,12 +300,31 @@ function DashboardCT({ unidadeId, unidadeNome }: { unidadeId: string; unidadeNom
         .in('data', [hoje, amanha]).eq('unidade_id', unidadeId).neq('status', 'cancelado')
         .order('horario', { ascending: true })
       const v = await buscarVendas(supabase, unidadeId)
+
+      // Check-ins de parceiros (Wellhub/TotalPass) validados HOJE, nesta unidade.
+      const nowD = new Date()
+      const iniDia = new Date(nowD.getFullYear(), nowD.getMonth(), nowD.getDate()).toISOString()
+      const fimDia = new Date(nowD.getFullYear(), nowD.getMonth(), nowD.getDate() + 1).toISOString()
+      const { data: ciRows } = await supabase
+        .from('entradas_walkin')
+        .select('origem, valor')
+        .eq('unidade_id', unidadeId)
+        .in('origem', ['wellhub', 'totalpass'])
+        .eq('status', 'validado')
+        .gte('recebido_em', iniDia)
+        .lt('recebido_em', fimDia)
+
       if (!ativo) return
       const lista = ags || []
       setReservasHoje(lista.filter((a: any) => a.data === hoje))
       setReservasAmanha(lista.filter((a: any) => a.data === amanha))
       setVendasDia(v.dia)
       setVendasMes(v.mes)
+      const calcCi = (o: string) => {
+        const rows = (ciRows || []).filter((r: any) => r.origem === o)
+        return { count: rows.length, valor: rows.reduce((s: number, r: any) => s + Number(r.valor || 0), 0) }
+      }
+      setCheckinsDia({ wellhub: calcCi('wellhub'), totalpass: calcCi('totalpass') })
       setLoading(false)
     }
     load()
@@ -367,6 +390,31 @@ function DashboardCT({ unidadeId, unidadeNome }: { unidadeId: string; unidadeNom
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 items-start">
         <CardReservas chave="hoje"   titulo="Reservas de hoje"   dataStr={hoje}   reservas={reservasHoje}   destaque />
         <CardReservas chave="amanha" titulo="Reservas de amanhã" dataStr={amanha} reservas={reservasAmanha} />
+      </div>
+
+      {/* Check-ins de parceiros (hoje) — quantidade + soma de entradas por app */}
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        {([
+          { key: 'wellhub', label: 'Wellhub', badge: 'bg-orange-100 text-orange-700' },
+          { key: 'totalpass', label: 'TotalPass', badge: 'bg-indigo-100 text-indigo-700' },
+        ] as const).map((o) => (
+          <div key={o.key} className="rounded-xl border border-gray-200 bg-white p-5">
+            <div className="mb-3 flex items-center justify-between">
+              <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${o.badge}`}>{o.label}</span>
+              <span className="text-xs text-gray-400">hoje</span>
+            </div>
+            <div className="flex items-end justify-between">
+              <div>
+                <div className="text-3xl font-semibold text-gray-900 leading-none">{checkinsDia[o.key].count}</div>
+                <div className="text-xs text-gray-400 mt-1">check-ins</div>
+              </div>
+              <div className="text-right">
+                <div className="text-xl font-semibold text-gray-900">{fmt(checkinsDia[o.key].valor)}</div>
+                <div className="text-xs text-gray-400 mt-1">em entradas</div>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Vendas */}

@@ -196,6 +196,19 @@ export default function CheckinsWellhubPage() {
     return porOrigem.filter((r) => r.status === fStatus)
   }, [porOrigem, fStatus])
 
+  // Totais por origem (Wellhub / TotalPass) do mês — sempre os dois, ignora o
+  // filtro de origem. Conta validados e soma os valores.
+  const totaisPorOrigem = useMemo(() => {
+    const calc = (o: string) => {
+      const rows = itens.filter((r) => r.origem === o && r.status === 'validado')
+      return {
+        count: rows.length,
+        receita: rows.reduce((s, r) => s + Number(r.valor || 0), 0),
+      }
+    }
+    return { wellhub: calc('wellhub'), totalpass: calc('totalpass') }
+  }, [itens])
+
   const inputCls =
     'rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20'
 
@@ -286,6 +299,29 @@ export default function CheckinsWellhubPage() {
             </div>
             <div className="text-2xl font-bold text-gray-900">{resumo.pendentesErros}</div>
           </div>
+        </div>
+
+        {/* Cards por origem — quantidade + soma dos valores (mês) */}
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {(['wellhub', 'totalpass'] as const).map((o) => (
+            <div key={o} className="rounded-2xl border border-gray-200 bg-white p-5">
+              <div className="mb-3">
+                <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${ORIGEM_BADGE[o] ?? 'bg-gray-100 text-gray-600'}`}>
+                  {ORIGEM_LABEL[o] ?? o}
+                </span>
+              </div>
+              <div className="flex items-end justify-between">
+                <div>
+                  <div className="text-2xl font-bold text-gray-900">{totaisPorOrigem[o].count}</div>
+                  <div className="text-xs text-gray-500">check-ins validados</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xl font-bold text-gray-900">{fmtBRL(totaisPorOrigem[o].receita)}</div>
+                  <div className="text-xs text-gray-500">em valores</div>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
 
         {/* Tabela */}
