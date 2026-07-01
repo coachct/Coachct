@@ -21,7 +21,7 @@ export const maxDuration = 60
 
 const CRON_SECRET = process.env.CRON_SECRET || ''
 const LOTE = 80
-const PLAN_ID = Number(process.env.TOTALPASS_PINH_PLAN_ID || '16655') // "Just Run"
+const PLAN_ID = Number(process.env.TOTALPASS_PINHEIROS_PLAN_ID || '16655') // "Just Run"
 const PLACE_ID_PINHEIROS = '41407'
 const UNIDADE_PINHEIROS = '166a683d-5fe6-4177-8fd6-53deb70b428e'
 
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       probe: true,
       envTotalpass,
-      temPlaceKey: !!process.env.TOTALPASS_PINH_PLACE_API_KEY,
+      temPlaceKey: !!process.env.TOTALPASS_PINHEIROS_PLACE_API_KEY,
       status: ev.status, erro: ev.erro,
       qtd: Array.isArray(ev.body) ? ev.body.length : null,
     })

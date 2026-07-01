@@ -9,7 +9,7 @@
 //   GET    /partner/slot                             -> lista reservas (polling)
 //   DELETE /partner/slot/{slotId}                    -> cancela reserva
 //
-// Isolado do check-in: usa a place_api_key do Pinheiros (TOTALPASS_PINH_PLACE_API_KEY),
+// Isolado do check-in: usa a place_api_key do Pinheiros (TOTALPASS_PINHEIROS_PLACE_API_KEY),
 // não a do Just CT. Quem chama isto é o worker de sync (Fase 2/3), sempre atrás do
 // kill switch TOTALPASS_BOOKING_ATIVO. Este módulo só FALA com a API — não decide
 // nada nem grava no banco.
@@ -34,10 +34,10 @@ async function tokenPinheiros(forcar = false): Promise<{ token: string | null; e
     return { token: cacheToken, erro: null };
   }
   const partnerKey = process.env.TOTALPASS_PARTNER_API_KEY;
-  const placeKey = process.env.TOTALPASS_PINH_PLACE_API_KEY;
+  const placeKey = process.env.TOTALPASS_PINHEIROS_PLACE_API_KEY;
   const base = process.env.TOTALPASS_API_BASE ?? API_BASE_PADRAO;
   if (!partnerKey) return { token: null, erro: 'TOTALPASS_PARTNER_API_KEY ausente' };
-  if (!placeKey) return { token: null, erro: 'TOTALPASS_PINH_PLACE_API_KEY ausente' };
+  if (!placeKey) return { token: null, erro: 'TOTALPASS_PINHEIROS_PLACE_API_KEY ausente' };
 
   let res: Response;
   try {
