@@ -75,11 +75,11 @@ export async function POST(
     return new NextResponse('payload invalido', { status: 400 });
   }
 
-  // 3. Kill switch: enquanto desligado, reconhece com 200 "1" e ignora.
-  if (process.env.TOTALPASS_CHECKIN_ATIVO !== 'true') {
-    console.log('[totalpass/checkin] kill switch OFF — ignorado:', rawBody.slice(0, 300));
-    return ok1();
-  }
+  // 3. Kill switch. LIGADO ('true'): processa de verdade (confirma + cobra).
+  //    DESLIGADO: modo OBSERVAÇÃO — grava o payload cru como 'observado' pra
+  //    a gente conferir um check-in real SEM confirmar e SEM cobrar. O teste
+  //    roda em produção, então nasce desligado.
+  const ativo = process.env.TOTALPASS_CHECKIN_ATIVO === 'true';
 
   // 4. Só tratamos CHECK_IN_CREATED. Outros tipos: reconhece e ignora.
   if (payload?.type !== 'CHECK_IN_CREATED') {
@@ -129,7 +129,7 @@ export async function POST(
       id_externo: String(userCode),
       evento_id: eventoId ? String(eventoId) : null,
       produto: planCode ?? null,
-      status: 'recebido',
+      status: ativo ? 'recebido' : 'observado',
       raw: payload,
     })
     .select('id')
@@ -143,8 +143,10 @@ export async function POST(
     return new NextResponse('erro ao gravar', { status: 500 });
   }
 
-  // 7. Segundo plano: confirma de volta na TotalPass + marca validado + valor.
-  if (inserida?.id) {
+  // 7. Segundo plano: SÓ quando ligado — confirma de volta + marca validado +
+  //    valor. Em modo observação (desligado) a entrada fica 'observado' e nada
+  //    é confirmado nem cobrado; serve só pra inspeção do payload real.
+  if (ativo && inserida?.id) {
     waitUntil(
       validarCheckinTotalpass({
         entradaId: inserida.id,
@@ -154,6 +156,8 @@ export async function POST(
         cpf,
       })
     );
+  } else if (!ativo) {
+    console.log('[totalpass/checkin] OBSERVACAO — gravado sem confirmar/cobrar:', eventoId);
   }
 
   // 8. 200 "1" rápido.
