@@ -30,6 +30,7 @@ export default function ComprarPage() {
       .from('produtos')
       .select('*')
       .eq('ativo', true)
+      .eq('visivel_site', true)
       .not('subtipo', 'eq', 'multa')
       .or(`unidade_id.eq.${JUST_CT_ID},unidade_id.is.null`)
       .order('valor', { ascending: false })

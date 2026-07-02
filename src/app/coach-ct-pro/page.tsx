@@ -18,6 +18,7 @@ export default function CoachCtProPage() {
         .from('produtos')
         .select('*')
         .eq('ativo', true)
+        .eq('visivel_site', true)
         .eq('subtipo', 'coach_ct_pro')
         .or(`unidade_id.eq.${JUST_CT_ID},unidade_id.is.null`)
         .order('valor', { ascending: false })

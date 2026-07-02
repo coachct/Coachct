@@ -142,6 +142,7 @@ export default function AdminProdutosPage() {
     dias_validade: 30,
     descricao: '',
     ativo: true,
+    visivel_site: true,
     unidade_id: '' as string | '',
     plano_id: '' as string | '',
     max_parcelas: 1,
@@ -181,6 +182,7 @@ export default function AdminProdutosPage() {
       dias_validade: 30,
       descricao: '',
       ativo: true,
+      visivel_site: true,
       unidade_id: '',
       plano_id: '',
       max_parcelas: 1,
@@ -199,6 +201,7 @@ export default function AdminProdutosPage() {
       dias_validade: produto.dias_validade || 30,
       descricao: produto.descricao || '',
       ativo: produto.ativo,
+      visivel_site: produto.visivel_site ?? true,
       unidade_id: produto.unidade_id || '',
       plano_id: produto.plano_id || '',
       max_parcelas: produto.max_parcelas || 1,
@@ -258,6 +261,7 @@ export default function AdminProdutosPage() {
       dias_validade: diasValidadeFinal,
       descricao: form.descricao.trim() || null,
       ativo: form.ativo,
+      visivel_site: form.visivel_site,
       unidade_id: form.unidade_id || null,
       plano_id: form.subtipo === 'coach_ct_pro' ? form.plano_id : null,
       max_parcelas: form.max_parcelas,
@@ -557,6 +561,12 @@ export default function AdminProdutosPage() {
                   onChange={e => setForm({ ...form, ativo: e.target.checked })}
                   className="w-4 h-4 accent-primary-600" />
                 <span className="text-sm text-gray-700">Produto ativo (disponível para venda)</span>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input type="checkbox" checked={form.visivel_site}
+                  onChange={e => setForm({ ...form, visivel_site: e.target.checked })}
+                  className="w-4 h-4 accent-primary-600" />
+                <span className="text-sm text-gray-700">Aparece no site (visível para clientes)</span>
               </label>
             </div>
 

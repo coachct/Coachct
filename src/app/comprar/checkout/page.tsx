@@ -91,6 +91,7 @@ function CheckoutContent() {
       .select('*, unidades(nome)')
       .eq('id', produtoId)
       .eq('ativo', true)
+      .eq('visivel_site', true)
       .maybeSingle()
     setProduto(data)
     setLoading(false)
