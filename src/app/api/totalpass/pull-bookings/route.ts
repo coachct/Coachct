@@ -44,9 +44,33 @@ function extrairSlot(s: any) {
 
 export async function POST(req: NextRequest) {
   const auth = req.headers.get('authorization') || ''
-  if (CRON_SECRET && auth !== `Bearer ${CRON_SECRET}`) {
+  const secretQuery = new URL(req.url).searchParams.get('secret') || ''
+  const autorizado = !CRON_SECRET || auth === `Bearer ${CRON_SECRET}` || secretQuery === CRON_SECRET
+  if (!autorizado) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
+
+  // DIAGNÓSTICO ?raw=1: mostra o SHAPE cru dos slots que a TotalPass devolve
+  // (nomes reais dos campos + valores mascarados), SEM gravar nada. Serve pra
+  // descobrir sob quais chaves vêm nome/CPF/email. Ignora o kill switch.
+  if (new URL(req.url).searchParams.get('raw')) {
+    const ag = new Date()
+    const fm = new Date(ag.getTime() + JANELA_DIAS * 24 * 60 * 60 * 1000)
+    const sl = await listarSlots({ slotDateFrom: ag.toISOString(), slotDateTo: fm.toISOString() })
+    const arr: any[] = Array.isArray(sl.body) ? sl.body : (sl.body?.data ?? [])
+    const mask = (v: any) => (typeof v === 'string' && v.length > 4 ? `${v.slice(0, 2)}***${v.slice(-2)}` : v)
+    const maskObj = (o: any) => (o && typeof o === 'object'
+      ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v && typeof v === 'object' ? '{...}' : mask(v)]))
+      : o)
+    const amostra = arr.slice(0, 3).map((s: any) => ({
+      topKeys: Object.keys(s || {}),
+      userKeys: Object.keys(s?.user || {}),
+      user: maskObj(s?.user),
+      slotMascarado: maskObj(s),
+    }))
+    return NextResponse.json({ raw: true, ok: sl.ok, status: sl.status, total: arr.length, amostra })
+  }
+
   if (process.env.TOTALPASS_BOOKING_ATIVO !== 'true') {
     return NextResponse.json({ ok: true, msg: 'kill switch OFF — pull pausado' })
   }
