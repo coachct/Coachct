@@ -21,13 +21,14 @@ export function corrigirDominioSite(texto: string): string {
   // Mata a muleta "Boa/Ótima/Excelente/Que boa/Super pergunta" (+ 'essa/a sua/hein'
   // opcional) EM QUALQUER lugar da mensagem — proibida por regra do Ricardo. Remove
   // a frase e a pontuação/emoji que a acompanham.
-  // Lookbehind/lookahead unicode (\p{L}) em vez de \b, senão a fronteira ASCII
-  // falha antes de letra acentuada (ex.: "Ótima") e a muleta escapa.
-  const filler = /(?<![\p{L}])(boa|[oó]tima|excelente|que boa|super|adorei a|amei a)\s+(pergunta|d[uú]vida)(\s+(essa|a sua|viu|hein|a[íi]))?(?![\p{L}])\s*[!,.…\-–—]*\s*[🙂😊😄🤔👏💪👍✨🙌]*\s*/giu
+  // Sem flag "u"/\p{} nem lookbehind (o target do projeto é antigo): a fronteira é
+  // um grupo (início OU separador) preservado no replace ($1), e o "Ó"/"ó" ficam
+  // explícitos na classe pra não escaparem (o \b ASCII falha antes de acentuada).
+  const filler = /(^|[\s.!?…"'*_~(-])(boa|[oóÓ]tima|excelente|que boa|super)\s+(pergunta|d[uúÚ]vida)(\s+(essa|a sua|viu|hein))?[\s!,.…?\-–—]*/i
   if (filler.test(t)) {
-    t = t.replace(filler, '')
-    // Limpa espaço/pontuação que sobrou no começo e recapitaliza a 1ª letra.
-    t = t.replace(/^[\s!,.…\-–—]+/, '').replace(/^(\p{Ll})/u, (m) => m.toUpperCase()).trim()
+    t = t.replace(filler, '$1')
+    // Remove lixo (espaço/pontuação/emoji) que sobrou no começo e recapitaliza.
+    t = t.replace(/^[^A-Za-zÀ-ÿ0-9]+/, '').replace(/^([a-zà-ÿ])/, (m) => m.toUpperCase()).trim()
   }
   return t
 }
