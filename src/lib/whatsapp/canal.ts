@@ -9,12 +9,22 @@ import type { TurnoConversa } from './agente'
 const GRAPH_VERSION = 'v21.0'
 
 /**
- * Rede de segurança: o modelo às vezes inventa o domínio com um "e" a mais
- * ("justclubect.com.br"). Aqui forçamos a grafia certa (justclubct) em TODA
- * mensagem que sai, independente do que o modelo escreveu.
+ * Rede de segurança aplicada a TODA mensagem que sai (WhatsApp e Instagram),
+ * independente do que o modelo escreveu:
+ *  1) força a grafia certa do domínio (justclubct, sem o "e" a mais);
+ *  2) remove a muleta de abertura "Boa pergunta!" / "Ótima pergunta," etc.
+ *     (o modelo insiste nela mesmo proibido no prompt).
  */
 export function corrigirDominioSite(texto: string): string {
-  return String(texto ?? '').replace(/justclube*ct/gi, 'justclubct')
+  let t = String(texto ?? '').replace(/justclube*ct/gi, 'justclubct')
+  // Tira "Boa/Ótima/Excelente/Que boa/Super pergunta" + pontuação/emoji no INÍCIO.
+  const filler = /^\s*(boa|ótima|otima|excelente|que boa|super)\s+pergunta\s*[!,.…\-–—\s]*[🙂😊😄🤔👏💪👍]*[\s]*/i
+  if (filler.test(t)) {
+    t = t.replace(filler, '')
+    // Recapitaliza a primeira letra que sobrou (pra não começar minúsculo).
+    t = t.replace(/^([a-zàáâãäéêëíîïóôõöúûüç])/, (m) => m.toUpperCase())
+  }
+  return t
 }
 
 /**
