@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
 
   const statusVistos = new Set<string>()
   const ativosIds = new Set<string>()
-  let criadas = 0, rejeitadas = 0, jaTinha = 0, semMapa = 0
+  let criadas = 0, rejeitadas = 0, jaTinha = 0, semMapa = 0, incompletas = 0
   const erros: any[] = []
 
   for (const raw of lista) {
@@ -113,6 +113,7 @@ export async function POST(req: NextRequest) {
     else if (r === 'rejeitada') rejeitadas++
     else if (r === 'ja') jaTinha++
     else if (r === 'sem-mapa') semMapa++
+    else if (r === 'incompleto') incompletas++
     else erros.push(s.slotId)
   }
 
@@ -124,7 +125,7 @@ export async function POST(req: NextRequest) {
   const canceladas = await conciliarCancelamentos(supabase, ativosIds, hojeStr, fimStr)
 
   return NextResponse.json({
-    ok: true, slots: lista.length, criadas, rejeitadas, jaTinha, semMapa,
+    ok: true, slots: lista.length, criadas, rejeitadas, jaTinha, semMapa, incompletas,
     canceladas, erros: erros.length, statusVistos: [...statusVistos],
   })
 }
@@ -133,17 +134,50 @@ export async function GET(req: NextRequest) {
   return POST(req)
 }
 
-type ResReserva = 'criada' | 'rejeitada' | 'ja' | 'sem-mapa' | 'erro'
+type ResReserva = 'criada' | 'rejeitada' | 'ja' | 'sem-mapa' | 'erro' | 'incompleto'
+
+// Completa um cadastro com o que a TotalPass mandou no slot, SÓ nos campos que
+// estão vazios (ou nome genérico "Cliente TotalPass"). CPF gravado só-dígitos.
+// É o self-heal: conserta fantasmas criados de um payload cru assim que o dado
+// real chega, sem sobrescrever nada que já esteja preenchido.
+async function backfillCliente(
+  supabase: SupabaseClient, clienteId: string | null | undefined,
+  s: ReturnType<typeof extrairSlot>
+): Promise<void> {
+  if (!clienteId) return
+  const { data: c } = await supabase
+    .from('clientes').select('nome, cpf, email').eq('id', clienteId).maybeSingle()
+  if (!c) return
+  const patch: Record<string, string> = {}
+  const cpfDigits = s.cpf ? s.cpf.replace(/\D/g, '') : ''
+  const nomeGenerico = !(c as any).nome || /cliente totalpass/i.test((c as any).nome)
+  if (nomeGenerico && s.nome) patch.nome = s.nome
+  if (!(c as any).cpf && cpfDigits) patch.cpf = cpfDigits
+  if (!(c as any).email && s.email) patch.email = s.email
+  if (Object.keys(patch).length) {
+    await supabase.from('clientes').update(patch).eq('id', clienteId)
+  }
+}
 
 async function registrarReserva(
   supabase: SupabaseClient,
   s: ReturnType<typeof extrairSlot>,
   ocPorEvento: Record<string, string>
 ): Promise<ResReserva> {
-  // Já registrada?
+  // Já registrada? Mesmo assim faz backfill: o cliente pode ter sido criado
+  // antes (payload cru) e agora os dados chegaram — self-heal do "fantasma".
   const { data: existente } = await supabase
-    .from('club_reservas').select('id').eq('totalpass_slot_id', s.slotId).maybeSingle()
-  if (existente) return 'ja'
+    .from('club_reservas').select('id, cliente_id').eq('totalpass_slot_id', s.slotId).maybeSingle()
+  if (existente) {
+    await backfillCliente(supabase, (existente as any).cliente_id, s)
+    return 'ja'
+  }
+
+  // Payload "cru": a TotalPass às vezes devolve o slot ANTES de preencher os
+  // dados do usuário (user vazio). Sem NENHUM identificador (cpf/email/nome),
+  // NÃO criamos cadastro-fantasma — pulamos e tentamos no próximo poll, quando
+  // o payload já vem completo. Evita "Cliente TotalPass" órfão.
+  if (!s.cpf && !s.email && !s.nome) return 'incompleto'
 
   // Ocorrência pelo eventId.
   const ocorrenciaId = s.eventId ? ocPorEvento[s.eventId] : undefined
@@ -157,6 +191,9 @@ async function registrarReserva(
     console.error('[totalpass/pull] erro ao resolver cliente:', errCli)
     return 'erro'
   }
+  // Backfill: se casou por totalpass_id num cadastro sem CPF/nome/email (ou num
+  // fantasma antigo), completa com o que a TotalPass mandou.
+  await backfillCliente(supabase, clienteId as unknown as string, s)
 
   // Vaga: total_capacity (já desconta site+outros apps) − reservas próprias da TotalPass.
   const { data: numsRaw } = await supabase.rpc('totalpass_slot_numbers', { p_ocorrencia_id: ocorrenciaId })
