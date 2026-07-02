@@ -46,6 +46,26 @@ function to12h(hhmm: string): string {
   return `${String(h12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${ampm}`
 }
 
+// Prazo de cancelamento na TotalPass = início da aula − `horas` (config: 12h).
+// A TotalPass só aceita UM prazo por ocorrência; a exceção "3h–12h com fila" é
+// só do nosso app. Aritmética em UTC pra fazer wall-clock puro (sem shift de tz;
+// a TotalPass interpreta no fuso do place). Formato "YYYY-MM-DD HH:MM AM/PM".
+function maxTimeToCancel(dataYMD: string, hhmm: string, horas: number): string {
+  const [y, mo, d] = (dataYMD || '1970-01-01').split('-').map(Number)
+  const [h, mi] = (hhmm || '00:00').slice(0, 5).split(':').map(Number)
+  const dt = new Date(Date.UTC(y, mo - 1, d, h, mi))
+  dt.setUTCHours(dt.getUTCHours() - horas)
+  const yy = dt.getUTCFullYear()
+  const MM = String(dt.getUTCMonth() + 1).padStart(2, '0')
+  const dd = String(dt.getUTCDate()).padStart(2, '0')
+  const hh = dt.getUTCHours()
+  const ampm = hh < 12 ? 'AM' : 'PM'
+  let h12 = hh % 12
+  if (h12 === 0) h12 = 12
+  const mm = String(dt.getUTCMinutes()).padStart(2, '0')
+  return `${yy}-${MM}-${dd} ${String(h12).padStart(2, '0')}:${mm} ${ampm}`
+}
+
 export async function POST(req: NextRequest) {
   const auth = req.headers.get('authorization') || ''
   const secretQuery = new URL(req.url).searchParams.get('secret') || ''
@@ -94,6 +114,11 @@ export async function GET(req: NextRequest) {
 async function garantirOcorrencias(supabase: SupabaseClient, dryrun: boolean) {
   const hoje = new Date().toISOString().slice(0, 10)
   const fim = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+
+  // Prazo de cancelamento (horas antes da aula) da config global; default 12.
+  const { data: cfg } = await supabase
+    .from('totalpass_booking_config').select('cancelamento_horas').eq('id', true).maybeSingle()
+  const cancelamentoHoras = (cfg as any)?.cancelamento_horas ?? 12
 
   // Aulas ATIVAS do Club de Pinheiros — IGUAL ao calendário (ativo=true).
   const { data: aulas } = await supabase
@@ -149,7 +174,8 @@ async function garantirOcorrencias(supabase: SupabaseClient, dryrun: boolean) {
     // DRY-RUN: só coleta o que publicaria, sem tocar na TotalPass.
     if (dryrun) {
       preview.push({ data: (oc as any).data, tipo: aula.tipo, titulo, horario: aula.horario,
-        coach: responsible, grupo: grupo ?? null, capacidade })
+        coach: responsible, grupo: grupo ?? null, capacidade,
+        maxTimeToCancel: maxTimeToCancel((oc as any).data, aula.horario, cancelamentoHoras) })
       continue
     }
 
@@ -163,6 +189,7 @@ async function garantirOcorrencias(supabase: SupabaseClient, dryrun: boolean) {
       planId: PLAN_ID,
       eventDate: (oc as any).data,
       startTime: to12h(aula.horario),
+      maxTimeToCancel: maxTimeToCancel((oc as any).data, aula.horario, cancelamentoHoras),
       description: grupo,
       externalReference: (oc as any).id,
     })
