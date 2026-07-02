@@ -17,12 +17,17 @@ const GRAPH_VERSION = 'v21.0'
  */
 export function corrigirDominioSite(texto: string): string {
   let t = String(texto ?? '').replace(/justclube*ct/gi, 'justclubct')
-  // Tira "Boa/Ótima/Excelente/Que boa/Super pergunta" + pontuação/emoji no INÍCIO.
-  const filler = /^\s*(boa|ótima|otima|excelente|que boa|super)\s+pergunta\s*[!,.…\-–—\s]*[🙂😊😄🤔👏💪👍]*[\s]*/i
+
+  // Mata a muleta "Boa/Ótima/Excelente/Que boa/Super pergunta" (+ 'essa/a sua/hein'
+  // opcional) EM QUALQUER lugar da mensagem — proibida por regra do Ricardo. Remove
+  // a frase e a pontuação/emoji que a acompanham.
+  // Lookbehind/lookahead unicode (\p{L}) em vez de \b, senão a fronteira ASCII
+  // falha antes de letra acentuada (ex.: "Ótima") e a muleta escapa.
+  const filler = /(?<![\p{L}])(boa|[oó]tima|excelente|que boa|super|adorei a|amei a)\s+(pergunta|d[uú]vida)(\s+(essa|a sua|viu|hein|a[íi]))?(?![\p{L}])\s*[!,.…\-–—]*\s*[🙂😊😄🤔👏💪👍✨🙌]*\s*/giu
   if (filler.test(t)) {
     t = t.replace(filler, '')
-    // Recapitaliza a primeira letra que sobrou (pra não começar minúsculo).
-    t = t.replace(/^([a-zàáâãäéêëíîïóôõöúûüç])/, (m) => m.toUpperCase())
+    // Limpa espaço/pontuação que sobrou no começo e recapitaliza a 1ª letra.
+    t = t.replace(/^[\s!,.…\-–—]+/, '').replace(/^(\p{Ll})/u, (m) => m.toUpperCase()).trim()
   }
   return t
 }
