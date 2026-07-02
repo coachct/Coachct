@@ -50,11 +50,17 @@ function to12h(hhmm: string): string {
 // A TotalPass só aceita UM prazo por ocorrência; a exceção "3h–12h com fila" é
 // só do nosso app. Aritmética em UTC pra fazer wall-clock puro (sem shift de tz;
 // a TotalPass interpreta no fuso do place). Formato "YYYY-MM-DD HH:MM AM/PM".
-function maxTimeToCancel(dataYMD: string, hhmm: string, horas: number): string {
+// Retorna null se o prazo já passou (aula em menos de `horas`): a TotalPass
+// recusa prazo no passado ("must be a future date"), então nesses casos de borda
+// omitimos o campo e a ocorrência é criada com o padrão dela.
+function maxTimeToCancel(dataYMD: string, hhmm: string, horas: number): string | null {
   const [y, mo, d] = (dataYMD || '1970-01-01').split('-').map(Number)
   const [h, mi] = (hhmm || '00:00').slice(0, 5).split(':').map(Number)
-  const dt = new Date(Date.UTC(y, mo - 1, d, h, mi))
-  dt.setUTCHours(dt.getUTCHours() - horas)
+  const wallClassMs = Date.UTC(y, mo - 1, d, h, mi)
+  const deadlineWallMs = wallClassMs - horas * 3600000
+  // Instante UTC real do prazo (o place é São Paulo, UTC−3): wall + 3h.
+  if (deadlineWallMs + 3 * 3600000 <= Date.now()) return null
+  const dt = new Date(deadlineWallMs)
   const yy = dt.getUTCFullYear()
   const MM = String(dt.getUTCMonth() + 1).padStart(2, '0')
   const dd = String(dt.getUTCDate()).padStart(2, '0')
@@ -181,6 +187,7 @@ async function garantirOcorrencias(supabase: SupabaseClient, dryrun: boolean) {
 
     if (capacidade <= 0) continue // nada a expor nessa ocorrência agora
 
+    const prazoCancel = maxTimeToCancel((oc as any).data, aula.horario, cancelamentoHoras)
     const r = await criarOcorrencia({
       title: titulo,
       responsible,
@@ -189,7 +196,7 @@ async function garantirOcorrencias(supabase: SupabaseClient, dryrun: boolean) {
       planId: PLAN_ID,
       eventDate: (oc as any).data,
       startTime: to12h(aula.horario),
-      maxTimeToCancel: maxTimeToCancel((oc as any).data, aula.horario, cancelamentoHoras),
+      ...(prazoCancel ? { maxTimeToCancel: prazoCancel } : {}),
       description: grupo,
       externalReference: (oc as any).id,
     })
