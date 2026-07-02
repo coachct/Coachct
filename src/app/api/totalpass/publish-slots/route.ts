@@ -92,7 +92,7 @@ async function garantirOcorrencias(supabase: SupabaseClient) {
   // Aulas do Club de Pinheiros (com coach pro campo "responsible").
   const { data: aulas } = await supabase
     .from('club_aulas')
-    .select('id, tipo, horario, duracao_min, unidade_id, coaches(nome)')
+    .select('id, tipo, horario, duracao_min, unidade_id, coaches(nome), grupos_musculares(nome)')
     .eq('unidade_id', UNIDADE_PINHEIROS)
   const aulaById: Record<string, any> = {}
   for (const a of (aulas || [])) aulaById[(a as any).id] = a
@@ -133,6 +133,10 @@ async function garantirOcorrencias(supabase: SupabaseClient) {
     const capacidade = nums?.total_capacity ?? 0
     if (capacidade <= 0) continue // nada a expor nessa ocorrência agora
 
+    // Descrição = grupo muscular (substitui o "Just Run" que a TotalPass põe por
+    // default). Running normalmente não tem grupo — aí fica sem descrição.
+    const grupo = aula.grupos_musculares?.nome || undefined
+
     const r = await criarOcorrencia({
       title: titulo,
       responsible,
@@ -141,6 +145,7 @@ async function garantirOcorrencias(supabase: SupabaseClient) {
       planId: PLAN_ID,
       eventDate: (oc as any).data,
       startTime: to12h(aula.horario),
+      description: grupo,
       externalReference: (oc as any).id, // guarda o ocorrencia_id do Club
     })
     const uuid = r.body?.eventOccurrenceUuid
