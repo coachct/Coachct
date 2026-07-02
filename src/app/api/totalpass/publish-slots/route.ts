@@ -134,10 +134,13 @@ async function garantirOcorrencias(supabase: SupabaseClient, dryrun: boolean) {
     const aula = aulaById[(oc as any).aula_id]
     if (!aula) continue
     if (!MODALIDADES_ATIVAS.has(aula.tipo)) continue
-    const titulo = TITULO[aula.tipo] || aula.tipo
+    const grupo = aula.grupos_musculares?.nome || undefined
+    const base = TITULO[aula.tipo] || aula.tipo
+    // Paliativo: grupo muscular no título (ex.: "Lift · Superiores") pra destacar
+    // o que importa, já que a TotalPass carimba "Just Run" na descrição.
+    const titulo = grupo ? `${base} · ${grupo}` : base
     const responsible =
       (oc as any).coach_escalado?.nome?.trim() || aula.coaches?.nome?.trim() || 'Just Club'
-    const grupo = aula.grupos_musculares?.nome || undefined
 
     const { data: numsRaw } = await supabase.rpc('totalpass_slot_numbers', { p_ocorrencia_id: (oc as any).id })
     const nums = Array.isArray(numsRaw) ? numsRaw[0] : numsRaw
