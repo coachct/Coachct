@@ -52,21 +52,17 @@ export async function POST(req: NextRequest) {
   const autorizado = !CRON_SECRET || auth === `Bearer ${CRON_SECRET}` || secretQuery === CRON_SECRET
   if (!autorizado) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
-  // Kill switch: sem ele ligado, não cria nada em produção.
-  if (process.env.TOTALPASS_BOOKING_ATIVO !== 'true') {
-    return NextResponse.json({ ok: true, msg: 'kill switch OFF — nada publicado' })
-  }
-
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!supabaseUrl || !serviceKey) {
     return NextResponse.json({ error: 'Variáveis de ambiente não configuradas' }, { status: 500 })
   }
   const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+  const params = new URL(req.url).searchParams
 
   // DIAGNÓSTICO: ?probe=1 lista as env TOTALPASS* que a função enxerga (só nomes)
   // e testa a API, sem criar nada.
-  if (new URL(req.url).searchParams.get('probe')) {
+  if (params.get('probe')) {
     const envTotalpass = Object.keys(process.env).filter((k) => k.startsWith('TOTALPASS'))
     const ev = await listarEventos()
     return NextResponse.json({
@@ -78,7 +74,16 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  const r = await garantirOcorrencias(supabase)
+  // DRY-RUN: ?dryrun=1 mostra o que publicaria (só lê o nosso banco, NÃO toca na
+  // TotalPass e ignora o kill switch) — pra conferir os dados antes de subir.
+  const dryrun = !!params.get('dryrun')
+
+  // Kill switch: só bloqueia a publicação REAL. O dry-run sempre roda.
+  if (!dryrun && process.env.TOTALPASS_BOOKING_ATIVO !== 'true') {
+    return NextResponse.json({ ok: true, msg: 'kill switch OFF — nada publicado' })
+  }
+
+  const r = await garantirOcorrencias(supabase, dryrun)
   return NextResponse.json({ ok: true, ...r })
 }
 
@@ -86,56 +91,66 @@ export async function GET(req: NextRequest) {
   return POST(req)
 }
 
-async function garantirOcorrencias(supabase: SupabaseClient) {
+async function garantirOcorrencias(supabase: SupabaseClient, dryrun: boolean) {
   const hoje = new Date().toISOString().slice(0, 10)
+  const fim = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
-  // Aulas do Club de Pinheiros (com coach pro campo "responsible").
+  // Aulas ATIVAS do Club de Pinheiros — IGUAL ao calendário (ativo=true).
   const { data: aulas } = await supabase
     .from('club_aulas')
-    .select('id, tipo, horario, duracao_min, unidade_id, coaches(nome), grupos_musculares(nome)')
+    .select('id, tipo, horario, duracao_min, coaches(nome), grupos_musculares(nome)')
     .eq('unidade_id', UNIDADE_PINHEIROS)
+    .eq('ativo', true)
   const aulaById: Record<string, any> = {}
   for (const a of (aulas || [])) aulaById[(a as any).id] = a
   const aulaIds = (aulas || []).map((a: any) => a.id)
-  if (!aulaIds.length) return { criadas: 0, erros: [], msg: 'sem aulas em Pinheiros' }
+  if (!aulaIds.length) return { criadas: 0, erros: [], msg: 'sem aulas ativas em Pinheiros' }
 
-  // Ocorrências futuras (não canceladas) dessas aulas.
+  // Ocorrências ATIVAS na janela (14 dias) — IGUAL ao calendário (status='ativa').
   const { data: ocs } = await supabase
     .from('club_ocorrencias')
     .select('id, data, aula_id, status, coach_escalado:coaches!coach_id(nome)')
     .in('aula_id', aulaIds)
     .gte('data', hoje)
-    .limit(LOTE)
-  const futuras = (ocs || []).filter((o: any) => o.status !== 'cancelada')
-  if (!futuras.length) return { criadas: 0, erros: [], msg: 'sem ocorrências futuras' }
+    .lte('data', fim)
+    .eq('status', 'ativa')
+    .order('data', { ascending: true })
+    .limit(400)
+  const ativas = ocs || []
+  if (!ativas.length) return { criadas: 0, erros: [], msg: 'sem ocorrências ativas na janela' }
 
-  // Quais já foram publicadas.
+  // Já publicadas.
   const { data: jaMapeados } = await supabase
-    .from('totalpass_slot_map')
-    .select('ocorrencia_id')
-    .in('ocorrencia_id', futuras.map((o: any) => o.id))
+    .from('totalpass_slot_map').select('ocorrencia_id')
+    .in('ocorrencia_id', ativas.map((o: any) => o.id))
   const mapeadas = new Set((jaMapeados || []).map((m: any) => m.ocorrencia_id))
 
+  const preview: any[] = []
   let criadas = 0
   const erros: any[] = []
-  for (const oc of futuras) {
-    if (mapeadas.has((oc as any).id)) continue
+
+  for (const oc of ativas) {
+    if (!dryrun && mapeadas.has((oc as any).id)) continue
     const aula = aulaById[(oc as any).aula_id]
     if (!aula) continue
-    if (!MODALIDADES_ATIVAS.has(aula.tipo)) continue // Running fica de fora até ter posição
+    if (!MODALIDADES_ATIVAS.has(aula.tipo)) continue
     const titulo = TITULO[aula.tipo] || aula.tipo
     const responsible =
-      (oc as any).coach_escalado?.nome || aula.coaches?.nome || 'Equipe Just Club'
+      (oc as any).coach_escalado?.nome?.trim() || aula.coaches?.nome?.trim() || 'Just Club'
+    const grupo = aula.grupos_musculares?.nome || undefined
 
-    // Capacidade do pool (min(vagas_totalpass, cap - bloqueadas - próprias)).
     const { data: numsRaw } = await supabase.rpc('totalpass_slot_numbers', { p_ocorrencia_id: (oc as any).id })
     const nums = Array.isArray(numsRaw) ? numsRaw[0] : numsRaw
     const capacidade = nums?.total_capacity ?? 0
-    if (capacidade <= 0) continue // nada a expor nessa ocorrência agora
 
-    // Descrição = grupo muscular (substitui o "Just Run" que a TotalPass põe por
-    // default). Running normalmente não tem grupo — aí fica sem descrição.
-    const grupo = aula.grupos_musculares?.nome || undefined
+    // DRY-RUN: só coleta o que publicaria, sem tocar na TotalPass.
+    if (dryrun) {
+      preview.push({ data: (oc as any).data, tipo: aula.tipo, titulo, horario: aula.horario,
+        coach: responsible, grupo: grupo ?? null, capacidade })
+      continue
+    }
+
+    if (capacidade <= 0) continue // nada a expor nessa ocorrência agora
 
     const r = await criarOcorrencia({
       title: titulo,
@@ -146,7 +161,7 @@ async function garantirOcorrencias(supabase: SupabaseClient) {
       eventDate: (oc as any).data,
       startTime: to12h(aula.horario),
       description: grupo,
-      externalReference: (oc as any).id, // guarda o ocorrencia_id do Club
+      externalReference: (oc as any).id,
     })
     const uuid = r.body?.eventOccurrenceUuid
     const eventId = r.body?.eventId
@@ -154,7 +169,6 @@ async function garantirOcorrencias(supabase: SupabaseClient) {
       if (erros.length < 3) erros.push({ ocorrencia: (oc as any).id, status: r.status, resposta: r.body })
       continue
     }
-
     const { error } = await supabase.from('totalpass_slot_map').insert({
       ocorrencia_id: (oc as any).id,
       place_id: PLACE_ID_PINHEIROS,
@@ -162,10 +176,11 @@ async function garantirOcorrencias(supabase: SupabaseClient) {
       occurrence_uuid: String(uuid),
     })
     if (error) { erros.push({ ocorrencia: (oc as any).id, etapa: 'map', erro: error.message }); continue }
-
     await supabase.from('totalpass_slot_sync_queue')
       .upsert({ ocorrencia_id: (oc as any).id, enfileirado_em: new Date().toISOString() }, { onConflict: 'ocorrencia_id' })
     criadas++
   }
+
+  if (dryrun) return { dryrun: true, totalNaJanela: ativas.length, publicaria: preview.length, preview: preview.slice(0, 60) }
   return { criadas, erros }
 }
