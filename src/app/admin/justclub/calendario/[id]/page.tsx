@@ -105,6 +105,7 @@ export default function RecepcaoClubDetalhe() {
   // Troca de posição
   const [trocandoReserva, setTrocandoReserva] = useState<any>(null)
   const [salvandoTroca,   setSalvandoTroca]   = useState(false)
+  const [modoTrocaAtivo,  setModoTrocaAtivo]  = useState(false)
 
   // NOVO: bloqueio de vagas (Lift / Lift for Girls)
   const [vagasBloqueadas, setVagasBloqueadas] = useState(0)
@@ -236,6 +237,7 @@ export default function RecepcaoClubDetalhe() {
     setSalvandoTroca(true)
     await supabase.from('club_reservas').update({ posicao: novaPosicao }).eq('id', trocandoReserva.id)
     setTrocandoReserva(null)
+    setModoTrocaAtivo(false)
     await carregarDados()
     setSalvandoTroca(false)
     showMsg('✅ Posição alterada!')
@@ -507,7 +509,17 @@ export default function RecepcaoClubDetalhe() {
         return { bg:'#fff', border:'#e5e7eb', icon:'#aaa', cursor:'pointer', nome:null, atual:false, bloqueada:false }
       }
       // modo troca
-      if (ehTrocando) return { bg:`${AMARELO}15`, border:AMARELO, icon:AMARELO, cursor:'default',
+      // fase 1: nenhuma origem escolhida ainda — só ocupadas ficam clicáveis (escolher quem troca)
+      if (!trocandoReserva) {
+        if (bloqueadaPontual || bloqueadaGlobal) return { bg:`${VERMELHO}15`, border:VERMELHO, icon:VERMELHO, cursor:'not-allowed',
+          nome:null, atual:false, bloqueada:true }
+        if (tomado) return { bg:`${AMARELO}10`, border:AMARELO, icon:AMARELO, cursor:'pointer',
+          nome: reserva?.clientes?.nome?.split(' ')[0] || '?', atual:false, bloqueada:false }
+        return { bg:'#f3f4f6', border:'#e5e7eb', icon:'#d1d5db', cursor:'default',
+          nome:null, atual:false, bloqueada:false }
+      }
+      // fase 2: origem escolhida — escolher o destino
+      if (ehTrocando) return { bg:`${AMARELO}15`, border:AMARELO, icon:AMARELO, cursor:'pointer',
         nome: reserva?.clientes?.nome?.split(' ')[0] || '?', atual:true, bloqueada:false }
       if (bloqueadaPontual || bloqueadaGlobal) return { bg:`${VERMELHO}15`, border:VERMELHO, icon:VERMELHO, cursor:'not-allowed',
         nome:null, atual:false, bloqueada:true }
@@ -529,7 +541,16 @@ export default function RecepcaoClubDetalhe() {
         setPosicaoSel(label)
       }
       if (modo === 'troca') {
-        if (label === posicaoAtualTroca) return // mesma posição, sem mudança
+        // fase 1: sem origem — clicar num ocupado seleciona quem vai trocar
+        if (!trocandoReserva) {
+          if (posicoesBloqueadasPontual.includes(label)) return
+          if (posicoesBloqueadasGlobal.includes(label)) return
+          const reservaAqui = reservas.find((r:any) => r.posicao === label && ['reservado','presente'].includes(r.status))
+          if (reservaAqui) setTrocandoReserva(reservaAqui)
+          return
+        }
+        // fase 2: origem escolhida — clicar na própria origem desmarca; num livre grava
+        if (label === posicaoAtualTroca) { setTrocandoReserva(null); return }
         if (posicoesTomadas.includes(label)) return // posição de outro cliente
         if (posicoesBloqueadasPontual.includes(label)) return // bloqueada pontual
         if (posicoesBloqueadasGlobal.includes(label)) return // bloqueada globalmente
@@ -550,7 +571,9 @@ export default function RecepcaoClubDetalhe() {
       let disabled = false
       if (modo === 'view') disabled = tomado || salvandoEssa || bloqueadaGlobal
       else if (modo === 'walkin') disabled = (tomado || bloqueadaPontual || bloqueadaGlobal) && label !== posicaoSel
-      else if (modo === 'troca') disabled = (tomado && label !== posicaoAtualTroca) || bloqueadaPontual || bloqueadaGlobal
+      else if (modo === 'troca') disabled = !trocandoReserva
+        ? (!tomado || bloqueadaPontual || bloqueadaGlobal)                             // fase 1: só ocupadas clicáveis
+        : ((tomado && label !== posicaoAtualTroca) || bloqueadaPontual || bloqueadaGlobal) // fase 2: só livres clicáveis
 
       return (
         <button
@@ -920,43 +943,34 @@ export default function RecepcaoClubDetalhe() {
       )}
 
       {/* Mapa permanente — só Running */}
-      {isRunning && posicoes.length > 0 && !trocandoReserva && (
-        <div style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:16, marginBottom:'1.5rem', overflow:'hidden' }}>
-          <div style={{ padding:'0.85rem 1.5rem', borderBottom:'1px solid #f3f4f6' }}>
-            <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>Mapa de posições</div>
-          </div>
-          <div style={{ padding:'1rem' }}>
-            <MapaPosicoes modo="view" />
-          </div>
-        </div>
-      )}
-
-      {/* Modal de troca de posição */}
-      {trocandoReserva && (
-        <div style={{ background:'#fff', border:`2px solid ${AMARELO}`, borderRadius:16, marginBottom:'1.5rem', overflow:'hidden' }}>
-          <div style={{ padding:'0.85rem 1.5rem', borderBottom:'1px solid #f3f4f6', background:`${AMARELO}08`,
-            display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-            <div>
-              <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>
-                Trocando posição de <strong>{trocandoReserva.clientes?.nome?.split(' ')[0]}</strong>
-              </div>
-              <div style={{ fontSize:12, color:'#aaa', marginTop:2 }}>
-                Posição atual: <span style={{ fontFamily:"'DM Mono', monospace", fontWeight:700, color:AMARELO }}>{trocandoReserva.posicao || '—'}</span>
-                {' '}· Clique em uma posição verde para trocar
-              </div>
+      {isRunning && posicoes.length > 0 && (
+        <div style={{ background:'#fff', border:`1px solid ${modoTrocaAtivo?AMARELO:'#e5e7eb'}`, borderRadius:16, marginBottom:'1.5rem', overflow:'hidden' }}>
+          <div style={{ padding:'0.85rem 1.5rem', borderBottom:'1px solid #f3f4f6', background: modoTrocaAtivo?`${AMARELO}08`:'transparent' }}>
+            <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>
+              {modoTrocaAtivo
+                ? (trocandoReserva
+                    ? <>Trocando <strong>{trocandoReserva.clientes?.nome?.split(' ')[0]}</strong> (<span style={{ fontFamily:"'DM Mono', monospace", color:AMARELO }}>{trocandoReserva.posicao || '—'}</span>) · clique no destino livre</>
+                    : 'Clique no aluno que vai trocar de lugar')
+                : 'Mapa de posições'}
             </div>
-            <button onClick={() => setTrocandoReserva(null)}
-              style={{ background:'transparent', border:'none', color:'#aaa', cursor:'pointer', fontSize:20 }}>✕</button>
           </div>
           <div style={{ padding:'1rem' }}>
-            <MapaPosicoes modo="troca" />
-            <div style={{ display:'flex', gap:8, marginTop:'1rem' }}>
-              <button onClick={() => setTrocandoReserva(null)}
-                style={{ flex:1, background:'#f3f4f6', border:'none', borderRadius:10,
-                  padding:'0.75rem', fontSize:13, color:'#555', cursor:'pointer' }}>
-                Cancelar
+            <MapaPosicoes modo={modoTrocaAtivo ? 'troca' : 'view'} />
+            {!modoTrocaAtivo ? (
+              <button onClick={() => setModoTrocaAtivo(true)}
+                style={{ marginTop:'0.85rem', width:'100%', background:`${AMARELO}10`, border:`1.5px solid ${AMARELO}`,
+                  borderRadius:10, padding:'0.6rem', fontSize:13, fontWeight:600, color:'#b45309', cursor:'pointer',
+                  fontFamily:"'DM Sans', sans-serif" }}>
+                Trocar posição
               </button>
-            </div>
+            ) : (
+              <button onClick={() => { setModoTrocaAtivo(false); setTrocandoReserva(null) }}
+                style={{ marginTop:'0.85rem', width:'100%', background:'#f3f4f6', border:'none',
+                  borderRadius:10, padding:'0.6rem', fontSize:13, fontWeight:600, color:'#555', cursor:'pointer',
+                  fontFamily:"'DM Sans', sans-serif" }}>
+                Cancelar troca
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -978,7 +992,6 @@ export default function RecepcaoClubDetalhe() {
               const { label, icon } = parsePlanoKey(r.tipo_credito || '')
               const isPresente  = r.status === 'presente'
               const isFalta     = r.status === 'falta'
-              const isReservado = r.status === 'reservado'
 
               return (
                 <div key={r.id} className="aluno-row" style={{ display:'flex', alignItems:'center', gap:'1rem', padding:'0.85rem 1.5rem',
@@ -1007,18 +1020,7 @@ export default function RecepcaoClubDetalhe() {
                   <div style={{ flexShrink:0, marginRight:4 }}>
                     {isPresente  && <span style={{ fontSize:11, fontWeight:700, color:VERDE }}>✓ PRESENTE</span>}
                     {isFalta     && <span style={{ fontSize:11, fontWeight:700, color:VERMELHO }}>✗ FALTA</span>}
-                    {isReservado && <span style={{ fontSize:11, color:isFuturo?CYAN:'#aaa' }}>{isFuturo?'📅 AGENDADO':'Aguardando'}</span>}
                   </div>
-
-                  {/* Botão trocar posição — só Running */}
-                  {isRunning && !isFalta && (
-                    <button onClick={() => setTrocandoReserva(r)}
-                      style={{ padding:'0.3rem 0.7rem', borderRadius:8, border:`1.5px solid ${AMARELO}`,
-                        background:`${AMARELO}10`, color:'#b45309', fontSize:11, fontWeight:600,
-                        cursor:'pointer', flexShrink:0, fontFamily:"'DM Sans', sans-serif" }}>
-                      Trocar
-                    </button>
-                  )}
 
                   {/* Presença / Falta — livre, com toggle (clicar no ativo desmarca; falta pede confirmação) */}
                   <div style={{ display:'flex', gap:6, flexShrink:0 }}>
