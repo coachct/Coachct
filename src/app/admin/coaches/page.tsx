@@ -67,6 +67,13 @@ export default function CoachesPage() {
   const [removendoFerias, setRemovendoFerias] = useState<string | null>(null)
   const [avisoFerias,     setAvisoFerias]     = useState<{ data: string; horario: string }[] | null>(null)
 
+  // ─── Grade extra por período (exclusivo professor CT — entra no cálculo de horas) ───
+  const [extrasPorCoach,  setExtrasPorCoach]  = useState<Record<string, any[]>>({})
+  const [extraGrade,      setExtraGrade]      = useState<Record<string, Set<string>>>({})
+  const [extraForm,       setExtraForm]       = useState<{ data_inicio: string; data_fim: string; motivo: string }>({ data_inicio: '', data_fim: '', motivo: '' })
+  const [salvandoExtra,   setSalvandoExtra]   = useState<string | null>(null)
+  const [removendoExtra,  setRemovendoExtra]  = useState<string | null>(null)
+
   const supabase = createClient()
   const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 
@@ -94,6 +101,9 @@ export default function CoachesPage() {
     loadFerias(coach.id)
     setFeriasForm({ data_inicio: '', data_fim: '', motivo: '' })
     setAvisoFerias(null)
+    setExtraForm({ data_inicio: '', data_fim: '', motivo: '' })
+    setExtraGrade(prev => ({ ...prev, [coach.id]: new Set() }))
+    loadExtras(coach.id)
     setAulasLista([])
     buscarAulasCoach(coach, mesAulas, anoAulas)
   }
@@ -344,6 +354,77 @@ export default function CoachesPage() {
     setRemovendoFerias(null)
     if (error) { setMsg('Erro ao remover: ' + error.message); return }
     loadFerias(coachId)
+  }
+
+  // ─── Grade extra por período (professor CT) ───
+  async function loadExtras(coachId: string) {
+    const { data } = await supabase.from('coach_horarios_extra')
+      .select('*').eq('coach_id', coachId).order('data_inicio', { ascending: false })
+    // Agrupa por grupo_id: cada lançamento em lote é um grupo (removível de uma vez).
+    const grupos: Record<string, any> = {}
+    for (const r of (data || [])) {
+      if (!grupos[r.grupo_id]) grupos[r.grupo_id] = {
+        grupo_id: r.grupo_id, data_inicio: r.data_inicio, data_fim: r.data_fim,
+        motivo: r.motivo, slots: [] as any[],
+      }
+      grupos[r.grupo_id].slots.push({ dia_semana: r.dia_semana, hora: r.hora })
+    }
+    const lista = Object.values(grupos).sort((a: any, b: any) => b.data_inicio.localeCompare(a.data_inicio))
+    setExtrasPorCoach(prev => ({ ...prev, [coachId]: lista }))
+  }
+
+  function toggleExtra(coachId: string, key: string) {
+    setExtraGrade(prev => {
+      const set = new Set(prev[coachId] || [])
+      set.has(key) ? set.delete(key) : set.add(key)
+      return { ...prev, [coachId]: set }
+    })
+  }
+
+  async function addExtra(coachId: string) {
+    const set = extraGrade[coachId] || new Set<string>()
+    if (!extraForm.data_inicio || !extraForm.data_fim) { setMsg('Preencha as datas de início e fim da grade extra.'); return }
+    if (extraForm.data_fim < extraForm.data_inicio) { setMsg('A data de fim deve ser igual ou posterior à de início.'); return }
+    if (set.size === 0) { setMsg('Marque ao menos um horário extra no grid.'); return }
+    setSalvandoExtra(coachId); setMsg('')
+
+    const { data: unidsCT } = await supabase.from('unidades').select('id').eq('tipo', 'ct').eq('ativo', true).limit(1)
+    const unidadeId = unidsCT?.[0]?.id
+    if (!unidadeId) { setSalvandoExtra(null); setMsg('Nenhuma unidade CT ativa encontrada.'); return }
+
+    const grupoId = crypto.randomUUID()
+    const { data: { user } } = await supabase.auth.getUser()
+    const rows = Array.from(set).map(key => {
+      const idx = key.indexOf('-')
+      return {
+        grupo_id:    grupoId,
+        coach_id:    coachId,
+        unidade_id:  unidadeId,
+        data_inicio: extraForm.data_inicio,
+        data_fim:    extraForm.data_fim,
+        dia_semana:  parseInt(key.substring(0, idx)),
+        hora:        key.substring(idx + 1),
+        motivo:      extraForm.motivo.trim() || null,
+        criado_por:  user?.id || null,
+      }
+    })
+    const { error } = await supabase.from('coach_horarios_extra').insert(rows)
+    setSalvandoExtra(null)
+    if (error) { setMsg('Erro ao salvar grade extra: ' + error.message); return }
+    setExtraForm({ data_inicio: '', data_fim: '', motivo: '' })
+    setExtraGrade(prev => ({ ...prev, [coachId]: new Set() }))
+    setMsg('Grade extra adicionada!')
+    setTimeout(() => setMsg(''), 2500)
+    loadExtras(coachId)
+  }
+
+  async function removeExtra(grupoId: string, coachId: string) {
+    if (!confirm('Remover este lançamento de grade extra?')) return
+    setRemovendoExtra(grupoId)
+    const { error } = await supabase.from('coach_horarios_extra').delete().eq('grupo_id', grupoId)
+    setRemovendoExtra(null)
+    if (error) { setMsg('Erro ao remover: ' + error.message); return }
+    loadExtras(coachId)
   }
 
   function fmtData(s: string) {
@@ -621,6 +702,90 @@ export default function CoachesPage() {
                       <button onClick={() => setHorarios(prev=>({...prev,[coach.id]:new Set()}))} className="btn btn-sm">Limpar</button>
                     </div>
                   </section>
+
+                  {/* Seção: Grade extra por período (só professor — soma no cálculo de horas) */}
+                  {coach.cargo === 'professor' && (
+                  <section className="pt-5 border-t border-gray-100">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Settings2 size={14} className="text-blue-600"/>
+                      <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Grade extra por período — Coach CT</span>
+                    </div>
+                    <p className="text-xs text-gray-400 mb-3">Horas extras vigentes só no período informado (ex.: cobertura, reforço). Somam à grade fixa no cálculo de <strong>Pagamento de Coaches</strong>. Feriado/FDS e férias seguem as regras normais.</p>
+
+                    {(extrasPorCoach[coach.id]?.length ?? 0) === 0 ? (
+                      <p className="text-xs text-gray-400 italic mb-4">Nenhuma grade extra cadastrada.</p>
+                    ) : (
+                      <div className="space-y-2 mb-4">
+                        {extrasPorCoach[coach.id]!.map(g => (
+                          <div key={g.grupo_id} className="flex items-start gap-3 px-3 py-2 rounded-xl bg-blue-50 border border-blue-100">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium text-gray-800">{fmtData(g.data_inicio)} → {fmtData(g.data_fim)}</div>
+                              <div className="text-xs text-gray-500 mt-0.5">
+                                {[...g.slots].sort((a:any,b:any)=>a.dia_semana-b.dia_semana||String(a.hora).localeCompare(String(b.hora))).map((s:any,i:number)=>(
+                                  <span key={i} className="inline-block mr-1.5 whitespace-nowrap">{DIAS_SEMANA[s.dia_semana]} {String(s.hora).slice(0,5)}</span>
+                                ))}
+                              </div>
+                              {g.motivo && <div className="text-xs text-gray-400 mt-0.5">{g.motivo}</div>}
+                            </div>
+                            <button onClick={() => removeExtra(g.grupo_id, coach.id)} disabled={removendoExtra===g.grupo_id}
+                              className="flex-shrink-0 p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50">
+                              {removendoExtra===g.grupo_id?<div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin"/>:<Trash2 size={14}/>}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                      <div className="text-xs font-semibold text-gray-700 mb-3 uppercase tracking-wide">Adicionar grade extra</div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                        <div><label className="label">Início *</label><input type="date" className="input" value={extraForm.data_inicio} onChange={e=>setExtraForm(f=>({...f,data_inicio:e.target.value}))}/></div>
+                        <div><label className="label">Fim *</label><input type="date" className="input" value={extraForm.data_fim} onChange={e=>setExtraForm(f=>({...f,data_fim:e.target.value}))}/></div>
+                      </div>
+                      <div className="mb-3">
+                        <label className="label">Motivo <span className="text-gray-400 font-normal">— opcional</span></label>
+                        <input className="input" value={extraForm.motivo} placeholder="Cobertura, reforço…" onChange={e=>setExtraForm(f=>({...f,motivo:e.target.value}))}/>
+                      </div>
+                      <label className="label">Horários extras <span className="text-gray-400 font-normal">— {extraGrade[coach.id]?.size || 0} marcados</span></label>
+                      <div className="overflow-x-auto mb-3">
+                        <table className="text-xs w-full">
+                          <thead>
+                            <tr>
+                              <th className="text-gray-400 font-normal w-14 text-left pb-2 pr-2">Hora</th>
+                              {DIAS_SEMANA.map(d => <th key={d} className="text-gray-400 font-normal text-center pb-2 px-0.5 min-w-[32px]">{d}</th>)}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {HORARIOS.map(hora => (
+                              <tr key={hora}>
+                                <td className="text-gray-400 py-0.5 pr-2 whitespace-nowrap">{hora}</td>
+                                {[0,1,2,3,4,5,6].map(dia => {
+                                  const key = `${dia}-${hora}`
+                                  const on  = extraGrade[coach.id]?.has(key)
+                                  return (
+                                    <td key={dia} className="px-0.5 py-0.5">
+                                      <button onClick={() => toggleExtra(coach.id, key)}
+                                        className={`w-full h-6 rounded text-xs transition-colors ${on?'bg-blue-100 text-blue-800 border border-blue-300':'bg-gray-50 border border-gray-100 hover:bg-gray-100'}`}>
+                                        {on?'✓':''}
+                                      </button>
+                                    </td>
+                                  )
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="flex gap-2 flex-wrap">
+                        <button onClick={() => addExtra(coach.id)} disabled={salvandoExtra===coach.id} className="btn btn-primary btn-sm gap-1">
+                          {salvandoExtra===coach.id?<div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"/>:<Save size={12}/>}
+                          {salvandoExtra===coach.id?'Salvando...':'Adicionar grade extra'}
+                        </button>
+                        <button onClick={() => setExtraGrade(prev=>({...prev,[coach.id]:new Set()}))} className="btn btn-sm">Limpar seleção</button>
+                      </div>
+                    </div>
+                  </section>
+                  )}
 
                   {/* Seção: Férias / Ausências */}
                   <section className="pt-5 border-t border-gray-100">
