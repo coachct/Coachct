@@ -90,6 +90,7 @@ export default function ReservasTotalpassPage() {
   const [de, setDe] = useState(inicioMes)
   const [ate, setAte] = useState(dataLocalStr(daqui21))
   const [statusFiltro, setStatusFiltro] = useState<string>('todas')
+  const [origemFiltro, setOrigemFiltro] = useState<string>('app')
   const [linhas, setLinhas] = useState<Linha[]>([])
   const [carregando, setCarregando] = useState(true)
 
@@ -151,7 +152,10 @@ export default function ReservasTotalpassPage() {
     setCarregando(false)
   }
 
-  const visiveis = statusFiltro === 'todas' ? linhas : linhas.filter(l => l.status === statusFiltro)
+  const visiveis = linhas.filter(l =>
+    (statusFiltro === 'todas' || l.status === statusFiltro) &&
+    (origemFiltro === 'todas' || l.origem.toLowerCase() === origemFiltro)
+  )
 
   const kpis = {
     total: visiveis.length,
@@ -189,6 +193,14 @@ export default function ReservasTotalpassPage() {
         <label className="text-xs text-gray-500">
           <div className="mb-1">Até</div>
           <input type="date" value={ate} onChange={e => setAte(e.target.value)} className="input" />
+        </label>
+        <label className="text-xs text-gray-500">
+          <div className="mb-1">Origem</div>
+          <select value={origemFiltro} onChange={e => setOrigemFiltro(e.target.value)} className="input">
+            <option value="app">App (TotalPass)</option>
+            <option value="site">Site (nosso sistema)</option>
+            <option value="todas">Todas</option>
+          </select>
         </label>
         <label className="text-xs text-gray-500">
           <div className="mb-1">Status</div>
