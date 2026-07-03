@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
 import { createClient } from '@/lib/supabase'
+import { gradeExtraDoDia } from '@/lib/grade'
 import { dashboardDoRole } from '@/lib/auth-redirect'
 import SiteHeader from '@/components/SiteHeader'
 import ModalTelefone from '@/components/ModalTelefone'
@@ -324,7 +325,11 @@ export default function AgendarPage() {
         if (qtd > 0) for (const hora of HORARIOS_FDS) { if (isDiaDe && hora <= horaAtual) continue; porHora[hora] = qtd }
       } else {
         const { data: hors } = await supabase.from('coach_horarios').select('hora, coach_id').eq('dia_semana', diaSem).eq('ativo', true).eq('unidade_id', unidadeAtiva.id)
-        for (const h of (hors || [])) { if (feriasSet.has(h.coach_id)) continue; const hora = (h.hora || '').slice(0, 5); if (isDiaDe && hora <= horaAtual) continue; porHora[hora] = (porHora[hora] || 0) + 1 }
+        const coachPorHora: Record<string, Set<string>> = {}
+        for (const h of (hors || [])) { if (feriasSet.has(h.coach_id)) continue; const hora = (h.hora || '').slice(0, 5); if (isDiaDe && hora <= horaAtual) continue; porHora[hora] = (porHora[hora] || 0) + 1; if (!coachPorHora[hora]) coachPorHora[hora] = new Set(); coachPorHora[hora].add(h.coach_id) }
+        // Grade extra do período: só ACRESCENTA coach novo naquela hora (dedup por coach; férias/horário passado respeitados).
+        const extra = await gradeExtraDoDia(supabase, { unidadeId: unidadeAtiva.id, dataStr, diaSemana: diaSem })
+        for (const s of extra) { if (feriasSet.has(s.coach_id)) continue; if (isDiaDe && s.hora <= horaAtual) continue; if (!coachPorHora[s.hora]) coachPorHora[s.hora] = new Set(); if (coachPorHora[s.hora].has(s.coach_id)) continue; coachPorHora[s.hora].add(s.coach_id); porHora[s.hora] = (porHora[s.hora] || 0) + 1 }
       }
       const [agsRes, filaGeralRes, bloqueadasRes, agClienteRes, filasRes] = await Promise.allSettled([
         supabase.from('agendamentos').select('horario, status').eq('data', dataStr).eq('unidade_id', unidadeAtiva.id).neq('status', 'cancelado'),
@@ -384,6 +389,9 @@ export default function AgendarPage() {
     } else {
       const { data: hors } = await supabase.from('coach_horarios').select('coach_id').eq('dia_semana', diaSem).eq('hora', horaStr).eq('ativo', true).eq('unidade_id', unidadeAtiva.id)
       coachIds = (hors || []).map((h: any) => h.coach_id).filter(Boolean)
+      // Grade extra do período: acrescenta coaches escalados extra nessa hora (dedup; férias filtrada abaixo).
+      const extra = await gradeExtraDoDia(supabase, { unidadeId: unidadeAtiva.id, dataStr, diaSemana: diaSem, hora: horaStr })
+      for (const s of extra) if (!coachIds.includes(s.coach_id)) coachIds.push(s.coach_id)
     }
     // Daqui pra baixo, coachIds são sempre coaches.id (igual a coach_ferias e agendamentos).
     coachIds = coachIds.filter(id => !feriasSet.has(id))
