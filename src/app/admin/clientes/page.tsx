@@ -1371,8 +1371,45 @@ export default function AdminClientesPage() {
                         )
                       })}
                     </div>
-                  )}
                 </div>
+                )}
+
+                {planosJustCT.length === 0 && Object.keys(appsPorUnidade).length === 0 && avulsosPacotes.length === 0 && (
+                  <div className="card text-center py-6 text-gray-400 text-sm">Nenhum plano, app ou pacote ativo.</div>
+                )}
+
+                {planosDisponiveisParaAtivar().length > 0 && (
+                  mostrarAtivar ? (
+                    <div className="card border-2 border-dashed border-primary-200 bg-primary-50">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="text-sm font-semibold text-primary-800 flex items-center gap-2"><Plus size={14} /> Ativar app parceiro em {unidadeAtiva.nome}</div>
+                        <button onClick={() => setMostrarAtivar(false)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+                      </div>
+                      {!clienteTemAcesso && (
+                        <div className="bg-orange-100 border border-orange-200 rounded-lg p-3 mb-3 text-xs text-orange-800 flex items-start gap-2">
+                          <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+                          <div><strong>Atenção:</strong> Cliente sem acesso ao sistema. Vá para a aba <strong>Dados</strong> e crie o acesso antes de ativar planos.</div>
+                        </div>
+                      )}
+                      <div className="space-y-2">
+                        {planosDisponiveisParaAtivar().map(p => (
+                          <button key={p.id} onClick={() => { setModalAtivarPlano(p); setErroAtivacao('') }} disabled={!clienteTemAcesso}
+                            className={`w-full bg-white border border-gray-200 rounded-xl p-3 flex items-center justify-between transition-all text-left ${clienteTemAcesso ? 'hover:border-primary-400 cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}>
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">{p.nome}</div>
+                              <div className="text-xs text-gray-500">{p.creditos_mes} sessões/mês</div>
+                            </div>
+                            <Plus size={16} className="text-primary-600" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => setMostrarAtivar(true)} className="btn btn-sm gap-1 text-primary-700 hover:bg-primary-50 border border-dashed border-primary-200 w-full justify-center py-2">
+                      <Plus size={14} /> Ativar plano / app parceiro
+                    </button>
+                  )
+                )}
               </div>
             )}
 
