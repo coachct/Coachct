@@ -39,6 +39,7 @@ export default function PagamentosCoachesPage() {
   const [lancando,     setLancando]     = useState(false)
   const [lancado,      setLancado]      = useState(false)
   const [msg,          setMsg]          = useState('')
+  const [horas,        setHoras]        = useState<any[]>([])
 
   useEffect(() => {
     if (!loading && perfil && perfil.role !== 'admin' && perfil.role !== 'coordenadora') router.push('/')
@@ -63,7 +64,7 @@ export default function PagamentosCoachesPage() {
     const ids = (cu || []).map((c: any) => c.coach_id)
     if (!ids.length) { setCoaches([]); return }
     const { data } = await supabase.from('coaches')
-      .select('id, nome, salario_fixo')
+      .select('id, nome, salario_fixo, cargo, valor_hora, user_id')
       .eq('ativo', true).in('id', ids).order('nome')
     setCoaches(data || [])
   }
@@ -84,7 +85,7 @@ export default function PagamentosCoachesPage() {
 
   async function carregarAulas() {
     if (!coachSel || !unidadeSel || !inicio || !fim) return
-    setLoadingAulas(true); setLancado(false); setIncluirFixo(false)
+    setLoadingAulas(true); setLancado(false); setIncluirFixo(false); setHoras([])
 
     // Busca valores do coach para esta unidade
     const { data: valores } = await supabase.from('coach_valores')
@@ -158,16 +159,72 @@ export default function PagamentosCoachesPage() {
         }
       }))
     }
+    // ===== HORAS DO PROFESSOR (só unidade CT + cargo professor) =====
+    // Regra: dia útil = grade fixa (coach_horarios) + grade extra (coach_horarios_extra);
+    // feriado/FDS = ignora grade e usa escala_fds (5h fixas se escalado); férias = 0h.
+    if (unidadeSel.tipo === 'ct' && coachSel.cargo === 'professor') {
+      const HFDS = ['08:00', '09:00', '10:00', '11:00', '12:00'] // jornada 08–13 = 5h
+      const { data: grade } = await supabase.from('coach_horarios')
+        .select('dia_semana, hora')
+        .eq('coach_id', coachSel.id).eq('unidade_id', unidadeSel.id).eq('ativo', true)
+      const gradePorDia: Record<number, number> = {}
+      for (const g of (grade || [])) gradePorDia[g.dia_semana] = (gradePorDia[g.dia_semana] || 0) + 1
+      const { data: fer } = await supabase.from('coach_ferias')
+        .select('data_inicio, data_fim').eq('coach_id', coachSel.id)
+        .lte('data_inicio', fim).gte('data_fim', inicio)
+      const { data: feriados } = await supabase.from('feriados')
+        .select('data').eq('unidade_id', unidadeSel.id).eq('ativo', true)
+        .gte('data', inicio).lte('data', fim)
+      const feriadoSet = new Set((feriados || []).map((f: any) => f.data))
+      // ATENÇÃO: escala_fds.coach_id guarda o user_id do coach, não o coaches.id
+      const { data: esc } = await supabase.from('escala_fds')
+        .select('data').eq('unidade_id', unidadeSel.id).eq('coach_id', coachSel.user_id)
+        .gte('data', inicio).lte('data', fim)
+      const escSet = new Set((esc || []).map((e: any) => e.data))
+      const { data: extra } = await supabase.from('coach_horarios_extra')
+        .select('data_inicio, data_fim, dia_semana')
+        .eq('coach_id', coachSel.id).eq('unidade_id', unidadeSel.id)
+        .lte('data_inicio', fim).gte('data_fim', inicio)
+      const emFerias = (ds: string) => (fer || []).some((f: any) => f.data_inicio <= ds && f.data_fim >= ds)
+      const [yi, mi, di] = inicio.split('-').map(Number)
+      const [yf, mf, dff] = fim.split('-').map(Number)
+      const cur = new Date(yi, mi - 1, di)
+      const end = new Date(yf, mf - 1, dff)
+      const linhas: any[] = []
+      while (cur <= end) {
+        const ds = dataLocalStr(cur)
+        const dow = cur.getDay()
+        let h = 0, fonte = ''
+        if (emFerias(ds)) {
+          h = 0
+        } else if (feriadoSet.has(ds) || dow === 0 || dow === 6) {
+          if (escSet.has(ds)) { h = HFDS.length; fonte = feriadoSet.has(ds) ? 'feriado' : 'fds' }
+        } else {
+          const base = gradePorDia[dow] || 0
+          const ex = (extra || []).filter((e: any) => e.data_inicio <= ds && e.data_fim >= ds && e.dia_semana === dow).length
+          h = base + ex
+          fonte = ex > 0 ? 'grade + extra' : 'grade'
+        }
+        if (h > 0) linhas.push({ data: ds, horas: h, fonte })
+        cur.setDate(cur.getDate() + 1)
+      }
+      setHoras(linhas)
+    }
     setLoadingAulas(false)
   }
 
   const totalAulas   = aulas.length
   const totalBonus   = aulas.reduce((sum, a) => sum + (a.valor || 0), 0)
   const salarioFixo  = Number(coachSel?.salario_fixo || 0)
-  const totalFinal   = totalBonus + (incluirFixo ? salarioFixo : 0)
+  const isProfessor  = coachSel?.cargo === 'professor'
+  const isProfCT     = isProfessor && unidadeSel?.tipo === 'ct'
+  const totalHoras   = horas.reduce((s, h) => s + (h.horas || 0), 0)
+  const valorHora    = Number(coachSel?.valor_hora || 0)
+  const valorHoras   = totalHoras * valorHora
+  const totalFinal   = totalBonus + valorHoras + (!isProfessor && incluirFixo ? salarioFixo : 0)
 
   async function lancarDespesa() {
-    if (!coachSel || !unidadeSel || totalAulas === 0) return
+    if (!coachSel || !unidadeSel || totalFinal <= 0) return
     setLancando(true)
 
     // 1) Registro do pagamento do coach (via RPC SECURITY DEFINER — valida admin e contorna RLS)
@@ -177,9 +234,9 @@ export default function PagamentosCoachesPage() {
       p_periodo_inicio: inicio,
       p_periodo_fim:    fim,
       p_total_aulas:    totalAulas,
-      p_valor_por_aula: totalBonus / totalAulas,
+      p_valor_por_aula: totalAulas > 0 ? totalBonus / totalAulas : 0,
       p_valor_total:    totalFinal,
-      p_observacao:     `${coachSel.nome} — ${totalAulas} aulas em ${unidadeSel.nome} (${formatarData(inicio)} a ${formatarData(fim)})${incluirFixo ? ` + fixo R$ ${salarioFixo.toFixed(2).replace('.', ',')}` : ''}`,
+      p_observacao:     `${coachSel.nome} — ${totalAulas} aulas em ${unidadeSel.nome} (${formatarData(inicio)} a ${formatarData(fim)})${isProfCT && totalHoras > 0 ? ` + ${totalHoras}h R$ ${valorHoras.toFixed(2).replace('.', ',')}` : ''}${!isProfessor && incluirFixo ? ` + fixo R$ ${salarioFixo.toFixed(2).replace('.', ',')}` : ''}`,
     })
 
     if (error) { setLancando(false); showMsg('Erro: ' + error.message); return }
@@ -198,7 +255,7 @@ export default function PagamentosCoachesPage() {
     const { error: errDesp } = await supabase.from('despesas').insert({
       unidade_id:         unidadeSel.id,
       categoria_id:       catCoach?.id || null,
-      descricao:          `Pagamento ${coachSel.nome} — ${totalAulas} aulas (${formatarData(inicio)} a ${formatarData(fim)})`,
+      descricao:          `Pagamento ${coachSel.nome} — ${isProfCT ? `${totalHoras}h` : `${totalAulas} aulas`} (${formatarData(inicio)} a ${formatarData(fim)})`,
       valor:              totalFinal,
       competencia,
       vencimento,
@@ -359,7 +416,7 @@ export default function PagamentosCoachesPage() {
                 <div className="flex items-center justify-center py-12">
                   <div className="w-7 h-7 border-4 border-primary-400 border-t-transparent rounded-full animate-spin"/>
                 </div>
-              ) : aulas.length === 0 ? (
+              ) : (aulas.length === 0 && !(isProfCT && totalHoras > 0)) ? (
                 <div className="text-center py-12 text-gray-400 text-sm">
                   Nenhuma aula encontrada para o período selecionado.
                 </div>
@@ -392,8 +449,31 @@ export default function PagamentosCoachesPage() {
                     </div>
                   </div>
 
+                  {/* Linha de horas do professor */}
+                  {isProfCT && (
+                    <div className="px-5 py-3 border-t border-gray-100 bg-blue-50">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-sm font-medium text-blue-900">Horas trabalhadas (professor)</div>
+                          <div className="text-xs text-blue-700">{totalHoras} h × R$ {valorHora.toFixed(2).replace('.', ',')}/h</div>
+                        </div>
+                        <div className="text-sm font-bold text-blue-800">+ R$ {valorHoras.toFixed(2).replace('.', ',')}</div>
+                      </div>
+                      {horas.length > 0 && (
+                        <div className="mt-3 border-t border-blue-100 pt-2 space-y-1">
+                          {horas.map((h, i) => (
+                            <div key={i} className="grid grid-cols-3 gap-2 text-xs text-blue-700">
+                              <span className="capitalize">{new Date(h.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday:'short', day:'numeric', month:'short' })}</span>
+                              <span className="text-blue-400 text-center">{h.fonte}</span>
+                              <span className="font-mono text-right">{h.horas} h</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {/* Toggle salário fixo */}
-                  {salarioFixo > 0 && (
+                  {!isProfessor && salarioFixo > 0 && (
                     <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between bg-amber-50">
                       <div className="flex items-center gap-3">
                         <button onClick={() => setIncluirFixo(v => !v)}
@@ -427,7 +507,7 @@ export default function PagamentosCoachesPage() {
             </div>
 
             {/* Botão lançar despesa */}
-            {!loadingAulas && totalAulas > 0 && (
+            {!loadingAulas && (totalAulas > 0 || (isProfCT && totalHoras > 0)) && (
               <div className="card">
                 {lancado ? (
                   <div className="flex items-center gap-3 text-green-700">
