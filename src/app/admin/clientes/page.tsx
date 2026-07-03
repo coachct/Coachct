@@ -312,7 +312,7 @@ export default function AdminClientesPage() {
 
   async function carregarClubReservas(clienteId: string) {
     const { data } = await supabase.from('club_reservas')
-      .select('*, club_ocorrencias(id, data, club_aulas(tipo, horario, unidade_id, unidades(nome)))')
+      .select('*, creditos_avulsos(observacao), club_ocorrencias(id, data, club_aulas(tipo, horario, unidade_id, unidades(nome)))')
       .eq('cliente_id', clienteId)
       .neq('status', 'cancelado')
       .order('created_at', { ascending: false })
@@ -1523,7 +1523,7 @@ export default function AdminClientesPage() {
                                 <span className="font-mono">{(aula?.horario || '').slice(0,5)}</span>
                                 {aula?.unidades?.nome && <><span className="text-gray-300">·</span><span>{aula.unidades.nome}</span></>}
                               </div>
-                              {cred.label && <div className="text-xs text-gray-500 mt-1">{cred.icon} {cred.label}</div>}
+                              {cred.label && <div className="text-xs text-gray-500 mt-1">{cred.icon} {(cr as any).creditos_avulsos?.observacao || cred.label}</div>}
                             </div>
                             <button onClick={() => cancelarReservaClub(cr.id)} disabled={cancelandoId === cr.id} className="btn btn-sm gap-1 text-red-500 hover:bg-red-50 flex-shrink-0">
                               <X size={12} /> {cancelandoId === cr.id ? 'Cancelando...' : 'Cancelar'}
@@ -1591,7 +1591,7 @@ export default function AdminClientesPage() {
                               <span className="font-mono">{(aula?.horario || '').slice(0,5)}</span>
                               {aula?.unidades?.nome && <><span className="text-gray-300">·</span><span>{aula.unidades.nome}</span></>}
                             </div>
-                            {cred.label && <div className="text-xs text-gray-500 mt-1">{cred.icon} {cred.label}</div>}
+                            {cred.label && <div className="text-xs text-gray-500 mt-1">{cred.icon} {(cr as any).creditos_avulsos?.observacao || cred.label}</div>}
                           </div>
                         </div>
                       )
