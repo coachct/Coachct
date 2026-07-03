@@ -192,7 +192,7 @@ function MapaPageInner() {
     }
     const { error } = await supabase.from('club_reservas').insert({
       ocorrencia_id: ocId, cliente_id: cliente.id, tipo_credito: tipoCredito,
-      posicao: posicaoSel, status: 'reservado',
+      posicao: posicaoSel, status: 'reservado', criado_via: 'cliente',
     })
     if (error) {
       const msg = error.message?.includes('já tem uma reserva')
