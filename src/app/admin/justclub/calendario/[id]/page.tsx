@@ -117,6 +117,12 @@ export default function RecepcaoClubDetalhe() {
   const [wellhubEstado,   setWellhubEstado]   = useState<string | null>(null)
   const [salvandoWellhub, setSalvandoWellhub] = useState(false)
 
+  // NOVO: vagas expostas à TotalPass (mesmo pool compartilhado). null = default global.
+  const [vagasTotalpass,    setVagasTotalpass]    = useState<number | null>(null)
+  const [vagasDefaultTp,    setVagasDefaultTp]    = useState(10)
+  const [totalpassEstado,   setTotalpassEstado]   = useState<string | null>(null)
+  const [salvandoTotalpass, setSalvandoTotalpass] = useState(false)
+
   // NOVO: pausa da fila de espera (por ocorrência)
   const [filaPausada,   setFilaPausada]   = useState(false)
   const [salvandoPausa, setSalvandoPausa] = useState(false)
@@ -139,7 +145,7 @@ export default function RecepcaoClubDetalhe() {
     // Inclui coach_escalado (FK coach_id da ocorrência) — prioridade sobre o coach da grade
     const { data: oc } = await supabase
       .from('club_ocorrencias')
-      .select('*, coach_escalado:coaches!coach_id(id, nome), club_aulas(tipo, horario, capacidade, unidade_id, coaches(nome), grupos_musculares(nome), unidades(nome, wellhub_estado))')
+      .select('*, coach_escalado:coaches!coach_id(id, nome), club_aulas(tipo, horario, capacidade, unidade_id, coaches(nome), grupos_musculares(nome), unidades(nome, wellhub_estado, totalpass_estado))')
       .eq('id', ocId).maybeSingle()
     setOcorrencia(oc)
     setVagasBloqueadas(oc?.vagas_bloqueadas || 0)
@@ -151,6 +157,13 @@ export default function RecepcaoClubDetalhe() {
       const { data: whCfg } = await supabase.from('wellhub_config').select('vagas_default').maybeSingle()
       if (whCfg?.vagas_default != null) setVagasDefaultWh(whCfg.vagas_default)
     } catch { /* ignora: a tela segue normal mesmo se a config Wellhub falhar */ }
+    // TotalPass: mesmo padrão do Wellhub. Blindado — nunca afeta o carregamento da tela.
+    setVagasTotalpass(oc?.vagas_totalpass ?? null)
+    setTotalpassEstado((oc as any)?.club_aulas?.unidades?.totalpass_estado ?? null)
+    try {
+      const { data: tpCfg } = await supabase.from('totalpass_booking_config').select('vagas_default').maybeSingle()
+      if (tpCfg?.vagas_default != null) setVagasDefaultTp(tpCfg.vagas_default)
+    } catch { /* ignora: a tela segue normal mesmo se a config TotalPass falhar */ }
 
     const { data: res } = await supabase
       .from('club_reservas')
@@ -313,6 +326,24 @@ export default function RecepcaoClubDetalhe() {
       : n === 0
         ? '🚫 Aula pausada no Wellhub (0 vagas)'
         : `📲 ${n} vaga${n>1?'s':''} no Wellhub`)
+  }
+
+  // NOVO: define quantas vagas desta aula aparecem no app da TotalPass.
+  // null = usa o default global; 0 = some do app (parado); número = explícito.
+  async function salvarVagasTotalpass(n: number | null) {
+    setSalvandoTotalpass(true)
+    const { error } = await supabase
+      .from('club_ocorrencias')
+      .update({ vagas_totalpass: n })
+      .eq('id', ocId)
+    if (error) { showMsg('Erro: '+error.message); setSalvandoTotalpass(false); return }
+    setVagasTotalpass(n)
+    setSalvandoTotalpass(false)
+    showMsg(n === null
+      ? `✅ Usando o padrão da TotalPass (${vagasDefaultTp})`
+      : n === 0
+        ? '🚫 Aula pausada na TotalPass (0 vagas)'
+        : `🔵 ${n} vaga${n>1?'s':''} na TotalPass`)
   }
 
   // NOVO: pausa/reativa a promoção automática da fila desta ocorrência
@@ -932,6 +963,63 @@ export default function RecepcaoClubDetalhe() {
                           textDecoration:'underline', cursor: salvandoWellhub ? 'default' : 'pointer',
                           fontFamily:"'DM Sans', sans-serif" }}>
                         Usar padrão ({vagasDefaultWh})
+                      </button>
+                    </div>
+                  )}
+                </>
+              )
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* NOVO: Vagas na TotalPass — só em unidade integrada, aula de hoje/futuro */}
+      {!isPassado && aula && (totalpassEstado === 'ativo' || totalpassEstado === 'pausado') && (
+        <div style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:16, marginBottom:'1.5rem', overflow:'hidden' }}>
+          <div style={{ padding:'0.85rem 1.5rem', borderBottom:'1px solid #f3f4f6' }}>
+            <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>Vagas na TotalPass</div>
+            <div style={{ fontSize:12, color:'#aaa', marginTop:2 }}>
+              Quantas vagas desta aula aparecem no app da TotalPass. Os canais dividem o mesmo pool de vagas.
+              {totalpassEstado === 'pausado' && ' — integração PAUSADA nesta unidade no momento.'}
+            </div>
+          </div>
+          <div style={{ padding:'1.25rem 1.5rem' }}>
+            {(() => {
+              const resolvido = vagasTotalpass ?? vagasDefaultTp
+              const usandoPadrao = vagasTotalpass === null
+              return (
+                <>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:14 }}>
+                    <button onClick={() => salvarVagasTotalpass(Math.max(0, resolvido - 1))}
+                      disabled={salvandoTotalpass || resolvido <= 0}
+                      style={{ width:44, height:44, borderRadius:'50%', border:'1.5px solid #e5e7eb',
+                        background:'#fff', fontSize:22, color: resolvido<=0 ? '#ddd' : '#555',
+                        cursor: (salvandoTotalpass||resolvido<=0) ? 'default' : 'pointer', lineHeight:1 }}>
+                      −
+                    </button>
+                    <div style={{ minWidth:120, textAlign:'center' }}>
+                      <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:40, color: resolvido===0 ? VERMELHO : ACCENT, lineHeight:1 }}>
+                        {resolvido === 0 ? 'Parado' : resolvido}
+                      </div>
+                      <div style={{ fontSize:10, color:'#aaa', textTransform:'uppercase', letterSpacing:0.5, marginTop:2 }}>
+                        {usandoPadrao ? `padrão (${vagasDefaultTp})` : 'vagas no app'}
+                      </div>
+                    </div>
+                    <button onClick={() => salvarVagasTotalpass(resolvido + 1)}
+                      disabled={salvandoTotalpass}
+                      style={{ width:44, height:44, borderRadius:'50%',
+                        border:`1.5px solid ${ACCENT}`, background:`${ACCENT}10`, fontSize:22, color: ACCENT,
+                        cursor: salvandoTotalpass ? 'default' : 'pointer', lineHeight:1 }}>
+                      +
+                    </button>
+                  </div>
+                  {!usandoPadrao && (
+                    <div style={{ textAlign:'center', marginTop:'1rem' }}>
+                      <button onClick={() => salvarVagasTotalpass(null)} disabled={salvandoTotalpass}
+                        style={{ background:'transparent', border:'none', color:'#888', fontSize:12,
+                          textDecoration:'underline', cursor: salvandoTotalpass ? 'default' : 'pointer',
+                          fontFamily:"'DM Sans', sans-serif" }}>
+                        Usar padrão ({vagasDefaultTp})
                       </button>
                     </div>
                   )}
