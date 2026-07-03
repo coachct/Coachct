@@ -229,6 +229,7 @@ export default function AdminClientesPage() {
   const [salvandoAvulso, setSalvandoAvulso] = useState(false)
   const [cancelandoAvulso, setCancelandoAvulso] = useState(false)
   const [erroAvulso, setErroAvulso] = useState('')
+  const [mostrarAtivar, setMostrarAtivar] = useState(false)
 
   const [fotoUrl, setFotoUrl] = useState<string | null>(null)
   const [modalFoto, setModalFoto] = useState(false)
@@ -891,6 +892,25 @@ export default function AdminClientesPage() {
     saldosPorUnidade[uid].push({ key, ...info as any })
   }
 
+  // Nome do pacote de origem por escopo do pool avulso (display-only, via vínculo credito_avulso_id).
+  // Deixa o card "Créditos disponíveis" mostrar "Pacote 5 Treinos" em vez do genérico "Avulso".
+  const nomesAvulsoPorScope: Record<string, string[]> = {}
+  for (const pac of avulsosPacotes) {
+    if (!pac.observacao || String(pac.observacao).startsWith('Migração')) continue
+    const scope = pac.unidade_id ? 'unit:' + pac.unidade_id : 'global'
+    if (!nomesAvulsoPorScope[scope]) nomesAvulsoPorScope[scope] = []
+    if (!nomesAvulsoPorScope[scope].includes(pac.observacao)) nomesAvulsoPorScope[scope].push(pac.observacao)
+  }
+  function labelSaldo(s: any): string {
+    const k = String(s.key || '').toLowerCase()
+    if ((k.startsWith('avulso') || k.startsWith('credito')) && k !== 'avulso_importado') {
+      const scope = s.unidade_id ? 'unit:' + s.unidade_id : 'global'
+      const nomes = nomesAvulsoPorScope[scope]
+      if (nomes && nomes.length > 0) return nomes.join(' + ')
+    }
+    return s.tipo_plano
+  }
+
   function isPlanoVigente(cp: any): boolean { if (!cp.fim) return true; return cp.fim >= hoje }
   function diasRestantesPlano(cp: any): number | null {
     if (!cp.fim) return null
@@ -1152,7 +1172,7 @@ export default function AdminClientesPage() {
                               {saldosU.map((s: any) => (
                                 <div key={s.key} className="bg-white rounded-lg p-2 text-center border border-gray-100">
                                   <div className={`text-2xl font-bold ${s.disponivel === 0 ? 'text-gray-300' : s.disponivel <= 2 ? 'text-orange-500' : 'text-primary-600'}`}>{s.disponivel}</div>
-                                  <div className="text-xs text-gray-500 capitalize mt-0.5 truncate">{s.tipo_plano}</div>
+                                  <div className="text-xs text-gray-500 capitalize mt-0.5 truncate">{labelSaldo(s)}</div>
                                   <div className="text-xs text-gray-400 mt-0.5">de {s.total}</div>
                                 </div>
                               ))}
@@ -1170,7 +1190,7 @@ export default function AdminClientesPage() {
                             {saldosGlobais.map((s: any) => (
                               <div key={s.key} className="bg-white rounded-lg p-2 text-center border border-gray-100">
                                 <div className={`text-2xl font-bold ${s.disponivel === 0 ? 'text-gray-300' : s.disponivel <= 2 ? 'text-orange-500' : 'text-primary-600'}`}>{s.disponivel}</div>
-                                <div className="text-xs text-gray-500 capitalize mt-0.5 truncate">{s.tipo_plano}</div>
+                                <div className="text-xs text-gray-500 capitalize mt-0.5 truncate">{labelSaldo(s)}</div>
                                 <div className="text-xs text-gray-400 mt-0.5">de {s.total}</div>
                               </div>
                             ))}
@@ -1226,11 +1246,9 @@ export default function AdminClientesPage() {
 
             {aba === 'planos' && (
               <div className="space-y-4">
+                {planosJustCT.length > 0 && (
                 <div>
                   <div className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2 flex items-center gap-2"><CalendarClock size={12} /> Planos Just CT</div>
-                  {planosJustCT.length === 0 ? (
-                    <div className="card text-center py-6 text-gray-400 text-sm">Nenhum plano de acesso ativo.</div>
-                  ) : (
                     <div className="space-y-2">
                       {planosJustCT.map(cp => {
                         const vigente = isPlanoVigente(cp); const dias = diasRestantesPlano(cp)
@@ -1258,15 +1276,13 @@ export default function AdminClientesPage() {
                         )
                       })}
                     </div>
-                  )}
                 </div>
+                )}
 
+                {Object.keys(appsPorUnidade).length > 0 && (
                 <div>
                   <div className="text-xs font-semibold text-primary-700 uppercase tracking-wide mb-2 flex items-center gap-2"><Zap size={12} /> Apps Parceiros (Wellhub / TotalPass)</div>
-                  {Object.keys(appsPorUnidade).length === 0 ? (
-                    <div className="card text-center py-6 text-gray-400 text-sm">Cliente sem planos de app parceiro ativos.</div>
-                  ) : (
-                    todasUnidades.map(u => {
+                    {todasUnidades.map(u => {
                       const planosU = appsPorUnidade[u.id] || []; if (planosU.length === 0) return null
                       return (
                         <div key={u.id} className="card mb-2">
@@ -1304,38 +1320,13 @@ export default function AdminClientesPage() {
                           </div>
                         </div>
                       )
-                    })
-                  )}
-                  {planosDisponiveisParaAtivar().length > 0 && (
-                    <div className="card border-2 border-dashed border-primary-200 bg-primary-50">
-                      <div className="text-sm font-semibold text-primary-800 mb-3 flex items-center gap-2"><Plus size={14} /> Ativar app parceiro em {unidadeAtiva.nome}</div>
-                      {!clienteTemAcesso && (
-                        <div className="bg-orange-100 border border-orange-200 rounded-lg p-3 mb-3 text-xs text-orange-800 flex items-start gap-2">
-                          <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
-                          <div><strong>Atenção:</strong> Cliente sem acesso ao sistema. Vá para a aba <strong>Dados</strong> e crie o acesso antes de ativar planos.</div>
-                        </div>
-                      )}
-                      <div className="space-y-2">
-                        {planosDisponiveisParaAtivar().map(p => (
-                          <button key={p.id} onClick={() => { setModalAtivarPlano(p); setErroAtivacao('') }} disabled={!clienteTemAcesso}
-                            className={`w-full bg-white border border-gray-200 rounded-xl p-3 flex items-center justify-between transition-all text-left ${clienteTemAcesso ? 'hover:border-primary-400 cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}>
-                            <div>
-                              <div className="text-sm font-medium text-gray-900">{p.nome}</div>
-                              <div className="text-xs text-gray-500">{p.creditos_mes} sessões/mês</div>
-                            </div>
-                            <Plus size={16} className="text-primary-600" />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                    })}
                 </div>
+                )}
 
+                {avulsosPacotes.length > 0 && (
                 <div>
                   <div className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2 flex items-center gap-2"><Package size={12} /> Créditos avulsos / Pacotes</div>
-                  {avulsosPacotes.length === 0 ? (
-                    <div className="card text-center py-6 text-gray-400 text-sm">Nenhum crédito avulso.</div>
-                  ) : (
                     <div className="space-y-2">
                       {avulsosPacotes.map(pac => {
                         const venc = pac.validade ? new Date(pac.validade + 'T12:00:00') : null
