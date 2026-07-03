@@ -201,7 +201,7 @@ export default function RecepcaoClubDetalhe() {
 
     const { data: res } = await supabase
       .from('club_reservas')
-      .select('id, status, tipo_credito, posicao, clientes(id, nome, email, telefone)')
+      .select('id, status, tipo_credito, posicao, credito_avulso_id, creditos_avulsos(observacao), clientes(id, nome, email, telefone)')
       .eq('ocorrencia_id', ocId)
       .neq('status', 'cancelado')
     const sorted = (res || []).sort((a: any, b: any) =>
@@ -936,7 +936,7 @@ export default function RecepcaoClubDetalhe() {
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:14, fontWeight:600, color:'#111', marginBottom:2 }}>{cli?.nome||'—'}</div>
                     <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
-                      <span style={{ fontSize:11, color:'#888' }}>{icon} {label}</span>
+                      <span style={{ fontSize:11, color:'#888' }}>{icon} {(r as any).creditos_avulsos?.observacao || label}</span>
                       {r.posicao ? (
                         <span style={{ fontSize:14, fontFamily:"'DM Mono', monospace", fontWeight:800,
                           color:'#fff', background:ACCENT, padding:'3px 12px', borderRadius:8,

@@ -341,6 +341,24 @@ export default function AdminClientesPage() {
       .select('id, tipo, unidade_id, usado, validade, observacao, unidades(nome, tipo)')
       .eq('cliente_id', clienteId)
     const linhas = data || []
+
+    // Reservas ativas que consumiram esses créditos (vínculo display-only credito_avulso_id).
+    // O abatimento do saldo continua sendo o do RPC; aqui só refletimos o consumo por pacote.
+    const ids = linhas.map((c: any) => c.id)
+    const reservasPorCredito: Record<string, any[]> = {}
+    if (ids.length > 0) {
+      const { data: rs } = await supabase.from('club_reservas')
+        .select('id, credito_avulso_id, status, club_ocorrencias(data, club_aulas(tipo, horario, unidades(nome)))')
+        .in('credito_avulso_id', ids)
+        .neq('status', 'cancelado')
+      for (const r of (rs || [])) {
+        const cid = (r as any).credito_avulso_id
+        if (!cid) continue
+        ;(reservasPorCredito[cid] ||= []).push(r)
+      }
+    }
+
+    const hoje = dataLocalStr(new Date())
     const grupos: Record<string, any> = {}
     for (const c of linhas) {
       const chave = `${c.observacao || ''}|${c.validade || ''}|${c.unidade_id || 'global'}|${c.tipo || ''}`
@@ -353,12 +371,18 @@ export default function AdminClientesPage() {
           tipo: c.tipo ?? null,
           unidade_nome: (c.unidades as any)?.nome ?? null,
           unidade_tipo: (c.unidades as any)?.tipo ?? null,
-          total: 0, usados: 0, disponiveis: 0,
+          total: 0, usados: 0, disponiveis: 0, reservas: [] as any[],
         }
       }
       grupos[chave].total++
-      if (c.usado) grupos[chave].usados++
-      else grupos[chave].disponiveis++
+      const links = reservasPorCredito[c.id]
+      if (links && links.length > 0) {
+        grupos[chave].usados++
+        grupos[chave].reservas.push(...links)
+      } else if ((c.validade || '') >= hoje) {
+        grupos[chave].disponiveis++
+      }
+      // crédito vencido e não consumido: não conta como disponível nem usado
     }
     const lista = Object.values(grupos).sort((a: any, b: any) => (a.validade || '').localeCompare(b.validade || ''))
     setAvulsosPacotes(lista)
@@ -1331,6 +1355,21 @@ export default function AdminClientesPage() {
                                 <div className="text-xs text-gray-500 mt-1 space-y-0.5">
                                   <div>Validade: <strong className={vigente ? 'text-blue-700' : 'text-red-600'}>{pac.validade ? formatarBR(pac.validade) : '—'}</strong></div>
                                   <div><span className="font-bold text-blue-600">{pac.disponiveis}</span> disponíveis<span className="text-gray-400"> · {pac.usados} usados · {pac.total} no total</span></div>
+                                  {pac.reservas && pac.reservas.length > 0 && (
+                                    <div className="mt-1 pl-2 border-l-2 border-blue-100 space-y-0.5">
+                                      {pac.reservas
+                                        .slice()
+                                        .sort((a: any, b: any) => (a.club_ocorrencias?.data || '').localeCompare(b.club_ocorrencias?.data || ''))
+                                        .map((r: any) => (
+                                          <div key={r.id} className="text-[11px] text-gray-500">
+                                            {r.club_ocorrencias?.data ? formatarBR(r.club_ocorrencias.data) : '—'}
+                                            {r.club_ocorrencias?.club_aulas?.horario ? ` · ${r.club_ocorrencias.club_aulas.horario}` : ''}
+                                            {r.club_ocorrencias?.club_aulas?.tipo ? ` · ${r.club_ocorrencias.club_aulas.tipo}` : ''}
+                                            {r.club_ocorrencias?.club_aulas?.unidades?.nome ? ` · ${r.club_ocorrencias.club_aulas.unidades.nome}` : ''}
+                                          </div>
+                                        ))}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                               <div className="flex flex-col gap-1">
