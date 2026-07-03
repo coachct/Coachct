@@ -142,7 +142,7 @@ export default function ReservasTotalpassPage() {
         cpf: fmtCpf(r.clientes?.cpf ?? null),
         posicao: r.posicao || '—',
         status: r.status || '—',
-        origem: r.totalpass_slot_id ? 'App' : 'Recepção',
+        origem: r.totalpass_slot_id ? 'App' : 'Site',
       }
     })
     // Mais recentes (data) primeiro, depois horário.
@@ -179,7 +179,7 @@ export default function ReservasTotalpassPage() {
 
   return (
     <div>
-      <PageHeader title="Reservas TotalPass · Club" subtitle="App (self-service no app da TotalPass) e Recepção (lançada manualmente) — por data da aula" />
+      <PageHeader title="Reservas TotalPass · Club" subtitle="App (reservou no app da TotalPass) e Site (lançada no nosso sistema) — por data da aula" />
 
       <div className="flex flex-wrap items-end gap-3 mb-5">
         <label className="text-xs text-gray-500">
