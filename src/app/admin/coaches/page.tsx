@@ -703,14 +703,13 @@ export default function CoachesPage() {
                     </div>
                   </section>
 
-                  {/* Seção: Grade extra por período (só professor — soma no cálculo de horas) */}
-                  {coach.cargo === 'professor' && (
+                  {/* Seção: Grade extra por período (escala o coach só no período; professor também conta horas) */}
                   <section className="pt-5 border-t border-gray-100">
                     <div className="flex items-center gap-2 mb-3">
                       <Settings2 size={14} className="text-blue-600"/>
                       <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Grade extra por período — Coach CT</span>
                     </div>
-                    <p className="text-xs text-gray-400 mb-3">Horas extras vigentes só no período informado (ex.: cobertura, reforço). Somam à grade fixa no cálculo de <strong>Pagamento de Coaches</strong>. Feriado/FDS e férias seguem as regras normais.</p>
+                    <p className="text-xs text-gray-400 mb-3">Escala o coach na grade <strong>só dentro do período informado</strong> (ex.: cobertura, reforço) — soma à grade fixa. {coach.cargo === 'professor' ? 'Para professor, também conta como horas no Pagamento de Coaches.' : 'Não altera o pagamento (estagiário segue o salário fixo).'} Feriado/FDS e férias seguem as regras normais.</p>
 
                     {(extrasPorCoach[coach.id]?.length ?? 0) === 0 ? (
                       <p className="text-xs text-gray-400 italic mb-4">Nenhuma grade extra cadastrada.</p>
@@ -785,7 +784,6 @@ export default function CoachesPage() {
                       </div>
                     </div>
                   </section>
-                  )}
 
                   {/* Seção: Férias / Ausências */}
                   <section className="pt-5 border-t border-gray-100">
