@@ -20,11 +20,12 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 export const GRADE_EXTRA_ATIVO = process.env.NEXT_PUBLIC_GRADE_EXTRA_ATIVO === 'true'
 
-export type SlotExtra = { coach_id: string; hora: string }
+export type SlotExtra = { coach_id: string; hora: string; nome: string }
 
 // Retorna os slots de grade extra vigentes numa data (dia útil), para uma
 // unidade. `hora` opcional restringe a um horário específico. hora normalizada
-// para 'HH:MM' (igual à grade base nos chamadores).
+// para 'HH:MM' (igual à grade base nos chamadores). Traz o nome do coach para
+// os chamadores que montam o seletor (agenda admin/recepção).
 export async function gradeExtraDoDia(
   supabase: SupabaseClient,
   params: { unidadeId: string; dataStr: string; diaSemana: number; hora?: string }
@@ -32,7 +33,7 @@ export async function gradeExtraDoDia(
   if (!GRADE_EXTRA_ATIVO) return []
   try {
     let q = supabase.from('coach_horarios_extra')
-      .select('coach_id, hora')
+      .select('coach_id, hora, coaches(id, nome, ativo)')
       .eq('unidade_id', params.unidadeId)
       .eq('dia_semana', params.diaSemana)
       .lte('data_inicio', params.dataStr)
@@ -41,8 +42,9 @@ export async function gradeExtraDoDia(
     const { data, error } = await q
     if (error) return []
     return (data || [])
-      .filter((r: any) => r.coach_id)
-      .map((r: any) => ({ coach_id: r.coach_id, hora: (r.hora || '').slice(0, 5) }))
+      // Coach precisa existir e estar ativo — nunca escala um coach inativo.
+      .filter((r: any) => r.coach_id && r.coaches?.ativo !== false)
+      .map((r: any) => ({ coach_id: r.coach_id, hora: (r.hora || '').slice(0, 5), nome: r.coaches?.nome || '' }))
   } catch {
     return []
   }

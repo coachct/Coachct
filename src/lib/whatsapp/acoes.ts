@@ -8,6 +8,7 @@
 // (o modelo nunca decide isso sozinho) e registra o ato em lgpd_logs.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { gradeExtraDoDia } from '@/lib/grade'
 import { registrarAcessoLgpd, agoraEmSaoPaulo, consultarSaldo } from './consultas'
 
 export interface ResultadoAcao {
@@ -115,13 +116,25 @@ export async function horariosDisponiveisCt(
     }
   } else {
     const { data: hors } = await supabase
-      .from('coach_horarios').select('hora')
+      .from('coach_horarios').select('hora, coach_id')
       .eq('dia_semana', diaSem).eq('ativo', true).eq('unidade_id', unidadeId)
+    const coachPorHora: Record<string, Set<string>> = {}
     for (const h of hors ?? []) {
       const hora = String(h.hora ?? '').slice(0, 5)
       if (!hora) continue
       if (isDiaDe && hora <= horaAtual) continue
       porHora[hora] = (porHora[hora] || 0) + 1
+      if (!coachPorHora[hora]) coachPorHora[hora] = new Set()
+      coachPorHora[hora].add((h as any).coach_id)
+    }
+    // Grade extra do período: só ACRESCENTA coach novo naquela hora (dedup por coach).
+    const extra = await gradeExtraDoDia(supabase, { unidadeId, dataStr, diaSemana: diaSem })
+    for (const s of extra) {
+      if (isDiaDe && s.hora <= horaAtual) continue
+      if (!coachPorHora[s.hora]) coachPorHora[s.hora] = new Set()
+      if (coachPorHora[s.hora].has(s.coach_id)) continue
+      coachPorHora[s.hora].add(s.coach_id)
+      porHora[s.hora] = (porHora[s.hora] || 0) + 1
     }
   }
 

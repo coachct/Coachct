@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
+import { gradeExtraDoDia } from '@/lib/grade'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
 import { useRouter } from 'next/navigation'
@@ -293,7 +294,7 @@ export default function RecepcaoClientesPage() {
     const dataStr = dataSel.toISOString().split('T')[0]
 
     const [{ data: hors }, { data: ags }, { data: bloqueadas }] = await Promise.all([
-      supabase.from('coach_horarios').select('hora').eq('dia_semana', diaSemNum)
+      supabase.from('coach_horarios').select('hora, coach_id').eq('dia_semana', diaSemNum)
         .eq('unidade_id', unidadeAtiva.id).eq('ativo', true),
       supabase.from('agendamentos').select('horario').eq('data', dataStr)
         .eq('unidade_id', unidadeAtiva.id).neq('status', 'cancelado'),
@@ -302,7 +303,23 @@ export default function RecepcaoClientesPage() {
     ])
 
     const porHora: Record<string, number> = {}
-    for (const h of (hors || [])) { const hora = (h.hora||'').slice(0,5); porHora[hora] = (porHora[hora]||0)+1 }
+    const coachPorHora: Record<string, Set<string>> = {}
+    for (const h of (hors || [])) {
+      const hora = (h.hora||'').slice(0,5)
+      porHora[hora] = (porHora[hora]||0)+1
+      if (!coachPorHora[hora]) coachPorHora[hora] = new Set()
+      coachPorHora[hora].add((h as any).coach_id)
+    }
+    // Grade extra do período — só em dia útil (FDS/feriado seguem escala_fds).
+    if (diaSemNum !== 0 && diaSemNum !== 6) {
+      const extra = await gradeExtraDoDia(supabase, { unidadeId: unidadeAtiva.id, dataStr, diaSemana: diaSemNum })
+      for (const s of extra) {
+        if (!coachPorHora[s.hora]) coachPorHora[s.hora] = new Set()
+        if (coachPorHora[s.hora].has(s.coach_id)) continue
+        coachPorHora[s.hora].add(s.coach_id)
+        porHora[s.hora] = (porHora[s.hora]||0)+1
+      }
+    }
     const ocupados: Record<string, number> = {}
     for (const a of (ags || [])) { const hora = (a.horario||'').slice(0,5); ocupados[hora] = (ocupados[hora]||0)+1 }
     const bloqueadasMap: Record<string, number> = {}

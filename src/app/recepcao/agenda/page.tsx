@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase'
+import { gradeExtraDoDia } from '@/lib/grade'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
 import { useRouter } from 'next/navigation'
@@ -172,7 +173,23 @@ export default function RecepcaoAgendaPage() {
     }
 
     setAgendamentos(ags || [])
-    setCoaches((coachs || []).filter((c: any) => !feriasSet.has(c.coach_id)))
+    const coachsFinal = (coachs || []).filter((c: any) => !feriasSet.has(c.coach_id))
+    if (!escalaFds) {
+      // Grade extra do período (aditivo, à prova de falha, atrás do kill switch):
+      // só ACRESCENTA coach/horário nesta data — nunca remove da grade base.
+      const extra = await gradeExtraDoDia(supabase, { unidadeId: unidadeAtiva.id, dataStr: data, diaSemana: diaSem })
+      if (extra.length) {
+        const jaTem = new Set(coachsFinal.map((c: any) => `${c.coach_id}-${norm(c.hora)}`))
+        for (const s of extra) {
+          if (feriasSet.has(s.coach_id)) continue
+          const key = `${s.coach_id}-${s.hora}`
+          if (jaTem.has(key)) continue
+          jaTem.add(key)
+          coachsFinal.push({ hora: s.hora + ':00', coach_id: s.coach_id, coaches: { id: s.coach_id, nome: s.nome } })
+        }
+      }
+    }
+    setCoaches(coachsFinal)
     setBloqueios(bloqs || [])
     setLoadingData(false)
 
