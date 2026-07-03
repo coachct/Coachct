@@ -75,6 +75,7 @@ type Linha = {
   cpf: string
   posicao: string
   status: string
+  origem: string
 }
 
 export default function ReservasTotalpassPage() {
@@ -123,9 +124,9 @@ export default function ReservasTotalpassPage() {
     for (const lote of chunk(ocIds, 150)) {
       if (!lote.length) continue
       const parte = await buscarTudo(() => supabase.from('club_reservas')
-        .select('id, status, posicao, ocorrencia_id, clientes(nome, cpf)')
+        .select('id, status, posicao, ocorrencia_id, totalpass_slot_id, tipo_credito, clientes(nome, cpf)')
         .in('ocorrencia_id', lote)
-        .not('totalpass_slot_id', 'is', null))
+        .or('totalpass_slot_id.not.is.null,tipo_credito.ilike.totalpass%'))
       reservas.push(...parte)
     }
 
@@ -141,6 +142,7 @@ export default function ReservasTotalpassPage() {
         cpf: fmtCpf(r.clientes?.cpf ?? null),
         posicao: r.posicao || '—',
         status: r.status || '—',
+        origem: r.totalpass_slot_id ? 'App' : 'Recepção',
       }
     })
     // Mais recentes (data) primeiro, depois horário.
@@ -159,8 +161,8 @@ export default function ReservasTotalpassPage() {
   }
 
   function baixarCsv() {
-    const header = ['Data', 'Horário', 'Aula', 'Unidade', 'Cliente', 'CPF', 'Posição', 'Status']
-    const corpo = visiveis.map(l => [l.data, l.horario, l.aula, l.unidade, l.cliente, l.cpf, l.posicao, (STATUS[l.status]?.label || l.status)])
+    const header = ['Data', 'Horário', 'Aula', 'Unidade', 'Cliente', 'CPF', 'Posição', 'Origem', 'Status']
+    const corpo = visiveis.map(l => [l.data, l.horario, l.aula, l.unidade, l.cliente, l.cpf, l.posicao, l.origem, (STATUS[l.status]?.label || l.status)])
     const csv = [header, ...corpo]
       .map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';'))
       .join('\n')
@@ -177,7 +179,7 @@ export default function ReservasTotalpassPage() {
 
   return (
     <div>
-      <PageHeader title="Reservas TotalPass · Club" subtitle="Reservas feitas pelo app da TotalPass (por data da aula)" />
+      <PageHeader title="Reservas TotalPass · Club" subtitle="App (self-service no app da TotalPass) e Recepção (lançada manualmente) — por data da aula" />
 
       <div className="flex flex-wrap items-end gap-3 mb-5">
         <label className="text-xs text-gray-500">
@@ -226,6 +228,7 @@ export default function ReservasTotalpassPage() {
                 <th className="py-2 pr-3">Cliente</th>
                 <th className="py-2 pr-3">CPF</th>
                 <th className="py-2 pr-3">Posição</th>
+                <th className="py-2 pr-3">Origem</th>
                 <th className="py-2">Status</th>
               </tr>
             </thead>
@@ -239,6 +242,9 @@ export default function ReservasTotalpassPage() {
                   <td className="py-2 pr-3 font-medium text-gray-900">{l.cliente}</td>
                   <td className="py-2 pr-3 whitespace-nowrap text-gray-500">{l.cpf}</td>
                   <td className="py-2 pr-3 whitespace-nowrap text-gray-500">{l.posicao}</td>
+                  <td className="py-2 pr-3 whitespace-nowrap">
+                    <span className={`badge ${l.origem === 'App' ? 'badge-blue' : 'badge-gray'}`}>{l.origem}</span>
+                  </td>
                   <td className="py-2">
                     <span className={`badge ${STATUS[l.status]?.cls || 'badge-gray'}`}>{STATUS[l.status]?.label || l.status}</span>
                   </td>

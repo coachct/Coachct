@@ -22,7 +22,8 @@ function tipoLabel(t: string) {
 function parsePlanoKey(key: string) {
   const lower = (key||'').toLowerCase()
   if (lower.startsWith('wellhub'))   return { label:'Wellhub',  icon:'💜' }
-  if (lower.startsWith('totalpass')) return { label:'TotalPass', icon:'🔵' }
+  if (lower.startsWith('totalpass_app')) return { label:'TotalPass · app', icon:'🔵' }
+  if (lower.startsWith('totalpass')) return { label:'TotalPass · recepção', icon:'🔵' }
   if (lower.startsWith('avulso'))    return { label:'Avulso',   icon:'🎟️' }
   return { label: key, icon:'🎟️' }
 }
@@ -820,18 +821,13 @@ export default function RecepcaoClubDetalhe() {
 
       {/* NOVO: Pausar fila de espera — qualquer modalidade, aula de hoje/futuro */}
       {!isPassado && aula && (
-        <div style={{ background:'#fff', border:`1px solid ${filaPausada ? VERMELHO : '#e5e7eb'}`, borderRadius:16, marginBottom:'1.5rem', overflow:'hidden' }}>
-          <div style={{ padding:'1rem 1.5rem', display:'flex', alignItems:'center', justifyContent:'space-between', gap:14, flexWrap:'wrap' }}>
-            <div style={{ flex:1, minWidth:200 }}>
-              <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>
-                Fila de espera{filaPausada && <span style={{ color:VERMELHO }}> · pausada</span>}
-              </div>
-              <div style={{ fontSize:12, color:'#aaa', marginTop:2, maxWidth:440 }}>
-                Pause antes de derrubar reservas ou bloquear vagas — assim a fila não promove ninguém no meio da operação. Reative quando terminar.
-              </div>
+        <div style={{ background:'#fff', border:`1px solid ${filaPausada ? VERMELHO : '#e5e7eb'}`, borderRadius:12, marginBottom:'0.75rem' }}>
+          <div style={{ padding:'0.55rem 1rem', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
+            <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>
+              Fila de espera{filaPausada && <span style={{ color:VERMELHO, fontWeight:500 }}> · pausada</span>}
             </div>
             <button onClick={toggleFilaPausada} disabled={salvandoPausa}
-              style={{ flexShrink:0, padding:'0.6rem 1.15rem', borderRadius:10, fontSize:13, fontWeight:700,
+              style={{ flexShrink:0, padding:'0.4rem 0.9rem', borderRadius:8, fontSize:12, fontWeight:700,
                 fontFamily:"'DM Sans', sans-serif", cursor: salvandoPausa ? 'default' : 'pointer',
                 border:`1.5px solid ${filaPausada ? VERDE : VERMELHO}`,
                 background: filaPausada ? `${VERDE}14` : `${VERMELHO}10`,
@@ -916,114 +912,98 @@ export default function RecepcaoClubDetalhe() {
         </div>
       )}
 
-      {/* NOVO: Vagas no Wellhub — só em unidade integrada, aula de hoje/futuro */}
+      {/* Vagas no Wellhub — compacto */}
       {!isPassado && aula && (wellhubEstado === 'ativo' || wellhubEstado === 'pausado') && (
-        <div style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:16, marginBottom:'1.5rem', overflow:'hidden' }}>
-          <div style={{ padding:'0.85rem 1.5rem', borderBottom:'1px solid #f3f4f6' }}>
-            <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>Vagas no Wellhub</div>
-            <div style={{ fontSize:12, color:'#aaa', marginTop:2 }}>
-              Quantas vagas desta aula aparecem no app do Wellhub. Os dois canais dividem o mesmo pool de vagas.
-              {wellhubEstado === 'pausado' && ' — integração PAUSADA nesta unidade no momento.'}
+        <div style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:12, marginBottom:'0.75rem' }}>
+          <div style={{ padding:'0.5rem 1rem', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
+            <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>
+              Vagas no Wellhub
+              {wellhubEstado === 'pausado' && <span style={{ color:VERMELHO, fontWeight:500 }}> · pausado</span>}
             </div>
-          </div>
-          <div style={{ padding:'1.25rem 1.5rem' }}>
             {(() => {
               const resolvido = vagasWellhub ?? vagasDefaultWh
               const usandoPadrao = vagasWellhub === null
               return (
-                <>
-                  <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:14 }}>
-                    <button onClick={() => salvarVagasWellhub(Math.max(0, resolvido - 1))}
-                      disabled={salvandoWellhub || resolvido <= 0}
-                      style={{ width:44, height:44, borderRadius:'50%', border:'1.5px solid #e5e7eb',
-                        background:'#fff', fontSize:22, color: resolvido<=0 ? '#ddd' : '#555',
-                        cursor: (salvandoWellhub||resolvido<=0) ? 'default' : 'pointer', lineHeight:1 }}>
-                      −
-                    </button>
-                    <div style={{ minWidth:120, textAlign:'center' }}>
-                      <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:40, color: resolvido===0 ? VERMELHO : ACCENT, lineHeight:1 }}>
-                        {resolvido === 0 ? 'Parado' : resolvido}
-                      </div>
-                      <div style={{ fontSize:10, color:'#aaa', textTransform:'uppercase', letterSpacing:0.5, marginTop:2 }}>
-                        {usandoPadrao ? `padrão (${vagasDefaultWh})` : 'vagas no app'}
-                      </div>
-                    </div>
-                    <button onClick={() => salvarVagasWellhub(resolvido + 1)}
-                      disabled={salvandoWellhub}
-                      style={{ width:44, height:44, borderRadius:'50%',
-                        border:`1.5px solid ${ACCENT}`, background:`${ACCENT}10`, fontSize:22, color: ACCENT,
-                        cursor: salvandoWellhub ? 'default' : 'pointer', lineHeight:1 }}>
-                      +
-                    </button>
-                  </div>
+                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                   {!usandoPadrao && (
-                    <div style={{ textAlign:'center', marginTop:'1rem' }}>
-                      <button onClick={() => salvarVagasWellhub(null)} disabled={salvandoWellhub}
-                        style={{ background:'transparent', border:'none', color:'#888', fontSize:12,
-                          textDecoration:'underline', cursor: salvandoWellhub ? 'default' : 'pointer',
-                          fontFamily:"'DM Sans', sans-serif" }}>
-                        Usar padrão ({vagasDefaultWh})
-                      </button>
-                    </div>
+                    <button onClick={() => salvarVagasWellhub(null)} disabled={salvandoWellhub}
+                      style={{ background:'transparent', border:'none', color:'#999', fontSize:11,
+                        textDecoration:'underline', cursor: salvandoWellhub ? 'default' : 'pointer', marginRight:2 }}>
+                      padrão
+                    </button>
                   )}
-                </>
+                  <button onClick={() => salvarVagasWellhub(Math.max(0, resolvido - 1))}
+                    disabled={salvandoWellhub || resolvido <= 0}
+                    style={{ width:30, height:30, borderRadius:'50%', border:'1.5px solid #e5e7eb',
+                      background:'#fff', fontSize:18, color: resolvido<=0 ? '#ddd' : '#555',
+                      cursor: (salvandoWellhub||resolvido<=0) ? 'default' : 'pointer', lineHeight:1 }}>
+                    −
+                  </button>
+                  <div style={{ minWidth:52, textAlign:'center' }}>
+                    <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:22, color: resolvido===0 ? VERMELHO : ACCENT, lineHeight:1 }}>
+                      {resolvido === 0 ? 'Parado' : resolvido}
+                    </div>
+                    <div style={{ fontSize:9, color:'#bbb', textTransform:'uppercase', letterSpacing:0.3 }}>
+                      {usandoPadrao ? `padrão ${vagasDefaultWh}` : 'no app'}
+                    </div>
+                  </div>
+                  <button onClick={() => salvarVagasWellhub(resolvido + 1)}
+                    disabled={salvandoWellhub}
+                    style={{ width:30, height:30, borderRadius:'50%',
+                      border:`1.5px solid ${ACCENT}`, background:`${ACCENT}10`, fontSize:18, color: ACCENT,
+                      cursor: salvandoWellhub ? 'default' : 'pointer', lineHeight:1 }}>
+                    +
+                  </button>
+                </div>
               )
             })()}
           </div>
         </div>
       )}
 
-      {/* NOVO: Vagas na TotalPass — só em unidade integrada, aula de hoje/futuro */}
+      {/* Vagas na TotalPass — compacto */}
       {!isPassado && aula && (totalpassEstado === 'ativo' || totalpassEstado === 'pausado') && (
-        <div style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:16, marginBottom:'1.5rem', overflow:'hidden' }}>
-          <div style={{ padding:'0.85rem 1.5rem', borderBottom:'1px solid #f3f4f6' }}>
-            <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>Vagas na TotalPass</div>
-            <div style={{ fontSize:12, color:'#aaa', marginTop:2 }}>
-              Quantas vagas desta aula aparecem no app da TotalPass. Os canais dividem o mesmo pool de vagas.
-              {totalpassEstado === 'pausado' && ' — integração PAUSADA nesta unidade no momento.'}
+        <div style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:12, marginBottom:'0.75rem' }}>
+          <div style={{ padding:'0.5rem 1rem', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
+            <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>
+              Vagas na TotalPass
+              {totalpassEstado === 'pausado' && <span style={{ color:VERMELHO, fontWeight:500 }}> · pausado</span>}
             </div>
-          </div>
-          <div style={{ padding:'1.25rem 1.5rem' }}>
             {(() => {
               const resolvido = vagasTotalpass ?? vagasDefaultTp
               const usandoPadrao = vagasTotalpass === null
               return (
-                <>
-                  <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:14 }}>
-                    <button onClick={() => salvarVagasTotalpass(Math.max(0, resolvido - 1))}
-                      disabled={salvandoTotalpass || resolvido <= 0}
-                      style={{ width:44, height:44, borderRadius:'50%', border:'1.5px solid #e5e7eb',
-                        background:'#fff', fontSize:22, color: resolvido<=0 ? '#ddd' : '#555',
-                        cursor: (salvandoTotalpass||resolvido<=0) ? 'default' : 'pointer', lineHeight:1 }}>
-                      −
-                    </button>
-                    <div style={{ minWidth:120, textAlign:'center' }}>
-                      <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:40, color: resolvido===0 ? VERMELHO : ACCENT, lineHeight:1 }}>
-                        {resolvido === 0 ? 'Parado' : resolvido}
-                      </div>
-                      <div style={{ fontSize:10, color:'#aaa', textTransform:'uppercase', letterSpacing:0.5, marginTop:2 }}>
-                        {usandoPadrao ? `padrão (${vagasDefaultTp})` : 'vagas no app'}
-                      </div>
-                    </div>
-                    <button onClick={() => salvarVagasTotalpass(resolvido + 1)}
-                      disabled={salvandoTotalpass}
-                      style={{ width:44, height:44, borderRadius:'50%',
-                        border:`1.5px solid ${ACCENT}`, background:`${ACCENT}10`, fontSize:22, color: ACCENT,
-                        cursor: salvandoTotalpass ? 'default' : 'pointer', lineHeight:1 }}>
-                      +
-                    </button>
-                  </div>
+                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                   {!usandoPadrao && (
-                    <div style={{ textAlign:'center', marginTop:'1rem' }}>
-                      <button onClick={() => salvarVagasTotalpass(null)} disabled={salvandoTotalpass}
-                        style={{ background:'transparent', border:'none', color:'#888', fontSize:12,
-                          textDecoration:'underline', cursor: salvandoTotalpass ? 'default' : 'pointer',
-                          fontFamily:"'DM Sans', sans-serif" }}>
-                        Usar padrão ({vagasDefaultTp})
-                      </button>
-                    </div>
+                    <button onClick={() => salvarVagasTotalpass(null)} disabled={salvandoTotalpass}
+                      style={{ background:'transparent', border:'none', color:'#999', fontSize:11,
+                        textDecoration:'underline', cursor: salvandoTotalpass ? 'default' : 'pointer', marginRight:2 }}>
+                      padrão
+                    </button>
                   )}
-                </>
+                  <button onClick={() => salvarVagasTotalpass(Math.max(0, resolvido - 1))}
+                    disabled={salvandoTotalpass || resolvido <= 0}
+                    style={{ width:30, height:30, borderRadius:'50%', border:'1.5px solid #e5e7eb',
+                      background:'#fff', fontSize:18, color: resolvido<=0 ? '#ddd' : '#555',
+                      cursor: (salvandoTotalpass||resolvido<=0) ? 'default' : 'pointer', lineHeight:1 }}>
+                    −
+                  </button>
+                  <div style={{ minWidth:52, textAlign:'center' }}>
+                    <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:22, color: resolvido===0 ? VERMELHO : ACCENT, lineHeight:1 }}>
+                      {resolvido === 0 ? 'Parado' : resolvido}
+                    </div>
+                    <div style={{ fontSize:9, color:'#bbb', textTransform:'uppercase', letterSpacing:0.3 }}>
+                      {usandoPadrao ? `padrão ${vagasDefaultTp}` : 'no app'}
+                    </div>
+                  </div>
+                  <button onClick={() => salvarVagasTotalpass(resolvido + 1)}
+                    disabled={salvandoTotalpass}
+                    style={{ width:30, height:30, borderRadius:'50%',
+                      border:`1.5px solid ${ACCENT}`, background:`${ACCENT}10`, fontSize:18, color: ACCENT,
+                      cursor: salvandoTotalpass ? 'default' : 'pointer', lineHeight:1 }}>
+                    +
+                  </button>
+                </div>
               )
             })()}
           </div>
