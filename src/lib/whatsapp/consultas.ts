@@ -280,27 +280,56 @@ export async function proximasReservasClub(
 }
 
 /**
- * Histórico recente de treinos PERSONAL (Coach CT), mais recentes primeiro.
- * Inclui os REALIZADOS e também as FALTAS (no-show) — assim o agente consegue
- * ver, por exemplo, "você faltou no treino de hoje 06:30" (uma falta NÃO aparece
- * em proximos_agendamentos, que só traz agendado/confirmado futuro). O campo
- * `status` distingue 'realizado' de 'falta'.
+ * Histórico recente de treinos, mais recentes primeiro. REÚNE:
+ *  - PERSONAL (Coach CT): agendamentos com status realizado/falta;
+ *  - AULAS do CLUB (JustClub): club_reservas com status presente/falta/reservado.
+ * Assim o agente enxerga uma aula que o cliente diz ter feito ou PERDIDO —
+ * INCLUSIVE as do Club, que NÃO aparecem em proximas_reservas_club (que só traz
+ * 'reservado' FUTURO). O campo `status` distingue presente/realizado de falta.
  */
 export async function historicoTreinos(
   supabase: SupabaseClient,
   clienteId: string,
-  limite = 6,
+  limite = 8,
 ): Promise<any[]> {
-  const { data, error } = await supabase
-    .from('agendamentos')
-    .select('id, data, horario, status, tipo_credito, coach_id, unidades(nome)')
-    .eq('cliente_id', clienteId)
-    .in('status', ['realizado', 'falta'])
-    .order('data', { ascending: false })
-    .order('horario', { ascending: false })
-    .limit(limite)
-  if (error) throw new Error(`historico: ${error.message}`)
-  return data ?? []
+  const [ags, rvs] = await Promise.all([
+    supabase
+      .from('agendamentos')
+      .select('id, data, horario, status, tipo_credito')
+      .eq('cliente_id', clienteId)
+      .in('status', ['realizado', 'falta'])
+      .order('data', { ascending: false })
+      .limit(limite),
+    supabase
+      .from('club_reservas')
+      .select('id, status, tipo_credito, club_ocorrencias(data, club_aulas(tipo, horario))')
+      .eq('cliente_id', clienteId)
+      .in('status', ['presente', 'falta', 'reservado'])
+      .limit(30),
+  ])
+
+  const personal = (ags.data ?? []).map((a: any) => ({
+    id: a.id,
+    treino: 'Coach CT (personal)',
+    data: a.data,
+    horario: String(a.horario ?? '').slice(0, 5),
+    status: a.status,
+    tipo_credito: a.tipo_credito,
+  }))
+  const club = (rvs.data ?? [])
+    .filter((r: any) => r.club_ocorrencias?.data)
+    .map((r: any) => ({
+      id: r.id,
+      treino: `JustClub (${r.club_ocorrencias?.club_aulas?.tipo ?? 'aula'})`,
+      data: r.club_ocorrencias?.data,
+      horario: String(r.club_ocorrencias?.club_aulas?.horario ?? '').slice(0, 5),
+      status: r.status,
+      tipo_credito: r.tipo_credito,
+    }))
+
+  return [...personal, ...club]
+    .sort((a, b) => `${b.data} ${b.horario}`.localeCompare(`${a.data} ${a.horario}`))
+    .slice(0, limite)
 }
 
 // ---------------------------------------------------------------------------
