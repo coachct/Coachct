@@ -5,7 +5,7 @@ import { gradeExtraDoDia } from '@/lib/grade'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
 import { useRouter } from 'next/navigation'
-import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap, Gift, CalendarClock, Edit2, Mail, Copy, Clock, Link as LinkIcon, UserPlus, KeyRound, Camera, Upload, Trash, Wifi, WifiOff } from 'lucide-react'
+import { Search, Plus, ChevronRight, X, Check, Calendar, Lock, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap, Gift, CalendarClock, Edit2, Mail, Copy, Clock, Link as LinkIcon, UserPlus, KeyRound, Camera, Upload, Trash, Wifi, WifiOff } from 'lucide-react'
 import UnidadeSelector from '@/components/UnidadeSelector'
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
@@ -233,6 +233,9 @@ export default function AdminClientesPage() {
   const [mostrarAtivar, setMostrarAtivar] = useState(false)
 
   const [fotoUrl, setFotoUrl] = useState<string | null>(null)
+
+  const [acessoBloqueado, setAcessoBloqueado] = useState(false)
+  const [salvandoBloqueio, setSalvandoBloqueio] = useState(false)
   const [modalFoto, setModalFoto] = useState(false)
   const [streamCam, setStreamCam] = useState<MediaStream | null>(null)
   const [fotoCapturada, setFotoCapturada] = useState<string | null>(null)
@@ -280,12 +283,29 @@ export default function AdminClientesPage() {
   async function abrirCliente(cliente: any) {
     setClienteSel(cliente); setForm({ ...cliente }); setEditando(false); setAba('dados')
     setHistorico([]); setClubReservas([]); setVendas([]); setModalSlot(null); setTipoCredito('')
-    setErroCriarAcesso(''); setFotoUrl(null); setStatusSync('idle'); setErroSync('')
+    setErroCriarAcesso(''); setFotoUrl(null); setStatusSync('idle'); setErroSync(''); setAcessoBloqueado(false)
     await Promise.all([
       carregarSaldo(cliente.id), carregarHistorico(cliente.id), carregarClubReservas(cliente.id),
       carregarVendas(cliente.id), carregarPlanosCliente(cliente.id), carregarFotoUrl(cliente),
-      carregarAvulsos(cliente.id),
+      carregarAvulsos(cliente.id), carregarBloqueioAcesso(cliente),
     ])
+  }
+
+  async function carregarBloqueioAcesso(cliente: any) {
+    if (!cliente?.user_id) { setAcessoBloqueado(false); return }
+    const { data } = await supabase.from('perfis').select('bloqueado').eq('id', cliente.user_id).maybeSingle()
+    setAcessoBloqueado(!!data?.bloqueado)
+  }
+
+  async function toggleBloqueioAcesso() {
+    if (!clienteSel?.user_id) return
+    const novo = !acessoBloqueado
+    if (novo && !confirm(`Bloquear o acesso de ${clienteSel.nome}? O cliente não conseguirá entrar no sistema.`)) return
+    setSalvandoBloqueio(true)
+    const { error } = await supabase.from('perfis').update({ bloqueado: novo }).eq('id', clienteSel.user_id)
+    setSalvandoBloqueio(false)
+    if (error) { alert('Erro ao atualizar o bloqueio: ' + error.message); return }
+    setAcessoBloqueado(novo)
   }
 
   async function carregarFotoUrl(cliente: any) {
@@ -1087,6 +1107,28 @@ export default function AdminClientesPage() {
                     </span>
                   )}
                 </div>
+
+                {clienteTemAcesso && (
+                  <div className={`card border-l-4 flex items-center justify-between gap-3 ${acessoBloqueado ? 'border-l-red-400 bg-red-50' : 'border-l-gray-200'}`}>
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${acessoBloqueado ? 'bg-red-200 text-red-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {acessoBloqueado ? <Lock size={18} /> : <Unlock size={18} />}
+                      </div>
+                      <div>
+                        <div className={`text-sm font-semibold ${acessoBloqueado ? 'text-red-900' : 'text-gray-800'}`}>
+                          {acessoBloqueado ? 'Acesso bloqueado' : 'Acesso liberado'}
+                        </div>
+                        <div className={`text-xs ${acessoBloqueado ? 'text-red-500' : 'text-gray-500'}`}>
+                          {acessoBloqueado ? 'Este cliente não consegue entrar no sistema.' : 'Este cliente entra no sistema normalmente.'}
+                        </div>
+                      </div>
+                    </div>
+                    <button onClick={toggleBloqueioAcesso} disabled={salvandoBloqueio}
+                      className={`btn btn-sm gap-1 flex-shrink-0 ${acessoBloqueado ? 'text-green-600 hover:bg-green-50' : 'text-red-600 hover:bg-red-50'}`}>
+                      {acessoBloqueado ? <><Unlock size={14} /> Desbloquear</> : <><Lock size={14} /> Bloquear acesso</>}
+                    </button>
+                  </div>
+                )}
 
                 <div className={`card border-l-4 ${clienteTemFoto ? 'border-l-green-400 bg-green-50' : 'border-l-blue-400 bg-blue-50'}`}>
                   <div className="flex items-start gap-3">
