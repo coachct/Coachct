@@ -54,6 +54,8 @@ export async function POST(req: NextRequest) {
     const cls = await listClasses(gym)
     return NextResponse.json({ probe: true, gym,
       temToken: !!(process.env.WELLHUB_BOOKING_API_KEY ?? process.env.WELLHUB_API_KEY),
+      tokenFonte: process.env.WELLHUB_BOOKING_API_KEY ? 'WELLHUB_BOOKING_API_KEY (ainda existe!)' : 'WELLHUB_API_KEY (fallback prod)',
+      tokenIss: (() => { try { const t = (process.env.WELLHUB_BOOKING_API_KEY ?? process.env.WELLHUB_API_KEY ?? ''); return JSON.parse(Buffer.from((t.split('.')[1] || '') + '==', 'base64').toString()).iss } catch { return '?' } })(),
       base: process.env.WELLHUB_BOOKING_API_BASE ?? '(default sandbox)',
       products: { status: prods.status, erro: prods.erro, body: prods.body },
       categories: { status: cats.status, erro: cats.erro, body: cats.body },
