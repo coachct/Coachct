@@ -2,6 +2,7 @@
 import { Suspense, useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import { createClient } from '@/lib/supabase'
 import { dashboardDoRole } from '@/lib/auth-redirect'
 
 const ACCENT = '#ff2d9b'
@@ -11,7 +12,7 @@ function LoginPageInner() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const { signIn, perfil } = useAuth()
+  const { signIn, signOut, perfil } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirectUrl = searchParams.get('redirect')
@@ -30,6 +31,23 @@ function LoginPageInner() {
     if (error) {
       setError('Email ou senha incorretos.')
       setLoading(false)
+      return
+    }
+    // Verifica bloqueio antes de liberar o acesso
+    const supabase = createClient()
+    const { data: { user: authUser } } = await supabase.auth.getUser()
+    if (authUser) {
+      const { data: perfilData } = await supabase
+        .from('perfis')
+        .select('bloqueado')
+        .eq('id', authUser.id)
+        .maybeSingle()
+      if (perfilData?.bloqueado) {
+        await signOut()
+        setError('Acesso bloqueado.')
+        setLoading(false)
+        return
+      }
     }
   }
 
