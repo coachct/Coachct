@@ -28,11 +28,11 @@ function dataHoraBR(ts: string | null): string {
   return `${dia}/${mes} ${hora}:${min}`
 }
 
-function media(vals: (number | null)[]): { texto: string; n: number } {
+function media(vals: (number | null)[]): { texto: string; n: number; num: number | null } {
   const validos = vals.filter((v): v is number => v != null)
-  if (!validos.length) return { texto: '—', n: 0 }
+  if (!validos.length) return { texto: '—', n: 0, num: null }
   const m = validos.reduce((s, v) => s + v, 0) / validos.length
-  return { texto: m.toFixed(1).replace('.', ','), n: validos.length }
+  return { texto: m.toFixed(1).replace('.', ','), n: validos.length, num: m }
 }
 
 function Nota({ valor }: { valor: number | null }) {
@@ -52,6 +52,11 @@ export default function AvaliacoesPage() {
   const [fFim, setFFim] = useState('')
   const [fOrdem, setFOrdem] = useState<'recente' | 'aula'>('recente')
 
+  // Drawer de histórico por aluno
+  const [drawerCliente, setDrawerCliente] = useState<{ id: string; nome: string } | null>(null)
+  const [drawerAvals, setDrawerAvals] = useState<any[]>([])
+  const [drawerLoading, setDrawerLoading] = useState(false)
+
   useEffect(() => {
     async function load() {
       const [{ data: avals }, { data: unis }] = await Promise.all([
@@ -69,6 +74,20 @@ export default function AvaliacoesPage() {
     }
     load()
   }, [])
+
+  async function abrirHistorico(clienteId: string, nome: string) {
+    setDrawerCliente({ id: clienteId, nome })
+    setDrawerAvals([])
+    setDrawerLoading(true)
+    const { data } = await supabase.from('avaliacoes_aula')
+      .select('*, clientes(nome)')
+      .eq('cliente_id', clienteId)
+      .eq('dispensado', false)
+      .order('criado_em', { ascending: false })
+      .order('data_aula', { ascending: false })
+    setDrawerAvals(data || [])
+    setDrawerLoading(false)
+  }
 
   if (loading) return <Spinner />
 
@@ -94,6 +113,11 @@ export default function AvaliacoesPage() {
   const mMusica = media(filtradas.map(a => a.nota_musica))
   const mAmb = media(filtradas.map(a => a.nota_ambiente))
 
+  // Média geral da tela filtrada (pool das 4 dimensões) — base pra tarja do aluno
+  const mGeralTela = media(
+    filtradas.flatMap(a => [a.nota_aula, a.nota_professor, a.nota_musica, a.nota_ambiente])
+  )
+
   // Média do professor por coach (sobre o filtro atual)
   const porCoach: Record<string, { nome: string; notas: number[] }> = {}
   filtradas.forEach(a => {
@@ -107,6 +131,24 @@ export default function AvaliacoesPage() {
     .sort((a, b) => parseFloat(b.texto.replace(',', '.')) - parseFloat(a.texto.replace(',', '.')))
 
   const selectCls = 'border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white'
+
+  // Cálculos do drawer (aluno selecionado)
+  const dAula = media(drawerAvals.map(a => a.nota_aula))
+  const dProf = media(drawerAvals.map(a => a.nota_professor))
+  const dMusica = media(drawerAvals.map(a => a.nota_musica))
+  const dAmb = media(drawerAvals.map(a => a.nota_ambiente))
+  const dGeralAluno = media(
+    drawerAvals.flatMap(a => [a.nota_aula, a.nota_professor, a.nota_musica, a.nota_ambiente])
+  )
+
+  // Tarja: exigente / generoso / neutro (delta ±0,3 vs média geral da tela)
+  let tarja: { texto: string; cls: string } | null = null
+  if (dGeralAluno.num != null && mGeralTela.num != null) {
+    const delta = dGeralAluno.num - mGeralTela.num
+    if (delta >= 0.3) tarja = { texto: 'Avaliador generoso', cls: 'bg-emerald-50 text-emerald-700' }
+    else if (delta <= -0.3) tarja = { texto: 'Avaliador exigente', cls: 'bg-rose-50 text-rose-700' }
+    else tarja = { texto: 'Avaliador neutro', cls: 'bg-gray-100 text-gray-600' }
+  }
 
   return (
     <div>
@@ -220,7 +262,18 @@ export default function AvaliacoesPage() {
                     <td className="py-2.5 pr-3 text-center"><Nota valor={a.nota_musica} /></td>
                     <td className="py-2.5 pr-3 text-center"><Nota valor={a.nota_ambiente} /></td>
                     <td className="py-2.5 pr-3 text-gray-600 max-w-xs whitespace-pre-wrap">{a.comentario || <span className="text-gray-300">—</span>}</td>
-                    <td className="py-2.5 text-gray-500 whitespace-nowrap">{a.clientes?.nome || '—'}</td>
+                    <td className="py-2.5 text-gray-500 whitespace-nowrap">
+                      {a.cliente_id && a.clientes?.nome ? (
+                        <button
+                          onClick={() => abrirHistorico(a.cliente_id, a.clientes.nome)}
+                          className="text-left text-gray-600 underline decoration-gray-200 hover:text-[#ff2d9b] hover:decoration-[#ff2d9b] transition-colors"
+                        >
+                          {a.clientes.nome}
+                        </button>
+                      ) : (
+                        a.clientes?.nome || '—'
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -228,6 +281,107 @@ export default function AvaliacoesPage() {
           </div>
         )}
       </div>
+
+      {/* Drawer de histórico do aluno */}
+      {drawerCliente && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setDrawerCliente(null)}
+          />
+          <div className="relative w-full max-w-2xl h-full bg-white shadow-xl overflow-y-auto">
+            {/* Cabeçalho */}
+            <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-start justify-between gap-4">
+              <div>
+                <div className="text-lg font-semibold text-gray-800">{drawerCliente.nome}</div>
+                <a
+                  href={`/admin/clientes?cliente=${drawerCliente.id}`}
+                  className="text-sm text-[#ff2d9b] underline"
+                >
+                  Ver ficha completa
+                </a>
+              </div>
+              <button
+                onClick={() => setDrawerCliente(null)}
+                className="text-gray-400 hover:text-gray-700 text-xl leading-none px-2"
+                aria-label="Fechar"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="px-6 py-4">
+              {drawerLoading ? (
+                <div className="py-10"><Spinner /></div>
+              ) : drawerAvals.length === 0 ? (
+                <EmptyState message="Nenhuma avaliação encontrada para este aluno." />
+              ) : (
+                <>
+                  {/* Resumo */}
+                  <div className="mb-5">
+                    <div className="flex items-center gap-3 mb-3">
+                      <span className="text-sm text-gray-600">
+                        {drawerAvals.length} {drawerAvals.length === 1 ? 'avaliação' : 'avaliações'}
+                      </span>
+                      {tarja && (
+                        <span className={`text-xs font-medium px-2 py-1 rounded-full ${tarja.cls}`}>
+                          {tarja.texto}
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {[
+                        { label: 'Aula', m: dAula },
+                        { label: 'Prof.', m: dProf },
+                        { label: 'Música', m: dMusica },
+                        { label: 'Ambiente', m: dAmb },
+                      ].map((d) => (
+                        <div key={d.label} className="bg-gray-50 rounded-lg px-3 py-2">
+                          <div className="text-xs text-gray-400 uppercase tracking-wide">{d.label}</div>
+                          <div className="text-sm font-semibold text-primary-700">
+                            {d.m.texto}<span className="text-amber-400"> ★</span>
+                            <span className="ml-1 text-xs font-normal text-gray-400">({d.m.n})</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Histórico */}
+                  <div className="space-y-3">
+                    {drawerAvals.map((a) => (
+                      <div key={a.id} className="border border-gray-100 rounded-lg p-3">
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <div className="text-sm font-medium text-gray-700">
+                            {tipoLabel(a.tipo_aula)}
+                            {a.coach_nome ? <span className="text-gray-400 font-normal"> · {a.coach_nome}</span> : ''}
+                          </div>
+                          <div className="text-xs text-gray-400 whitespace-nowrap">
+                            {dataBR(a.data_aula)}{a.horario ? ` ${a.horario}` : ''}
+                          </div>
+                        </div>
+                        <div className="text-xs text-gray-400 mb-2">
+                          {unidades.find(u => u.id === a.unidade_id)?.nome || ''}
+                          {' · avaliada '}{dataHoraBR(a.criado_em)}
+                        </div>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                          <span className="text-gray-500">Aula: <Nota valor={a.nota_aula} /></span>
+                          <span className="text-gray-500">Prof.: <Nota valor={a.nota_professor} /></span>
+                          <span className="text-gray-500">Música: <Nota valor={a.nota_musica} /></span>
+                          <span className="text-gray-500">Ambiente: <Nota valor={a.nota_ambiente} /></span>
+                        </div>
+                        {a.comentario && (
+                          <div className="mt-2 text-sm text-gray-600 whitespace-pre-wrap">{a.comentario}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
