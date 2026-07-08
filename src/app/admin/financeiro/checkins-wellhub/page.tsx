@@ -201,9 +201,17 @@ export default function CheckinsWellhubPage() {
   const totaisPorOrigem = useMemo(() => {
     const calc = (o: string) => {
       const rows = itens.filter((r) => r.origem === o && r.status === 'validado')
+      const chaves = new Set<string>()
+      for (const r of rows) {
+        // Visitante único: prioriza id_externo (id do membro no parceiro),
+        // cai pra cliente_id e, em último caso, o id da própria linha
+        // (evita perder entradas sem identificador e nunca ultrapassa count).
+        chaves.add(r.id_externo || r.cliente_id || r.id)
+      }
       return {
         count: rows.length,
         receita: rows.reduce((s, r) => s + Number(r.valor || 0), 0),
+        visitantesUnicos: chaves.size,
       }
     }
     return { wellhub: calc('wellhub'), totalpass: calc('totalpass') }
@@ -319,6 +327,10 @@ export default function CheckinsWellhubPage() {
                   <div className="text-xl font-bold text-gray-900">{fmtBRL(totaisPorOrigem[o].receita)}</div>
                   <div className="text-xs text-gray-500">em valores</div>
                 </div>
+              </div>
+              <div className="mt-4 border-t border-gray-100 pt-3">
+                <div className="text-lg font-bold text-gray-900">{totaisPorOrigem[o].visitantesUnicos}</div>
+                <div className="text-xs text-gray-500">visitantes únicos</div>
               </div>
             </div>
           ))}
