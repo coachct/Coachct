@@ -17,6 +17,7 @@ import { waitUntil } from '@vercel/functions';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { assinaturaWellhubValida } from '@/lib/wellhub/assinatura';
 import { patchBookingStatus, patchSlotNumbers } from '@/lib/wellhub/booking-api';
+import { posicoesLivresClub } from '@/lib/whatsapp/acoes';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -104,9 +105,17 @@ async function processarRequest(supabase: SupabaseClient, payload: any): Promise
 
   const { data: oc } = await supabase
     .from('club_ocorrencias').select('id, club_aulas(tipo)').eq('id', ocorrenciaId).maybeSingle();
+
+  // Running: escolhe uma posição (esteira/funcional) livre ALEATÓRIA. Sem posição livre → sem vaga.
+  let posicao: string | null = null;
   if ((oc as any)?.club_aulas?.tipo === 'running_funcional') {
-    console.warn('[wellhub/booking] Running é Fase 2 — rejeitando', ocorrenciaId);
-    await patchBookingStatus(gymId, bookingNumber, 'rejeitar'); return;
+    const livres = await posicoesLivresClub(supabase, ocorrenciaId);
+    const todas = 'erro' in livres ? [] : [...livres.esteira, ...livres.funcional];
+    if (!todas.length) {
+      console.warn('[wellhub/booking] Running sem posição livre — rejeitando', ocorrenciaId);
+      await patchBookingStatus(gymId, bookingNumber, 'rejeitar'); return;
+    }
+    posicao = todas[Math.floor(Math.random() * todas.length)];
   }
 
   const { data: clienteId, error: errCli } = await supabase.rpc('wellhub_resolver_cliente', {
@@ -126,6 +135,7 @@ async function processarRequest(supabase: SupabaseClient, payload: any): Promise
   const { error: errIns } = await supabase.from('club_reservas').insert({
     ocorrencia_id: ocorrenciaId, cliente_id: clienteId, tipo_credito: 'wellhub_app',
     status: 'reservado', via_app: true, wellhub_booking_number: bookingNumber,
+    ...(posicao ? { posicao } : {}),
   });
   if (errIns) {
     // 23505 = reentrega do mesmo booking → confirma de novo e resincroniza.
