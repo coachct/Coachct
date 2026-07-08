@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
-import { CheckCircle2, TrendingUp, AlertCircle, Loader2, Clock, RefreshCw } from 'lucide-react'
+import { CheckCircle2, TrendingUp, AlertCircle, Loader2, Clock, RefreshCw, CalendarDays } from 'lucide-react'
 
 const supabase = createClient()
 
@@ -190,6 +190,27 @@ export default function CheckinsWellhubPage() {
     return { validados, receita, pendentesErros }
   }, [porOrigem])
 
+  // Média/dia e projeção do mês — base: validados do mês+origem (segue o filtro,
+  // via resumo). Média divide pelos dias decorridos (mês atual = até hoje;
+  // passado = mês cheio; futuro = 0). Projeção = média/dia × dias do mês,
+  // sempre até o último dia. Datas em horário local (sem toISOString).
+  const mediaProjecao = useMemo(() => {
+    const diasNoMes = new Date(ano, mes, 0).getDate()
+    const hoje = new Date()
+    const ehMesAtual = hoje.getFullYear() === ano && hoje.getMonth() + 1 === mes
+    const ehFuturo =
+      ano > hoje.getFullYear() || (ano === hoje.getFullYear() && mes > hoje.getMonth() + 1)
+    const diasDecorridos = ehFuturo ? 0 : ehMesAtual ? hoje.getDate() : diasNoMes
+
+    const temDados = diasDecorridos > 0
+    const acessosDia = temDados ? resumo.validados / diasDecorridos : null
+    const valorDia = temDados ? resumo.receita / diasDecorridos : null
+    const acessosProj = acessosDia != null ? Math.round(acessosDia * diasNoMes) : null
+    const valorProj = valorDia != null ? valorDia * diasNoMes : null
+
+    return { acessosDia, valorDia, acessosProj, valorProj, temDados }
+  }, [resumo, mes, ano])
+
   // Tabela: mês+origem+status
   const lista = useMemo(() => {
     if (fStatus === 'todos') return porOrigem
@@ -306,6 +327,55 @@ export default function CheckinsWellhubPage() {
               <span className="text-sm font-medium">Pendentes / erros</span>
             </div>
             <div className="text-2xl font-bold text-gray-900">{resumo.pendentesErros}</div>
+          </div>
+        </div>
+
+        {/* Média/dia e projeção do mês (validados, segue o filtro de origem) */}
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="rounded-2xl border border-gray-200 bg-white p-5">
+            <div className="mb-3 flex items-center gap-2 text-gray-500">
+              <CalendarDays size={16} className="text-[#ff2d9b]" />
+              <span className="text-sm font-medium">Média / dia</span>
+            </div>
+            {mediaProjecao.temDados ? (
+              <div className="flex items-end justify-between">
+                <div>
+                  <div className="text-2xl font-bold text-gray-900">
+                    {mediaProjecao.acessosDia!.toLocaleString('pt-BR', {
+                      minimumFractionDigits: 1,
+                      maximumFractionDigits: 1,
+                    })}
+                  </div>
+                  <div className="text-xs text-gray-500">acessos / dia</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xl font-bold text-gray-900">{fmtBRL(mediaProjecao.valorDia!)}</div>
+                  <div className="text-xs text-gray-500">valor / dia</div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-2xl font-bold text-gray-400">—</div>
+            )}
+          </div>
+          <div className="rounded-2xl border border-gray-200 bg-white p-5">
+            <div className="mb-3 flex items-center gap-2 text-gray-500">
+              <TrendingUp size={16} className="text-[#ff2d9b]" />
+              <span className="text-sm font-medium">Projeção do mês</span>
+            </div>
+            {mediaProjecao.temDados ? (
+              <div className="flex items-end justify-between">
+                <div>
+                  <div className="text-2xl font-bold text-gray-900">{mediaProjecao.acessosProj}</div>
+                  <div className="text-xs text-gray-500">acessos projetados</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xl font-bold text-gray-900">{fmtBRL(mediaProjecao.valorProj!)}</div>
+                  <div className="text-xs text-gray-500">até o fim do mês</div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-2xl font-bold text-gray-400">—</div>
+            )}
           </div>
         </div>
 
