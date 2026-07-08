@@ -21,8 +21,10 @@ function tipoLabel(t: string) {
 }
 function parsePlanoKey(key: string) {
   const lower = (key||'').toLowerCase()
-  if (lower.startsWith('wellhub'))   return { label:'Wellhub',  icon:'💜' }
-  if (lower.startsWith('totalpass')) return { label:'TotalPass', icon:'🔵' }
+  if (lower.startsWith('wellhub_app'))   return { label:'Wellhub - app',  icon:'💜' }
+  if (lower.startsWith('wellhub'))       return { label:'Wellhub - site', icon:'💜' }
+  if (lower.startsWith('totalpass_app')) return { label:'TotalPass - app', icon:'🔵' }
+  if (lower.startsWith('totalpass'))     return { label:'TotalPass - site', icon:'🔵' }
   return { label: key, icon:'🎟️' }
 }
 
