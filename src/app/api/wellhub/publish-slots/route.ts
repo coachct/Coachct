@@ -154,7 +154,7 @@ async function garantirSlots(supabase: SupabaseClient, ativas: any[]) {
 
   const { data: ocs } = await supabase
     .from('club_ocorrencias').select('id, data, aula_id, status')
-    .in('aula_id', aulaIds).gte('data', hoje).limit(LOTE_SLOTS)
+    .in('aula_id', aulaIds).gte('data', hoje).order('data', { ascending: true }).limit(LOTE_SLOTS)
   const futuras = (ocs || []).filter((o: any) => o.status !== 'cancelada')
   if (!futuras.length) return { slotsCriados: 0, slotErros: 0, slotsErrosDetalhe: [] }
 
