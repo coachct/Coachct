@@ -103,6 +103,7 @@ export default function CheckinsWellhubPage() {
         'id, origem, status, id_externo, produto, valor, recebido_em, validado_em, cliente_id, raw, clientes(nome)'
       )
       .in('origem', ['wellhub', 'totalpass'])
+      .neq('status', 'aula') // check-ins de aula (Club) não entram no painel do CT
       .gte('recebido_em', inicio)
       .lt('recebido_em', prox)
       .order('recebido_em', { ascending: false })

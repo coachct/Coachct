@@ -17,7 +17,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { waitUntil } from '@vercel/functions';
 import crypto from 'crypto';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { validarCheckin } from '@/lib/wellhub/validar-checkin';
 
 export const runtime = 'nodejs';
@@ -30,18 +30,49 @@ export const dynamic = 'force-dynamic';
 // UUID da unidade CT no nosso banco
 const UNIDADE_CT = 'c28bf4bb-56f8-44ff-818a-c7836e58bcef';
 
-// Mapeia o gym_id do Wellhub -> unidade_id nosso.
-// Hoje só temos a unidade CT, nos dois ambientes do Wellhub.
-const GYM_MAP: Record<string, string> = {
-  '465': UNIDADE_CT,    // sandbox
-  '542542': UNIDADE_CT, // produção
-};
+// Ambientes do Wellhub que são o CT (MUSCULAÇÃO / Access Control). Check-in
+// desses entra no fluxo de validação/cobrança de musculação — legado, blindado.
+// Qualquer OUTRO gym integrado é unidade de AULAS (Club: Pinheiros/VO).
+const GYM_CT = new Set(['465', '542542']); // sandbox + CT produção
 
-// Fallback: enquanto só existe CT, qualquer gym_id não mapeado cai na CT.
-// Quando entrar uma segunda unidade, preencher o GYM_MAP e remover o fallback.
-function resolverUnidade(gymId: string | null): string {
-  if (gymId && GYM_MAP[gymId]) return GYM_MAP[gymId];
-  return UNIDADE_CT;
+// Resolve a unidade do check-in e diz se é unidade de AULAS (Club).
+//   - CT (musculação): unidade fixa, tratamento legado (valida como sempre).
+//   - Club (aulas): resolve a unidade pela tabela unidades (wellhub_gym_id); NÃO
+//     valida como musculação — o check-in só serve pra marcar presença.
+//   - Gym desconhecido: cai no CT (não perde o check-in), como era antes.
+async function resolverUnidadeInfo(
+  supabase: SupabaseClient,
+  gymId: string | null
+): Promise<{ unidadeId: string; ehClub: boolean }> {
+  if (gymId && GYM_CT.has(gymId)) return { unidadeId: UNIDADE_CT, ehClub: false };
+  if (gymId) {
+    const { data } = await supabase
+      .from('unidades').select('id').eq('wellhub_gym_id', gymId).maybeSingle();
+    if ((data as any)?.id) return { unidadeId: (data as any).id, ehClub: true };
+  }
+  return { unidadeId: UNIDADE_CT, ehClub: false };
+}
+
+// Marca presença NA HORA do check-in (unidades de aula). Casa a reserva feita
+// pelo APP (via_app) da pessoa na aula de hoje e marca 'presente'. Reserva feita
+// no nosso site é via_app=false → não casa → recepção marca manual. À prova de
+// falha: roda pós-200 (waitUntil) e engole erro — nunca afeta o check-in.
+async function marcarPresencaImediata(
+  supabase: SupabaseClient,
+  gympassId: string | null,
+  gymId: string | null
+): Promise<void> {
+  if (!gympassId || !gymId) return;
+  try {
+    const { data, error } = await supabase.rpc('wellhub_marcar_presenca_por_checkin', {
+      p_gympass_id: String(gympassId),
+      p_gym_id: String(gymId),
+    });
+    if (error) console.error('[wellhub/checkin] presenca imediata falhou:', error);
+    else if (data) console.log('[wellhub/checkin] presenca marcada na hora:', data);
+  } catch (e) {
+    console.error('[wellhub/checkin] presenca imediata excecao:', e);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -142,8 +173,6 @@ export async function POST(req: NextRequest) {
     return new NextResponse(null, { status: 200 });
   }
 
-  const unidadeId = resolverUnidade(gymId);
-
   // 4. Supabase com service role (passa por cima da RLS)
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
@@ -158,9 +187,13 @@ export async function POST(req: NextRequest) {
     auth: { persistSession: false },
   });
 
-  // 5. Grava. Idempotência garantida pelo índice único (origem, evento_id):
-  //    reentrega do mesmo evento devolve 23505 e a gente trata como sucesso.
-  //    .select('id') devolve o id da linha criada, usado na validação.
+  // 4a. Roteia por unidade: CT (musculação) x Club (aulas). Separação total —
+  //     check-in de aula NÃO entra no fluxo de validação/cobrança de musculação.
+  const { unidadeId, ehClub } = await resolverUnidadeInfo(supabase, gymId);
+
+  // 5. Grava. Club entra como 'aula' (não passa pela validação de musculação);
+  //    CT entra como 'recebido' (fluxo legado). Idempotência garantida pelo
+  //    índice único (origem, evento_id): reentrega devolve 23505 = sucesso.
   const { data: inserida, error } = await supabase
     .from('entradas_walkin')
     .insert({
@@ -169,7 +202,7 @@ export async function POST(req: NextRequest) {
       id_externo: String(gympassId),
       evento_id: eventoId ? String(eventoId) : null,
       produto: produto ?? null,
-      status: 'recebido',
+      status: ehClub ? 'aula' : 'recebido',
       raw: payload,
     })
     .select('id')
@@ -177,7 +210,6 @@ export async function POST(req: NextRequest) {
 
   if (error) {
     // 23505 = violação de unique -> evento já processado (reentrega).
-    //   NÃO revalida: o validate é uso único e a entrada já existe.
     if ((error as any).code === '23505') {
       return new NextResponse(null, { status: 200 });
     }
@@ -185,17 +217,23 @@ export async function POST(req: NextRequest) {
     return new NextResponse('erro ao gravar', { status: 500 });
   }
 
-  // 6. Dispara a validação em segundo plano (Etapa 1): responde 200 já e
-  //    valida logo em seguida. waitUntil garante a execução pós-resposta.
+  // 6. Próximo passo conforme a unidade:
   if (inserida?.id) {
-    waitUntil(
-      validarCheckin({
-        entradaId: inserida.id,
-        gympassId,
-        produtoId,
-        produtoDescricao,
-      })
-    );
+    if (ehClub) {
+      // Aulas (Club): marca presença NA HORA (se reservou pelo app). NÃO valida
+      // como musculação — some do painel de check-ins do CT.
+      waitUntil(marcarPresencaImediata(supabase, gympassId, gymId));
+    } else {
+      // CT (musculação): validação automática de sempre (Etapa 1). INTOCADO.
+      waitUntil(
+        validarCheckin({
+          entradaId: inserida.id,
+          gympassId,
+          produtoId,
+          produtoDescricao,
+        })
+      );
+    }
   }
 
   // 7. 200 rápido (sem corpo)
