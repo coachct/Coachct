@@ -70,6 +70,7 @@ export async function consultarPrecos(supabase: SupabaseClient): Promise<any[]> 
     .from('produtos')
     .select('nome, valor, subtipo, tipo, dias_validade, creditos_por_venda')
     .eq('ativo', true)
+    .eq('visivel_site', true) // só o que é vendido pro cliente no site (esconde itens internos)
     .neq('subtipo', 'multa')
     .order('valor', { ascending: true })
   if (error) throw new Error(`produtos: ${error.message}`)
