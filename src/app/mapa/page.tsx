@@ -178,6 +178,16 @@ function MapaPageInner() {
     if (!tipoCredito) { setErroModal('Selecione o plano.'); return }
     if (!posicaoSel || !cliente) return
     setConfirmando(true); setErroModal('')
+    // Trava anti-aba-velha: bloqueia reservar aula que já começou. A lista (/aulas) esconde
+    // aulas passadas só no render; sem esta checagem no clique, uma aba antiga / back / link
+    // direto grava reserva de aula já ocorrida (vira Falta). Revalida no momento de gravar.
+    if (ocorrencia?.data && ocorrencia?.club_aulas?.horario) {
+      const inicioAula = new Date(ocorrencia.data + 'T' + ocorrencia.club_aulas.horario)
+      if (!isNaN(inicioAula.getTime()) && inicioAula.getTime() <= Date.now()) {
+        setErroModal('Esta aula já começou — não é mais possível reservar.')
+        setConfirmando(false); return
+      }
+    }
     // ClassPass: ilimitado, sem checagem de saldo. Clientes normais revalidam o saldo do mês da ocorrência antes de inserir.
     if (!cliente.is_classpass) {
       const d = new Date((ocorrencia?.data || '') + 'T12:00:00')

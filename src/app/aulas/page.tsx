@@ -412,6 +412,15 @@ function AulasPageInner() {
     if (modalReserva?.club_aulas?.tipo === 'running_funcional' && !posicaoSel) { setErroModal('Selecione sua posição no mapa.'); return }
     if (!cliente || !modalReserva) return
     setConfirmando(true); setErroModal('')
+    // Trava anti-aba-velha: bloqueia reservar aula que já começou (mesmo furo do /mapa —
+    // a lista esconde no render, mas o modal aberto há horas gravava sem revalidar a hora).
+    if (modalReserva.data && modalReserva.club_aulas?.horario) {
+      const inicioAula = new Date(modalReserva.data + 'T' + modalReserva.club_aulas.horario)
+      if (!isNaN(inicioAula.getTime()) && inicioAula.getTime() <= Date.now()) {
+        setErroModal('Esta aula já começou — não é mais possível reservar.')
+        setConfirmando(false); return
+      }
+    }
     const payload: any = { ocorrencia_id: modalReserva.id, cliente_id: cliente.id, tipo_credito: tipoCredito, status: 'reservado', criado_via: 'cliente' }
     if (posicaoSel) payload.posicao = posicaoSel
     const { data: nova, error } = await supabase.from('club_reservas').insert(payload).select('id').single()
