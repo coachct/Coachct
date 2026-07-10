@@ -538,7 +538,7 @@ export default function AgendarPage() {
       setErroModal(`Você está na fila de espera de ${label} neste dia. Saia da fila antes de agendar.`)
       setConfirmando(false); return
     }
-    const payload: any = { cliente_id: cliente.id, data: modalSlot.data, horario: modalSlot.hora + ':00', status: 'agendado', tipo_credito: tipoCredito, unidade_id: unidadeAtiva.id }
+    const payload: any = { cliente_id: cliente.id, data: modalSlot.data, horario: modalSlot.hora + ':00', status: 'agendado', tipo_credito: tipoCredito, unidade_id: unidadeAtiva.id, criado_via: 'cliente' }
     if (tipoCredito.startsWith('coach_ct_pro_') && coachEscolhido) { payload.coach_id = coachEscolhido; payload.alocado_por = perfil?.id || null; payload.alocado_em = new Date().toISOString() }
     const { data: novo, error } = await supabase.from('agendamentos').insert(payload).select('id').single()
     if (error) { setErroModal('Erro ao agendar. Tente novamente.'); setConfirmando(false); return }

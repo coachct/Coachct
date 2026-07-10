@@ -412,7 +412,7 @@ function AulasPageInner() {
     if (modalReserva?.club_aulas?.tipo === 'running_funcional' && !posicaoSel) { setErroModal('Selecione sua posição no mapa.'); return }
     if (!cliente || !modalReserva) return
     setConfirmando(true); setErroModal('')
-    const payload: any = { ocorrencia_id: modalReserva.id, cliente_id: cliente.id, tipo_credito: tipoCredito, status: 'reservado' }
+    const payload: any = { ocorrencia_id: modalReserva.id, cliente_id: cliente.id, tipo_credito: tipoCredito, status: 'reservado', criado_via: 'cliente' }
     if (posicaoSel) payload.posicao = posicaoSel
     const { data: nova, error } = await supabase.from('club_reservas').insert(payload).select('id').single()
     if (error) {

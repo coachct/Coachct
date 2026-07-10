@@ -29,6 +29,23 @@ const statusConfig: Record<string, { label: string; color: string }> = {
   presente:   { label: 'Presente',   color: 'bg-green-100 text-green-700' },
 }
 
+function origemReserva(via?: string | null): { label: string; cls: string } | null {
+  if (!via) return null
+  const map: Record<string, { label: string; cls: string }> = {
+    cliente:   { label: 'Cliente',   cls: 'bg-gray-100 text-gray-600' },
+    recepcao:  { label: 'Recepção',  cls: 'bg-blue-100 text-blue-700' },
+    admin:     { label: 'Admin',     cls: 'bg-primary-100 text-primary-700' },
+    whatsapp:  { label: 'WhatsApp',  cls: 'bg-green-100 text-green-700' },
+    wellhub:   { label: 'Wellhub',   cls: 'bg-purple-100 text-purple-700' },
+    totalpass: { label: 'TotalPass', cls: 'bg-orange-100 text-orange-700' },
+  }
+  return map[via] || { label: via, cls: 'bg-gray-100 text-gray-600' }
+}
+function reservadoEm(ts?: string | null): string | null {
+  if (!ts) return null
+  const d = new Date(ts)
+  return `${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+}
 function tipoAulaLabel(t?: string | null): string {
   if (t === 'lift')              return 'Lift'
   if (t === 'lift_for_girls')    return 'Lift for Girls'
@@ -875,6 +892,7 @@ export default function AdminClientesPage() {
     const { error } = await supabase.from('agendamentos').insert({
       cliente_id: clienteSel.id, data: modalSlot.data, horario: modalSlot.hora + ':00',
       status: 'agendado', tipo_credito: tipoCredito, unidade_id: unidadeAtiva.id,
+      criado_via: 'admin', criado_por: perfil?.id || null,
     })
     if (error) { setErroModal('Erro ao agendar. Tente novamente.'); setAgendando(false); return }
     setModalSlot(null); setAgendando(false)
@@ -1549,6 +1567,12 @@ export default function AdminClientesPage() {
                               {ag.unidades?.nome && <><span className="text-gray-300">·</span><span>{ag.unidades.nome}</span></>}
                             </div>
                             {cred.label && <div className="text-xs text-gray-500 mt-1">{cred.icon} {cred.label}</div>}
+                            {(() => { const o = origemReserva((ag as any).criado_via); const q = reservadoEm((ag as any).created_at); if (!o && !q) return null; return (
+                              <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-400 mt-0.5">
+                                {o && <span className={`px-1.5 py-0.5 rounded-full ${o.cls}`}>{o.label}</span>}
+                                {q && <span>agendado em {q}</span>}
+                              </div>
+                            )})()}
                           </div>
                           <button onClick={() => cancelarAgendamento(ag.id)} disabled={cancelandoId === ag.id} className="btn btn-sm gap-1 text-red-500 hover:bg-red-50 flex-shrink-0">
                             <X size={12} /> {cancelandoId === ag.id ? 'Cancelando...' : 'Cancelar'}
@@ -1581,6 +1605,12 @@ export default function AdminClientesPage() {
                                 {aula?.unidades?.nome && <><span className="text-gray-300">·</span><span>{aula.unidades.nome}</span></>}
                               </div>
                               {cred.label && <div className="text-xs text-gray-500 mt-1">{cred.icon} {(cr as any).creditos_avulsos?.observacao || cred.label}</div>}
+                              {(() => { const o = origemReserva((cr as any).criado_via); const q = reservadoEm((cr as any).created_at); if (!o && !q) return null; return (
+                                <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-400 mt-0.5">
+                                  {o && <span className={`px-1.5 py-0.5 rounded-full ${o.cls}`}>{o.label}</span>}
+                                  {q && <span>reservado em {q}</span>}
+                                </div>
+                              )})()}
                             </div>
                             <button onClick={() => cancelarReservaClub(cr.id)} disabled={cancelandoId === cr.id} className="btn btn-sm gap-1 text-red-500 hover:bg-red-50 flex-shrink-0">
                               <X size={12} /> {cancelandoId === cr.id ? 'Cancelando...' : 'Cancelar'}
@@ -1621,6 +1651,12 @@ export default function AdminClientesPage() {
                             {ag.unidades?.nome && <><span className="text-gray-300">·</span><span>{ag.unidades.nome}</span></>}
                           </div>
                           {cred.label && <div className="text-xs text-gray-500 mt-1">{cred.icon} {cred.label}</div>}
+                          {(() => { const o = origemReserva((ag as any).criado_via); const q = reservadoEm((ag as any).created_at); if (!o && !q) return null; return (
+                            <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-400 mt-0.5">
+                              {o && <span className={`px-1.5 py-0.5 rounded-full ${o.cls}`}>{o.label}</span>}
+                              {q && <span>agendado em {q}</span>}
+                            </div>
+                          )})()}
                         </div>
                       </div>
                       )
@@ -1649,6 +1685,12 @@ export default function AdminClientesPage() {
                               {aula?.unidades?.nome && <><span className="text-gray-300">·</span><span>{aula.unidades.nome}</span></>}
                             </div>
                             {cred.label && <div className="text-xs text-gray-500 mt-1">{cred.icon} {(cr as any).creditos_avulsos?.observacao || cred.label}</div>}
+                            {(() => { const o = origemReserva((cr as any).criado_via); const q = reservadoEm((cr as any).created_at); if (!o && !q) return null; return (
+                              <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-400 mt-0.5">
+                                {o && <span className={`px-1.5 py-0.5 rounded-full ${o.cls}`}>{o.label}</span>}
+                                {q && <span>reservado em {q}</span>}
+                              </div>
+                            )})()}
                           </div>
                         </div>
                       )

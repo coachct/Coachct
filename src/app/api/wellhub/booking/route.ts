@@ -135,6 +135,7 @@ async function processarRequest(supabase: SupabaseClient, payload: any): Promise
   const { error: errIns } = await supabase.from('club_reservas').insert({
     ocorrencia_id: ocorrenciaId, cliente_id: clienteId, tipo_credito: 'wellhub_app',
     status: 'reservado', via_app: true, wellhub_booking_number: bookingNumber,
+    criado_via: 'wellhub',
     ...(posicao ? { posicao } : {}),
   });
   if (errIns) {

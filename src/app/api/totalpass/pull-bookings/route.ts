@@ -231,6 +231,7 @@ async function registrarReserva(
     tipo_credito: 'totalpass_app',
     status: 'reservado',
     via_app: true,
+    criado_via: 'totalpass',
     totalpass_slot_id: s.slotId,
   }
   if (posicao) payload.posicao = posicao

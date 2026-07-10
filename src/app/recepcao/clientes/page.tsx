@@ -358,6 +358,7 @@ export default function RecepcaoClientesPage() {
       cliente_id: clienteSel.id, data: modalSlot.data,
       horario: modalSlot.hora + ':00', status: 'agendado',
       tipo_credito: tipoCredito, unidade_id: unidadeAtiva.id,
+      criado_via: 'recepcao', criado_por: perfil?.id || null,
     })
     if (error) { setErroModal('Erro ao agendar. Tente novamente.'); setAgendando(false); return }
     setModalSlot(null); setAgendando(false)

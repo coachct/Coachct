@@ -428,6 +428,7 @@ export default function RecepcaoClubDetalhe() {
       const { error: e } = await supabase.from('club_reservas').update({
         tipo_credito: tipoCredito,
         status: isFuturo ? 'reservado' : 'presente',
+        criado_via: 'recepcao', criado_por: perfil?.id || null, created_at: new Date().toISOString(),
         ...(isRunning && posicaoSel ? { posicao: posicaoSel } : {}),
       }).eq('id', cancelada.id)
       error = e
@@ -435,6 +436,7 @@ export default function RecepcaoClubDetalhe() {
       const { error: e } = await supabase.from('club_reservas').insert({
         ocorrencia_id: ocId, cliente_id: clienteSel.id, tipo_credito: tipoCredito,
         status: isFuturo ? 'reservado' : 'presente',
+        criado_via: 'recepcao', criado_por: perfil?.id || null,
         ...(isRunning && posicaoSel ? { posicao: posicaoSel } : {}),
       })
       error = e

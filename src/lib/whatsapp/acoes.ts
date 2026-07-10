@@ -353,6 +353,7 @@ export async function reservarClub(
     cliente_id: clienteId,
     tipo_credito: tipoCredito,
     status: 'reservado',
+    criado_via: 'whatsapp',
     ...(posicaoFinal ? { posicao: posicaoFinal } : {}),
   })
   if (error) {
@@ -601,6 +602,7 @@ export async function agendarCt(
     status: 'agendado',
     tipo_credito: tipoCredito,
     unidade_id: JUST_CT_UNIDADE_ID,
+    criado_via: 'whatsapp',
   })
   if (error) return { ok: false, mensagem: 'Tive um erro ao agendar. Pode tentar de novo em instantes?', erroTecnico: true }
 
