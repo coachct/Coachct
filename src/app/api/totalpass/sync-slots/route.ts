@@ -18,6 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { atualizarOcorrencia, deletarOcorrencia } from '@/lib/totalpass/booking-api'
+import { apiKeyPorPlace } from '@/lib/totalpass/places'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -89,10 +90,10 @@ async function processarItem(supabase: SupabaseClient, ocId: string, enfileirado
 
   const estado = (info as any)?.club_aulas?.unidades?.totalpass_estado
 
-  // Precisa do mapa pra saber qual ocorrência TotalPass atualizar.
+  // Precisa do mapa pra saber qual ocorrência TotalPass atualizar E em qual place.
   const { data: map } = await supabase
     .from('totalpass_slot_map')
-    .select('occurrence_uuid')
+    .select('occurrence_uuid, place_id')
     .eq('ocorrencia_id', ocId)
     .maybeSingle()
 
@@ -103,9 +104,17 @@ async function processarItem(supabase: SupabaseClient, ocId: string, enfileirado
   }
   const uuid = (map as any).occurrence_uuid as string
 
+  // Chave do place onde a ocorrência foi publicada (multi-unidade). Sem chave
+  // (env faltando) não dá pra falar com a API — mantém na fila pra retry.
+  const apiKey = apiKeyPorPlace(String((map as any).place_id || ''))
+  if (!apiKey) {
+    console.warn('[totalpass/sync] sem place_api_key pro place', (map as any).place_id, '— mantendo na fila')
+    return 'erro'
+  }
+
   // Unidade não ativa / ocorrência cancelada → remove da grade da TotalPass.
   if (!info || estado !== 'ativo' || (info as any).status === 'cancelada') {
-    const del = await deletarOcorrencia(uuid)
+    const del = await deletarOcorrencia(apiKey, uuid)
     if (del.ok) {
       await supabase.from('totalpass_slot_map').delete().eq('ocorrencia_id', ocId)
       await tirarDaFila(supabase, ocId, enfileiradoEm)
@@ -123,7 +132,7 @@ async function processarItem(supabase: SupabaseClient, ocId: string, enfileirado
     return 'skip'
   }
 
-  const resp = await atualizarOcorrencia(uuid, { slots: nums.total_capacity })
+  const resp = await atualizarOcorrencia(apiKey, uuid, { slots: nums.total_capacity })
   if (resp.ok) {
     await tirarDaFila(supabase, ocId, enfileiradoEm)
     return 'sync'

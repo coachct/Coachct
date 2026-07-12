@@ -14,16 +14,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { criarOcorrencia, listarEventos } from '@/lib/totalpass/booking-api'
+import { placesAtivos, type TpPlace } from '@/lib/totalpass/places'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 const CRON_SECRET = process.env.CRON_SECRET || ''
-const LOTE = 80
-const PLAN_ID = Number(process.env.TOTALPASS_PINHEIROS_PLAN_ID || '16655') // "Just Run"
-const PLACE_ID_PINHEIROS = '41407'
-const UNIDADE_PINHEIROS = '166a683d-5fe6-4177-8fd6-53deb70b428e'
 
 // Nome exibido por modalidade (club_aulas.tipo).
 const TITULO: Record<string, string> = {
@@ -86,18 +83,18 @@ export async function POST(req: NextRequest) {
   const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
   const params = new URL(req.url).searchParams
 
-  // DIAGNÓSTICO: ?probe=1 lista as env TOTALPASS* que a função enxerga (só nomes)
-  // e testa a API, sem criar nada.
+  // DIAGNÓSTICO: ?probe=1 lista as env TOTALPASS* (só nomes) e testa a API de cada
+  // unidade ativa, sem criar nada.
   if (params.get('probe')) {
     const envTotalpass = Object.keys(process.env).filter((k) => k.startsWith('TOTALPASS'))
-    const ev = await listarEventos()
-    return NextResponse.json({
-      probe: true,
-      envTotalpass,
-      temPlaceKey: !!process.env.TOTALPASS_PINHEIROS_PLACE_API_KEY,
-      status: ev.status, erro: ev.erro,
-      qtd: Array.isArray(ev.body) ? ev.body.length : null,
-    })
+    const places = await placesAtivos(supabase)
+    const testes: any[] = []
+    for (const p of places) {
+      const ev = await listarEventos(p.apiKey!)
+      testes.push({ unidade: p.nome, placeId: p.placeId, planId: p.planId,
+        status: ev.status, erro: ev.erro, qtd: Array.isArray(ev.body) ? ev.body.length : null })
+    }
+    return NextResponse.json({ probe: true, envTotalpass, placesAtivos: places.map(p => p.nome), testes })
   }
 
   // DRY-RUN: ?dryrun=1 mostra o que publicaria (só lê o nosso banco, NÃO toca na
@@ -109,15 +106,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, msg: 'kill switch OFF — nada publicado' })
   }
 
-  const r = await garantirOcorrencias(supabase, dryrun)
-  return NextResponse.json({ ok: true, ...r })
+  const places = await placesAtivos(supabase)
+  if (!places.length) {
+    return NextResponse.json({ ok: true, msg: 'nenhuma unidade TotalPass ativa (estado/place/chave/plano)' })
+  }
+  const porUnidade: any[] = []
+  for (const place of places) {
+    const r = await garantirOcorrencias(supabase, place, dryrun)
+    porUnidade.push({ unidade: place.nome, ...r })
+  }
+  if (dryrun) {
+    const preview = porUnidade.flatMap((u: any) => u.preview || [])
+    const publicaria = porUnidade.reduce((s: number, u: any) => s + (u.publicaria || 0), 0)
+    return NextResponse.json({ ok: true, dryrun: true, publicaria, porUnidade, preview: preview.slice(0, 60) })
+  }
+  const criadas = porUnidade.reduce((s: number, u: any) => s + (u.criadas || 0), 0)
+  const erros = porUnidade.flatMap((u: any) => u.erros || [])
+  return NextResponse.json({ ok: true, criadas, erros, porUnidade })
 }
 
 export async function GET(req: NextRequest) {
   return POST(req)
 }
 
-async function garantirOcorrencias(supabase: SupabaseClient, dryrun: boolean) {
+async function garantirOcorrencias(supabase: SupabaseClient, place: TpPlace, dryrun: boolean) {
   const hoje = new Date().toISOString().slice(0, 10)
   const fim = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
@@ -126,16 +138,16 @@ async function garantirOcorrencias(supabase: SupabaseClient, dryrun: boolean) {
     .from('totalpass_booking_config').select('cancelamento_horas').eq('id', true).maybeSingle()
   const cancelamentoHoras = (cfg as any)?.cancelamento_horas ?? 12
 
-  // Aulas ATIVAS do Club de Pinheiros — IGUAL ao calendário (ativo=true).
+  // Aulas ATIVAS do Club desta unidade — IGUAL ao calendário (ativo=true).
   const { data: aulas } = await supabase
     .from('club_aulas')
     .select('id, tipo, horario, duracao_min, coaches(nome), grupos_musculares(nome)')
-    .eq('unidade_id', UNIDADE_PINHEIROS)
+    .eq('unidade_id', place.unidadeId)
     .eq('ativo', true)
   const aulaById: Record<string, any> = {}
   for (const a of (aulas || [])) aulaById[(a as any).id] = a
   const aulaIds = (aulas || []).map((a: any) => a.id)
-  if (!aulaIds.length) return { criadas: 0, erros: [], msg: 'sem aulas ativas em Pinheiros' }
+  if (!aulaIds.length) return { criadas: 0, erros: [], msg: `sem aulas ativas em ${place.nome}` }
 
   // Ocorrências ATIVAS na janela (14 dias) — IGUAL ao calendário (status='ativa').
   const { data: ocs } = await supabase
@@ -188,12 +200,12 @@ async function garantirOcorrencias(supabase: SupabaseClient, dryrun: boolean) {
     if (capacidade <= 0) continue // nada a expor nessa ocorrência agora
 
     const prazoCancel = maxTimeToCancel((oc as any).data, aula.horario, cancelamentoHoras)
-    const r = await criarOcorrencia({
+    const r = await criarOcorrencia(place.apiKey!, {
       title: titulo,
       responsible,
       duration: aula.duracao_min ?? 50,
       slots: capacidade,
-      planId: PLAN_ID,
+      planId: place.planId,
       eventDate: (oc as any).data,
       startTime: to12h(aula.horario),
       ...(prazoCancel ? { maxTimeToCancel: prazoCancel } : {}),
@@ -208,7 +220,7 @@ async function garantirOcorrencias(supabase: SupabaseClient, dryrun: boolean) {
     }
     const { error } = await supabase.from('totalpass_slot_map').insert({
       ocorrencia_id: (oc as any).id,
-      place_id: PLACE_ID_PINHEIROS,
+      place_id: place.placeId,
       totalpass_event_id: eventId != null ? String(eventId) : '',
       occurrence_uuid: String(uuid),
     })

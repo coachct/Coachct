@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { deletarOcorrencia } from '@/lib/totalpass/booking-api'
+import { apiKeyPorPlace } from '@/lib/totalpass/places'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -29,12 +30,14 @@ export async function POST(req: NextRequest) {
   const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
 
   const { data: mapa } = await supabase
-    .from('totalpass_slot_map').select('ocorrencia_id, occurrence_uuid')
+    .from('totalpass_slot_map').select('ocorrencia_id, occurrence_uuid, place_id')
 
   let apagadas = 0, falhas = 0
   for (const m of (mapa || [])) {
     const uuid = (m as any).occurrence_uuid as string
-    const del = await deletarOcorrencia(uuid)
+    const apiKey = apiKeyPorPlace(String((m as any).place_id || ''))
+    if (!apiKey) { falhas++; continue }
+    const del = await deletarOcorrencia(apiKey, uuid)
     if (del.ok) {
       await supabase.from('totalpass_slot_map').delete().eq('ocorrencia_id', (m as any).ocorrencia_id)
       apagadas++

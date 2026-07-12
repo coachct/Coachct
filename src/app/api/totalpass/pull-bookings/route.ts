@@ -18,6 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { listarSlots, cancelarSlot } from '@/lib/totalpass/booking-api'
+import { placesAtivos } from '@/lib/totalpass/places'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -53,28 +54,6 @@ export async function POST(req: NextRequest) {
   // DIAGNÓSTICO ?raw=1: mostra o SHAPE cru dos slots que a TotalPass devolve
   // (nomes reais dos campos + valores mascarados), SEM gravar nada. Serve pra
   // descobrir sob quais chaves vêm nome/CPF/email. Ignora o kill switch.
-  if (new URL(req.url).searchParams.get('raw')) {
-    const ag = new Date()
-    const fm = new Date(ag.getTime() + JANELA_DIAS * 24 * 60 * 60 * 1000)
-    const sl = await listarSlots({ slotDateFrom: ag.toISOString(), slotDateTo: fm.toISOString() })
-    const arr: any[] = Array.isArray(sl.body) ? sl.body : (sl.body?.data ?? [])
-    const mask = (v: any) => (typeof v === 'string' && v.length > 4 ? `${v.slice(0, 2)}***${v.slice(-2)}` : v)
-    const maskObj = (o: any) => (o && typeof o === 'object'
-      ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v && typeof v === 'object' ? '{...}' : mask(v)]))
-      : o)
-    const amostra = arr.slice(0, 3).map((s: any) => ({
-      topKeys: Object.keys(s || {}),
-      userKeys: Object.keys(s?.user || {}),
-      user: maskObj(s?.user),
-      slotMascarado: maskObj(s),
-    }))
-    return NextResponse.json({ raw: true, ok: sl.ok, status: sl.status, total: arr.length, amostra })
-  }
-
-  if (process.env.TOTALPASS_BOOKING_ATIVO !== 'true') {
-    return NextResponse.json({ ok: true, msg: 'kill switch OFF — pull pausado' })
-  }
-
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!supabaseUrl || !serviceKey) {
@@ -82,14 +61,32 @@ export async function POST(req: NextRequest) {
   }
   const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
 
-  // Janela (máx. 30 dias na API; usamos 14).
   const agora = new Date()
   const fim = new Date(agora.getTime() + JANELA_DIAS * 24 * 60 * 60 * 1000)
-  const slots = await listarSlots({ slotDateFrom: agora.toISOString(), slotDateTo: fim.toISOString() })
-  if (!slots.ok) {
-    return NextResponse.json({ error: 'falha ao listar slots', status: slots.status, erro: slots.erro }, { status: 502 })
+
+  if (new URL(req.url).searchParams.get('raw')) {
+    const mask = (v: any) => (typeof v === 'string' && v.length > 4 ? `${v.slice(0, 2)}***${v.slice(-2)}` : v)
+    const maskObj = (o: any) => (o && typeof o === 'object'
+      ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v && typeof v === 'object' ? '{...}' : mask(v)]))
+      : o)
+    const porUnidade: any[] = []
+    for (const place of await placesAtivos(supabase)) {
+      const sl = await listarSlots(place.apiKey!, { slotDateFrom: agora.toISOString(), slotDateTo: fim.toISOString() })
+      const arr: any[] = Array.isArray(sl.body) ? sl.body : (sl.body?.data ?? [])
+      porUnidade.push({
+        unidade: place.nome, ok: sl.ok, status: sl.status, total: arr.length,
+        amostra: arr.slice(0, 3).map((s: any) => ({
+          topKeys: Object.keys(s || {}), userKeys: Object.keys(s?.user || {}),
+          user: maskObj(s?.user), slotMascarado: maskObj(s),
+        })),
+      })
+    }
+    return NextResponse.json({ raw: true, porUnidade })
   }
-  const lista: any[] = Array.isArray(slots.body) ? slots.body : (slots.body?.data ?? [])
+
+  if (process.env.TOTALPASS_BOOKING_ATIVO !== 'true') {
+    return NextResponse.json({ ok: true, msg: 'kill switch OFF — pull pausado' })
+  }
 
   // Mapa eventId → ocorrencia_id (cada ocorrência TotalPass tem seu próprio eventId).
   const { data: mapas } = await supabase
@@ -97,36 +94,50 @@ export async function POST(req: NextRequest) {
   const ocPorEvento: Record<string, string> = {}
   for (const m of (mapas || [])) ocPorEvento[(m as any).totalpass_event_id] = (m as any).ocorrencia_id
 
+  const places = await placesAtivos(supabase)
+  if (!places.length) {
+    return NextResponse.json({ ok: true, msg: 'nenhuma unidade TotalPass ativa' })
+  }
+
   const statusVistos = new Set<string>()
   const ativosIds = new Set<string>()
-  let criadas = 0, rejeitadas = 0, jaTinha = 0, semMapa = 0, incompletas = 0
+  let criadas = 0, rejeitadas = 0, jaTinha = 0, semMapa = 0, incompletas = 0, totalSlots = 0
   const erros: any[] = []
+  const errosApi: any[] = []
 
-  for (const raw of lista) {
-    const s = extrairSlot(raw)
-    if (s.status) statusVistos.add(s.status)
-    if (!s.slotId || STATUS_MORTOS.has(s.status)) continue
-    ativosIds.add(s.slotId)
+  // Puxa os slots de CADA unidade ativa com a chave dela (o eventId→ocorrência
+  // é global, então o resto do processamento não muda por unidade).
+  for (const place of places) {
+    const slots = await listarSlots(place.apiKey!, { slotDateFrom: agora.toISOString(), slotDateTo: fim.toISOString() })
+    if (!slots.ok) { errosApi.push({ unidade: place.nome, status: slots.status, erro: slots.erro }); continue }
+    const lista: any[] = Array.isArray(slots.body) ? slots.body : (slots.body?.data ?? [])
+    totalSlots += lista.length
+    for (const raw of lista) {
+      const s = extrairSlot(raw)
+      if (s.status) statusVistos.add(s.status)
+      if (!s.slotId || STATUS_MORTOS.has(s.status)) continue
+      ativosIds.add(s.slotId)
 
-    const r = await registrarReserva(supabase, s, ocPorEvento)
-    if (r === 'criada') criadas++
-    else if (r === 'rejeitada') rejeitadas++
-    else if (r === 'ja') jaTinha++
-    else if (r === 'sem-mapa') semMapa++
-    else if (r === 'incompleto') incompletas++
-    else erros.push(s.slotId)
+      const r = await registrarReserva(supabase, s, ocPorEvento, place.apiKey!)
+      if (r === 'criada') criadas++
+      else if (r === 'rejeitada') rejeitadas++
+      else if (r === 'ja') jaTinha++
+      else if (r === 'sem-mapa') semMapa++
+      else if (r === 'incompleto') incompletas++
+      else erros.push(s.slotId)
+    }
   }
 
   // Cancelamentos: reservas nossas via TotalPass, ativas, cujo slot sumiu dos
   // ativos — SÓ dentro da janela consultada (senão cancelaria reservas futuras
-  // fora da janela, cujos slots nem foram puxados).
+  // fora da janela, cujos slots nem foram puxados). ativosIds junta todas as unidades.
   const hojeStr = agora.toISOString().slice(0, 10)
   const fimStr = fim.toISOString().slice(0, 10)
   const canceladas = await conciliarCancelamentos(supabase, ativosIds, hojeStr, fimStr)
 
   return NextResponse.json({
-    ok: true, slots: lista.length, criadas, rejeitadas, jaTinha, semMapa, incompletas,
-    canceladas, erros: erros.length, statusVistos: [...statusVistos],
+    ok: true, slots: totalSlots, criadas, rejeitadas, jaTinha, semMapa, incompletas,
+    canceladas, erros: erros.length, errosApi, statusVistos: [...statusVistos],
   })
 }
 
@@ -162,7 +173,8 @@ async function backfillCliente(
 async function registrarReserva(
   supabase: SupabaseClient,
   s: ReturnType<typeof extrairSlot>,
-  ocPorEvento: Record<string, string>
+  ocPorEvento: Record<string, string>,
+  apiKey: string
 ): Promise<ResReserva> {
   // Já registrada? Mesmo assim faz backfill: o cliente pode ter sido criado
   // antes (payload cru) e agora os dados chegaram — self-heal do "fantasma".
@@ -205,7 +217,7 @@ async function registrarReserva(
     .not('totalpass_slot_id', 'is', null)
   const disponivel = (nums?.total_capacity ?? 0) - (tpAtuais ?? 0)
   if (disponivel <= 0) {
-    await cancelarSlot(s.slotId!) // sem vaga → cancela a reserva no app deles
+    await cancelarSlot(apiKey, s.slotId!) // sem vaga → cancela a reserva no app deles
     return 'rejeitada'
   }
 
@@ -220,7 +232,7 @@ async function registrarReserva(
   let posicao: string | null = null
   if (tipo === 'running_funcional') {
     posicao = await escolherPosicao(supabase, ocorrenciaId, unidadeId)
-    if (!posicao) { await cancelarSlot(s.slotId!); return 'rejeitada' }
+    if (!posicao) { await cancelarSlot(apiKey, s.slotId!); return 'rejeitada' }
   }
 
   // Insere. Trava de 1/dia/unidade (P0001) vale no app → rejeita limpo cancelando o slot.
@@ -239,7 +251,7 @@ async function registrarReserva(
   if (errIns) {
     if ((errIns as any).code === '23505') return 'ja'
     console.warn('[totalpass/pull] insert recusado:', (errIns as any).code, (errIns as any).message)
-    await cancelarSlot(s.slotId!)
+    await cancelarSlot(apiKey, s.slotId!)
     return 'rejeitada'
   }
   return 'criada'
