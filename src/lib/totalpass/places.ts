@@ -46,6 +46,7 @@ export async function placesAtivos(supabase: SupabaseClient): Promise<TpPlace[]>
   const { data } = await supabase
     .from('unidades')
     .select('id, nome, totalpass_place_id')
+    .eq('tipo', 'club')            // BLINDAGEM: booking é SÓ Club — nunca toca o Just CT.
     .eq('totalpass_estado', 'ativo')
     .not('totalpass_place_id', 'is', null)
   return (data || [])
