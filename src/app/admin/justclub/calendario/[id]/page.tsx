@@ -124,6 +124,9 @@ export default function RecepcaoClubDetalhe() {
   const [vagasDefaultTp,    setVagasDefaultTp]    = useState(10)
   const [totalpassEstado,   setTotalpassEstado]   = useState<string | null>(null)
   const [salvandoTotalpass, setSalvandoTotalpass] = useState(false)
+  // NOVO: ocupacao atual no app (para o card "X/N ocupadas")
+  const [agendadasWellhub,   setAgendadasWellhub]   = useState(0)
+  const [agendadasTotalpass, setAgendadasTotalpass] = useState(0)
 
   // NOVO: pausa da fila de espera (por ocorrência)
   const [filaPausada,   setFilaPausada]   = useState(false)
@@ -166,6 +169,22 @@ export default function RecepcaoClubDetalhe() {
       const { data: tpCfg } = await supabase.from('totalpass_booking_config').select('vagas_default').maybeSingle()
       if (tpCfg?.vagas_default != null) setVagasDefaultTp(tpCfg.vagas_default)
     } catch { /* ignora: a tela segue normal mesmo se a config TotalPass falhar */ }
+
+    // NOVO: ocupacao atual no app (para o card "X/N ocupadas"). Blindado.
+    try {
+      const { count: cWh } = await supabase.from('club_reservas')
+        .select('id', { count: 'exact', head: true })
+        .eq('ocorrencia_id', ocId).eq('via_app', true)
+        .not('wellhub_booking_number', 'is', null).neq('status', 'cancelado')
+      setAgendadasWellhub(cWh ?? 0)
+    } catch { setAgendadasWellhub(0) }
+    try {
+      const { count: cTp } = await supabase.from('club_reservas')
+        .select('id', { count: 'exact', head: true })
+        .eq('ocorrencia_id', ocId).eq('via_app', true)
+        .not('totalpass_slot_id', 'is', null).neq('status', 'cancelado')
+      setAgendadasTotalpass(cTp ?? 0)
+    } catch { setAgendadasTotalpass(0) }
 
     const { data: res } = await supabase
       .from('club_reservas')
@@ -919,9 +938,20 @@ export default function RecepcaoClubDetalhe() {
       {!isPassado && aula && (wellhubEstado === 'ativo' || wellhubEstado === 'pausado') && (
         <div style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:12, marginBottom:'0.75rem' }}>
           <div style={{ padding:'0.5rem 1rem', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
-            <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>
-              Vagas no Wellhub
-              {wellhubEstado === 'pausado' && <span style={{ color:VERMELHO, fontWeight:500 }}> · pausado</span>}
+            <div>
+              <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>
+                Vagas no Wellhub
+                {wellhubEstado === 'pausado' && <span style={{ color:VERMELHO, fontWeight:500 }}> · pausado</span>}
+              </div>
+              {(() => {
+                const q = vagasWellhub ?? vagasDefaultWh
+                const cheio = agendadasWellhub >= q && q > 0
+                return (
+                  <div style={{ fontSize:11, fontWeight:600, color: cheio ? VERMELHO : '#888', marginTop:2 }}>
+                    {agendadasWellhub}/{q} ocupadas{cheio ? ' · lotado' : ''}
+                  </div>
+                )
+              })()}
             </div>
             {(() => {
               const resolvido = vagasWellhub ?? vagasDefaultWh
@@ -968,9 +998,20 @@ export default function RecepcaoClubDetalhe() {
       {!isPassado && aula && (totalpassEstado === 'ativo' || totalpassEstado === 'pausado') && (
         <div style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:12, marginBottom:'0.75rem' }}>
           <div style={{ padding:'0.5rem 1rem', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
-            <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>
-              Vagas na TotalPass
-              {totalpassEstado === 'pausado' && <span style={{ color:VERMELHO, fontWeight:500 }}> · pausado</span>}
+            <div>
+              <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>
+                Vagas na TotalPass
+                {totalpassEstado === 'pausado' && <span style={{ color:VERMELHO, fontWeight:500 }}> · pausado</span>}
+              </div>
+              {(() => {
+                const q = vagasTotalpass ?? vagasDefaultTp
+                const cheio = agendadasTotalpass >= q && q > 0
+                return (
+                  <div style={{ fontSize:11, fontWeight:600, color: cheio ? VERMELHO : '#888', marginTop:2 }}>
+                    {agendadasTotalpass}/{q} ocupadas{cheio ? ' · lotado' : ''}
+                  </div>
+                )
+              })()}
             </div>
             {(() => {
               const resolvido = vagasTotalpass ?? vagasDefaultTp

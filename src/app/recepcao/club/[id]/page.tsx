@@ -112,12 +112,6 @@ export default function RecepcaoClubDetalhe() {
   const [vagasBloqueadas, setVagasBloqueadas] = useState(0)
   const [salvandoVagas,   setSalvandoVagas]   = useState(false)
 
-  // NOVO: vagas expostas ao Wellhub (pool compartilhado). null = usa o default global.
-  const [vagasWellhub,    setVagasWellhub]    = useState<number | null>(null)
-  const [vagasDefaultWh,  setVagasDefaultWh]  = useState(10)
-  const [wellhubEstado,   setWellhubEstado]   = useState<string | null>(null)
-  const [salvandoWellhub, setSalvandoWellhub] = useState(false)
-
   // Navegação entre aulas do dia (‹ anterior / próxima ›)
   const [navPrev, setNavPrev] = useState<string | null>(null)
   const [navNext, setNavNext] = useState<string | null>(null)
@@ -189,17 +183,10 @@ export default function RecepcaoClubDetalhe() {
     // Inclui coach_escalado (FK coach_id da ocorrência) — prioridade sobre o coach da grade
     const { data: oc } = await supabase
       .from('club_ocorrencias')
-      .select('*, coach_escalado:coaches!coach_id(id, nome), club_aulas(tipo, horario, capacidade, unidade_id, coaches(nome), grupos_musculares(nome), unidades(nome, wellhub_estado))')
+      .select('*, coach_escalado:coaches!coach_id(id, nome), club_aulas(tipo, horario, capacidade, unidade_id, coaches(nome), grupos_musculares(nome), unidades(nome))')
       .eq('id', ocId).maybeSingle()
     setOcorrencia(oc)
     setVagasBloqueadas(oc?.vagas_bloqueadas || 0)
-    setVagasWellhub(oc?.vagas_wellhub ?? null)
-    setWellhubEstado((oc as any)?.club_aulas?.unidades?.wellhub_estado ?? null)
-    // Blindado: a integração Wellhub NUNCA pode afetar o carregamento desta tela.
-    try {
-      const { data: whCfg } = await supabase.from('wellhub_config').select('vagas_default').maybeSingle()
-      if (whCfg?.vagas_default != null) setVagasDefaultWh(whCfg.vagas_default)
-    } catch { /* ignora: a tela segue normal mesmo se a config Wellhub falhar */ }
 
     const { data: res } = await supabase
       .from('club_reservas')
@@ -311,24 +298,6 @@ export default function RecepcaoClubDetalhe() {
     showMsg(val === 0
       ? '✅ Vagas liberadas'
       : `🚫 ${val} vaga${val>1?'s':''} bloqueada${val>1?'s':''} nesta aula`)
-  }
-
-  // NOVO: define quantas vagas desta aula aparecem no app do Wellhub.
-  // null = usa o default global; 0 = some do app (parado); número = explícito.
-  async function salvarVagasWellhub(n: number | null) {
-    setSalvandoWellhub(true)
-    const { error } = await supabase
-      .from('club_ocorrencias')
-      .update({ vagas_wellhub: n })
-      .eq('id', ocId)
-    if (error) { showMsg('Erro: '+error.message); setSalvandoWellhub(false); return }
-    setVagasWellhub(n)
-    setSalvandoWellhub(false)
-    showMsg(n === null
-      ? `✅ Usando o padrão do Wellhub (${vagasDefaultWh})`
-      : n === 0
-        ? '🚫 Aula pausada no Wellhub (0 vagas)'
-        : `📲 ${n} vaga${n>1?'s':''} no Wellhub`)
   }
 
   async function buscarCliente() {
@@ -812,63 +781,6 @@ export default function RecepcaoClubDetalhe() {
                   {maxBloq === 0 && (
                     <div style={{ textAlign:'center', marginTop:'0.85rem', fontSize:12, color:'#aaa' }}>
                       Todas as vagas já estão reservadas — não há vagas livres para bloquear.
-                    </div>
-                  )}
-                </>
-              )
-            })()}
-          </div>
-        </div>
-      )}
-
-      {/* NOVO: Vagas no Wellhub — só em unidade integrada, aula de hoje/futuro */}
-      {!isPassado && aula && (wellhubEstado === 'ativo' || wellhubEstado === 'pausado') && (
-        <div style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:16, marginBottom:'1.5rem', overflow:'hidden' }}>
-          <div style={{ padding:'0.85rem 1.5rem', borderBottom:'1px solid #f3f4f6' }}>
-            <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>Vagas no Wellhub</div>
-            <div style={{ fontSize:12, color:'#aaa', marginTop:2 }}>
-              Quantas vagas desta aula aparecem no app do Wellhub. Os dois canais dividem o mesmo pool de vagas.
-              {wellhubEstado === 'pausado' && ' — integração PAUSADA nesta unidade no momento.'}
-            </div>
-          </div>
-          <div style={{ padding:'1.25rem 1.5rem' }}>
-            {(() => {
-              const resolvido = vagasWellhub ?? vagasDefaultWh
-              const usandoPadrao = vagasWellhub === null
-              return (
-                <>
-                  <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:14 }}>
-                    <button onClick={() => salvarVagasWellhub(Math.max(0, resolvido - 1))}
-                      disabled={salvandoWellhub || resolvido <= 0}
-                      style={{ width:44, height:44, borderRadius:'50%', border:'1.5px solid #e5e7eb',
-                        background:'#fff', fontSize:22, color: resolvido<=0 ? '#ddd' : '#555',
-                        cursor: (salvandoWellhub||resolvido<=0) ? 'default' : 'pointer', lineHeight:1 }}>
-                      −
-                    </button>
-                    <div style={{ minWidth:120, textAlign:'center' }}>
-                      <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:40, color: resolvido===0 ? VERMELHO : ACCENT, lineHeight:1 }}>
-                        {resolvido === 0 ? 'Parado' : resolvido}
-                      </div>
-                      <div style={{ fontSize:10, color:'#aaa', textTransform:'uppercase', letterSpacing:0.5, marginTop:2 }}>
-                        {usandoPadrao ? `padrão (${vagasDefaultWh})` : 'vagas no app'}
-                      </div>
-                    </div>
-                    <button onClick={() => salvarVagasWellhub(resolvido + 1)}
-                      disabled={salvandoWellhub}
-                      style={{ width:44, height:44, borderRadius:'50%',
-                        border:`1.5px solid ${ACCENT}`, background:`${ACCENT}10`, fontSize:22, color: ACCENT,
-                        cursor: salvandoWellhub ? 'default' : 'pointer', lineHeight:1 }}>
-                      +
-                    </button>
-                  </div>
-                  {!usandoPadrao && (
-                    <div style={{ textAlign:'center', marginTop:'1rem' }}>
-                      <button onClick={() => salvarVagasWellhub(null)} disabled={salvandoWellhub}
-                        style={{ background:'transparent', border:'none', color:'#888', fontSize:12,
-                          textDecoration:'underline', cursor: salvandoWellhub ? 'default' : 'pointer',
-                          fontFamily:"'DM Sans', sans-serif" }}>
-                        Usar padrão ({vagasDefaultWh})
-                      </button>
                     </div>
                   )}
                 </>
