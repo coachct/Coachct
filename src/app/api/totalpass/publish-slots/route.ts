@@ -14,7 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { criarOcorrencia, listarEventos } from '@/lib/totalpass/booking-api'
-import { placesAtivos, type TpPlace } from '@/lib/totalpass/places'
+import { placesAtivos, apiKeyPorPlace, planPorPlace, type TpPlace } from '@/lib/totalpass/places'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -87,6 +87,14 @@ export async function POST(req: NextRequest) {
   // unidade ativa, sem criar nada.
   if (params.get('probe')) {
     const envTotalpass = Object.keys(process.env).filter((k) => k.startsWith('TOTALPASS'))
+    // Candidatas: TODA unidade club — mostra por que entra ou não (estado/place/chave/plano).
+    const { data: clubs } = await supabase
+      .from('unidades').select('nome, tipo, totalpass_estado, totalpass_place_id').eq('tipo', 'club')
+    const candidatas = (clubs || []).map((u: any) => {
+      const pid = u.totalpass_place_id != null ? String(u.totalpass_place_id) : null
+      return { nome: u.nome, estado: u.totalpass_estado, placeId: pid,
+        temChave: pid ? !!apiKeyPorPlace(pid) : false, planId: pid ? planPorPlace(pid) : 0 }
+    })
     const places = await placesAtivos(supabase)
     const testes: any[] = []
     for (const p of places) {
@@ -94,7 +102,7 @@ export async function POST(req: NextRequest) {
       testes.push({ unidade: p.nome, placeId: p.placeId, planId: p.planId,
         status: ev.status, erro: ev.erro, qtd: Array.isArray(ev.body) ? ev.body.length : null })
     }
-    return NextResponse.json({ probe: true, envTotalpass, placesAtivos: places.map(p => p.nome), testes })
+    return NextResponse.json({ probe: true, envTotalpass, candidatas, placesAtivos: places.map(p => p.nome), testes })
   }
 
   // DRY-RUN: ?dryrun=1 mostra o que publicaria (só lê o nosso banco, NÃO toca na
