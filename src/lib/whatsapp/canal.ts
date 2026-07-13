@@ -224,11 +224,15 @@ export async function salvarMensagem(
   supabase: SupabaseClient,
   params: { telefone: string; clienteId: string | null; role: 'user' | 'assistant'; conteudo: string },
 ): Promise<void> {
+  // Mensagem do ASSISTENTE: salva JÁ sanitizada (mesmo tratamento do envio), pra o
+  // painel mostrar exatamente o que o cliente recebeu — e pra o histórico não
+  // reinjetar "Boa pergunta" etc. no contexto do modelo. Mensagem do cliente fica crua.
+  const conteudo = params.role === 'assistant' ? corrigirDominioSite(params.conteudo) : params.conteudo
   const { error } = await supabase.from('whatsapp_mensagens').insert({
     telefone: params.telefone,
     cliente_id: params.clienteId,
     role: params.role,
-    conteudo: params.conteudo,
+    conteudo,
   })
   if (error) console.error('[whatsapp/canal] falha ao salvar mensagem:', error.message)
 }

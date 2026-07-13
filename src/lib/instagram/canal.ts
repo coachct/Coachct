@@ -60,7 +60,10 @@ export async function salvarMensagemInstagram(
   supabase: SupabaseClient,
   params: { igsid: string; role: 'user' | 'assistant'; conteudo: string; autor?: 'bot' | 'humano' },
 ): Promise<void> {
-  const row: any = { igsid: params.igsid, role: params.role, conteudo: params.conteudo }
+  // Assistente: salva já sanitizado (igual ao envio), pro painel mostrar o que a
+  // pessoa recebeu (e o histórico não reinjetar "Boa pergunta" etc.).
+  const conteudo = params.role === 'assistant' ? corrigirDominioSite(params.conteudo) : params.conteudo
+  const row: any = { igsid: params.igsid, role: params.role, conteudo }
   if (params.autor) row.autor = params.autor
   const { error } = await supabase.from('instagram_mensagens').insert(row)
   if (error) console.error('[instagram/canal] falha ao salvar mensagem:', error.message)
