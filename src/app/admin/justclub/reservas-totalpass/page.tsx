@@ -91,6 +91,7 @@ export default function ReservasTotalpassPage() {
   const [ate, setAte] = useState(dataLocalStr(daqui21))
   const [statusFiltro, setStatusFiltro] = useState<string>('todas')
   const [origemFiltro, setOrigemFiltro] = useState<string>('app')
+  const [unidadeFiltro, setUnidadeFiltro] = useState<string>('todas')
   const [linhas, setLinhas] = useState<Linha[]>([])
   const [carregando, setCarregando] = useState(true)
 
@@ -152,9 +153,11 @@ export default function ReservasTotalpassPage() {
     setCarregando(false)
   }
 
+  const unidades = [...new Set(linhas.map(l => l.unidade).filter(u => u && u !== '—'))].sort()
   const visiveis = linhas.filter(l =>
     (statusFiltro === 'todas' || l.status === statusFiltro) &&
-    (origemFiltro === 'todas' || l.origem.toLowerCase() === origemFiltro)
+    (origemFiltro === 'todas' || l.origem.toLowerCase() === origemFiltro) &&
+    (unidadeFiltro === 'todas' || l.unidade === unidadeFiltro)
   )
 
   const kpis = {
@@ -193,6 +196,13 @@ export default function ReservasTotalpassPage() {
         <label className="text-xs text-gray-500">
           <div className="mb-1">Até</div>
           <input type="date" value={ate} onChange={e => setAte(e.target.value)} className="input" />
+        </label>
+        <label className="text-xs text-gray-500">
+          <div className="mb-1">Unidade</div>
+          <select value={unidadeFiltro} onChange={e => setUnidadeFiltro(e.target.value)} className="input">
+            <option value="todas">Todas</option>
+            {unidades.map(u => <option key={u} value={u}>{u}</option>)}
+          </select>
         </label>
         <label className="text-xs text-gray-500">
           <div className="mb-1">Origem</div>
