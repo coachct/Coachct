@@ -141,11 +141,6 @@ export function listarEventos(placeKey: string): Promise<TPResult> {
   return tpFetch(placeKey, '/partner/events', 'GET');
 }
 
-// ── GET genérico autenticado (diagnóstico: descobrir planos etc.) ─────────────
-export function tpGet(placeKey: string, path: string): Promise<TPResult> {
-  return tpFetch(placeKey, path, 'GET');
-}
-
 // ── Slots (reservas): polling. Janela máx. 30 dias. ──────────────────────────
 export function listarSlots(placeKey: string, params?: {
   eventOccurrenceUuid?: string;
