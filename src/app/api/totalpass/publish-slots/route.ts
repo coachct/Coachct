@@ -13,7 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
-import { criarOcorrencia, listarEventos } from '@/lib/totalpass/booking-api'
+import { criarOcorrencia, listarEventos, tpGet } from '@/lib/totalpass/booking-api'
 import { placesAtivos, apiKeyPorPlace, planPorPlace, type TpPlace } from '@/lib/totalpass/places'
 
 export const runtime = 'nodejs'
@@ -82,6 +82,23 @@ export async function POST(req: NextRequest) {
   }
   const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
   const params = new URL(req.url).searchParams
+
+  // DIAGNÓSTICO: ?plans=1 tenta descobrir os PLANOS de cada unidade ativa,
+  // batendo em vários endpoints candidatos da TotalPass (só GET, não cria nada).
+  if (params.get('plans')) {
+    const candidatos = ['/partner/plans', '/partner/plan', '/partner/products', '/partner/place', '/partner/places', '/partner/entitlements']
+    const places = await placesAtivos(supabase)
+    const out: any[] = []
+    for (const p of places) {
+      const tentativas: any[] = []
+      for (const path of candidatos) {
+        const r = await tpGet(p.apiKey!, path)
+        tentativas.push({ path, status: r.status, body: typeof r.body === 'string' ? r.body.slice(0, 300) : JSON.stringify(r.body).slice(0, 500) })
+      }
+      out.push({ unidade: p.nome, placeId: p.placeId, tentativas })
+    }
+    return NextResponse.json({ plans: true, out })
+  }
 
   // DIAGNÓSTICO: ?probe=1 lista as env TOTALPASS* (só nomes) e testa a API de cada
   // unidade ativa, sem criar nada.
