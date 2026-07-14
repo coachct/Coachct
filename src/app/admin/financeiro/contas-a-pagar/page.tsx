@@ -693,12 +693,11 @@ export default function ContasAPagarPage() {
                     <th className="px-2 py-3 font-medium">Fornecedor</th>
                     <th className="px-2 py-3 font-medium">Unidade</th>
                     <th className="px-2 py-3 font-medium">Categoria</th>
-                    <th className="hidden px-2 py-3 font-medium 2xl:table-cell">Origem</th>
                     <th className="px-2 py-3 font-medium">Compet.</th>
                     <th className="px-2 py-3 font-medium">Venc.</th>
                     <th className="px-2 py-3 font-medium">Status</th>
                     <th className="px-2 py-3 text-right font-medium">Valor</th>
-                    <th className="px-2 py-3 text-right font-medium">Ações</th>
+                    <th className="sticky right-0 bg-white px-2 py-3 text-right font-medium">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -722,7 +721,16 @@ export default function ContasAPagarPage() {
                             <span className="block h-4 w-4" />
                           )}
                         </td>
-                        <td className="px-2 py-3 font-medium text-gray-900">{d.descricao}</td>
+                        <td className="px-2 py-3 font-medium text-gray-900">
+                          <div className="flex flex-col gap-1">
+                            <span>{d.descricao}</span>
+                            <span
+                              className={`inline-flex w-fit rounded-full px-2 py-0.5 text-[11px] font-medium ${ORIGEM_BADGE[d.origem]}`}
+                            >
+                              {ORIGEM_LABEL[d.origem]}
+                            </span>
+                          </div>
+                        </td>
                         <td className="px-2 py-3 text-gray-600">
                           {d.fornecedor_id ? fornecedorPorId.get(d.fornecedor_id) || '—' : '—'}
                         </td>
@@ -735,13 +743,6 @@ export default function ContasAPagarPage() {
                           ) : (
                             <span className="text-gray-400">—</span>
                           )}
-                        </td>
-                        <td className="hidden px-2 py-3 2xl:table-cell">
-                          <span
-                            className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${ORIGEM_BADGE[d.origem]}`}
-                          >
-                            {ORIGEM_LABEL[d.origem]}
-                          </span>
                         </td>
                         <td className="px-2 py-3 text-gray-600">{fmtCompetencia(d.competencia)}</td>
                         <td className={`px-2 py-3 ${vencida ? 'font-semibold text-red-600' : 'text-gray-600'}`}>
@@ -765,7 +766,7 @@ export default function ContasAPagarPage() {
                         <td className="px-2 py-3 text-right font-semibold text-gray-900">
                           {fmtBRL(Number(d.valor))}
                         </td>
-                        <td className="px-2 py-3">
+                        <td className="sticky right-0 bg-white px-2 py-3">
                           <div className="flex items-center justify-end gap-0.5">
                             <button
                               onClick={() => alternarPago(d)}
