@@ -260,7 +260,7 @@ export async function proximasReservasClub(
   const hoje = opts.hoje ?? agoraEmSaoPaulo().dataStr
   const { data, error } = await supabase
     .from('club_reservas')
-    .select('id, status, posicao, tipo_credito, club_ocorrencias(data, club_aulas(tipo, horario, unidade_id))')
+    .select('id, status, posicao, tipo_credito, via_app, club_ocorrencias(data, club_aulas(tipo, horario, unidade_id))')
     .eq('cliente_id', clienteId)
     .eq('status', 'reservado')
   if (error) throw new Error(`club_reservas: ${error.message}`)
