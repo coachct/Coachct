@@ -174,6 +174,19 @@ function MapaPageInner() {
     setPosicoesTomadas([...reservadas, ...bloqueadasGlobais, ...bloqueadasPontual])
   }
 
+  // Dispara o email de confirmação (fire-and-forget; não trava nem quebra a UX se falhar).
+  // Espelha o /aulas: reservas de Running fechadas aqui no /mapa também precisam confirmar por email.
+  async function dispararEmailReserva(reservaId: string) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) return
+      fetch('/api/notificacoes/reserva-confirmada', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ tipo: 'club', reservaId }),
+      }).catch(() => {})
+    } catch {}
+  }
   async function confirmarReserva(continuar: boolean = false) {
     if (!tipoCredito) { setErroModal('Selecione o plano.'); return }
     if (!posicaoSel || !cliente) return
@@ -200,16 +213,18 @@ function MapaPageInner() {
         setConfirmando(false); return
       }
     }
-    const { error } = await supabase.from('club_reservas').insert({
+    const { data: novaReserva, error } = await supabase.from('club_reservas').insert({
       ocorrencia_id: ocId, cliente_id: cliente.id, tipo_credito: tipoCredito,
       posicao: posicaoSel, status: 'reservado', criado_via: 'cliente',
-    })
+    }).select('id').single()
     if (error) {
       const msg = error.message?.includes('já tem uma reserva')
         ? 'Você já tem uma reserva nesta unidade neste dia com este plano. Cada plano permite apenas uma reserva por dia por unidade.'
         : 'Erro ao reservar: '+error.message
       setErroModal(msg); setConfirmando(false); return
     }
+    // Confirmação por email — dispara nos dois caminhos (continuar e sair) logo após o insert.
+    if (novaReserva?.id) dispararEmailReserva(novaReserva.id)
     if (continuar) {
       // Reserva feita, mas fica na mesma tela pra escolher outra posição
       setConfirmando(false)
