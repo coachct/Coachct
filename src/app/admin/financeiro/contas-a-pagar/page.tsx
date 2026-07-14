@@ -109,7 +109,9 @@ export default function ContasAPagarPage() {
 
   // ---- filtros ----
   const [baseMes, setBaseMes] = useState<'competencia' | 'vencimento'>('competencia')
-  const [fPeriodo, setFPeriodo] = useState<'mes' | 'hoje' | '7dias'>('mes')
+  const [fPeriodo, setFPeriodo] = useState<'mes' | 'hoje' | '7dias' | 'data'>('mes')
+  const [fDataDe, setFDataDe] = useState(hoje)
+  const [fDataAte, setFDataAte] = useState('')
   const [fTodosMeses, setFTodosMeses] = useState(false)
   const [fMes, setFMes] = useState(mesAtual)
   const [fAno, setFAno] = useState(anoAtual)
@@ -204,8 +206,15 @@ export default function ContasAPagarPage() {
   const periodoRange = useMemo(() => {
     if (fPeriodo === 'hoje') return { ini: hoje, fim: hoje }
     if (fPeriodo === '7dias') return { ini: addDiasStr(hoje, -6), fim: hoje }
+    if (fPeriodo === 'data') {
+      // um campo preenchido = data única; os dois = período (inclusive)
+      const de = fDataDe || fDataAte
+      const ate = fDataAte || fDataDe
+      if (!de) return { ini: '￿', fim: '' } // nada preenchido → não mostra nada
+      return de <= ate ? { ini: de, fim: ate } : { ini: ate, fim: de }
+    }
     return null
-  }, [fPeriodo, hoje])
+  }, [fPeriodo, hoje, fDataDe, fDataAte])
 
   const lista = useMemo(() => {
     return despesas.filter((d) => {
@@ -537,8 +546,41 @@ export default function ContasAPagarPage() {
               >
                 Últimos 7 dias
               </button>
+              <button
+                onClick={() => setFPeriodo('data')}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                  fPeriodo === 'data'
+                    ? 'bg-[#ff2d9b] text-white'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                Data
+              </button>
             </div>
           </div>
+
+          {fPeriodo === 'data' && (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">
+                Vencimento (data ou período)
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={fDataDe}
+                  onChange={(e) => setFDataDe(e.target.value)}
+                  className={inputCls}
+                />
+                <span className="text-sm text-gray-400">até</span>
+                <input
+                  type="date"
+                  value={fDataAte}
+                  onChange={(e) => setFDataAte(e.target.value)}
+                  className={inputCls}
+                />
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-500">Mês</label>
