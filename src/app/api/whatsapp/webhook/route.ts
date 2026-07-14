@@ -255,11 +255,13 @@ async function processar(de: string, texto: string, wamid: string, botaoId: stri
 
     await salvarMensagem(supabase, { telefone, clienteId: cliente.id, role: 'assistant', conteudo: resposta.texto })
 
-    // Se o agente disse que vai ENCAMINHAR pra EQUIPE, marca a conversa como
-    // aguardando atendimento (aparece no painel para um atendente resolver).
+    // Se o agente ESCALOU (não tinha certeza, chamou escalar_para_humano) OU disse
+    // que vai ENCAMINHAR pra EQUIPE, marca a conversa como aguardando atendimento
+    // (aparece no painel para um atendente resolver).
     const tResp = resposta.texto.toLowerCase()
-    if (tResp.includes('encaminh') && tResp.includes('equipe')) {
+    if (resposta.escalar || (tResp.includes('encaminh') && tResp.includes('equipe'))) {
       await marcarAguardandoHumano(supabase, telefone)
+      if (resposta.motivoEscalar) console.log(`[whatsapp/webhook] escalado: ${resposta.motivoEscalar}`)
     }
 
     // Se o agente pediu confirmação de uma ação, guarda-a como pendente: a próxima
@@ -536,7 +538,12 @@ async function resolverPorCadastro(
   //    passo do site, e pede nome + CPF OU e-mail quando for coisa da conta.
   const hist = await carregarHistorico(supabase, telefone)
   const resp = await responderVisitante({ supabase, mensagem: texto, historico: hist })
-  return responder(resp)
+  // Bot sem certeza → escala pra equipe (aparece no painel "aguardando atendimento").
+  if (resp.escalar) {
+    await marcarAguardandoHumano(supabase, telefone)
+    if (resp.motivoEscalar) console.log(`[whatsapp/webhook] escalado (visitante): ${resp.motivoEscalar}`)
+  }
+  return responder(resp.texto)
 }
 
 /** Extrai o primeiro e-mail que aparecer na mensagem (ou null). */

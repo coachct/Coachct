@@ -40,6 +40,11 @@ interface ContextoGeral {
 const MODELO = 'claude-sonnet-4-6'
 const MAX_ITERACOES = 6 // trava de segurança contra loop infinito de tools
 
+// Mensagem que o cliente recebe quando o bot NÃO tem certeza e prefere escalar
+// pra equipe (em vez de inventar). A conversa vai pro painel "aguardando atendimento".
+const MSG_ESCALAR =
+  'Deixa eu confirmar isso certinho com a equipe pra não te passar nenhuma informação errada, tá? 🙏 Já já te respondo por aqui!'
+
 // ---------------------------------------------------------------------------
 // System prompt — identidade e regras da Just CT
 // ---------------------------------------------------------------------------
@@ -71,6 +76,12 @@ NUNCA ofereça ações ("posso te ajudar a reagendar / cancelar / trocar pras 18
 - Se for sobre uma reserva/treino/aula (cancelar, trocar, faltar, "minha aula de hoje", horário...), CONSULTE **proximas_reservas_club** (aulas do JustClub: Lift, Lift for Girls, Running Funcional) **E proximos_agendamentos** (personal Coach CT) — e **historico_treinos** se for algo do passado. IMPORTANTE: aulas/treinos JÁ FEITOS ou PERDIDOS (presente/falta) NÃO aparecem em proximas_reservas_club nem em proximos_agendamentos (que só trazem coisas FUTURAS em aberto) — eles aparecem em **historico_treinos** (que reúne o histórico de personal E das aulas do Club, com presença e falta). Então, antes de dizer "não encontrei nenhuma reserva/histórico na sua conta", SEMPRE consulte historico_treinos também. Só conclua que a pessoa não tem nada depois de olhar os TRÊS (proximas_reservas_club, proximos_agendamentos e historico_treinos). ATENÇÃO: as AULAS do Club (Running Funcional, Lift, Lift for Girls) NÃO são "personal" e NÃO ficam em agendamentos — ficam nas RESERVAS do Club. Nunca conclua que não há nada só porque olhou o personal.
 - Se o cliente JÁ disse qual é o treino/horário (ex.: "Running Funcional 06:00"), use isso — NÃO pergunte de novo o treino nem a unidade.
 - Só pergunte detalhes que você realmente não conseguiu descobrir consultando as ferramentas.
+
+# NUNCA INVENTE — na dúvida, ESCALE (regra que prevalece sobre TUDO)
+Inventar ou supor uma informação errada é o PIOR erro possível — pior do que demorar ou do que dizer "vou confirmar". Você só pode afirmar um fato (horário, grade de aula, dia, regra, política, valor, prazo) se ele veio de uma FERRAMENTA ou da BASE DE CONHECIMENTO abaixo. Se você NÃO tem certeza — se está "achando", deduzindo, ou preenchendo lacuna — você está PROIBIDO de responder de cabeça. Em vez disso, use a ferramenta **escalar_para_humano**: o cliente recebe um "só um momento, já confirmo isso certinho" e a equipe assume. Escalar NÃO é falhar; inventar é.
+- GRADE / HORÁRIO DE AULA: NUNCA diga que uma aula "é de manhã", "é à noite", "não tem no dia X", "quarta é HIIT", etc. de cabeça. Para saber quais aulas existem num dia/unidade, CONSULTE **aulas_club_disponiveis** (passando unidade + data) — e responda SÓ o que ela devolver. Se faltar a unidade, pergunte. Se mesmo assim não conseguir confirmar (a ferramenta não cobre a pergunta, é um "por que não tem aula tal"...), ESCALE — nunca chute o motivo nem o horário.
+- REGRA / POLÍTICA / VALOR: se não está na base de conhecimento nem numa ferramenta, ESCALE. Não crie regra.
+- Antes de mandar qualquer resposta, faça a si mesmo: "isso veio de uma ferramenta ou da base?" Se a resposta for "não, eu deduzi" → NÃO envie, ESCALE.
 
 # Identidade (importante)
 - NUNCA se apresente como "assistente virtual", "bot", "IA" ou "atendimento automático". Você é a Just Club & CT falando com o cliente, ponto.
@@ -422,6 +433,20 @@ const TOOLS: Anthropic.Tool[] = [
       required: ['cpf'],
     },
   },
+  {
+    name: 'escalar_para_humano',
+    description: 'Passa a conversa para a EQUIPE humana e avisa o cliente que você já volta com a resposta. Use SEMPRE que NÃO tiver CERTEZA de uma informação — grade/horário de aula que você não conseguiu confirmar por uma ferramenta, uma regra/política que não está na base de conhecimento, um caso fora do comum, ou qualquer coisa que você iria "achar" ou supor. É MUITO melhor escalar do que inventar/chutar: inventar informação errada é o pior erro possível. Também use quando o cliente pedir explicitamente pra falar com um atendente/pessoa. Ao chamar, seu turno TERMINA: o cliente recebe um "só um momento, já te respondo" e a conversa aparece no painel da equipe. NUNCA invente nem suponha um fato só pra evitar escalar.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        motivo: {
+          type: 'string',
+          description: 'Em 1 linha, o que a equipe precisa confirmar/responder (ex.: "cliente quer saber se tem aula de ABS quarta de manhã na Vila Olímpia").',
+        },
+      },
+      required: ['motivo'],
+    },
+  },
 ]
 
 // Ferramentas que acessam dados pessoais do cliente (geram log de LGPD).
@@ -559,6 +584,13 @@ export interface RespostaAgente {
    * O webhook salva isto como "ação pendente" e a executa quando o cliente confirmar.
    */
   acaoPendente?: { acao: string; params: any; resumo: string }
+  /**
+   * Presente quando o agente pediu para ESCALAR pra equipe (ferramenta
+   * escalar_para_humano) — porque não tinha certeza da resposta. O webhook marca
+   * a conversa como "aguardando atendimento". `motivoEscalar` é a nota interna.
+   */
+  escalar?: boolean
+  motivoEscalar?: string
 }
 
 /**
@@ -642,6 +674,20 @@ export async function responderMensagem(params: {
         if (texto) return { texto } // malformado → manda só o texto
       }
 
+      // Terminal: o agente NÃO tem certeza e quer ESCALAR pra equipe. Encerra o
+      // turno com uma mensagem segura ("já confirmo com a equipe") — o webhook
+      // marca a conversa como aguardando atendimento. NUNCA inventar é o objetivo.
+      const blocoEscalar = resposta.content.find(
+        (b): b is Anthropic.ToolUseBlock =>
+          b.type === 'tool_use' && b.name === 'escalar_para_humano',
+      )
+      if (blocoEscalar) {
+        const inp: any = blocoEscalar.input
+        const motivo = String(inp?.motivo ?? '').trim()
+        registroTools?.push(`escalar_para_humano(${JSON.stringify(inp)})`)
+        return { texto: MSG_ESCALAR, escalar: true, motivoEscalar: motivo }
+      }
+
       // Terminal: o agente quer responder com BOTÕES? Encerra o turno aqui.
       const blocoBotoes = resposta.content.find(
         (b): b is Anthropic.ToolUseBlock =>
@@ -713,6 +759,20 @@ const TOOLS_VISITANTE: Anthropic.Tool[] = [
     description: 'Catálogo de preços de planos e pacotes da Just Club & CT. Use sempre que perguntarem quanto custa algo, valores, planos ou pacotes.',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
+  {
+    name: 'escalar_para_humano',
+    description: 'Passa a conversa para a EQUIPE humana e avisa o cliente que você já volta com a resposta. Use SEMPRE que NÃO tiver CERTEZA de uma informação — grade/horário de aula específica, uma regra/política que não está na base de conhecimento, um caso fora do comum, ou qualquer coisa que você iria "achar" ou supor. Você NÃO tem acesso à grade de aulas por aqui: então, se perguntarem um horário específico que não dá pra resolver indicando o site, é melhor escalar do que inventar. Inventar informação errada é o pior erro possível. Também use quando o cliente pedir pra falar com um atendente/pessoa. Ao chamar, seu turno TERMINA. NUNCA invente nem suponha um fato só pra evitar escalar.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        motivo: {
+          type: 'string',
+          description: 'Em 1 linha, o que a equipe precisa confirmar/responder.',
+        },
+      },
+      required: ['motivo'],
+    },
+  },
 ]
 
 /** Datas de hoje/amanhã no fuso de SP, prontas (evita o "bug noturno" de conta de data). */
@@ -733,7 +793,7 @@ export async function responderVisitante(params: {
   supabase: SupabaseClient
   mensagem: string
   historico?: TurnoConversa[]
-}): Promise<string> {
+}): Promise<{ texto: string; escalar?: boolean; motivoEscalar?: string }> {
   const { supabase, mensagem, historico = [] } = params
   const client = new Anthropic()
   const hoje = calcularHoje()
@@ -751,6 +811,9 @@ Você está falando com alguém que NÃO está identificado. Para QUALQUER coisa
 
 # ENDEREÇO DO SITE — escreva EXATO (erro comum, ATENÇÃO)
 O endereço é EXATAMENTE https://www.justclubct.com.br — "club" colado em "ct" (j-u-s-t-c-l-u-b-c-t), SEM nenhum "e" entre eles. NUNCA escreva "justclubect" nem qualquer variação. Sempre copie certinho: https://www.justclubct.com.br
+
+# NUNCA INVENTE — na dúvida, ESCALE (regra que prevalece sobre TUDO)
+Inventar ou supor uma informação errada é o PIOR erro possível. Você só pode afirmar um fato (horário, grade de aula, dia, regra, política, valor) se ele veio da ferramenta consultar_precos ou da BASE DE CONHECIMENTO abaixo. Por aqui você NÃO tem acesso à grade de aulas — então NUNCA diga que uma aula "é de manhã/à noite", "não tem no dia X", "quarta é tal coisa", nem invente o MOTIVO de algo não aparecer no app. Para horário/grade de um dia, indique o site/app (sempre atualizado), como na regra de horários abaixo. Se a pessoa insistir num caso específico que o site não resolve, ou perguntar algo que você não tem como confirmar, use a ferramenta **escalar_para_humano** (o cliente recebe um "já confirmo com a equipe" e a equipe assume). Escalar NÃO é falhar; inventar é. Antes de enviar, pergunte a si mesmo: "isso veio de uma ferramenta ou da base?" Se você deduziu → NÃO envie, ESCALE ou indique o site.
 
 # Data de hoje (você SABE que dia é — NUNCA pergunte)
 - HOJE é ${hoje.extenso} — ${hoje.dataStr}. Quando o cliente disser "hoje", é esse dia. JAMAIS pergunte "que dia é hoje?" nem diga que não sabe a data: você sabe.
@@ -795,6 +858,16 @@ Português do Brasil, caloroso e direto. Mensagens curtas (é WhatsApp). Pode *n
       messages,
     })
     if (resposta.stop_reason === 'tool_use') {
+      // Terminal: o agente NÃO tem certeza e quer ESCALAR pra equipe.
+      const blocoEscalar = resposta.content.find(
+        (b): b is Anthropic.ToolUseBlock =>
+          b.type === 'tool_use' && b.name === 'escalar_para_humano',
+      )
+      if (blocoEscalar) {
+        const motivo = String((blocoEscalar.input as any)?.motivo ?? '').trim()
+        return { texto: MSG_ESCALAR, escalar: true, motivoEscalar: motivo }
+      }
+
       messages.push({ role: 'assistant', content: resposta.content })
       const resultados: Anthropic.ToolResultBlockParam[] = []
       for (const bloco of resposta.content) {
@@ -816,7 +889,7 @@ Português do Brasil, caloroso e direto. Mensagens curtas (é WhatsApp). Pode *n
       .map((b) => b.text)
       .join('\n')
       .trim()
-    return texto || 'Oi! 😊 Me conta como posso te ajudar — dúvidas de planos, modalidades, horários, ou se você já é aluno(a) e quer ver sua conta (aí me manda nome completo + CPF).'
+    return { texto: texto || 'Oi! 😊 Me conta como posso te ajudar — dúvidas de planos, modalidades, horários, ou se você já é aluno(a) e quer ver sua conta (aí me manda nome completo + CPF).' }
   }
-  return 'Oi! 😊 Se sua dúvida é sobre planos/horários, manda que eu respondo. Se você já é aluno(a) e quer ver sua conta, me envia nome completo + CPF.'
+  return { texto: 'Oi! 😊 Se sua dúvida é sobre planos/horários, manda que eu respondo. Se você já é aluno(a) e quer ver sua conta, me envia nome completo + CPF.' }
 }
