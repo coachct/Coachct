@@ -97,23 +97,37 @@ export default function CheckinsWellhubPage() {
     const inicio = inicioMesStr(ano, mes)
     const prox = mes === 12 ? inicioMesStr(ano + 1, 1) : inicioMesStr(ano, mes + 1)
 
-    const { data, error } = await supabase
-      .from('entradas_walkin')
-      .select(
-        'id, origem, status, id_externo, produto, valor, recebido_em, validado_em, cliente_id, raw, clientes(nome)'
-      )
-      .in('origem', ['wellhub', 'totalpass'])
-      .neq('status', 'aula') // check-ins de aula (Club) não entram no painel do CT
-      .gte('recebido_em', inicio)
-      .lt('recebido_em', prox)
-      .order('recebido_em', { ascending: false })
+    // Busca em blocos: o PostgREST corta em 1000 linhas por resposta e um mês
+    // cheio passa disso, o que truncava os totais.
+    const TAMANHO_BLOCO = 1000
+    const todos: Checkin[] = []
 
-    if (error) {
-      setErro('Não foi possível carregar os check-ins.')
-      setCarregando(false)
-      return
+    for (let inicioBloco = 0; ; inicioBloco += TAMANHO_BLOCO) {
+      const { data, error } = await supabase
+        .from('entradas_walkin')
+        .select(
+          'id, origem, status, id_externo, produto, valor, recebido_em, validado_em, cliente_id, raw, clientes(nome)'
+        )
+        .in('origem', ['wellhub', 'totalpass'])
+        .neq('status', 'aula') // check-ins de aula (Club) não entram no painel do CT
+        .gte('recebido_em', inicio)
+        .lt('recebido_em', prox)
+        .order('recebido_em', { ascending: false })
+        .order('id', { ascending: false })
+        .range(inicioBloco, inicioBloco + TAMANHO_BLOCO - 1)
+
+      if (error) {
+        setErro('Não foi possível carregar os check-ins.')
+        setCarregando(false)
+        return
+      }
+
+      const bloco = (data as Checkin[]) || []
+      todos.push(...bloco)
+      if (bloco.length < TAMANHO_BLOCO) break
     }
-    setItens((data as Checkin[]) || [])
+
+    setItens(todos)
     setCarregando(false)
   }
 
