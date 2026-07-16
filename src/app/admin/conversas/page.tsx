@@ -1,9 +1,9 @@
 'use client'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
-import { MessageCircle, Search, Bot, User, Send, Headset, Paperclip, FileText } from 'lucide-react'
+import { MessageCircle, Search, Bot, User, Send, Headset, Paperclip, FileText, ArrowLeft } from 'lucide-react'
 
 // Quantas mensagens trazer (volume ainda baixo; subir depois se precisar).
 const LIMITE_MSGS = 3000
@@ -268,6 +268,14 @@ export default function ConversasPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [thread])
 
+  // Ao abrir/atualizar a conversa, rola a thread pro FIM (a mensagem mais nova é
+  // o que interessa). Mexe só no scroll do painel — nunca no scroll da página.
+  const threadRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const el = threadRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [thread, telSel])
+
   const convSel = conversas.find((c) => c.telefone === telSel) || null
   const humanoAtivo = telSel ? !!controle[telSel] : false
   const qtdAguardando = conversas.filter((c) => aguardando[c.telefone]).length
@@ -280,16 +288,18 @@ export default function ConversasPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
-        <h1 className="text-lg font-semibold text-gray-900">Conversas do WhatsApp</h1>
+      <div className="bg-white border-b border-gray-200 px-4 py-3 md:px-6 md:py-4 sticky top-0 z-10">
+        <h1 className="text-base md:text-lg font-semibold text-gray-900">Conversas do WhatsApp</h1>
         <p className="text-xs text-gray-400 mt-0.5">Atendimentos do assistente virtual com os clientes</p>
       </div>
 
-      <div className="max-w-6xl mx-auto px-6 py-5">
-        <div className="grid grid-cols-12 gap-4" style={{ height: 'calc(100vh - 140px)' }}>
+      <div className="max-w-6xl mx-auto px-3 py-3 md:px-6 md:py-5">
+        {/* No celular é master-detail: mostra a LISTA ou a CONVERSA (uma de cada
+            vez). No desktop (md+) volta a ser lado a lado, como sempre foi. */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 h-[calc(100dvh-104px)] md:h-[calc(100vh-140px)]">
 
           {/* Lista de conversas */}
-          <div className="col-span-5 card p-0 flex flex-col overflow-hidden">
+          <div className={`${telSel ? 'hidden md:flex' : 'flex'} md:col-span-5 card p-0 flex-col overflow-hidden`}>
             <div className="p-3 border-b border-gray-100 space-y-2">
               <div className="relative">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -297,7 +307,7 @@ export default function ConversasPage() {
                   value={busca}
                   onChange={(e) => setBusca(e.target.value)}
                   placeholder="Buscar por nome ou telefone…"
-                  className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-gray-200 focus:border-primary-400 focus:outline-none"
+                  className="w-full pl-9 pr-3 py-2 text-base md:text-sm rounded-xl border border-gray-200 focus:border-primary-400 focus:outline-none"
                 />
               </div>
               <div className="flex items-center gap-2">
@@ -306,7 +316,7 @@ export default function ConversasPage() {
                   type="date"
                   value={desde}
                   onChange={(e) => setDesde(e.target.value)}
-                  className="flex-1 px-2 py-1.5 text-sm rounded-lg border border-gray-200 focus:border-primary-400 focus:outline-none"
+                  className="flex-1 min-w-0 px-2 py-1.5 text-base md:text-sm rounded-lg border border-gray-200 focus:border-primary-400 focus:outline-none"
                 />
                 {desde && (
                   <button onClick={() => setDesde('')} className="text-xs text-primary-600 hover:underline">limpar</button>
@@ -357,7 +367,7 @@ export default function ConversasPage() {
           </div>
 
           {/* Conversa aberta */}
-          <div className="col-span-7 card p-0 flex flex-col overflow-hidden">
+          <div className={`${telSel ? 'flex' : 'hidden md:flex'} md:col-span-7 card p-0 flex-col overflow-hidden`}>
             {!convSel ? (
               <div className="flex-1 flex flex-col items-center justify-center text-gray-400 text-sm">
                 <MessageCircle size={36} className="mb-3 text-gray-300" />
@@ -365,39 +375,51 @@ export default function ConversasPage() {
               </div>
             ) : (
               <>
-                <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold text-gray-900 truncate">{convSel.nome || 'Não identificado'}</div>
-                    <div className="text-xs text-gray-400">{fmtTel(convSel.telefone)} · {convSel.total} mensagens</div>
-                    {aguardando[convSel.telefone] && !humanoAtivo && (
-                      <div className="text-[11px] font-semibold text-red-600 flex items-center gap-1 mt-0.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> Cliente pediu atendimento
-                      </div>
-                    )}
+                <div className="px-3 md:px-5 py-3 border-b border-gray-100 flex items-center justify-between gap-2 md:gap-3">
+                  <div className="min-w-0 flex items-center gap-1.5">
+                    {/* Voltar pra lista — só no celular (no desktop a lista está do lado). */}
+                    <button
+                      onClick={() => setTelSel(null)}
+                      aria-label="Voltar para a lista de conversas"
+                      className="md:hidden -ml-1 p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 flex-shrink-0"
+                    >
+                      <ArrowLeft size={18} />
+                    </button>
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-gray-900 truncate">{convSel.nome || 'Não identificado'}</div>
+                      <div className="text-xs text-gray-400 truncate">{fmtTel(convSel.telefone)} · {convSel.total} mensagens</div>
+                      {aguardando[convSel.telefone] && !humanoAtivo && (
+                        <div className="text-[11px] font-semibold text-red-600 flex items-center gap-1 mt-0.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" /> Cliente pediu atendimento
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0">
                     {aguardando[convSel.telefone] && !humanoAtivo && (
                       <button
                         onClick={() => resolverAguardando(convSel.telefone)}
-                        className="px-3 py-2 rounded-xl text-xs font-medium border bg-white text-gray-600 border-gray-200 hover:border-primary-300"
+                        className="px-2.5 md:px-3 py-2 rounded-xl text-xs font-medium border bg-white text-gray-600 border-gray-200 hover:border-primary-300 whitespace-nowrap"
                       >
-                        Marcar resolvido
+                        <span className="md:hidden">Resolver</span>
+                        <span className="hidden md:inline">Marcar resolvido</span>
                       </button>
                     )}
                     <button
                       onClick={() => toggleHumano(convSel.telefone, !humanoAtivo)}
-                      className={`px-3 py-2 rounded-xl text-xs font-medium border transition-all ${
+                      className={`px-2.5 md:px-3 py-2 rounded-xl text-xs font-medium border transition-all whitespace-nowrap ${
                         humanoAtivo
                           ? 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'
                           : 'bg-green-600 text-white border-green-600 hover:bg-green-700'
                       }`}
                     >
-                      {humanoAtivo ? 'Devolver ao assistente' : 'Assumir conversa'}
+                      <span className="md:hidden">{humanoAtivo ? 'Devolver' : 'Assumir'}</span>
+                      <span className="hidden md:inline">{humanoAtivo ? 'Devolver ao assistente' : 'Assumir conversa'}</span>
                     </button>
                   </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
+                <div ref={threadRef} className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3 bg-gray-50">
                   {thread.map((m, i) => {
                     const novoDia = i === 0 || diaStr(thread[i - 1].criado_em) !== diaStr(m.criado_em)
                     const ehCliente = m.role === 'user'
@@ -416,7 +438,7 @@ export default function ConversasPage() {
                           </div>
                         )}
                         <div className={`flex ${ehCliente ? 'justify-start' : 'justify-end'}`}>
-                          <div className={`max-w-[78%] rounded-2xl px-3.5 py-2 ${bolha}`}>
+                          <div className={`max-w-[85%] md:max-w-[78%] rounded-2xl px-3.5 py-2 ${bolha}`}>
                             <div className={`flex items-center gap-1.5 mb-0.5 text-[10px] uppercase tracking-wide ${tagCor}`}>
                               {ehCliente ? <User size={11} /> : ehHumano ? <Headset size={11} /> : <Bot size={11} />}
                               {quem}
@@ -470,16 +492,16 @@ export default function ConversasPage() {
                       onChange={(e) => setRascunho(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarMensagem() } }}
                       rows={1}
-                      placeholder="Escreva sua resposta… (Enter envia, Shift+Enter quebra linha)"
-                      className="flex-1 resize-none px-3 py-2 text-sm rounded-xl border border-gray-200 focus:border-primary-400 focus:outline-none max-h-32"
+                      placeholder="Escreva sua resposta…"
+                      className="flex-1 min-w-0 resize-none px-3 py-2 text-base md:text-sm rounded-xl border border-gray-200 focus:border-primary-400 focus:outline-none max-h-32"
                     />
                     <button
                       onClick={enviarMensagem}
                       disabled={enviando || !rascunho.trim()}
-                      className="flex-shrink-0 px-4 py-2 rounded-xl bg-primary-600 text-white text-sm font-medium disabled:opacity-50 flex items-center gap-1.5"
+                      className="flex-shrink-0 px-3 md:px-4 py-2 rounded-xl bg-primary-600 text-white text-sm font-medium disabled:opacity-50 flex items-center gap-1.5"
                     >
                       <Send size={15} />
-                      {enviando ? 'Enviando…' : 'Enviar'}
+                      <span className="hidden md:inline">{enviando ? 'Enviando…' : 'Enviar'}</span>
                     </button>
                   </div>
                 ) : (
