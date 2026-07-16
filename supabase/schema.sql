@@ -1,6 +1,21 @@
 -- =============================================
 -- IRON SYSTEM — Schema do Banco de Dados
--- Execute este arquivo no SQL Editor do Supabase
+--
+-- ⚠️ ATENÇÃO: ESTE ARQUIVO ESTÁ DESATUALIZADO. NÃO EXECUTE, NÃO USE COMO
+-- REFERÊNCIA DO QUE EXISTE EM PRODUÇÃO. Confirme sempre no banco.
+--
+-- Divergências já conhecidas (2026-07-16):
+--   - Não existe tabela `alunos`. O cadastro do aluno é `clientes`, e `aulas`
+--     referencia `cliente_id` (não `aluno_id`). Vale para a view
+--     historico_maquina e os índices abaixo.
+--   - `aulas` tem colunas que não estão aqui, como unidade_id.
+--   - registros_carga tem a constraint registros_carga_aula_exercicio_unique
+--     UNIQUE (aula_id, exercicio_id), que não aparece abaixo.
+--   - Mudanças posteriores estão nos .sql avulsos desta pasta, não aqui.
+--
+-- As policies de RLS abaixo, essas sim, batem com produção (conferidas em
+-- 2026-07-16). Elas restringem o coach às próprias aulas — ver
+-- cargas-ultimas-por-cliente.sql.
 -- =============================================
 
 -- Habilitar extensão de UUID

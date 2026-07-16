@@ -52,6 +52,11 @@ function CoachTreinoPageInner() {
   const [erroSalvar, setErroSalvar] = useState<Record<string, boolean>>({})
   const [ultimasCargas, setUltimasCargas] = useState<Record<string, number>>({})
 
+  // Cada registro guarda o resumo das séries do exercício, então o upsert precisa
+  // enxergar sempre o estado mais recente — não o do render que disparou o onChange.
+  const cargasRef = useRef<Record<string, string[]>>({})
+  const debounceRef = useRef<Record<string, NodeJS.Timeout>>({})
+
   const [fimSlot, setFimSlot] = useState<Date | null>(null)
   const [tempoRestante, setTempoRestante] = useState<number>(0)
   const [alertaAtivo, setAlertaAtivo] = useState(false)
@@ -77,6 +82,7 @@ function CoachTreinoPageInner() {
     return () => {
       clearTimeout(timeout)
       if (timerRef.current) clearInterval(timerRef.current)
+      for (const t of Object.values(debounceRef.current)) clearTimeout(t)
     }
   }, [perfil?.id])
 
@@ -231,6 +237,7 @@ function CoachTreinoPageInner() {
       if (idx >= 0 && idx < cargasIniciais[ex.id].length)
         cargasIniciais[ex.id][idx] = String(r.carga_kg)
     }
+    cargasRef.current = cargasIniciais
     setCargas(cargasIniciais)
 
     const maxCargas = await buscarUltimasCargas(aula.clientes?.id)
@@ -309,6 +316,7 @@ function CoachTreinoPageInner() {
 
     setTreinoSel(pub)
     setExercicios(exs)
+    cargasRef.current = cargasIniciais
     setCargas(cargasIniciais)
     setFimSlot(fim)
     setTempoRestante(Math.floor((fim.getTime() - agora.getTime()) / 1000))
@@ -334,23 +342,42 @@ function CoachTreinoPageInner() {
     setUltimasCargas(maxCargas)
   }
 
-  async function salvarCarga(teId: string, serieIdx: number, valor: string) {
-    const novas = [...(cargas[teId] || [])]
+  function salvarCarga(teId: string, serieIdx: number, valor: string) {
+    const novas = [...(cargasRef.current[teId] || [])]
     novas[serieIdx] = valor
-    setCargas(prev => ({ ...prev, [teId]: novas }))
+    cargasRef.current = { ...cargasRef.current, [teId]: novas }
+    setCargas(cargasRef.current)
+
+    // Uma tecla por vez geraria um upsert por dígito, e o resumo das séries é
+    // reescrito inteiro a cada gravação: respostas fora de ordem sobrescreveriam
+    // o valor mais novo. Agrupamos as digitações numa gravação por pausa.
+    if (debounceRef.current[teId]) clearTimeout(debounceRef.current[teId])
+    debounceRef.current[teId] = setTimeout(() => { gravarCarga(teId) }, 700)
+  }
+
+  async function gravarCarga(teId: string) {
     const idAtual = aulaIdRef.current ?? aulaId
     if (!idAtual) return
     const ex = exercicios.find(e => e.id === teId)
     if (!ex) return
 
-    // O banco aceita uma linha por (aula_id, exercicio_id). Gravamos a maior carga
-    // das séries e guardamos o valor de cada série em observacoes.
-    const numeros = novas
+    // O banco aceita uma linha por (aula_id, exercicio_id): carga_kg é a maior
+    // série e o valor de cada série fica em observacoes.
+    const series = cargasRef.current[teId] || []
+    const numeros = series
       .map(v => parseFloat(String(v || '').replace(',', '.')))
       .filter(n => !isNaN(n))
-    if (numeros.length === 0) return
-    const cargaMax = Math.max(...numeros)
-    const resumoSeries = novas
+
+    // Coach apagou todas as séries (digitou no exercício errado): o registro tem
+    // de sair, senão a linha antiga fica valendo com a carga errada.
+    if (numeros.length === 0) {
+      const { error: erroDelete } = await supabase.from('registros_carga')
+        .delete().eq('aula_id', idAtual).eq('exercicio_id', ex.exercicio_id)
+      if (erroDelete) console.error('Erro ao limpar carga:', erroDelete)
+      return
+    }
+
+    const resumoSeries = series
       .map(v => (String(v || '').trim() ? String(v).trim().replace(',', '.') : '-'))
       .join('/')
 
@@ -359,7 +386,7 @@ function CoachTreinoPageInner() {
       aula_id: idAtual,
       exercicio_id: ex.exercicio_id,
       maquina: ex.exercicios?.numero_maquina || '',
-      carga_kg: cargaMax,
+      carga_kg: Math.max(...numeros),
       reps_realizadas: ex.reps_override || '12',
       observacoes: `Séries: ${resumoSeries}`,
     }, { onConflict: 'aula_id,exercicio_id' })
@@ -477,6 +504,14 @@ function CoachTreinoPageInner() {
     const foraPrazo = fimSlot ? agora > fimSlot : false
     const clienteIdAtual = alunoSel?.id
 
+    // Grava o que ainda estava no debounce — senão a última carga digitada some.
+    const pendentes = Object.keys(debounceRef.current)
+    for (const teId of pendentes) {
+      clearTimeout(debounceRef.current[teId])
+      delete debounceRef.current[teId]
+    }
+    await Promise.all(pendentes.map(teId => gravarCarga(teId)))
+
     if (timerRef.current) clearInterval(timerRef.current)
 
     await fetch('/api/aulas', {
@@ -500,9 +535,13 @@ function CoachTreinoPageInner() {
   function resetar() {
     aulaIdRef.current = null
     finalizandoRef.current = false
+    for (const t of Object.values(debounceRef.current)) clearTimeout(t)
+    debounceRef.current = {}
+    cargasRef.current = {}
     setEtapa('buscar_aluno')
     setAlunoSel(null); setTreinoSel(null); setAulaId(null)
     setExercicios([]); setCargas({}); setBusca(''); setAlunos([])
+    setErroSalvar({})
     setNovoNome(''); setNovoCPF(''); setShowCadastro(false)
     setFimSlot(null); setTempoRestante(0)
     setAlertaAtivo(false); setInsights([])
