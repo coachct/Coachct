@@ -49,6 +49,7 @@ function CoachTreinoPageInner() {
   const [exercicios, setExercicios] = useState<any[]>([])
   const [cargas, setCargas] = useState<Record<string, string[]>>({})
   const [salvando, setSalvando] = useState<string | null>(null)
+  const [erroSalvar, setErroSalvar] = useState<Record<string, boolean>>({})
   const [ultimasCargas, setUltimasCargas] = useState<Record<string, number>>({})
 
   const [fimSlot, setFimSlot] = useState<Date | null>(null)
@@ -134,10 +135,12 @@ function CoachTreinoPageInner() {
   }
 
   async function buscarUltimasCargas(clienteId: string) {
-    const { data: hist } = await supabase
+    if (!clienteId) return {}
+    const { data: hist, error } = await supabase
       .from('registros_carga')
       .select('exercicio_id, carga_kg, aulas!inner(cliente_id)')
       .eq('aulas.cliente_id', clienteId)
+    if (error) console.error('Erro ao buscar últimas cargas:', error)
     const maxCargas: Record<string, number> = {}
     for (const r of (hist || [])) {
       if (!r.exercicio_id) continue
@@ -194,12 +197,22 @@ function CoachTreinoPageInner() {
     for (const r of (registros || [])) {
       const ex = exs.find((e: any) => e.exercicio_id === r.exercicio_id)
       if (!ex) continue
-      const match = (r.observacoes || '').match(/Série (\d+)/)
-      if (match) {
-        const idx = parseInt(match[1]) - 1
-        if (!cargasIniciais[ex.id]) cargasIniciais[ex.id] = Array(ex.series_override || 3).fill('')
-        cargasIniciais[ex.id][idx] = String(r.carga_kg)
+      if (!cargasIniciais[ex.id]) cargasIniciais[ex.id] = Array(ex.series_override || 3).fill('')
+
+      const resumo = (r.observacoes || '').match(/Séries:\s*(.+)/)
+      if (resumo) {
+        resumo[1].split('/').forEach((v: string, idx: number) => {
+          const limpo = v.trim()
+          if (limpo && limpo !== '-' && idx < cargasIniciais[ex.id].length)
+            cargasIniciais[ex.id][idx] = limpo
+        })
+        continue
       }
+      // Registros gravados no formato antigo (uma linha por série)
+      const antigo = (r.observacoes || '').match(/Série (\d+)/)
+      const idx = antigo ? parseInt(antigo[1]) - 1 : 0
+      if (idx >= 0 && idx < cargasIniciais[ex.id].length)
+        cargasIniciais[ex.id][idx] = String(r.carga_kg)
     }
     setCargas(cargasIniciais)
 
@@ -309,21 +322,42 @@ function CoachTreinoPageInner() {
     novas[serieIdx] = valor
     setCargas(prev => ({ ...prev, [teId]: novas }))
     const idAtual = aulaIdRef.current ?? aulaId
-    if (!idAtual || !valor) return
+    if (!idAtual) return
     const ex = exercicios.find(e => e.id === teId)
     if (!ex) return
+
+    // O banco aceita uma linha por (aula_id, exercicio_id). Gravamos a maior carga
+    // das séries e guardamos o valor de cada série em observacoes.
+    const numeros = novas
+      .map(v => parseFloat(String(v || '').replace(',', '.')))
+      .filter(n => !isNaN(n))
+    if (numeros.length === 0) return
+    const cargaMax = Math.max(...numeros)
+    const resumoSeries = novas
+      .map(v => (String(v || '').trim() ? String(v).trim().replace(',', '.') : '-'))
+      .join('/')
+
     setSalvando(teId)
-    const cargaNum = parseFloat(valor.replace(',', '.'))
-    if (isNaN(cargaNum)) { setSalvando(null); return }
-    await supabase.from('registros_carga').upsert({
+    const { error } = await supabase.from('registros_carga').upsert({
       aula_id: idAtual,
       exercicio_id: ex.exercicio_id,
       maquina: ex.exercicios?.numero_maquina || '',
-      carga_kg: cargaNum,
+      carga_kg: cargaMax,
       reps_realizadas: ex.reps_override || '12',
-      observacoes: `Série ${serieIdx + 1}`,
-    }, { onConflict: 'aula_id,exercicio_id,observacoes' })
+      observacoes: `Séries: ${resumoSeries}`,
+    }, { onConflict: 'aula_id,exercicio_id' })
     setSalvando(null)
+
+    if (error) {
+      console.error('Erro ao salvar carga:', error)
+      setErroSalvar(prev => ({ ...prev, [teId]: true }))
+      return
+    }
+    setErroSalvar(prev => {
+      const proximo = { ...prev }
+      delete proximo[teId]
+      return proximo
+    })
   }
 
   async function gerarInsights(clienteId: string, aulaIdAtual: string) {
@@ -697,6 +731,13 @@ function CoachTreinoPageInner() {
                           </div>
                         ))}
                       </div>
+
+                      {erroSalvar[ex.id] && (
+                        <div className="mt-2 text-xs text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-lg flex items-center gap-2">
+                          <AlertTriangle size={12} className="flex-shrink-0" />
+                          Não foi possível salvar esta carga. Confira a conexão e digite novamente.
+                        </div>
+                      )}
 
                       {isUltimoConj && ex.descanso_override && (
                         <div className="mt-3 text-xs text-primary-700 bg-primary-50 px-3 py-2 rounded-lg text-center font-medium">

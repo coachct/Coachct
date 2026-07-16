@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { PageHeader, Spinner, EmptyState } from '@/components/ui'
+import { seriesDoRegistro } from '@/lib/cargas'
 
 export default function CoachHistoricoPage() {
   const { perfil } = useAuth()
@@ -23,11 +24,11 @@ export default function CoachHistoricoPage() {
     if (!coachData) { setLoading(false); return }
     setCoach(coachData)
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('aulas')
       .select(`
         id, status, iniciada_em, finalizada_em, observacoes,
-        alunos ( id, nome ),
+        clientes:cliente_id ( id, nome ),
         treinos ( nome ),
         registros_carga (
           id, maquina, carga_kg, reps_realizadas, observacoes,
@@ -39,12 +40,13 @@ export default function CoachHistoricoPage() {
       .order('finalizada_em', { ascending: false })
       .limit(50)
 
+    if (error) console.error('Erro ao carregar histórico de aulas:', error)
     setAulas(data || [])
     setLoading(false)
   }
 
   const aulasFiltradas = alunoFiltro
-    ? aulas.filter(a => a.alunos?.nome?.toLowerCase().includes(alunoFiltro.toLowerCase()))
+    ? aulas.filter(a => a.clientes?.nome?.toLowerCase().includes(alunoFiltro.toLowerCase()))
     : aulas
 
   if (loading) return <Spinner />
@@ -72,16 +74,14 @@ export default function CoachHistoricoPage() {
             if (!porExercicio[exNome]) {
               porExercicio[exNome] = { nome: exNome, maquina: r.maquina || '', series: [] }
             }
-            const match = (r.observacoes || '').match(/Série (\d+)/)
-            const serieNum = match ? parseInt(match[1]) : porExercicio[exNome].series.length + 1
-            porExercicio[exNome].series.push({ serie: serieNum, carga: r.carga_kg, reps: r.reps_realizadas })
+            porExercicio[exNome].series.push(...seriesDoRegistro(r))
           }
           // Ordena séries
           Object.values(porExercicio).forEach(ex => {
             ex.series.sort((a, b) => a.serie - b.serie)
           })
-          const exerciciosList = Object.values(porExercicio)
-          const totalRegistros = aula.registros_carga?.length || 0
+          const exerciciosList = Object.values(porExercicio).filter(ex => ex.series.length > 0)
+          const totalRegistros = exerciciosList.reduce((soma, ex) => soma + ex.series.length, 0)
 
           return (
             <div key={aula.id} className={`card ${foraPrazo ? 'border-red-200' : ''}`}>
@@ -90,7 +90,7 @@ export default function CoachHistoricoPage() {
                 style={{ cursor: 'pointer' }}>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-sm text-gray-900">{aula.alunos?.nome}</span>
+                    <span className="font-semibold text-sm text-gray-900">{aula.clientes?.nome}</span>
                     {foraPrazo && (
                       <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">Fora do prazo</span>
                     )}

@@ -266,14 +266,18 @@ export async function PATCH(req: NextRequest) {
 
   if (registros_carga && Array.isArray(registros_carga)) {
     for (const r of registros_carga) {
-      await supabase.from('registros_carga').upsert({
+      const { error } = await supabase.from('registros_carga').upsert({
         aula_id: id,
         exercicio_id: r.exercicio_id,
         carga_kg: r.carga_kg,
         reps_realizadas: r.reps_realizadas,
         observacoes: r.observacoes,
         maquina: r.maquina || '',
-      }, { onConflict: 'aula_id,exercicio_id,observacoes' })
+      }, { onConflict: 'aula_id,exercicio_id' })
+      if (error) {
+        console.error('Erro ao gravar registro de carga:', error)
+        return NextResponse.json({ error }, { status: 400 })
+      }
     }
   }
 

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { PageHeader, Spinner } from '@/components/ui'
 import { ArrowLeft, Save, Trash2 } from 'lucide-react'
+import { seriesDoRegistro } from '@/lib/cargas'
 
 export default function EditarAulaPage() {
   const { id } = useParams()
@@ -37,13 +38,11 @@ export default function EditarAulaPage() {
       cargasIniciais[ex.id] = Array(series).fill('')
 
       for (const r of (data?.registros_carga || [])) {
-        if (r.exercicio_id === ex.exercicio_id) {
-          const match = (r.observacoes || '').match(/Série (\d+)/)
-          if (match) {
-            const idx = parseInt(match[1]) - 1
-            if (!cargasIniciais[ex.id]) cargasIniciais[ex.id] = Array(series).fill('')
-            cargasIniciais[ex.id][idx] = String(r.carga_kg)
-          }
+        if (r.exercicio_id !== ex.exercicio_id) continue
+        for (const s of seriesDoRegistro(r)) {
+          const idx = s.serie - 1
+          if (idx >= 0 && idx < cargasIniciais[ex.id].length)
+            cargasIniciais[ex.id][idx] = String(s.carga)
         }
       }
       obsIniciais[ex.id] = ex.observacoes_override || ''
@@ -74,32 +73,41 @@ export default function EditarAulaPage() {
       const exs = (aula?.treinos?.treino_exercicios || [])
         .sort((a: any, b: any) => (a.ordem ?? 0) - (b.ordem ?? 0))
 
+      // Uma linha por exercício: carga_kg é a maior série, e cada série fica em observacoes.
       const registros: any[] = []
       for (const ex of exs) {
         const series = ex.series_override || 3
-        for (let si = 0; si < series; si++) {
-          const val = cargas[ex.id]?.[si]
-          if (!val) continue
-          const cargaNum = parseFloat(val.replace(',', '.'))
-          if (isNaN(cargaNum)) continue
-          registros.push({
-            exercicio_id: ex.exercicio_id,
-            carga_kg: cargaNum,
-            reps_realizadas: ex.reps_override || '12',
-            observacoes: `Série ${si + 1}`,
-            maquina: ex.exercicios?.numero_maquina || '',
-          })
-        }
+        const valores = Array.from({ length: series }, (_, si) => cargas[ex.id]?.[si] || '')
+        const numeros = valores
+          .map(v => parseFloat(String(v).replace(',', '.')))
+          .filter(n => !isNaN(n))
+        if (numeros.length === 0) continue
+        registros.push({
+          exercicio_id: ex.exercicio_id,
+          carga_kg: Math.max(...numeros),
+          reps_realizadas: ex.reps_override || '12',
+          observacoes: `Séries: ${valores
+            .map(v => (String(v).trim() ? String(v).trim().replace(',', '.') : '-'))
+            .join('/')}`,
+          maquina: ex.exercicios?.numero_maquina || '',
+        })
       }
 
-      await fetch('/api/aulas', {
+      const res = await fetch('/api/aulas', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, registros_carga: registros })
       })
+      if (!res.ok) {
+        const json = await res.json().catch(() => null)
+        console.error('Erro ao salvar cargas da aula:', json)
+        setErro('Erro ao salvar. Tente novamente.')
+        return
+      }
 
       router.back()
     } catch (e) {
+      console.error('Erro ao salvar cargas da aula:', e)
       setErro('Erro ao salvar. Tente novamente.')
     } finally {
       setSalvando(false)

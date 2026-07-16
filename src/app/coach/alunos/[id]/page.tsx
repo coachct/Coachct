@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { PageHeader, Spinner, EmptyState } from '@/components/ui'
 import { ArrowLeft } from 'lucide-react'
+import { seriesDoRegistro } from '@/lib/cargas'
 
 export default function AlunoHistoricoPage() {
   const { id } = useParams()
@@ -19,8 +20,8 @@ export default function AlunoHistoricoPage() {
   async function loadData() {
     try {
       const [alunoRes, aulasRes] = await Promise.all([
-        fetch(`/api/aulas?aluno_id=${id}&aluno_info=1`).then(r => r.json()),
-        fetch(`/api/aulas?aluno_id=${id}`).then(r => r.json()),
+        fetch(`/api/aulas?cliente_id=${id}&cliente_info=1`).then(r => r.json()),
+        fetch(`/api/aulas?cliente_id=${id}`).then(r => r.json()),
       ])
       setAluno(alunoRes.data)
       setAulas(aulasRes.data || [])
@@ -68,14 +69,12 @@ export default function AlunoHistoricoPage() {
                 series: []
               }
             }
-            const match = (r.observacoes || '').match(/Série (\d+)/)
-            const serieNum = match ? parseInt(match[1]) : porExercicio[nome].series.length + 1
-            porExercicio[nome].series.push({ serie: serieNum, carga: r.carga_kg, reps: r.reps_realizadas })
+            porExercicio[nome].series.push(...seriesDoRegistro(r))
           }
           Object.values(porExercicio).forEach((ex: any) => {
             ex.series.sort((a: any, b: any) => a.serie - b.serie)
           })
-          const exerciciosList = Object.values(porExercicio)
+          const exerciciosList = Object.values(porExercicio).filter((ex: any) => ex.series.length > 0)
 
           return (
             <div key={aula.id} className={`card cursor-pointer ${foraPrazo ? 'border-red-200' : ''}`}
