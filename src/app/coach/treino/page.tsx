@@ -136,12 +136,29 @@ function CoachTreinoPageInner() {
 
   async function buscarUltimasCargas(clienteId: string) {
     if (!clienteId) return {}
+    const maxCargas: Record<string, number> = {}
+
+    // A RLS restringe registros_carga às aulas do próprio coach, então a consulta
+    // direta esconde o histórico de quando outro coach atendeu o cliente. A função
+    // ultimas_cargas_cliente devolve o histórico completo do cliente.
+    const { data: viaRpc, error: erroRpc } = await supabase
+      .rpc('ultimas_cargas_cliente', { p_cliente_id: clienteId })
+
+    if (!erroRpc) {
+      for (const r of (viaRpc || [])) {
+        if (!r.exercicio_id || r.carga_kg === null) continue
+        maxCargas[r.exercicio_id] = Number(r.carga_kg)
+      }
+      return maxCargas
+    }
+
+    // Fallback: mostra ao menos o histórico visível ao próprio coach.
+    console.error('Erro ao buscar últimas cargas (rpc):', erroRpc)
     const { data: hist, error } = await supabase
       .from('registros_carga')
       .select('exercicio_id, carga_kg, aulas!inner(cliente_id)')
       .eq('aulas.cliente_id', clienteId)
     if (error) console.error('Erro ao buscar últimas cargas:', error)
-    const maxCargas: Record<string, number> = {}
     for (const r of (hist || [])) {
       if (!r.exercicio_id) continue
       if (!maxCargas[r.exercicio_id] || r.carga_kg > maxCargas[r.exercicio_id])
