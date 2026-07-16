@@ -187,6 +187,8 @@ export default function AgendarPage() {
   const [feriadoDescricao, setFeriadoDescricao] = useState<string>('')
   const [saldoMesAtual, setSaldoMesAtual] = useState<Record<string, any>>({})
   const [saldoMesProximo, setSaldoMesProximo] = useState<Record<string, any>>({})
+  // Benefícios Pro seguem o PLANO vigente, não o saldo — ver carregarSaldos().
+  const [temBeneficiosPro, setTemBeneficiosPro] = useState(false)
   const [agendamentosNoDia, setAgendamentosNoDia] = useState<any[]>([])
   const [filasDoCliente, setFilasDoCliente] = useState<any[]>([])
   const [filaGeral, setFilaGeral] = useState<any[]>([])
@@ -217,8 +219,7 @@ export default function AgendarPage() {
   const [aceiteCertParceiro, setAceiteCertParceiro] = useState(false)
 
   const janelaProximoMesAberta = dentroDaJanelaProximoMes()
-  const temCoachCtProAtivo = Object.entries(saldoMesAtual).some(([c, i]: [string, any]) => c.startsWith('coach_ct_pro_') && i?.disponivel > 0)
-  const tipoVisualizacao: 'visitante' | 'coach_ct_pro' | 'padrao' = !user ? 'visitante' : temCoachCtProAtivo ? 'coach_ct_pro' : 'padrao'
+  const tipoVisualizacao: 'visitante' | 'coach_ct_pro' | 'padrao' = !user ? 'visitante' : temBeneficiosPro ? 'coach_ct_pro' : 'padrao'
 
   const temPlanoParceiroAtivo = Object.entries(saldoMesAtual).some(([k, v]: [string, any]) =>
     (k.startsWith('wellhub_') || k.startsWith('totalpass_')) && v?.disponivel > 0
@@ -291,6 +292,20 @@ export default function AgendarPage() {
     // Carrega sempre o saldo do próximo mês (a agenda de 14 dias pode alcançar o próximo mês)
     const { data: proximo } = await supabase.rpc('saldo_creditos_cliente', { p_cliente_id: clienteId, p_mes: mesProximo, p_ano: anoProximo, p_unidade_id: unidadeId })
     setSaldoMesProximo(proximo || {})
+    // ── Benefícios Pro: derivados do PLANO ativo, não do saldo ────────────
+    // Cliente com Coach CT Pro vigente mantém janela estendida e escolha de coach
+    // mesmo pagando a sessão com crédito de app (Wellhub/TotalPass), e mesmo depois
+    // de zerar as sessões do Pro — ele pagou pelo período, não pelo crédito.
+    const hojeStr = dataLocalStr(new Date())
+    const { data: planosPro } = await supabase
+      .from('cliente_planos')
+      .select('fim, planos_disponiveis!inner(tipo, unidade_id)')
+      .eq('cliente_id', clienteId)
+      .eq('ativo', true)
+      .eq('planos_disponiveis.tipo', 'coach_ct_pro')
+      .eq('planos_disponiveis.unidade_id', unidadeId)
+    setTemBeneficiosPro((planosPro || []).some((p: any) => !p.fim || p.fim >= hojeStr))
+    // ──────────────────────────────────────────────────────────────────────
     // ── FIX: sinaliza fim do carregamento de saldos ───────────────────────
     setLoadingSaldos(false)
     // ──────────────────────────────────────────────────────────────────────
@@ -487,9 +502,9 @@ export default function AgendarPage() {
 
   useEffect(() => {
     if (!modalSlot || !tipoCredito) { setCoachesDisponiveis([]); setCoachEscolhido(''); return }
-    if (tipoCredito.startsWith('coach_ct_pro_')) carregarCoachesDisponiveis(modalSlot.data, modalSlot.hora)
+    if (temBeneficiosPro) carregarCoachesDisponiveis(modalSlot.data, modalSlot.hora)
     else { setCoachesDisponiveis([]); setCoachEscolhido('') }
-  }, [tipoCredito, modalSlot?.hora, modalSlot?.data])
+  }, [tipoCredito, modalSlot?.hora, modalSlot?.data, temBeneficiosPro])
 
   // Dispara o email de confirmação (fire-and-forget; não trava nem quebra a UX se falhar).
   async function dispararEmailAgendamento(agendamentoId: string) {
@@ -539,7 +554,7 @@ export default function AgendarPage() {
       setConfirmando(false); return
     }
     const payload: any = { cliente_id: cliente.id, data: modalSlot.data, horario: modalSlot.hora + ':00', status: 'agendado', tipo_credito: tipoCredito, unidade_id: unidadeAtiva.id, criado_via: 'cliente' }
-    if (tipoCredito.startsWith('coach_ct_pro_') && coachEscolhido) { payload.coach_id = coachEscolhido; payload.alocado_por = perfil?.id || null; payload.alocado_em = new Date().toISOString() }
+    if (temBeneficiosPro && coachEscolhido) { payload.coach_id = coachEscolhido; payload.alocado_por = perfil?.id || null; payload.alocado_em = new Date().toISOString() }
     const { data: novo, error } = await supabase.from('agendamentos').insert(payload).select('id').single()
     if (error) { setErroModal('Erro ao agendar. Tente novamente.'); setConfirmando(false); return }
     if (novo?.id) dispararEmailAgendamento(novo.id)
@@ -596,7 +611,7 @@ export default function AgendarPage() {
   const todosSemSaldo = !!cliente && Object.keys(saldoExibir).length > 0 && planosDisp.length === 0
   const temFila = modalSlot ? temFilaNoHorario(modalSlot.hora) : false
   const dataSelEhProximoMes = diasSemana[diaSel].getMonth() !== new Date().getMonth() || diasSemana[diaSel].getFullYear() !== new Date().getFullYear()
-  const isCredPro = tipoCredito.startsWith('coach_ct_pro_')
+  const mostrarEscolhaCoach = temBeneficiosPro
 
   const mostrarHero = !clienteBloqueado && unidadesPermitidas.length > 1 && !unidadeConfirmada
 
@@ -1049,7 +1064,7 @@ export default function AgendarPage() {
                 )
               })}
             </div>
-            {isCredPro && (
+            {mostrarEscolhaCoach && (
               <div style={{ marginBottom: '1.5rem' }}>
                 <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Deseja escolher seu coach?</div>
                 <select value={coachEscolhido} onChange={e => setCoachEscolhido(e.target.value)}
@@ -1063,7 +1078,7 @@ export default function AgendarPage() {
             <div style={{ background: temFila ? '#1a1000' : '#0a0a0a', border: `1px solid ${temFila ? AMARELO + '44' : '#1a1a1a'}`, borderRadius: 10, padding: '0.75rem 1rem', marginBottom: '1.5rem', fontSize: 12, lineHeight: 1.7 }}>
               {temFila
                 ? <><div style={{ color: AMARELO, fontWeight: 600, marginBottom: 4 }}>⏳ Há fila de espera para este horário</div><div style={{ color: '#888' }}>Cancelamento gratuito <strong style={{ color: '#fff' }}>até 3h antes</strong>. Abaixo de 3h: <strong style={{ color: '#ff4444' }}>bloqueado</strong>.</div></>
-                : <div style={{ color: '#555' }}>⚠️ Cancelamento gratuito <strong style={{ color: '#888' }}>{isCredPro ? 'até 3h antes' : 'até 12h antes'}</strong>. Falta sem aviso gera bloqueio.</div>
+                : <div style={{ color: '#555' }}>⚠️ Cancelamento gratuito <strong style={{ color: '#888' }}>{temBeneficiosPro ? 'até 3h antes' : 'até 12h antes'}</strong>. Falta sem aviso gera bloqueio.</div>
               }
             </div>
             {erroModal && <div style={{ background: '#ff2d9b15', border: '1px solid #ff2d9b44', borderRadius: 8, padding: '0.6rem 1rem', fontSize: 13, color: ACCENT, marginBottom: '1rem' }}>{erroModal}</div>}
