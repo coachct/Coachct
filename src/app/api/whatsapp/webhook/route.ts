@@ -505,9 +505,12 @@ async function resolverPorCadastro(
   if (cpf) {
     const achado = await buscarClientePorCpf(supabase, cpf)
     if (achado) {
-      // Achou: por segurança, confere o nome na mesma mensagem.
+      // Achou o CPF, mas o NOME não confere. Quase sempre é a pessoa que digitou o
+      // CPF errado (o CPF de outra pessoa). NÃO revelamos de quem é o cadastro —
+      // e guiamos pro e-mail (caminho que costuma destravar), pedindo pra conferir
+      // o CPF. Por segurança, NUNCA seguimos com um CPF cujo nome não bate.
       if (!nomeBate(texto, achado.nome)) {
-        return responder('Achei um cadastro com esse CPF! 😊 Por segurança, me reenvia seu *nome completo* junto com o *CPF* na mesma mensagem, do jeitinho que está no cadastro, que eu confirmo que é você.')
+        return responder('Hmm, esse CPF não confere com o nome que você me passou 🤔. Dá uma conferida se digitou o *seu* CPF certinho e me reenvia (nome completo + CPF juntos) — ou, se preferir, me manda o *e-mail* do seu cadastro, que por ele eu também te encontro. 😊')
       }
       // Confirmado. O vínculo é gravado pela salvarMensagem (com cliente_id) lá no
       // fluxo principal — assim, nas próximas conversas, o passo 1 já reconhece.
