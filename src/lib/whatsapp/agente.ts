@@ -141,6 +141,10 @@ Ex. típico: cliente diz que teve um imprevisto / vai faltar / quer fazer check-
 
 # NUNCA calcule horas/prazo você mesmo (REGRA CRÍTICA — fonte de erro grave)
 Você é RUIM em conta de data/hora e JÁ ERROU dizendo "mais de 12h" quando faltavam menos. Então NUNCA calcule quantas horas faltam para uma aula/treino. Cada item de **proximos_agendamentos** e **proximas_reservas_club** já vem com dois campos PRONTOS: "horas_ate" (horas que faltam) e "cancelamento" (a regra exata daquele item — "mais de 12h: livre", "entre 3h e 12h: só com fila", "fora do prazo: não dá"). Ao falar de cancelamento de uma reserva específica, USE o campo "cancelamento" daquele item — NUNCA deduza pelo horário sozinho. Se ainda não consultou a reserva, consulte ANTES de afirmar qualquer prazo. E JAMAIS mande duas mensagens com regras contraditórias (ex.: uma dizendo "mais de 12h grátis" e outra "menos de 12h só com fila") — decida pela "cancelamento" e mande UMA resposta coerente.
+NÃO CRIE FALSA ESPERANÇA no caso "entre 3h e 12h" (REGRA — você JÁ pode verificar): quando o "cancelamento" de uma reserva do Club for "entre 3h e 12h: só com fila", NÃO responda no escuro ("só vai dar se houver fila", "o sistema verifica na hora"). Cada reserva de **proximas_reservas_club** já traz o campo "tem_fila" DELA (indica se há alguém na fila de espera daquela aula AGORA) — decida por ele e responda DEFINITIVO:
+- tem_fila = true → o cancelamento VAI funcionar (a vaga passa pra quem está esperando): pode oferecer/seguir com o cancelamento normalmente.
+- tem_fila = false → NÃO dá pra cancelar agora: informe direto e gentil ("a essa altura não é mais possível cancelar essa reserva 🙏"), SEM prometer "se houver fila" nem mandar o cliente torcer. Você já verificou — não jogue a incerteza pra cima dele.
+(Esse "tem_fila" da reserva é diferente do "tem_fila" dos horários do Coach CT — aqui é sobre PODER cancelar esta reserva.)
 
 # Ao listar para CANCELAR ou ALTERAR/TROCAR: filtre pelo PRAZO antes de oferecer (REGRA)
 Quando o cliente quer CANCELAR ou ALTERAR/TROCAR um treino/aula, antes de listar as opções OLHE o campo "cancelamento" de cada item (de proximos_agendamentos / proximas_reservas_club). NÃO ofereça para cancelar/alterar um item que está "fora do prazo" — não dá mais para mexer nele. Lembre: ALTERAR = cancelar + reagendar; se não dá pra cancelar, não dá pra alterar. Regras:
@@ -374,7 +378,7 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'proximas_reservas_club',
-    description: 'Próximas reservas de aulas coletivas do JustClub (lift, lift for girls, running funcional).',
+    description: 'Próximas reservas de aulas coletivas do JustClub (lift, lift for girls, running funcional). Cada reserva traz "cancelamento" (a regra da janela), "horas_ate" e "tem_fila" (se há alguém na fila de espera dessa aula agora — no caso "entre 3h e 12h", tem_fila=true significa que dá pra cancelar; false = não dá).',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {

@@ -260,11 +260,11 @@ export async function proximasReservasClub(
   const hoje = opts.hoje ?? agoraEmSaoPaulo().dataStr
   const { data, error } = await supabase
     .from('club_reservas')
-    .select('id, status, posicao, tipo_credito, via_app, club_ocorrencias(data, club_aulas(tipo, horario, unidade_id))')
+    .select('id, ocorrencia_id, status, posicao, tipo_credito, via_app, club_ocorrencias(data, club_aulas(tipo, horario, unidade_id))')
     .eq('cliente_id', clienteId)
     .eq('status', 'reservado')
   if (error) throw new Error(`club_reservas: ${error.message}`)
-  return (data ?? [])
+  const futuras = (data ?? [])
     .filter((r: any) => r.club_ocorrencias?.data && r.club_ocorrencias.data >= hoje)
     .sort((a: any, b: any) => {
       const da = a.club_ocorrencias.data, db = b.club_ocorrencias.data
@@ -273,10 +273,28 @@ export async function proximasReservasClub(
       const hb = b.club_ocorrencias?.club_aulas?.horario ?? ''
       return ha < hb ? -1 : ha > hb ? 1 : 0
     })
-    .map((r: any) => {
-      const horas = horasAteSP(r.club_ocorrencias?.data, r.club_ocorrencias?.club_aulas?.horario)
-      return { ...r, horas_ate: Math.round(horas * 10) / 10, cancelamento: regraCancelamento(horas) }
-    })
+
+  // tem_fila: há alguém na fila de espera dessa aula AGORA? (mesma checagem que o
+  // cancelamento faz na hora — 3h-12h só cancela se houver fila). Exposto ANTES
+  // para o agente responder definitivo, sem oferecer cancelamento "no escuro".
+  const ocIds = [...new Set(futuras.map((r: any) => r.ocorrencia_id).filter(Boolean))]
+  const comFila = new Set<string>()
+  if (ocIds.length) {
+    const { data: filas } = await supabase
+      .from('fila_espera').select('ocorrencia_id')
+      .in('ocorrencia_id', ocIds).eq('status', 'aguardando')
+    for (const f of filas ?? []) comFila.add((f as any).ocorrencia_id)
+  }
+
+  return futuras.map((r: any) => {
+    const horas = horasAteSP(r.club_ocorrencias?.data, r.club_ocorrencias?.club_aulas?.horario)
+    return {
+      ...r,
+      horas_ate: Math.round(horas * 10) / 10,
+      cancelamento: regraCancelamento(horas),
+      tem_fila: comFila.has(r.ocorrencia_id),
+    }
+  })
 }
 
 /**
