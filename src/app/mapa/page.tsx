@@ -7,6 +7,7 @@ import SiteHeader from '@/components/SiteHeader'
 import AvisoUnidade from '@/components/AvisoUnidade'
 import ModalTelefone from '@/components/ModalTelefone'
 import { nomeCoachPublico } from '@/lib/mascaraCoachPublico'
+import { aulaJaComecou } from '@/lib/tempo'
 
 const ACCENT  = '#ff2d9b'
 const VERDE   = '#2ddd8b'
@@ -194,12 +195,11 @@ function MapaPageInner() {
     // Trava anti-aba-velha: bloqueia reservar aula que já começou. A lista (/aulas) esconde
     // aulas passadas só no render; sem esta checagem no clique, uma aba antiga / back / link
     // direto grava reserva de aula já ocorrida (vira Falta). Revalida no momento de gravar.
-    if (ocorrencia?.data && ocorrencia?.club_aulas?.horario) {
-      const inicioAula = new Date(ocorrencia.data + 'T' + ocorrencia.club_aulas.horario)
-      if (!isNaN(inicioAula.getTime()) && inicioAula.getTime() <= Date.now()) {
-        setErroModal('Esta aula já começou — não é mais possível reservar.')
-        setConfirmando(false); return
-      }
+    // Compara no fuso de São Paulo (lib/tempo): com o relógio do dispositivo, cliente
+    // em outro fuso (ClassPass fora do Brasil) era bloqueado horas antes da aula.
+    if (aulaJaComecou(ocorrencia?.data, ocorrencia?.club_aulas?.horario)) {
+      setErroModal('Esta aula já começou — não é mais possível reservar.')
+      setConfirmando(false); return
     }
     // ClassPass: ilimitado, sem checagem de saldo. Clientes normais revalidam o saldo do mês da ocorrência antes de inserir.
     if (!cliente.is_classpass) {

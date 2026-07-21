@@ -7,6 +7,7 @@ import SiteHeader from '@/components/SiteHeader'
 import AvisoUnidade, { AvisoPopupPinheiros } from '@/components/AvisoUnidade'
 import ModalTelefone from '@/components/ModalTelefone'
 import { nomeCoachPublico } from '@/lib/mascaraCoachPublico'
+import { aulaJaComecou, dataHojeSP, horaAgoraSP, hojeSP } from '@/lib/tempo'
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(true)
@@ -163,14 +164,17 @@ function AulasPageInner() {
   const [modalTelefone,  setModalTelefone]  = useState(false)
   const [pendingReserva, setPendingReserva] = useState<(() => void) | null>(null)
 
+  // Toda a grade parte do "hoje" em São Paulo, não do relógio do dispositivo: cliente
+  // em outro fuso (ClassPass fora do Brasil) via o dia errado e as aulas de hoje
+  // sumindo antes da hora. Ver lib/tempo.
   const diasSemana = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(); d.setDate(d.getDate() + semanaOffset * 7 + i); return d
+    const d = dataHojeSP(); d.setDate(d.getDate() + semanaOffset * 7 + i); return d
   })
   const dataSel    = diasSemana[diaSel]
   const dataSelStr = dataLocalStr(dataSel)
-  const agora      = new Date()
-  const horaAtual  = `${String(agora.getHours()).padStart(2,'0')}:${String(agora.getMinutes()).padStart(2,'0')}`
-  const isHoje     = dataSelStr === dataLocalStr(agora)
+  const agora      = dataHojeSP()
+  const horaAtual  = horaAgoraSP()
+  const isHoje     = dataSelStr === hojeSP()
 
   const dataSelEhProximoMes = dataSel.getMonth() !== agora.getMonth() || dataSel.getFullYear() !== agora.getFullYear()
   const mesProximo   = agora.getMonth() === 11 ? 1 : agora.getMonth() + 2
@@ -272,7 +276,7 @@ function AulasPageInner() {
   }
   async function carregarSaldo() {
     if (!cliente || !unidadeId) return
-    const agora = new Date()
+    const agora = dataHojeSP()
     const mes  = agora.getMonth() + 1
     const ano  = agora.getFullYear()
     const mesP = agora.getMonth() === 11 ? 1 : agora.getMonth() + 2
@@ -414,12 +418,10 @@ function AulasPageInner() {
     setConfirmando(true); setErroModal('')
     // Trava anti-aba-velha: bloqueia reservar aula que já começou (mesmo furo do /mapa —
     // a lista esconde no render, mas o modal aberto há horas gravava sem revalidar a hora).
-    if (modalReserva.data && modalReserva.club_aulas?.horario) {
-      const inicioAula = new Date(modalReserva.data + 'T' + modalReserva.club_aulas.horario)
-      if (!isNaN(inicioAula.getTime()) && inicioAula.getTime() <= Date.now()) {
-        setErroModal('Esta aula já começou — não é mais possível reservar.')
-        setConfirmando(false); return
-      }
+    // Compara no fuso de São Paulo (lib/tempo), não no relógio do dispositivo.
+    if (aulaJaComecou(modalReserva.data, modalReserva.club_aulas?.horario)) {
+      setErroModal('Esta aula já começou — não é mais possível reservar.')
+      setConfirmando(false); return
     }
     const payload: any = { ocorrencia_id: modalReserva.id, cliente_id: cliente.id, tipo_credito: tipoCredito, status: 'reservado', criado_via: 'cliente' }
     if (posicaoSel) payload.posicao = posicaoSel
@@ -651,7 +653,7 @@ function AulasPageInner() {
           <div style={{ display:'grid', gridTemplateColumns:'repeat(7, minmax(0, 1fr))', gap:8, marginTop:'1.5rem' }}>
             {diasSemana.map((dia, i) => {
               const diaStr  = dataLocalStr(dia)
-              const isHojeDia = diaStr === dataLocalStr(new Date())
+              const isHojeDia = diaStr === hojeSP()
               const aulas   = (ocorrenciasSemana[diaStr] || []).filter(oc => {
                 const hora = parseInt((oc.club_aulas?.horario||'').slice(0,2))
                 if (periodo === 'manha') return hora < 12
