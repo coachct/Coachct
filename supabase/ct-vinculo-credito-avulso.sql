@@ -40,6 +40,7 @@ BEGIN
   FROM creditos_avulsos ca
   WHERE ca.cliente_id = NEW.cliente_id
     AND ca.unidade_id = NEW.unidade_id
+    AND ca.tipo = 'credito_coach'          -- NUNCA credito_treino (walk-in)
     AND ca.usado = false
     AND ca.validade >= CURRENT_DATE
     AND (ca.observacao IS NULL OR ca.observacao NOT LIKE 'Migração%')
@@ -110,11 +111,20 @@ CREATE TRIGGER on_agendamento_apagado_liberar_avulso
 BEFORE DELETE ON agendamentos
 FOR EACH ROW EXECUTE FUNCTION liberar_avulso_ao_apagar_agendamento();
 
--- NOTA: os creditos avulsos do CT sao um POTE UNICO — a mesma flag `usado` e marcada
--- por registrar_acesso_livre_ct (musculacao/acesso livre na recepcao) e por este
--- trigger (agendamento de Coach CT). Sao eventos diferentes, cada um queima 1 credito,
--- entao nao ha consumo em dobro. Credito com usado=true e agendamento_id NULL = consumo
--- de acesso livre, nao credito preso.
+-- REGRA FORTE: COACH CT e WALK-IN sao produtos DIFERENTES e NAO compartilham credito.
+--
+--   creditos_avulsos.tipo = 'credito_coach'  -> Coach CT (aula com professor)
+--        Coach CT Avulso R$79,90 | Diaria Avulsa CT R$64,89 | Diaria Personal R$39,00
+--   creditos_avulsos.tipo = 'credito_treino' -> walk-in (musculacao livre)
+--        Treino Avulso R$64,90 | Pacote 5/10/40 Treinos
+--
+-- Os dois convivem na unidade Just CT, entao filtrar so por unidade NAO basta:
+-- todo consumo/saldo de Coach CT tem que exigir tipo = 'credito_coach', e todo
+-- consumo/saldo de walk-in tem que exigir tipo = 'credito_treino'.
+--
+-- A flag `usado` e compartilhada pelos dois fluxos (registrar_acesso_livre_ct marca
+-- o walk-in; o trigger acima marca o Coach CT), por isso a checagem de tipo e o que
+-- separa os potes. Credito com usado=true e agendamento_id NULL = consumo de walk-in.
 
 -- 3. Backfill dos agendamentos de CT ja ativos.
 --
@@ -139,6 +149,12 @@ BEGIN
   WHERE a.id = ca.agendamento_id
     AND a.criado_em < ca.comprado_em;
 
+  -- Desfaz cruzamento de produto: credito de walk-in pagando aula de Coach CT.
+  UPDATE creditos_avulsos ca
+  SET usado = false, agendamento_id = NULL
+  WHERE ca.agendamento_id IS NOT NULL
+    AND ca.tipo <> 'credito_coach';
+
   FOR r_ag IN
     SELECT a.id, a.cliente_id, a.unidade_id, a.criado_em, a.data
     FROM agendamentos a
@@ -152,6 +168,7 @@ BEGIN
     FROM creditos_avulsos ca
     WHERE ca.cliente_id = r_ag.cliente_id
       AND ca.unidade_id = r_ag.unidade_id
+      AND ca.tipo = 'credito_coach'          -- NUNCA credito_treino (walk-in)
       AND ca.usado = false
       AND ca.agendamento_id IS NULL
       AND ca.comprado_em <= r_ag.criado_em   -- credito existia quando agendou
