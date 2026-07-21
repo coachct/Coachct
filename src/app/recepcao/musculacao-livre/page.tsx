@@ -129,10 +129,12 @@ export default function RecepcaoMusculacaoLivrePage() {
 
     if (lista.length === 0) { setClientes([]); setLoadingClientes(false); return }
 
-    // Saldo avulso disponível por cliente (usado=false e validade>=hoje)
+    // Saldo de treino disponível por cliente (usado=false e validade>=hoje).
+    // Só credito_treino: treino avulso e pacotes de treino valem nas 3 unidades.
+    // Crédito de Coach CT (credito_coach) NUNCA vale para walk-in.
     const ids = lista.map((c: any) => c.id)
     const { data: creds } = await supabase.from('creditos_avulsos').select('cliente_id')
-      .in('cliente_id', ids).eq('usado', false).gte('validade', hoje)
+      .in('cliente_id', ids).eq('tipo', 'credito_treino').eq('usado', false).gte('validade', hoje)
 
     const saldoPorCliente: Record<string, number> = {}
     for (const cr of (creds || [])) saldoPorCliente[cr.cliente_id] = (saldoPorCliente[cr.cliente_id] || 0) + 1

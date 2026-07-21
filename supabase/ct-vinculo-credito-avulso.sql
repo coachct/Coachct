@@ -111,20 +111,75 @@ CREATE TRIGGER on_agendamento_apagado_liberar_avulso
 BEFORE DELETE ON agendamentos
 FOR EACH ROW EXECUTE FUNCTION liberar_avulso_ao_apagar_agendamento();
 
--- REGRA FORTE: COACH CT e WALK-IN sao produtos DIFERENTES e NAO compartilham credito.
+-- ============================================================================
+-- REGRA FORTE DO SISTEMA: COACH CT nao e WALK-IN.
 --
---   creditos_avulsos.tipo = 'credito_coach'  -> Coach CT (aula com professor)
---        Coach CT Avulso R$79,90 | Diaria Avulsa CT R$64,89 | Diaria Personal R$39,00
---   creditos_avulsos.tipo = 'credito_treino' -> walk-in (musculacao livre)
---        Treino Avulso R$64,90 | Pacote 5/10/40 Treinos
+--   AGENDAR COACH CT  -> SOMENTE credito avulso Coach CT (tipo 'credito_coach',
+--                        unidade Just CT) OU app do CT ativo (Wellhub/TotalPass
+--                        Just CT, que entram por outro caminho: cliente_creditos
+--                        + plano ativo, chaves wellhub_just_ct / totalpass_just_ct).
 --
--- Os dois convivem na unidade Just CT, entao filtrar so por unidade NAO basta:
--- todo consumo/saldo de Coach CT tem que exigir tipo = 'credito_coach', e todo
--- consumo/saldo de walk-in tem que exigir tipo = 'credito_treino'.
+--   LANCAR WALK-IN    -> Treino Avulso e QUALQUER pacote de treinos
+--                        (tipo 'credito_treino'). Valem nas 3 UNIDADES —
+--                        por isso o walk-in NAO filtra unidade.
 --
--- A flag `usado` e compartilhada pelos dois fluxos (registrar_acesso_livre_ct marca
--- o walk-in; o trigger acima marca o Coach CT), por isso a checagem de tipo e o que
--- separa os potes. Credito com usado=true e agendamento_id NULL = consumo de walk-in.
+--   Credito de Coach CT NUNCA vale para walk-in, e credito de treino NUNCA
+--   vale para agendar Coach CT.
+--
+-- Os dois tipos convivem na unidade Just CT, entao filtrar so por `unidade_id`
+-- NAO basta — tem que checar `tipo`. A flag `usado` e compartilhada pelos dois
+-- fluxos (registrar_acesso_livre_ct marca o walk-in; o trigger acima marca o
+-- Coach CT); a checagem de tipo e o que separa os potes. Credito com usado=true
+-- e agendamento_id NULL = consumo de walk-in.
+--
+-- Os 3 pontos que aplicam a regra (alem do trigger acima):
+--   1. saldo_creditos_cliente: no laco de avulsos por unidade, unidade tipo 'ct'
+--      so conta credito_coach  ->  AND (u.tipo <> 'ct' OR ca.tipo = 'credito_coach')
+--   2. registrar_acesso_livre_ct: AND tipo = 'credito_treino' (sem filtro de unidade)
+--   3. src/app/recepcao/musculacao-livre/page.tsx: .eq('tipo','credito_treino')
+-- ============================================================================
+
+-- 5. Walk-in so consome credito de treino (sem filtro de unidade: vale nas 3).
+CREATE OR REPLACE FUNCTION public.registrar_acesso_livre_ct(p_cliente_id uuid)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_role       text;
+  v_hoje       date := (now() at time zone 'America/Sao_Paulo')::date;
+  v_credito_id uuid;
+  v_acesso_id  uuid;
+begin
+  select role into v_role from perfis where id = auth.uid();
+  if v_role is null or v_role <> all (array['admin','coordenadora','recepcao']) then
+    raise exception 'NAO_AUTORIZADO';
+  end if;
+
+  select id into v_credito_id
+  from creditos_avulsos
+  where cliente_id = p_cliente_id
+    and tipo = 'credito_treino'   -- NUNCA credito_coach
+    and usado = false
+    and validade >= v_hoje
+  order by validade asc
+  limit 1
+  for update skip locked;
+
+  if v_credito_id is null then
+    raise exception 'SEM_CREDITO';
+  end if;
+
+  update creditos_avulsos set usado = true where id = v_credito_id;
+
+  insert into acessos_livres_ct (cliente_id, credito_avulso_id, data, registrado_por)
+  values (p_cliente_id, v_credito_id, v_hoje, auth.uid())
+  returning id into v_acesso_id;
+
+  return v_acesso_id;
+end;
+$function$;
 
 -- 3. Backfill dos agendamentos de CT ja ativos.
 --
