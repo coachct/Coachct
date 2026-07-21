@@ -87,6 +87,35 @@ CREATE TRIGGER on_agendamento_liberar_avulso
 AFTER UPDATE ON agendamentos
 FOR EACH ROW EXECUTE FUNCTION liberar_avulso_ao_cancelar();
 
+-- 2b. Agendamento APAGADO (nao cancelado): a FK creditos_avulsos_agendamento_id_fkey
+--     e ON DELETE SET NULL, entao o vinculo zeraria mas `usado` ficaria true e o
+--     cliente perderia o credito em silencio. Este BEFORE DELETE devolve antes da FK.
+CREATE OR REPLACE FUNCTION public.liberar_avulso_ao_apagar_agendamento()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  UPDATE creditos_avulsos
+  SET usado = false, agendamento_id = NULL
+  WHERE agendamento_id = OLD.id;
+  RETURN OLD;
+EXCEPTION WHEN OTHERS THEN
+  RETURN OLD;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_agendamento_apagado_liberar_avulso ON agendamentos;
+CREATE TRIGGER on_agendamento_apagado_liberar_avulso
+BEFORE DELETE ON agendamentos
+FOR EACH ROW EXECUTE FUNCTION liberar_avulso_ao_apagar_agendamento();
+
+-- NOTA: os creditos avulsos do CT sao um POTE UNICO — a mesma flag `usado` e marcada
+-- por registrar_acesso_livre_ct (musculacao/acesso livre na recepcao) e por este
+-- trigger (agendamento de Coach CT). Sao eventos diferentes, cada um queima 1 credito,
+-- entao nao ha consumo em dobro. Credito com usado=true e agendamento_id NULL = consumo
+-- de acesso livre, nao credito preso.
+
 -- 3. Backfill dos agendamentos de CT ja ativos.
 --
 --    ATENCAO: parear por ordem de data (row_number de um lado contra o outro) esta
