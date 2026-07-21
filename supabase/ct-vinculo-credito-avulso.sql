@@ -87,32 +87,59 @@ CREATE TRIGGER on_agendamento_liberar_avulso
 AFTER UPDATE ON agendamentos
 FOR EACH ROW EXECUTE FUNCTION liberar_avulso_ao_cancelar();
 
--- 3. Backfill: amarra creditos validos nao-usados aos agendamentos de CT ja ativos
---    (1 pra 1, do que expira primeiro). Agendamentos alem do numero de creditos
---    validos ficam sem vinculo (consumo historico nao recuperavel).
-WITH ag AS (
-  SELECT a.id AS agend_id, a.cliente_id, a.unidade_id,
-         row_number() OVER (PARTITION BY a.cliente_id, a.unidade_id ORDER BY a.data, a.criado_em) AS rn
+-- 3. Backfill dos agendamentos de CT ja ativos.
+--
+--    ATENCAO: parear por ordem de data (row_number de um lado contra o outro) esta
+--    ERRADO — amarra credito comprado em julho a aula feita em junho, ou seja, gasta
+--    credito novo pagando aula velha (aconteceu de verdade com 3 creditos). O pareamento
+--    tem que respeitar a linha do tempo: um credito so paga uma aula AGENDADA DEPOIS da
+--    compra e valida NA DATA da aula. Assim os creditos antigos/vencidos absorvem as
+--    aulas antigas e os creditos novos ficam disponiveis.
+--
+--    Agendamentos alem do numero de creditos ficam sem vinculo (consumo historico
+--    nao recuperavel — sessoes feitas antes da correcao, sem credito correspondente).
+DO $$
+DECLARE
+  r_ag record;
+  v_cred uuid;
+BEGIN
+  -- Desfaz vinculos impossiveis (agendamento criado ANTES da compra do credito).
+  UPDATE creditos_avulsos ca
+  SET usado = false, agendamento_id = NULL
   FROM agendamentos a
-  JOIN unidades u ON u.id = a.unidade_id AND u.tipo = 'ct'
-  WHERE a.tipo_credito = 'avulso_' || u.slug
-    AND a.status NOT IN ('cancelado')
-    AND NOT EXISTS (SELECT 1 FROM creditos_avulsos c WHERE c.agendamento_id = a.id)
-),
-cr AS (
-  SELECT ca.id AS credito_id, ca.cliente_id, ca.unidade_id,
-         row_number() OVER (PARTITION BY ca.cliente_id, ca.unidade_id ORDER BY ca.validade ASC, ca.comprado_em ASC) AS rn
-  FROM creditos_avulsos ca
-  JOIN unidades u ON u.id = ca.unidade_id AND u.tipo = 'ct'
-  WHERE ca.usado = false
-    AND ca.validade >= CURRENT_DATE
-    AND (ca.observacao IS NULL OR ca.observacao NOT LIKE 'Migração%')
-)
-UPDATE creditos_avulsos t
-SET usado = true, agendamento_id = ag.agend_id
-FROM cr
-JOIN ag ON ag.cliente_id = cr.cliente_id AND ag.unidade_id = cr.unidade_id AND ag.rn = cr.rn
-WHERE t.id = cr.credito_id;
+  WHERE a.id = ca.agendamento_id
+    AND a.criado_em < ca.comprado_em;
+
+  FOR r_ag IN
+    SELECT a.id, a.cliente_id, a.unidade_id, a.criado_em, a.data
+    FROM agendamentos a
+    JOIN unidades u ON u.id = a.unidade_id AND u.tipo = 'ct'
+    WHERE a.tipo_credito = 'avulso_' || u.slug
+      AND a.status NOT IN ('cancelado')
+      AND NOT EXISTS (SELECT 1 FROM creditos_avulsos c WHERE c.agendamento_id = a.id)
+    ORDER BY a.criado_em
+  LOOP
+    SELECT ca.id INTO v_cred
+    FROM creditos_avulsos ca
+    WHERE ca.cliente_id = r_ag.cliente_id
+      AND ca.unidade_id = r_ag.unidade_id
+      AND ca.usado = false
+      AND ca.agendamento_id IS NULL
+      AND ca.comprado_em <= r_ag.criado_em   -- credito existia quando agendou
+      AND ca.validade >= r_ag.data           -- credito valido na data da aula
+      AND (ca.observacao IS NULL OR ca.observacao NOT LIKE 'Migração%')
+    ORDER BY ca.validade ASC, ca.comprado_em ASC
+    LIMIT 1;
+
+    IF v_cred IS NOT NULL THEN
+      UPDATE creditos_avulsos SET usado = true, agendamento_id = r_ag.id WHERE id = v_cred;
+    END IF;
+  END LOOP;
+END $$;
+
+-- Conferencia: tem que dar 0.
+-- SELECT count(*) FROM creditos_avulsos ca JOIN agendamentos a ON a.id = ca.agendamento_id
+-- WHERE a.criado_em < ca.comprado_em OR ca.validade < a.data;
 
 -- 4. A RPC saldo_creditos_cliente volta a calcular o avulso por unidade lendo a flag
 --    `usado` (sem descontar a contagem de agendamentos, que bloquearia compra nova).
