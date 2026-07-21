@@ -109,7 +109,7 @@ export default function ContasAPagarPage() {
 
   // ---- filtros ----
   const [baseMes, setBaseMes] = useState<'competencia' | 'vencimento'>('competencia')
-  const [fPeriodo, setFPeriodo] = useState<'mes' | 'hoje' | '7dias' | 'data'>('mes')
+  const [fPeriodo, setFPeriodo] = useState<'mes' | 'hoje' | '7dias' | 'prox7' | 'data'>('mes')
   const [fDataDe, setFDataDe] = useState(hoje)
   const [fDataAte, setFDataAte] = useState('')
   const [fTodosMeses, setFTodosMeses] = useState(false)
@@ -206,6 +206,7 @@ export default function ContasAPagarPage() {
   const periodoRange = useMemo(() => {
     if (fPeriodo === 'hoje') return { ini: hoje, fim: hoje }
     if (fPeriodo === '7dias') return { ini: addDiasStr(hoje, -6), fim: hoje }
+    if (fPeriodo === 'prox7') return { ini: hoje, fim: addDiasStr(hoje, 6) }
     if (fPeriodo === 'data') {
       // um campo preenchido = data única; os dois = período (inclusive)
       const de = fDataDe || fDataAte
@@ -515,7 +516,7 @@ export default function ContasAPagarPage() {
 
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-500">Atalhos</label>
-            <div className="flex rounded-xl border border-gray-200 p-0.5">
+            <div className="flex flex-wrap rounded-xl border border-gray-200 p-0.5">
               <button
                 onClick={() => setFPeriodo('mes')}
                 className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
@@ -545,6 +546,16 @@ export default function ContasAPagarPage() {
                 }`}
               >
                 Últimos 7 dias
+              </button>
+              <button
+                onClick={() => setFPeriodo('prox7')}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                  fPeriodo === 'prox7'
+                    ? 'bg-[#ff2d9b] text-white'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                Próximos 7 dias
               </button>
               <button
                 onClick={() => setFPeriodo('data')}
