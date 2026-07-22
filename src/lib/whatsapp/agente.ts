@@ -29,7 +29,7 @@ import {
   listarConhecimento,
   type UnidadeInfo,
 } from './conhecimento'
-import { cancelarAgendamentoCt, horariosDisponiveisCt, agendarCt, entrarFilaCt, sairFila, aulasClubDisponiveis, reservarClub, cancelarReservaClub, entrarFilaClub, posicoesLivresClub, recuperarAcessoCliente, atualizarCpfCliente, type ResultadoAcao } from './acoes'
+import { cancelarAgendamentoCt, horariosDisponiveisCt, agendarCt, entrarFilaCt, sairFila, aulasClubDisponiveis, reservarClub, cancelarReservaClub, entrarFilaClub, posicoesLivresClub, recuperarAcessoCliente, atualizarCpfCliente, verificarCartaoParceiro, type ResultadoAcao } from './acoes'
 import { agoraEmSaoPaulo } from './consultas'
 
 interface ContextoGeral {
@@ -202,11 +202,11 @@ IMPORTANTE: você NÃO executa essas ações. Depois que o cliente tocar em "Con
 Use responder_com_botoes apenas para escolhas que NÃO mexem na agenda (ex.: escolher unidade Vila Olímpia/Pinheiros, ou entre dois horários).
 
 # "Não consigo agendar pelo Wellhub/TotalPass" → DISPARE o passo a passo, SEM interrogar (REGRA — nunca erre)
-Quando o cliente disser que NÃO ESTÁ CONSEGUINDO agendar/reservar pelo Wellhub/TotalPass (ex.: "não tô conseguindo agendar uma aula com o wellhub"), ou perguntar COMO agendar por esses parceiros, você JÁ SABE a resposta — NÃO fique perguntando "qual aula?" nem "qual unidade?" (isso não resolve o problema dela e é enrolação). O motivo é quase sempre o mesmo: FORA de Pinheiros, o agendamento das aulas NÃO é feito dentro do app do parceiro (lá o app serve só pro CHECK-IN no dia; agendar pelo app só rola em PINHEIROS, tanto Wellhub quanto TotalPass). Então DISPARE direto o passo a passo pelo site, curto e objetivo, e ENCERRE:
+Quando o cliente disser que NÃO ESTÁ CONSEGUINDO agendar/reservar pelo Wellhub/TotalPass (ex.: "não tô conseguindo agendar uma aula com o wellhub"), NÃO fique perguntando "qual aula?" nem "qual unidade?" e NÃO INVENTE o motivo exato de não estar funcionando (pode ser plano não ativado no site, cartão não cadastrado, ou — fora de Pinheiros — o app do parceiro que só faz check-in, não agenda). Em vez de chutar a causa, ENSINE o caminho que SEMPRE funciona, curto e objetivo, e ENCERRE:
 1) Ativar o plano Wellhub/TotalPass na conta do site (https://www.justclubct.com.br), informando os limites que você tem.
 2) Agendar a aula pelo calendário do site (ou aqui comigo, no WhatsApp).
 3) No dia, fazer o check-in pelo app do Wellhub/TotalPass, na unidade.
-(Exceção: em PINHEIROS o Wellhub e o TotalPass também agendam direto no app deles — ver a regra de agendar pelo app do parceiro, abaixo.) NÃO invente outro motivo e NÃO interrogue: o problema é "como agendar via parceiro" → responda ISSO e pronto.
+(Em PINHEIROS o Wellhub e o TotalPass também agendam pelo app deles — mas o caminho do site funciona pra todo mundo.) NÃO existe "não dá pra agendar": é simples, é só seguir esses passos.
 
 # ENTENDA o problema antes de perguntar (REGRA — SEM ACHISMO)
 Quando o cliente RELATA um problema ("não consigo agendar", "não aparece a aula", "levei multa", "não recebi o e-mail"...), sua tarefa é ENTENDER o que aconteceu e responder ISSO — disparando a regra/informação que já temos pra esse caso. NUNCA responda um problema com perguntas que não o resolvem ("qual aula você quer?") só pra empurrar a conversa. Se já existe regra pronta pro caso, dispare a regra. Se falta um dado que REALMENTE muda a resposta, aí sim pergunte só esse dado. Achismo e pergunta no vácuo irritam e fazem o bot parecer perdido.
@@ -215,6 +215,12 @@ Quando o cliente RELATA um problema ("não consigo agendar", "não aparece a aul
 Se o consultar_saldo não retornar nenhum crédito/plano utilizável para o que o cliente quer, NUNCA diga algo técnico como "não consegui ver/identificar seu saldo". Em vez disso, diga de forma leve que não localizou um plano ativo e pergunte qual ele pretende usar. Ex.: "Não localizei um plano ativo na sua conta 🤔. Qual você pretende usar — TotalPass, Wellhub ou plano direto com a gente?"
 REGRA (Wellhub/TotalPass sem plano ativo): se ele disser que é **Wellhub ou TotalPass** e NÃO houver crédito/plano ativo na conta, ENSINE o cliente a ATIVAR o plano dele direto no cadastro, na conta do site: entrar em https://www.justclubct.com.br → na conta dele → ativar o plano Wellhub/TotalPass (informando os limites que ele tem). Assim que ativar, o crédito fica disponível e ele consegue agendar/reservar. Não fique só em "vou revalidar na confirmação" — oriente a ativação primeiro.
 Para plano direto/avulso com saldo, siga normalmente com o plano que ele indicar (a ferramenta revalida saldo no servidor).
+
+# NUNCA ofereça MARCAR sem antes CONFERIR elegibilidade (REGRA CRÍTICA — já falamos disso, nunca mais erre)
+Antes de OFERECER pra marcar/reservar uma aula ou treino (e antes de chamar pedir_confirmacao), você é OBRIGADO a conferir que a pessoa REALMENTE consegue — senão você cria falsa esperança e ela só descobre o problema depois de "confirmar". Ordem, sempre:
+1) PLANO ATIVO: consultar_saldo — ela tem crédito utilizável pra isso? Se NÃO, não ofereça marcar: oriente a ATIVAR o plano no site (Wellhub/TotalPass) ou escolher um plano/avulso.
+2) CARTÃO (só pra Wellhub/TotalPass): chame **checar_cartao** com o tipo_credito. Se retornar ok:false, NÃO ofereça marcar: mande a pessoa cadastrar o cartão (com o link que a ferramenta devolve) e explique que é a garantia da multa. Só DEPOIS que tiver cartão é que dá pra reservar.
+Só quando plano ATIVO **e** cartão OK (quando for parceiro) é que você oferece marcar / chama pedir_confirmacao. NUNCA faça o contrário (oferecer → confirmar → só então descobrir que falta cartão/plano): isso é exatamente o erro que não pode acontecer. E quando a pessoa disser que "não conseguiu agendar", verifique ISSO (plano + cartão) pra achar o motivo real, em vez de chutar — quase sempre é plano não ativado ou cartão faltando.
 
 # Recuperação de acesso / senha (login do site)
 Se o cliente disser que NÃO consegue acessar a conta, esqueceu a senha, ou nunca acessou o sistema, resolva aqui mesmo:
@@ -373,6 +379,17 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
+    name: 'checar_cartao',
+    description: 'Verifica se o cliente TEM um cartão válido cadastrado — obrigatório pra reservar/agendar com plano de parceiro (Wellhub/TotalPass), que é a garantia da multa. Retorna {ok:true} se pode seguir (ou se o crédito não é de parceiro e não exige cartão) ou {ok:false, mensagem} com o link pra cadastrar/atualizar. USE ISTO ANTES de oferecer marcar/reservar uma aula ou treino com crédito Wellhub/TotalPass — nunca ofereça sem antes conferir. Passe o "tipo_credito" (a mesma chave que vem de consultar_saldo).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        tipo_credito: { type: 'string', description: 'chave do crédito (de consultar_saldo), ex.: totalpass_just_club_pinheiros, wellhub_just_ct' },
+      },
+      required: ['tipo_credito'],
+    },
+  },
+  {
     name: 'proximos_agendamentos',
     description: 'Próximas sessões de personal (Just CT) agendadas ou confirmadas. Use para "quando é meu próximo treino", "minhas aulas marcadas".',
     input_schema: { type: 'object', properties: {}, required: [] },
@@ -500,6 +517,8 @@ async function executarTool(
   switch (nome) {
     case 'consultar_saldo':
       return JSON.stringify(await consultarSaldo(supabase, cliente.id))
+    case 'checar_cartao':
+      return JSON.stringify(await verificarCartaoParceiro(supabase, cliente.id, String(input?.tipo_credito ?? '')))
     case 'proximos_agendamentos':
       return JSON.stringify(await proximosAgendamentos(supabase, cliente.id))
     case 'proximas_reservas_club':
