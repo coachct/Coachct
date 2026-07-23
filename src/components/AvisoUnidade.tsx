@@ -7,7 +7,7 @@ const PINHEIROS_ID = '166a683d-5fe6-4177-8fd6-53deb70b428e'
 // ── Liga/desliga global do aviso ──────────────────────────────
 // Para REMOVER o aviso depois: trocar AVISO_ATIVO para false e dar deploy.
 // Vale para a faixa (AvisoUnidade) E para o popup (AvisoPopupPinheiros).
-const AVISO_ATIVO = true
+const AVISO_ATIVO = false
 const AVISO_TEXTO = 'Atenção Just Club Pinheiros, novos horários na manhã, a partir de 06/07'
 // ──────────────────────────────────────────────────────────────
 // Chave do localStorage que marca que o cliente já viu o popup uma vez.
