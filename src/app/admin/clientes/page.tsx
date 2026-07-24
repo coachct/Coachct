@@ -169,7 +169,7 @@ async function sincronizarIdFace(cpf: string, nome: string, fotoBlob: Blob): Pro
 
 export default function AdminClientesPage() {
   const { perfil, loading } = useAuth()
-  const { unidadeAtiva, unidadesPermitidas, loading: loadingUnidade } = useUnidade()
+  const { unidadeAtiva, unidadesPermitidas, temMultiplasUnidades, loading: loadingUnidade } = useUnidade()
   const router = useRouter()
   const supabase = createClient()
 
@@ -220,6 +220,7 @@ export default function AdminClientesPage() {
   const [formVenda, setFormVenda] = useState({
     produto_id: '', quantidade: 1, valor_unitario: 0,
     desconto_percentual: 0, forma_pagamento: 'pix', observacao: '',
+    unidade_faturamento_id: '',
   })
   const [vendendo, setVendendo] = useState(false)
   const [erroVenda, setErroVenda] = useState('')
@@ -633,6 +634,7 @@ export default function AdminClientesPage() {
       produto_id: data && data[0] ? data[0].id : '',
       quantidade: 1, valor_unitario: data && data[0] ? Number(data[0].valor) : 0,
       desconto_percentual: 0, forma_pagamento: 'pix', observacao: '',
+      unidade_faturamento_id: unidadeAtiva.id,
     })
     setErroVenda(''); setModalVenda(true)
   }
@@ -657,7 +659,7 @@ export default function AdminClientesPage() {
     const { data, error } = await supabase.rpc('registrar_venda', {
       p_produto_id: formVenda.produto_id, p_cliente_id: clienteSel.id, p_quantidade: formVenda.quantidade,
       p_valor_unitario: formVenda.valor_unitario, p_forma_pagamento: formVenda.forma_pagamento,
-      p_vendido_por: perfil?.id, p_unidade_id: unidadeAtiva.id,
+      p_vendido_por: perfil?.id, p_unidade_id: unidadeFaturamento,
       p_observacao: formVenda.observacao.trim() || null, p_desconto_percentual: formVenda.desconto_percentual,
     })
     setVendendo(false)
@@ -971,6 +973,11 @@ export default function AdminClientesPage() {
   }
 
   const produtoSelecionado = produtosDisp.find(p => p.id === formVenda.produto_id)
+  // Produto amarrado a uma unidade (ex: Coach CT) fatura sempre na unidade dele.
+  // Produto de pool global (pacote de treino, unidade_id null) pode faturar em
+  // qualquer unidade — a escolha é só de receita, não muda onde o crédito vale.
+  const produtoAmarrado = !!produtoSelecionado?.unidade_id
+  const unidadeFaturamento = produtoSelecionado?.unidade_id || formVenda.unidade_faturamento_id || unidadeAtiva?.id
   const valorOriginal = formVenda.quantidade * formVenda.valor_unitario
   const valorTotalComDesconto = valorOriginal * (1 - formVenda.desconto_percentual / 100)
   const ehCortesia = formVenda.desconto_percentual === 100
@@ -1870,6 +1877,27 @@ export default function AdminClientesPage() {
                     <input type="number" min={0} step="0.01" className="input w-full" value={formVenda.valor_unitario} onChange={e => setFormVenda({ ...formVenda, valor_unitario: parseFloat(e.target.value) || 0 })} />
                   </div>
                 </div>
+                {temMultiplasUnidades && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-blue-800 mb-1 block">Faturamento</label>
+                    {produtoAmarrado ? (
+                      <div className="text-sm text-blue-900">
+                        {produtoSelecionado?.unidades?.nome || unidadesPermitidas.find(u => u.id === produtoSelecionado?.unidade_id)?.nome || 'Unidade do produto'}
+                        <span className="text-xs text-blue-600 block mt-0.5">Produto exclusivo desta unidade — receita fixa aqui.</span>
+                      </div>
+                    ) : (
+                      <>
+                        <select className="input w-full" value={formVenda.unidade_faturamento_id}
+                          onChange={e => setFormVenda({ ...formVenda, unidade_faturamento_id: e.target.value })}>
+                          {unidadesPermitidas.map(u => (
+                            <option key={u.id} value={u.id}>{u.nome}</option>
+                          ))}
+                        </select>
+                        <span className="text-xs text-blue-600 block mt-1">Onde a receita será contabilizada. Não muda onde os créditos valem.</span>
+                      </>
+                    )}
+                  </div>
+                )}
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold uppercase tracking-wide text-amber-800">Desconto</span>
