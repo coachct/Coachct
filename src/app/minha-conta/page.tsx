@@ -91,6 +91,7 @@ Ao ativar seu plano e confirmar o aceite abaixo, você declara ter lido, compree
 function parsePlanoKey(key: string): { label: string; icon: string } {
   const lower = (key||'').toLowerCase()
   if (lower === 'avulso_importado') return { label: 'Crédito Avulso · todos os Clubs', icon: '🎟️' }
+  if (lower === 'avulso') return { label: 'Crédito Avulso · todas as unidades', icon: '🎟️' }
   let tipo = '', icon = '🏋️', slugUnidade = ''
   if (lower.startsWith('coach_ct_pro'))      { tipo = 'Coach CT Pro'; icon = '🏆'; slugUnidade = key.substring('coach_ct_pro_'.length) }
   else if (lower.startsWith('wellhub'))      { tipo = 'Wellhub'; icon = '💜'; slugUnidade = key.split('_').slice(1).join('_') }
@@ -260,11 +261,16 @@ export default function MinhaContaPage() {
       .eq('usado', false)
       .gte('validade', dataLocalStr(agora))
     const uidsAvulso = (avuls||[]).map((a:any) => a.unidade_id).filter(Boolean)
+    // Crédito avulso GLOBAL (unidade_id NULL = vale em todas as unidades, ex.: "Pacote 40 Treinos").
+    // Como não tem unidade, precisa de uma chamada com p_unidade_id=null pra RPC devolver a chave 'avulso'.
+    const temGlobal = (avuls||[]).some((a:any) => !a.unidade_id)
     const uids = [...new Set([...uidsPlanos, ...uidsAvulso])] as string[]
-    if (!uids.length) { setSaldoAtual({}); setSaldoProximo({}); return }
+    if (!uids.length && !temGlobal) { setSaldoAtual({}); setSaldoProximo({}); return }
+    // null representa a consulta do crédito global (todas as unidades)
+    const alvos: (string|null)[] = temGlobal ? [...uids, null] : [...uids]
     const [sa, sp] = await Promise.all([
-      Promise.all(uids.map(uid => supabase.rpc('saldo_creditos_cliente',{p_cliente_id:clienteId,p_mes:mesAtual,p_ano:anoAtual,p_unidade_id:uid}))),
-      Promise.all(uids.map(uid => supabase.rpc('saldo_creditos_cliente',{p_cliente_id:clienteId,p_mes:mesProximo,p_ano:anoProximo,p_unidade_id:uid}))),
+      Promise.all(alvos.map(uid => supabase.rpc('saldo_creditos_cliente',{p_cliente_id:clienteId,p_mes:mesAtual,p_ano:anoAtual,p_unidade_id:uid}))),
+      Promise.all(alvos.map(uid => supabase.rpc('saldo_creditos_cliente',{p_cliente_id:clienteId,p_mes:mesProximo,p_ano:anoProximo,p_unidade_id:uid}))),
     ])
     const ma:Record<string,any>={}; sa.forEach(r=>Object.assign(ma,r.data||{})); setSaldoAtual(ma)
     const mp:Record<string,any>={}; sp.forEach(r=>Object.assign(mp,r.data||{})); setSaldoProximo(mp)
@@ -643,7 +649,10 @@ export default function MinhaContaPage() {
           ) : (
             <div style={{display:'flex',flexDirection:'column',gap:6}}>
               {Object.entries(saldoAtual).map(([plano,info]:any) => {
-                const {label,icon}=parsePlanoKey(plano)
+                const parsed=parsePlanoKey(plano)
+                const icon=parsed.icon
+                // crédito global (pacote sem unidade): usa o nome do pacote igual ao modal de reserva
+                const label=(plano==='avulso' && info?.nome_pacote) ? info.nome_pacote : parsed.label
                 const restante=info.disponivel; const total=info.total
                 const pct=total>0?Math.round((restante/total)*100):0
                 const cor=restante===0?'#333':plano.startsWith('coach_ct_pro')?AMARELO:plano.startsWith('avulso')||plano.startsWith('credito')?CYAN:ACCENT
