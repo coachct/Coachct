@@ -610,6 +610,26 @@ export default function JustClubAdminPage() {
     setInfoReservas({ ocorrencia: c1 || 0, recorrencia: reservasRec, proximaData: ocorrencia.data })
   }
 
+  // Cancelamento COMPLETO no servidor: avisa alunos por email, remove do parceiro
+  // (TotalPass/Wellhub) e cancela reservas — tudo à prova de falha. Retorna a
+  // mensagem de erro (string) ou null em caso de sucesso.
+  async function cancelarOcorrenciasNoServidor(ocIds: string[]): Promise<string | null> {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) return 'Sessão expirada. Faça login de novo.'
+      const res = await fetch('/api/club/cancelar-aula', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ ocorrenciaIds: ocIds }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) return data?.error || 'Erro ao cancelar a aula.'
+      return null
+    } catch (e: any) {
+      return e?.message || 'Erro de rede ao cancelar a aula.'
+    }
+  }
+
   // Cancela somente a próxima ocorrência (mantém a regra)
   async function excluirSomenteOcorrencia() {
     if (!modalExcluir) return
@@ -623,48 +643,39 @@ export default function JustClubAdminPage() {
       ocId = data?.[0]?.id
     }
     if (!ocId) { showMsg('Nenhuma ocorrência futura para cancelar.'); setExcluindo(false); setModalExcluir(null); return }
-    // Cancela reservas dessa ocorrência
-    await supabase.from('club_reservas').update({ status:'cancelado', cancelado_em: new Date().toISOString() })
-      .eq('ocorrencia_id', ocId).neq('status','cancelado')
-    // Marca a ocorrência como cancelada
-    await supabase.from('club_ocorrencias').update({ status: 'cancelada' }).eq('id', ocId)
+    // Servidor: avisa alunos + remove do parceiro + cancela reservas + marca cancelada.
+    const erro = await cancelarOcorrenciasNoServidor([ocId])
     setExcluindo(false); setModalExcluir(null); setInfoReservas(null)
+    if (erro) { showMsg(erro); return }
     await carregarAulas()
     if (abaAtiva==='calendario') await carregarOcorrencias(diasCalendario)
-    showMsg('Ocorrência cancelada.')
+    showMsg('Ocorrência cancelada. Alunos avisados por email.')
   }
 
-  // Exclui toda a recorrência (apaga regra + todas as ocorrências futuras)
+  // Exclui toda a recorrência: cancela as ocorrências futuras (no servidor: avisa
+  // alunos + remove do parceiro + cancela reservas) e desativa a regra. Nunca
+  // apaga fisicamente — a FK club_reservas.ocorrencia_id é NO ACTION e o DELETE
+  // matava o mapa do parceiro antes de removê-lo lá.
   async function excluirTodaRecorrencia() {
     if (!modalExcluir) return
     setExcluindo(true)
     const aulaId = modalExcluir.aula?.id || modalExcluir.ocorrencia?.aula_id || modalExcluir.ocorrencia?.club_aulas?.id
     if (!aulaId) { setExcluindo(false); setModalExcluir(null); return }
     const hoje = dataLocalStr(new Date())
-    // Busca ocorrências futuras
+    // Ocorrências futuras ainda ativas
     const { data: ocs } = await supabase.from('club_ocorrencias')
-      .select('id').eq('aula_id', aulaId).gte('data', hoje)
+      .select('id').eq('aula_id', aulaId).eq('status','ativa').gte('data', hoje)
     const ocIds = (ocs || []).map((o:any) => o.id)
     if (ocIds.length) {
-      // Cancela reservas
-      await supabase.from('club_reservas').update({ status:'cancelado', cancelado_em: new Date().toISOString() })
-        .in('ocorrencia_id', ocIds).neq('status','cancelado')
-      // Apaga ocorrências futuras
-      await supabase.from('club_ocorrencias').delete().in('id', ocIds)
+      const erro = await cancelarOcorrenciasNoServidor(ocIds)
+      if (erro) { setExcluindo(false); setModalExcluir(null); showMsg(erro); return }
     }
-    // Verifica se sobrou alguma ocorrência passada
-    const { count: passadas } = await supabase.from('club_ocorrencias').select('*', { count:'exact', head:true }).eq('aula_id', aulaId)
-    if (passadas && passadas > 0) {
-      // Mantém histórico — desativa a regra
-      await supabase.from('club_aulas').update({ ativo: false }).eq('id', aulaId)
-    } else {
-      // Sem histórico — apaga de vez
-      await supabase.from('club_aulas').delete().eq('id', aulaId)
-    }
+    // Desativa a regra (mantém histórico; para de gerar novas ocorrências)
+    await supabase.from('club_aulas').update({ ativo: false }).eq('id', aulaId)
     setExcluindo(false); setModalExcluir(null); setInfoReservas(null)
     await carregarAulas()
     if (abaAtiva==='calendario') await carregarOcorrencias(diasCalendario)
-    showMsg('Recorrência excluída.')
+    showMsg('Recorrência cancelada. Alunos avisados por email.')
   }
 
   async function criarGrupo() {

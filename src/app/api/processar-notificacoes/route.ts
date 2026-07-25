@@ -74,6 +74,25 @@ function gerarHtml(tipo: string, mensagem: string, nomeCliente: string): { subje
     return wrapEmail(conteudo, `✅ Vaga confirmada — Just CT`)
   }
 
+  // ── Aula cancelada (cancelamento pelo estúdio) ───────────────────────────
+  if (tipo === 'aula_cancelada') {
+    const conteudo = `
+      <div style="font-size:18px;font-weight:700;color:#222;margin-bottom:16px;">Olá, ${primeiroNome}</div>
+      <div style="font-size:15px;line-height:1.7;color:#444;margin-bottom:24px;">${mensagem}</div>
+      <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:16px 20px;margin-bottom:24px;">
+        <div style="font-size:13px;font-weight:700;color:#9a3412;margin-bottom:6px;">📅 Aula cancelada</div>
+        <div style="font-size:13px;color:#9a3412;line-height:1.6;">
+          É só escolher um novo horário quando quiser. Qualquer dúvida sobre o seu crédito, fale com a recepção.
+        </div>
+      </div>
+      <div style="text-align:center;">
+        <a href="${BASE_URL}/aulas" style="display:inline-block;background:#ff2d9b;color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:14px;letter-spacing:0.5px;">
+          Ver horários →
+        </a>
+      </div>`
+    return wrapEmail(conteudo, `Aula cancelada — Just Club & CT`)
+  }
+
   // ── Bloqueio no-show CT ──────────────────────────────────────────────────
   if (tipo === 'bloqueio_no_show') {
     const conteudo = `
