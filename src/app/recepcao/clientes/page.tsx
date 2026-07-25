@@ -1,10 +1,10 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { createClient } from '@/lib/supabase'
 import { gradeExtraDoDia } from '@/lib/grade'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap, Gift, CalendarClock, Edit2, KeyRound, Copy } from 'lucide-react'
 import UnidadeSelector from '@/components/UnidadeSelector'
 
@@ -56,10 +56,11 @@ function parsePlanoKey(key: string) {
   return { label: key, icon:'🎟️' }
 }
 
-export default function RecepcaoClientesPage() {
+function RecepcaoClientesPageInner() {
   const { perfil, loading } = useAuth()
   const { unidadeAtiva, unidadesPermitidas, loading: loadingUnidade } = useUnidade()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
 
   const [busca, setBusca] = useState('')
@@ -149,6 +150,18 @@ export default function RecepcaoClientesPage() {
   useEffect(() => {
     if (perfil) carregarUnidadesEPlanos()
   }, [perfil])
+
+  // Abre um cliente direto pela URL (?id=...) — usado pelos links de nome nas listas de reserva
+  useEffect(() => {
+    const id = searchParams.get('id')
+    if (perfil && id) abrirClientePorId(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [perfil, searchParams])
+
+  async function abrirClientePorId(id: string) {
+    const { data } = await supabase.from('clientes').select('*').eq('id', id).maybeSingle()
+    if (data) { setBusca(data.nome || ''); await abrirCliente(data) }
+  }
 
   async function carregarUnidadesEPlanos() {
     const [{ data: unidades }, { data: planos }] = await Promise.all([
@@ -1692,5 +1705,13 @@ export default function RecepcaoClientesPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function RecepcaoClientesPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-gray-400">Carregando…</div>}>
+      <RecepcaoClientesPageInner />
+    </Suspense>
   )
 }

@@ -850,7 +850,17 @@ export default function RecepcaoClubDetalhe() {
                     {i+1}
                   </div>
                   <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:14, fontWeight:600, color:'#111', marginBottom:2 }}>{cli?.nome||'—'}</div>
+                    {cli?.id ? (
+                      <button onClick={() => router.push(`/recepcao/clientes?id=${cli.id}`)}
+                        title="Ver perfil do cliente"
+                        style={{ fontSize:14, fontWeight:600, color:ACCENT, marginBottom:2, background:'none', border:'none',
+                          padding:0, cursor:'pointer', textAlign:'left', fontFamily:"'DM Sans', sans-serif",
+                          textDecoration:'underline', textUnderlineOffset:2 }}>
+                        {cli.nome || '—'}
+                      </button>
+                    ) : (
+                      <div style={{ fontSize:14, fontWeight:600, color:'#111', marginBottom:2 }}>{cli?.nome||'—'}</div>
+                    )}
                     <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
                       <span style={{ fontSize:11, color:'#888' }}>{icon} {(r as any).creditos_avulsos?.observacao || label}</span>
                       {r.posicao ? (

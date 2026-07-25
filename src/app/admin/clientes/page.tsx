@@ -1,10 +1,10 @@
 'use client'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, Suspense } from 'react'
 import { createClient } from '@/lib/supabase'
 import { gradeExtraDoDia } from '@/lib/grade'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Search, Plus, ChevronRight, X, Check, Calendar, Lock, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap, Gift, CalendarClock, Edit2, Mail, Copy, Clock, Link as LinkIcon, UserPlus, KeyRound, Camera, Upload, Trash, Wifi, WifiOff } from 'lucide-react'
 import UnidadeSelector from '@/components/UnidadeSelector'
 
@@ -167,10 +167,11 @@ async function sincronizarIdFace(cpf: string, nome: string, fotoBlob: Blob): Pro
   return await idfaceUploadFoto(session, userId, fotoBlob)
 }
 
-export default function AdminClientesPage() {
+function AdminClientesPageInner() {
   const { perfil, loading } = useAuth()
   const { unidadeAtiva, unidadesPermitidas, temMultiplasUnidades, loading: loadingUnidade } = useUnidade()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
 
   const [busca, setBusca] = useState('')
@@ -279,6 +280,18 @@ export default function AdminClientesPage() {
   }, [busca])
 
   useEffect(() => { if (perfil) carregarUnidadesEPlanos() }, [perfil])
+
+  // Abre um cliente direto pela URL (?id=...) — usado pelos links de nome nas listas de reserva
+  useEffect(() => {
+    const id = searchParams.get('id')
+    if (perfil && id) abrirClientePorId(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [perfil, searchParams])
+
+  async function abrirClientePorId(id: string) {
+    const { data } = await supabase.from('clientes').select('*').eq('id', id).maybeSingle()
+    if (data) { setBusca(data.nome || ''); await abrirCliente(data) }
+  }
 
   async function carregarUnidadesEPlanos() {
     const [{ data: unidades }, { data: planos }] = await Promise.all([
@@ -2199,5 +2212,13 @@ export default function AdminClientesPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function AdminClientesPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-gray-400">Carregando…</div>}>
+      <AdminClientesPageInner />
+    </Suspense>
   )
 }
