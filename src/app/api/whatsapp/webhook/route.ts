@@ -20,7 +20,7 @@ import {
   type ClienteIdentificado,
 } from '@/lib/whatsapp/consultas'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { responderMensagem, executarAcaoConfirmada, responderVisitante } from '@/lib/whatsapp/agente'
+import { responderMensagem, executarAcaoConfirmada, responderVisitante, MSG_ESCALAR } from '@/lib/whatsapp/agente'
 import {
   enviarTexto,
   enviarBotoes,
@@ -226,7 +226,7 @@ async function processar(de: string, texto: string, wamid: string, botaoId: stri
         // válida) — só o erroTecnico dispara a escalada.
         if (resultado.erroTecnico) {
           await marcarAguardandoHumano(supabase, telefone)
-          const aviso = 'Opa, deu um probleminha técnico aqui do meu lado pra concluir isso 🙈. Mas não vou te deixar na mão: já passei pra nossa equipe e a gente resolve isso pra você por aqui mesmo, rapidinho. 🙏'
+          const aviso = 'Opa, deu um probleminha técnico aqui do meu lado pra concluir isso 🙈. Já passei pra nossa equipe resolver — o atendimento é de segunda a sexta, das 09h às 18h, e dentro desse horário eles te retornam por aqui, tá? 🙏'
           await salvarMensagem(supabase, { telefone, clienteId: cliente.id, role: 'assistant', conteudo: aviso })
           await enviarTexto(de, aviso)
           return
@@ -344,7 +344,7 @@ async function processarMidia(
     if (!(await emModoHumano(supabase, telefone))) {
       await marcarAguardandoHumano(supabase, telefone)
       try {
-        await enviarTexto(de, 'Recebi seu arquivo aqui! 👍 Já encaminhei pra nossa equipe dar uma olhada — em breve te respondem por aqui, tá? 🙏')
+        await enviarTexto(de, 'Recebi seu arquivo aqui! 👍 Já passei pra nossa equipe dar uma olhada — o atendimento é de segunda a sexta, das 09h às 18h, e dentro desse horário eles te retornam por aqui, tá? 🙏')
       } catch {}
     }
   } catch (e: any) {
@@ -489,7 +489,7 @@ async function resolverPorCadastro(
     const norm = (s: string) => String(s ?? '').toLowerCase().replace(/\s+/g, ' ').trim()
     if (ultima && norm(ultima) === norm(msg)) {
       await marcarAguardandoHumano(supabase, telefone)
-      saida = 'Deixa eu encaminhar sua mensagem pra nossa equipe dar uma olhada — já já te respondem por aqui, tá? 🙏'
+      saida = MSG_ESCALAR
     }
     await salvarMensagem(supabase, { telefone, clienteId: null, role: 'user', conteudo: texto })
     await enviarTexto(de, saida)
