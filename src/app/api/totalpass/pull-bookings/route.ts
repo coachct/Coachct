@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
 
   const statusVistos = new Set<string>()
   const ativosIds = new Set<string>()
-  let criadas = 0, rejeitadas = 0, jaTinha = 0, semMapa = 0, incompletas = 0, totalSlots = 0
+  let criadas = 0, reativadas = 0, rejeitadas = 0, jaTinha = 0, semMapa = 0, incompletas = 0, totalSlots = 0
   const erros: any[] = []
   const errosApi: any[] = []
 
@@ -120,6 +120,7 @@ export async function POST(req: NextRequest) {
 
       const r = await registrarReserva(supabase, s, ocPorEvento, place.apiKey!)
       if (r === 'criada') criadas++
+      else if (r === 'reativada') reativadas++
       else if (r === 'rejeitada') rejeitadas++
       else if (r === 'ja') jaTinha++
       else if (r === 'sem-mapa') semMapa++
@@ -131,13 +132,31 @@ export async function POST(req: NextRequest) {
   // Cancelamentos: reservas nossas via TotalPass, ativas, cujo slot sumiu dos
   // ativos — SÓ dentro da janela consultada (senão cancelaria reservas futuras
   // fora da janela, cujos slots nem foram puxados). ativosIds junta todas as unidades.
+  //
+  // ⚠️ REDE DE SEGURANÇA: a API da TotalPass às vezes solta um poll vazio ou com
+  // erro (timeout/glitch). Se a gente conciliar em cima disso, "nenhum slot veio"
+  // é lido como "todo mundo cancelou" e cancela EM MASSA reservas que seguem
+  // ativas no app (incidente 26/07: 18 reservas de 14 clientes canceladas de uma
+  // vez). Poll vazio quase nunca é cancelamento real — é falha de comunicação.
+  // Então só concilia se o poll for CONFIÁVEL: nenhuma unidade falhou na API E
+  // pelo menos 1 slot ativo voltou. Senão, pula o cancelamento e espera o próximo
+  // poll (o pior caso é uma reserva de fato cancelada persistir mais alguns minutos).
   const hojeStr = agora.toISOString().slice(0, 10)
   const fimStr = fim.toISOString().slice(0, 10)
-  const canceladas = await conciliarCancelamentos(supabase, ativosIds, hojeStr, fimStr)
+  const pollConfiavel = errosApi.length === 0 && ativosIds.size > 0
+  let canceladas = 0
+  let cancelamentoPulado = false
+  if (pollConfiavel) {
+    canceladas = await conciliarCancelamentos(supabase, ativosIds, hojeStr, fimStr)
+  } else {
+    cancelamentoPulado = true
+    console.warn('[totalpass/pull] conciliação de cancelamentos PULADA — poll não confiável',
+      { errosApi: errosApi.length, ativos: ativosIds.size })
+  }
 
   return NextResponse.json({
-    ok: true, slots: totalSlots, criadas, rejeitadas, jaTinha, semMapa, incompletas,
-    canceladas, erros: erros.length, errosApi, statusVistos: [...statusVistos],
+    ok: true, slots: totalSlots, criadas, reativadas, rejeitadas, jaTinha, semMapa, incompletas,
+    canceladas, cancelamentoPulado, erros: erros.length, errosApi, statusVistos: [...statusVistos],
   })
 }
 
@@ -145,7 +164,45 @@ export async function GET(req: NextRequest) {
   return POST(req)
 }
 
-type ResReserva = 'criada' | 'rejeitada' | 'ja' | 'sem-mapa' | 'erro' | 'incompleto'
+type ResReserva = 'criada' | 'reativada' | 'rejeitada' | 'ja' | 'sem-mapa' | 'erro' | 'incompleto'
+
+// Garante que há vaga real na ocorrência e resolve a posição (esteira/funcional
+// nas aulas de Running). Usado tanto na criação quanto na reativação (self-heal),
+// pra não duplicar a regra. Sem vaga ou sem posição livre → cancela o slot no app
+// deles e devolve { ok:false }. Em Running devolve a posição escolhida; nas demais
+// aulas devolve posicao:null.
+async function garantirVaga(
+  supabase: SupabaseClient, ocorrenciaId: string, apiKey: string, slotId: string
+): Promise<{ ok: true; posicao: string | null } | { ok: false }> {
+  // Vaga: total_capacity (já desconta site+outros apps) − reservas próprias da TotalPass.
+  const { data: numsRaw } = await supabase.rpc('totalpass_slot_numbers', { p_ocorrencia_id: ocorrenciaId })
+  const nums = Array.isArray(numsRaw) ? numsRaw[0] : numsRaw
+  const { count: tpAtuais } = await supabase
+    .from('club_reservas')
+    .select('id', { count: 'exact', head: true })
+    .eq('ocorrencia_id', ocorrenciaId).eq('via_app', true).neq('status', 'cancelado')
+    .not('totalpass_slot_id', 'is', null)
+  const disponivel = (nums?.total_capacity ?? 0) - (tpAtuais ?? 0)
+  if (disponivel <= 0) {
+    await cancelarSlot(apiKey, slotId) // sem vaga → cancela a reserva no app deles
+    return { ok: false }
+  }
+
+  // Posição: Running exige posição. Auto-atribui a primeira esteira livre, depois
+  // funcional. Sem posição livre → sem vaga real → cancela o slot deles.
+  const { data: ocInfo } = await supabase
+    .from('club_ocorrencias')
+    .select('club_aulas(tipo, unidade_id)')
+    .eq('id', ocorrenciaId).maybeSingle()
+  const tipo = (ocInfo as any)?.club_aulas?.tipo
+  const unidadeId = (ocInfo as any)?.club_aulas?.unidade_id
+  if (tipo === 'running_funcional') {
+    const posicao = await escolherPosicao(supabase, ocorrenciaId, unidadeId)
+    if (!posicao) { await cancelarSlot(apiKey, slotId); return { ok: false } }
+    return { ok: true, posicao }
+  }
+  return { ok: true, posicao: null }
+}
 
 // Completa um cadastro com o que a TotalPass mandou no slot, SÓ nos campos que
 // estão vazios (ou nome genérico "Cliente TotalPass"). CPF gravado só-dígitos.
@@ -179,10 +236,29 @@ async function registrarReserva(
   // Já registrada? Mesmo assim faz backfill: o cliente pode ter sido criado
   // antes (payload cru) e agora os dados chegaram — self-heal do "fantasma".
   const { data: existente } = await supabase
-    .from('club_reservas').select('id, cliente_id').eq('totalpass_slot_id', s.slotId).maybeSingle()
+    .from('club_reservas').select('id, cliente_id, status, ocorrencia_id')
+    .eq('totalpass_slot_id', s.slotId).maybeSingle()
   if (existente) {
     await backfillCliente(supabase, (existente as any).cliente_id, s)
-    return 'ja'
+    if ((existente as any).status !== 'cancelado') return 'ja'
+
+    // SELF-HEAL: o slot voltou ATIVO neste poll, mas nossa reserva está cancelada.
+    // Como o slot_id é único por reserva na TotalPass, vê-lo ativo prova que a
+    // reserva segue de pé no app deles → a nossa foi cancelada por engano (ver a
+    // rede de segurança no POST). Reativamos honrando capacidade/posição atuais,
+    // em vez de deixar a reserva morta pra sempre.
+    const ocId = (existente as any).ocorrencia_id as string
+    const vaga = await garantirVaga(supabase, ocId, apiKey, s.slotId!)
+    if (!vaga.ok) return 'rejeitada'
+    const { error: errReat } = await supabase
+      .from('club_reservas')
+      .update({ status: 'reservado', cancelado_em: null, posicao: vaga.posicao })
+      .eq('id', (existente as any).id).eq('status', 'cancelado')
+    if (errReat) {
+      console.warn('[totalpass/pull] reativação recusada:', (errReat as any).code, (errReat as any).message)
+      return 'erro'
+    }
+    return 'reativada'
   }
 
   // Payload "cru": a TotalPass às vezes devolve o slot ANTES de preencher os
@@ -207,33 +283,10 @@ async function registrarReserva(
   // fantasma antigo), completa com o que a TotalPass mandou.
   await backfillCliente(supabase, clienteId as unknown as string, s)
 
-  // Vaga: total_capacity (já desconta site+outros apps) − reservas próprias da TotalPass.
-  const { data: numsRaw } = await supabase.rpc('totalpass_slot_numbers', { p_ocorrencia_id: ocorrenciaId })
-  const nums = Array.isArray(numsRaw) ? numsRaw[0] : numsRaw
-  const { count: tpAtuais } = await supabase
-    .from('club_reservas')
-    .select('id', { count: 'exact', head: true })
-    .eq('ocorrencia_id', ocorrenciaId).eq('via_app', true).neq('status', 'cancelado')
-    .not('totalpass_slot_id', 'is', null)
-  const disponivel = (nums?.total_capacity ?? 0) - (tpAtuais ?? 0)
-  if (disponivel <= 0) {
-    await cancelarSlot(apiKey, s.slotId!) // sem vaga → cancela a reserva no app deles
-    return 'rejeitada'
-  }
-
-  // Posição: Running exige posição. Auto-atribui a primeira esteira livre, depois
-  // funcional. Sem posição livre → sem vaga real → cancela o slot deles.
-  const { data: ocInfo } = await supabase
-    .from('club_ocorrencias')
-    .select('club_aulas(tipo, unidade_id)')
-    .eq('id', ocorrenciaId).maybeSingle()
-  const tipo = (ocInfo as any)?.club_aulas?.tipo
-  const unidadeId = (ocInfo as any)?.club_aulas?.unidade_id
-  let posicao: string | null = null
-  if (tipo === 'running_funcional') {
-    posicao = await escolherPosicao(supabase, ocorrenciaId, unidadeId)
-    if (!posicao) { await cancelarSlot(apiKey, s.slotId!); return 'rejeitada' }
-  }
+  // Vaga real + posição (mesma regra da reativação).
+  const vaga = await garantirVaga(supabase, ocorrenciaId, apiKey, s.slotId!)
+  if (!vaga.ok) return 'rejeitada'
+  const posicao = vaga.posicao
 
   // Insere. Trava de 1/dia/unidade (P0001) vale no app → rejeita limpo cancelando o slot.
   // 23505 = já existe (reentrega) → trata como criada.
