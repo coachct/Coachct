@@ -18,6 +18,7 @@ export interface Coach {
   salario_fixo: number
   cargo: 'estagiario' | 'professor'
   valor_hora: number
+  data_inicio_horas: string | null
   adicional_por_aula: number
   valor_cliente_aula: number
   ativo: boolean

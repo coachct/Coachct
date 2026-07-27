@@ -95,7 +95,7 @@ export default function CoachesPage() {
     const abrindo = expandedCoach !== coach.id
     if (!abrindo) { setExpandedCoach(null); return }
     setExpandedCoach(coach.id)
-    setEditDraft({ id: coach.id, nome: coach.nome, cpf: coach.cpf, salario_fixo: coach.salario_fixo, cargo: coach.cargo, valor_hora: coach.valor_hora })
+    setEditDraft({ id: coach.id, nome: coach.nome, cpf: coach.cpf, salario_fixo: coach.salario_fixo, cargo: coach.cargo, valor_hora: coach.valor_hora, data_inicio_horas: coach.data_inicio_horas })
     loadCoachUnidades(coach.id)
     loadHorarios(coach.id)
     loadFerias(coach.id)
@@ -454,6 +454,7 @@ export default function CoachesPage() {
       cargo: editDraft.cargo || 'estagiario',
       salario_fixo: editDraft.salario_fixo || 0,
       valor_hora: editDraft.valor_hora || 0,
+      data_inicio_horas: editDraft.data_inicio_horas || null,
     }).eq('id', editDraft.id)
     if (error) setMsg('Erro: ' + error.message)
     else { setMsg('Coach atualizado!'); loadCoaches() }
@@ -591,9 +592,16 @@ export default function CoachesPage() {
                         <input className="input" type="number" value={editDraft.salario_fixo||0} onChange={e => setEditDraft(f=>({...f,salario_fixo:+e.target.value}))} placeholder="0" />
                       </div>
                     ) : (
-                      <div className="max-w-xs mb-3">
-                        <label className="label">Valor por hora (R$)</label>
-                        <input className="input" type="number" value={editDraft.valor_hora||0} onChange={e => setEditDraft(f=>({...f,valor_hora:+e.target.value}))} placeholder="0" />
+                      <div className="mb-3 flex flex-wrap gap-3">
+                        <div className="max-w-xs">
+                          <label className="label">Valor por hora (R$)</label>
+                          <input className="input" type="number" value={editDraft.valor_hora||0} onChange={e => setEditDraft(f=>({...f,valor_hora:+e.target.value}))} placeholder="0" />
+                        </div>
+                        <div className="max-w-xs">
+                          <label className="label">Início do pagamento por hora <span className="text-gray-400 font-normal">— opcional</span></label>
+                          <input className="input" type="date" value={editDraft.data_inicio_horas||''} onChange={e => setEditDraft(f=>({...f,data_inicio_horas:e.target.value}))} />
+                          <p className="text-xs text-gray-400 mt-1">Vazio = conta o mês inteiro. Preenchido = conta as horas só a partir dessa data (útil para quem entrou no meio do mês).</p>
+                        </div>
                       </div>
                     )}
                     <button onClick={handleEdit} disabled={saving} className="btn btn-primary btn-sm gap-2"><Save size={12}/>{saving?'Salvando...':'Salvar dados'}</button>

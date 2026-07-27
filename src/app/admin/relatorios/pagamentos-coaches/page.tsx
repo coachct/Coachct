@@ -64,7 +64,7 @@ export default function PagamentosCoachesPage() {
     const ids = (cu || []).map((c: any) => c.coach_id)
     if (!ids.length) { setCoaches([]); return }
     const { data } = await supabase.from('coaches')
-      .select('id, nome, salario_fixo, cargo, valor_hora, user_id')
+      .select('id, nome, salario_fixo, cargo, valor_hora, user_id, data_inicio_horas')
       .eq('ativo', true).in('id', ids).order('nome')
     setCoaches(data || [])
   }
@@ -186,6 +186,8 @@ export default function PagamentosCoachesPage() {
         .eq('coach_id', coachSel.id).eq('unidade_id', unidadeSel.id)
         .lte('data_inicio', fim).gte('data_fim', inicio)
       const emFerias = (ds: string) => (fer || []).some((f: any) => f.data_inicio <= ds && f.data_fim >= ds)
+      // Início do pagamento por hora: vazio = conta o mês todo; preenchido = só a partir dessa data.
+      const inicioHoras = coachSel.data_inicio_horas || null
       const [yi, mi, di] = inicio.split('-').map(Number)
       const [yf, mf, dff] = fim.split('-').map(Number)
       const cur = new Date(yi, mi - 1, di)
@@ -195,7 +197,9 @@ export default function PagamentosCoachesPage() {
         const ds = dataLocalStr(cur)
         const dow = cur.getDay()
         let h = 0, fonte = ''
-        if (emFerias(ds)) {
+        if (inicioHoras && ds < inicioHoras) {
+          h = 0
+        } else if (emFerias(ds)) {
           h = 0
         } else if (feriadoSet.has(ds) || dow === 0 || dow === 6) {
           if (escSet.has(ds)) { h = HFDS.length; fonte = feriadoSet.has(ds) ? 'feriado' : 'fds' }
