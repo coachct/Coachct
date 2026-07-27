@@ -8,6 +8,7 @@ import { ShoppingBag, CreditCard, Zap, CheckCircle, XCircle, Clock, Banknote, St
 type VendaUnificada = {
   id: string
   origem: 'site' | 'balcao'
+  cliente_id: string | null
   cliente_nome: string
   cliente_email: string | null
   produto_nome: string
@@ -138,6 +139,7 @@ export default function AdminVendasPage() {
     const online: VendaUnificada[] = (onlineRaw || []).map((o: any) => ({
       id: o.id,
       origem: 'site',
+      cliente_id: o.cliente_id || null,
       cliente_nome: o.clientes?.nome || '—',
       cliente_email: o.clientes?.email || null,
       produto_nome: o.produtos?.nome || '—',
@@ -154,6 +156,7 @@ export default function AdminVendasPage() {
     const balcao: VendaUnificada[] = balcaoPuro.map((v: any) => ({
       id: v.id,
       origem: 'balcao',
+      cliente_id: v.cliente_id || null,
       cliente_nome: mapCliente.get(v.cliente_id)?.nome || '—',
       cliente_email: mapCliente.get(v.cliente_id)?.email || null,
       produto_nome: mapProduto.get(v.produto_id)?.nome || '—',
@@ -386,9 +389,18 @@ export default function AdminVendasPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-semibold text-gray-900">
-                        {v.cliente_nome}
-                      </span>
+                      {v.cliente_id ? (
+                        <a
+                          href={`/admin/clientes?id=${v.cliente_id}`}
+                          className="text-sm font-semibold text-primary-700 hover:underline"
+                        >
+                          {v.cliente_nome}
+                        </a>
+                      ) : (
+                        <span className="text-sm font-semibold text-gray-900">
+                          {v.cliente_nome}
+                        </span>
+                      )}
                       <span className={`text-xs px-2 py-0.5 rounded-full border flex items-center gap-1 ${origem.color}`}>
                         <OrigemIcon size={10} />
                         {origem.label}
