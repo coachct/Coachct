@@ -1121,117 +1121,117 @@ function AdminClientesPageInner() {
 
             {aba === 'dados' && (
               <div className="space-y-4">
-                <div className="bg-gradient-to-br from-primary-600 to-primary-800 rounded-2xl p-5 text-white flex items-center gap-4">
+                {/* Cabeçalho enxuto: foto + nome + email */}
+                <div className="bg-gradient-to-br from-primary-600 to-primary-800 rounded-2xl px-4 py-3 text-white flex items-center gap-3">
                   <div className="relative flex-shrink-0">
                     {fotoUrl ? (
-                      <img src={fotoUrl} alt={clienteSel.nome} className="w-14 h-14 rounded-full object-cover border-2 border-white/30" />
+                      <img src={fotoUrl} alt={clienteSel.nome} className="w-11 h-11 rounded-full object-cover border-2 border-white/30" />
                     ) : (
-                      <div className="w-14 h-14 rounded-full bg-white/20 text-white text-xl font-bold flex items-center justify-center">
+                      <div className="w-11 h-11 rounded-full bg-white/20 text-white text-base font-bold flex items-center justify-center">
                         {clienteSel.nome?.slice(0, 2).toUpperCase()}
                       </div>
                     )}
                   </div>
-                  <div className="flex-1">
-                    <div className="font-bold text-lg leading-tight">{clienteSel.nome}</div>
-                    <div className="text-primary-200 text-sm mt-0.5">{clienteSel.email || 'Sem email cadastrado'}</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-bold text-base leading-tight truncate">{clienteSel.nome}</div>
+                    <div className="text-primary-200 text-xs mt-0.5 truncate">{clienteSel.email || 'Sem email cadastrado'}</div>
                   </div>
-                  {clienteTemAcesso ? (
-                    <span className="bg-green-500 bg-opacity-30 border border-green-300 text-green-100 text-xs px-2 py-1 rounded-full font-semibold flex items-center gap-1 flex-shrink-0">
-                      <Check size={12} /> Acesso ativo
-                    </span>
-                  ) : (
-                    <span className="bg-orange-500 bg-opacity-30 border border-orange-300 text-orange-100 text-xs px-2 py-1 rounded-full font-semibold flex items-center gap-1 flex-shrink-0">
-                      <KeyRound size={12} /> Sem acesso
-                    </span>
-                  )}
                 </div>
 
-                {clienteTemAcesso && (
-                  <div className={`card border-l-4 flex items-center justify-between gap-3 ${acessoBloqueado ? 'border-l-red-400 bg-red-50' : 'border-l-gray-200'}`}>
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${acessoBloqueado ? 'bg-red-200 text-red-700' : 'bg-gray-100 text-gray-500'}`}>
-                        {acessoBloqueado ? <Lock size={18} /> : <Unlock size={18} />}
+                {/* Três cards na mesma linha: foto, status de acesso, bloquear */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* 1. Foto facial */}
+                  <div className={`card border-l-4 flex flex-col ${clienteTemFoto ? 'border-l-green-400 bg-green-50' : 'border-l-blue-400 bg-blue-50'}`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${clienteTemFoto ? 'bg-green-200 text-green-700' : 'bg-blue-200 text-blue-700'}`}>
+                        <Camera size={16} />
                       </div>
-                      <div>
-                        <div className={`text-sm font-semibold ${acessoBloqueado ? 'text-red-900' : 'text-gray-800'}`}>
-                          {acessoBloqueado ? 'Acesso bloqueado' : 'Acesso liberado'}
-                        </div>
-                        <div className={`text-xs ${acessoBloqueado ? 'text-red-500' : 'text-gray-500'}`}>
-                          {acessoBloqueado ? 'Este cliente não consegue entrar no sistema.' : 'Este cliente entra no sistema normalmente.'}
-                        </div>
+                      <div className={`text-sm font-semibold leading-tight ${clienteTemFoto ? 'text-green-900' : 'text-blue-900'}`}>
+                        {clienteTemFoto ? 'Foto facial cadastrada' : 'Foto facial'}
                       </div>
                     </div>
-                    <button onClick={toggleBloqueioAcesso} disabled={salvandoBloqueio}
-                      className={`btn btn-sm gap-1 flex-shrink-0 ${acessoBloqueado ? 'text-green-600 hover:bg-green-50' : 'text-red-600 hover:bg-red-50'}`}>
-                      {acessoBloqueado ? <><Unlock size={14} /> Desbloquear</> : <><Lock size={14} /> Bloquear acesso</>}
-                    </button>
-                  </div>
-                )}
-
-                <div className={`card border-l-4 ${clienteTemFoto ? 'border-l-green-400 bg-green-50' : 'border-l-blue-400 bg-blue-50'}`}>
-                  <div className="flex items-start gap-3">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${clienteTemFoto ? 'bg-green-200 text-green-700' : 'bg-blue-200 text-blue-700'}`}>
-                      <Camera size={18} />
-                    </div>
-                    <div className="flex-1">
-                      <div className={`text-sm font-semibold mb-1 ${clienteTemFoto ? 'text-green-900' : 'text-blue-900'}`}>
-                        {clienteTemFoto ? 'Foto facial cadastrada' : 'Foto facial não cadastrada'}
-                      </div>
-                      {!clienteTemCpf ? (
-                        <>
-                          <div className="text-xs text-blue-700 mb-3">Para cadastrar a foto facial, primeiro cadastre o <strong>CPF</strong> do cliente.</div>
-                          <button disabled className="btn btn-sm bg-gray-200 text-gray-400 cursor-not-allowed gap-1"><Camera size={12} /> Cadastre o CPF primeiro</button>
-                        </>
-                      ) : clienteTemFoto ? (
-                        <>
-                          {statusSync === 'syncing' && <div className="text-xs text-blue-700 mb-3 flex items-center gap-1"><div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" /> Sincronizando com iDFace...</div>}
-                          {statusSync === 'success' && <div className="text-xs text-green-700 mb-3 flex items-center gap-1"><Wifi size={12} /> Sincronizado com iDFace</div>}
-                          {statusSync === 'error' && (
-                            <div className="bg-orange-100 border border-orange-300 rounded-lg p-2 mb-3 text-xs text-orange-800 flex items-start gap-1">
-                              <WifiOff size={12} className="mt-0.5 flex-shrink-0" />
-                              <div><div className="font-semibold">Foto salva, mas não sincronizada com iDFace</div><div className="opacity-80 mt-0.5">{erroSync}</div></div>
-                            </div>
-                          )}
-                          <div className="flex gap-2 flex-wrap">
-                            <button onClick={abrirModalFoto} className="btn btn-sm gap-1 bg-primary-600 text-white hover:bg-primary-700"><Camera size={12} /> Trocar foto</button>
-                            {statusSync === 'error' && <button onClick={ressincronizar} disabled={resincronizando} className="btn btn-sm gap-1 bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50"><Wifi size={12} /> {resincronizando ? 'Sincronizando...' : 'Tentar sincronizar de novo'}</button>}
-                            <button onClick={removerFoto} disabled={salvandoFoto} className="btn btn-sm gap-1 text-red-600 border border-red-200 hover:bg-red-50"><Trash size={12} /> Remover</button>
+                    {!clienteTemCpf ? (
+                      <>
+                        <div className="text-xs text-blue-700 mb-3">Cadastre o <strong>CPF</strong> do cliente primeiro.</div>
+                        <button disabled className="btn btn-sm bg-gray-200 text-gray-400 cursor-not-allowed gap-1 mt-auto w-full"><Camera size={12} /> Cadastre o CPF</button>
+                      </>
+                    ) : clienteTemFoto ? (
+                      <>
+                        {statusSync === 'syncing' && <div className="text-xs text-blue-700 mb-2 flex items-center gap-1"><div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" /> Sincronizando...</div>}
+                        {statusSync === 'success' && <div className="text-xs text-green-700 mb-2 flex items-center gap-1"><Wifi size={12} /> Sincronizado com iDFace</div>}
+                        {statusSync === 'error' && (
+                          <div className="bg-orange-100 border border-orange-300 rounded-lg p-2 mb-2 text-xs text-orange-800 flex items-start gap-1">
+                            <WifiOff size={12} className="mt-0.5 flex-shrink-0" />
+                            <div><div className="font-semibold">Não sincronizada com iDFace</div><div className="opacity-80 mt-0.5">{erroSync}</div></div>
                           </div>
+                        )}
+                        <div className="flex flex-wrap gap-2 mt-auto">
+                          <button onClick={abrirModalFoto} className="btn btn-sm gap-1 bg-primary-600 text-white hover:bg-primary-700"><Camera size={12} /> Trocar</button>
+                          {statusSync === 'error' && <button onClick={ressincronizar} disabled={resincronizando} className="btn btn-sm gap-1 bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50"><Wifi size={12} /> {resincronizando ? '...' : 'Sincronizar'}</button>}
+                          <button onClick={removerFoto} disabled={salvandoFoto} className="btn btn-sm gap-1 text-red-600 border border-red-200 hover:bg-red-50"><Trash size={12} /> Remover</button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-xs text-blue-700 mb-3">Sincroniza com o iDFace para reconhecimento na entrada.</div>
+                        <button onClick={abrirModalFoto} className="btn btn-sm gap-1 bg-primary-600 text-white hover:bg-primary-700 mt-auto w-full"><Camera size={12} /> Cadastrar foto</button>
+                      </>
+                    )}
+                  </div>
+
+                  {/* 2. Status de acesso */}
+                  <div className={`card border-l-4 flex flex-col ${!clienteTemAcesso ? 'border-l-orange-400 bg-orange-50' : acessoBloqueado ? 'border-l-red-400 bg-red-50' : 'border-l-green-400 bg-green-50'}`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${!clienteTemAcesso ? 'bg-orange-200 text-orange-700' : acessoBloqueado ? 'bg-red-200 text-red-700' : 'bg-green-200 text-green-700'}`}>
+                        {!clienteTemAcesso ? <KeyRound size={16} /> : acessoBloqueado ? <Lock size={16} /> : <Check size={16} />}
+                      </div>
+                      <div className={`text-sm font-semibold leading-tight ${!clienteTemAcesso ? 'text-orange-900' : acessoBloqueado ? 'text-red-900' : 'text-green-900'}`}>
+                        {!clienteTemAcesso ? 'Sem acesso' : acessoBloqueado ? 'Acesso bloqueado' : 'Acesso ativo'}
+                      </div>
+                    </div>
+                    <div className={`text-xs ${!clienteTemAcesso ? 'text-orange-700' : acessoBloqueado ? 'text-red-600' : 'text-green-700'}`}>
+                      {!clienteTemAcesso ? 'Este cliente ainda não tem login no sistema.' : acessoBloqueado ? 'Este cliente não consegue entrar no sistema.' : 'Este cliente entra no sistema normalmente.'}
+                    </div>
+                  </div>
+
+                  {/* 3. Ação: bloquear / desbloquear / criar acesso */}
+                  {clienteTemAcesso ? (
+                    <div className="card border-l-4 border-l-gray-200 flex flex-col">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-8 h-8 rounded-lg bg-gray-100 text-gray-500 flex items-center justify-center flex-shrink-0">
+                          {acessoBloqueado ? <Unlock size={16} /> : <Lock size={16} />}
+                        </div>
+                        <div className="text-sm font-semibold text-gray-800 leading-tight">{acessoBloqueado ? 'Liberar acesso' : 'Bloquear acesso'}</div>
+                      </div>
+                      <div className="text-xs text-gray-500 mb-3">{acessoBloqueado ? 'Devolve o acesso do cliente ao sistema.' : 'Impede o cliente de entrar no sistema.'}</div>
+                      <button onClick={toggleBloqueioAcesso} disabled={salvandoBloqueio}
+                        className={`btn btn-sm gap-1 mt-auto w-full ${acessoBloqueado ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-red-500 text-white hover:bg-red-600'} disabled:opacity-50`}>
+                        {acessoBloqueado ? <><Unlock size={14} /> Desbloquear</> : <><Lock size={14} /> Bloquear</>}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="card border-l-4 border-l-orange-400 bg-orange-50 flex flex-col">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-8 h-8 rounded-lg bg-orange-200 text-orange-700 flex items-center justify-center flex-shrink-0"><KeyRound size={16} /></div>
+                        <div className="text-sm font-semibold text-orange-900 leading-tight">Criar acesso</div>
+                      </div>
+                      {clienteSemEmailSemAcesso ? (
+                        <>
+                          <div className="text-xs text-orange-700 mb-3">Cadastre o email do cliente primeiro.</div>
+                          <button disabled className="btn btn-sm bg-gray-200 text-gray-400 cursor-not-allowed gap-1 mt-auto w-full"><KeyRound size={12} /> Cadastre o email</button>
                         </>
                       ) : (
                         <>
-                          <div className="text-xs text-blue-700 mb-3">Cadastre a foto facial do cliente. A foto será automaticamente sincronizada com o iDFace para reconhecimento na entrada.</div>
-                          <button onClick={abrirModalFoto} className="btn btn-sm gap-1 bg-primary-600 text-white hover:bg-primary-700"><Camera size={12} /> Cadastrar foto facial</button>
+                          <div className="text-xs text-orange-700 mb-2">Gera senha provisória e envia boas-vindas para <strong>{clienteSel.email}</strong>.</div>
+                          {erroCriarAcesso && <div className="bg-red-50 border border-red-200 rounded-lg p-2 mb-2 text-xs text-red-700">{erroCriarAcesso}</div>}
+                          <button onClick={criarAcessoClienteExistente} disabled={criandoAcesso} className="btn btn-sm gap-1 bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50 mt-auto w-full">
+                            <KeyRound size={12} />{criandoAcesso ? 'Criando...' : 'Criar acesso'}
+                          </button>
                         </>
                       )}
                     </div>
-                  </div>
+                  )}
                 </div>
-
-                {!clienteTemAcesso && (
-                  <div className="card border-l-4 border-l-orange-400 bg-orange-50">
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-orange-200 text-orange-700 flex items-center justify-center flex-shrink-0"><KeyRound size={18} /></div>
-                      <div className="flex-1">
-                        <div className="text-sm font-semibold text-orange-900 mb-1">Cliente sem acesso ao sistema</div>
-                        {clienteSemEmailSemAcesso ? (
-                          <>
-                            <div className="text-xs text-orange-700 mb-3">Para criar o acesso, primeiro cadastre o email do cliente.</div>
-                            <button disabled className="btn btn-sm bg-gray-200 text-gray-400 cursor-not-allowed gap-1"><KeyRound size={12} /> Cadastre o email primeiro</button>
-                          </>
-                        ) : (
-                          <>
-                            <div className="text-xs text-orange-700 mb-3">Será gerada uma senha provisória e enviado um email de boas-vindas para <strong>{clienteSel.email}</strong>.</div>
-                            {erroCriarAcesso && <div className="bg-red-50 border border-red-200 rounded-lg p-2 mb-3 text-xs text-red-700">{erroCriarAcesso}</div>}
-                            <button onClick={criarAcessoClienteExistente} disabled={criandoAcesso} className="btn btn-sm gap-1 bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50">
-                              <KeyRound size={12} />{criandoAcesso ? 'Criando acesso...' : 'Criar acesso e enviar boas-vindas'}
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
 
                 {planosJustCT.filter(isPlanoVigente).length > 0 && (
                   <div className="card border-l-4 border-l-amber-400">
