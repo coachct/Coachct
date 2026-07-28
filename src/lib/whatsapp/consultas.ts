@@ -199,6 +199,40 @@ export function horasAteSP(data: string, horario: string): number {
   return (alvo.getTime() - Date.now()) / (1000 * 60 * 60)
 }
 
+/**
+ * Rótulo PRONTO da data de um treino/aula, a partir do próprio campo `data` do
+ * registro (YYYY-MM-DD) — dia da semana + dia/mês, com marcador relativo
+ * ("hoje"/"amanhã") quando for o caso. Existe para o agente NUNCA precisar
+ * deduzir o dia por conta própria: houve incidente real em que ele chamou de
+ * "amanhã" um treino que era de outro dia (cancelou o registro errado). O
+ * modelo deve SEMPRE copiar este rótulo, nunca recalcular.
+ *
+ * Ancoramos a data ao meio-dia UTC e formatamos em UTC — como é só data (sem
+ * hora), isso é determinístico e imune ao fuso do servidor.
+ */
+export function rotuloDataPt(
+  data: string,
+  hoje: string,
+): { dia_semana: string; data_rotulo: string; quando: 'hoje' | 'amanhã' | null } {
+  if (!data || !/^\d{4}-\d{2}-\d{2}$/.test(data)) {
+    return { dia_semana: '', data_rotulo: String(data ?? ''), quando: null }
+  }
+  const noon = new Date(`${data}T12:00:00Z`)
+  const diaSemana = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'UTC', weekday: 'long',
+  }).format(noon)
+  const diaMes = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'UTC', day: '2-digit', month: '2-digit',
+  }).format(noon)
+  // "amanhã" = hoje + 1 dia, calculado sobre o dia-calendário de SP (hoje já vem
+  // no fuso certo). Somamos 1 dia ancorado ao meio-dia UTC — sem risco de virada.
+  const amanha = new Date(new Date(`${hoje}T12:00:00Z`).getTime() + 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10)
+  const quando = data === hoje ? 'hoje' : data === amanha ? 'amanhã' : null
+  return { dia_semana: diaSemana, data_rotulo: `${diaSemana}, ${diaMes}`, quando }
+}
+
 /** Rótulo PRONTO da janela de cancelamento a partir das horas restantes. */
 export function regraCancelamento(horas: number): string {
   if (!isFinite(horas)) return 'indefinido'
@@ -244,7 +278,15 @@ export async function proximosAgendamentos(
   if (error) throw new Error(`agendamentos: ${error.message}`)
   return (data ?? []).map((a: any) => {
     const horas = horasAteSP(a.data, a.horario)
-    return { ...a, horas_ate: Math.round(horas * 10) / 10, cancelamento: regraCancelamento(horas) }
+    const rot = rotuloDataPt(a.data, hoje)
+    return {
+      ...a,
+      dia_semana: rot.dia_semana,
+      data_rotulo: rot.data_rotulo, // ex.: "terça-feira, 28/07" — o agente COPIA isso
+      quando: rot.quando,           // "hoje" | "amanhã" | null (a partir do registro)
+      horas_ate: Math.round(horas * 10) / 10,
+      cancelamento: regraCancelamento(horas),
+    }
   })
 }
 
@@ -288,8 +330,12 @@ export async function proximasReservasClub(
 
   return futuras.map((r: any) => {
     const horas = horasAteSP(r.club_ocorrencias?.data, r.club_ocorrencias?.club_aulas?.horario)
+    const rot = rotuloDataPt(r.club_ocorrencias?.data, hoje)
     return {
       ...r,
+      dia_semana: rot.dia_semana,
+      data_rotulo: rot.data_rotulo, // ex.: "terça-feira, 28/07" — o agente COPIA isso
+      quando: rot.quando,           // "hoje" | "amanhã" | null (a partir do registro)
       horas_ate: Math.round(horas * 10) / 10,
       cancelamento: regraCancelamento(horas),
       tem_fila: comFila.has(r.ocorrencia_id),
