@@ -7,6 +7,7 @@ import { useUnidade } from '@/hooks/useUnidade'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Search, Plus, ChevronRight, X, Check, Calendar, Lock, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap, Gift, CalendarClock, Edit2, Mail, Copy, Clock, Link as LinkIcon, UserPlus, KeyRound, Camera, Upload, Trash, Wifi, WifiOff } from 'lucide-react'
 import UnidadeSelector from '@/components/UnidadeSelector'
+import { numerarTreinosDoMes, PLANOS_SEM_TETO } from '@/lib/treinos-numero'
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const HORARIOS_FDS = ['08:00', '09:00', '10:00', '11:00', '12:00']
@@ -919,6 +920,20 @@ function AdminClientesPageInner() {
   const agendamentosFuturos = historico.filter(a => a.data >= hoje && ['agendado','confirmado'].includes(a.status)).sort((a, b) => a.data.localeCompare(b.data))
   const agendamentosPassados = historico.filter(a => a.data < hoje || ['realizado','falta','cancelado'].includes(a.status)).sort((a, b) => b.data.localeCompare(a.data))
 
+  // Numeração "X/N" dos treinos de Coach CT no mês (só planos com teto — avulso/
+  // pacote não recebem). Só temos saldo do mês atual, então só os treinos deste
+  // mês ganham rótulo. N = total do pool; X = ordem cronológica no mês.
+  const anoMesAtual = hoje.slice(0, 7)
+  const numeroTreino = numerarTreinosDoMes(
+    historico.map((a:any) => ({ id: a.id, data: a.data, horario: a.horario, status: a.status, tipo_credito: a.tipo_credito })),
+    (tipo, ym) => {
+      if (ym !== anoMesAtual) return null
+      const info = saldoMes?.[tipo]
+      if (!info || PLANOS_SEM_TETO.has(info.tipo_plano)) return null
+      return typeof info.total === 'number' ? info.total : null
+    },
+  )
+
   const clubReservasFuturas = clubReservas.filter(cr => {
     const data = cr.club_ocorrencias?.data
     return data && data >= hoje && ['reservado','confirmado'].includes(cr.status)
@@ -1579,6 +1594,7 @@ function AdminClientesPageInner() {
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-base font-bold text-gray-900">Coach CT</span>
                               <span className="text-xs px-2 py-0.5 rounded-full bg-primary-100 text-primary-700 font-medium">Coach CT</span>
+                              {numeroTreino.get(ag.id) && <span title="treino do mês" className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold font-mono">{numeroTreino.get(ag.id)}</span>}
                             </div>
                             <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-500 mt-0.5">
                               <span className="capitalize">{new Date(ag.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long' })}</span>
@@ -1663,6 +1679,7 @@ function AdminClientesPageInner() {
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-base font-bold text-gray-900">Coach CT</span>
                             <span className={`text-xs px-2 py-0.5 rounded-full ${statusConfig[ag.status]?.color}`}>{statusConfig[ag.status]?.label}</span>
+                            {numeroTreino.get(ag.id) && <span title="treino do mês" className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold font-mono">{numeroTreino.get(ag.id)}</span>}
                           </div>
                           <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-500 mt-0.5">
                             <span className="capitalize">{new Date(ag.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long' })}</span>
