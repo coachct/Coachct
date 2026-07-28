@@ -285,7 +285,7 @@ function AdminClientesPageInner() {
   // Abre um cliente direto pela URL (?id=...) — usado pelos links de nome nas listas de reserva
   useEffect(() => {
     const id = searchParams.get('id')
-    if (perfil && id) abrirClientePorId(id)
+    if (perfil && id && id !== clienteSel?.id) abrirClientePorId(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [perfil, searchParams])
 
@@ -313,6 +313,12 @@ function AdminClientesPageInner() {
   }
 
   async function abrirCliente(cliente: any) {
+    // Fixa o cliente na URL (?id=...) para que o F5 dentro do perfil recarregue
+    // a mesma pessoa em vez de voltar pra busca vazia. replace = não polui o
+    // histórico do navegador. Só troca se mudou, pra não disparar o efeito à toa.
+    if (cliente?.id && searchParams.get('id') !== cliente.id) {
+      router.replace(`/admin/clientes?id=${cliente.id}`, { scroll: false })
+    }
     setClienteSel(cliente); setForm({ ...cliente }); setEditando(false); setAba('dados')
     setHistorico([]); setClubReservas([]); setVendas([]); setModalSlot(null); setTipoCredito('')
     setErroCriarAcesso(''); setFotoUrl(null); setStatusSync('idle'); setErroSync(''); setAcessoBloqueado(false)
@@ -1037,7 +1043,7 @@ function AdminClientesPageInner() {
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-3">
           {clienteSel && (
-            <button onClick={() => { setClienteSel(null); setBusca(''); setClientes([]) }} className="text-gray-400 hover:text-gray-600">
+            <button onClick={() => { setClienteSel(null); setBusca(''); setClientes([]); if (searchParams.get('id')) router.replace('/admin/clientes', { scroll: false }) }} className="text-gray-400 hover:text-gray-600">
               <X size={18} />
             </button>
           )}
