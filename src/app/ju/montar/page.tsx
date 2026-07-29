@@ -379,10 +379,10 @@ export default function JuMontarPage() {
     return (
       <div className="card">
         <div className="flex items-center gap-3 mb-4 flex-wrap">
-          <input className="text-base font-semibold text-gray-900 border-none outline-none bg-transparent flex-1 min-w-0"
-            value={nomeEdit} onChange={e => setNomeEdit(e.target.value)} placeholder="Nome do treino..." />
-          <input className="text-xs text-gray-400 border-none outline-none bg-transparent flex-1 min-w-0"
-            value={descEdit} onChange={e => setDescEdit(e.target.value)} placeholder="Grupos musculares..." />
+          <input className="text-base font-semibold text-gray-900 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 outline-none focus:border-primary-400 focus:ring-1 focus:ring-primary-200 flex-1 min-w-0"
+            value={nomeEdit} onChange={e => setNomeEdit(e.target.value)} placeholder="Nome do treino..." title="Clique para renomear o treino" />
+          <input className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 outline-none focus:border-primary-400 focus:ring-1 focus:ring-primary-200 flex-1 min-w-0"
+            value={descEdit} onChange={e => setDescEdit(e.target.value)} placeholder="Grupos musculares..." title="Ênfase / grupos musculares" />
           <div className="flex gap-2 flex-shrink-0">
             <button onClick={salvarEdicao} disabled={saving} className="btn btn-primary btn-sm gap-1">
               <Save size={12} />{saving ? 'Salvando...' : 'Salvar'}
