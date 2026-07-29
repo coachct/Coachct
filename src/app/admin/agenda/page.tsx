@@ -499,7 +499,11 @@ export default function AdminAgendaPage() {
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-sm font-semibold text-gray-900">{ag.clientes?.nome}</span>
+                                {ag.cliente_id ? (
+                                  <a href={`/admin/clientes?id=${ag.cliente_id}`} className="text-sm font-semibold text-primary-700 hover:underline">{ag.clientes?.nome}</a>
+                                ) : (
+                                  <span className="text-sm font-semibold text-gray-900">{ag.clientes?.nome}</span>
+                                )}
                                 <span className={`text-xs px-2 py-0.5 rounded-full ${statusConfig[ag.status]?.color}`}>{statusConfig[ag.status]?.label}</span>
                               </div>
                               <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
@@ -626,7 +630,11 @@ export default function AdminAgendaPage() {
                       {pendentesRecepcao.map(ag => (
                         <div key={ag.id} className="flex items-center gap-3 rounded-xl border border-orange-100 bg-white px-3 py-2">
                           <span className="font-mono font-bold text-gray-700">{norm(ag.horario)}</span>
-                          <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900">{ag.clientes?.nome}</span>
+                          {ag.cliente_id ? (
+                            <a href={`/admin/clientes?id=${ag.cliente_id}`} className="min-w-0 flex-1 truncate text-sm font-medium text-primary-700 hover:underline">{ag.clientes?.nome}</a>
+                          ) : (
+                            <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900">{ag.clientes?.nome}</span>
+                          )}
                           <button onClick={() => marcarPresenca(ag.id)} className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
                             <CheckCircle size={12} /> Presença
                           </button>
@@ -668,7 +676,11 @@ export default function AdminAgendaPage() {
                                     {ag.clientes?.nome?.slice(0, 2).toUpperCase()}
                                   </div>
                                   <div className="min-w-0 flex-1">
-                                    <div className="truncate text-lg font-bold text-gray-900">{ag.clientes?.nome || '—'}</div>
+                                    {ag.cliente_id ? (
+                                      <a href={`/admin/clientes?id=${ag.cliente_id}`} className="block truncate text-lg font-bold text-primary-700 hover:underline">{ag.clientes?.nome || '—'}</a>
+                                    ) : (
+                                      <div className="truncate text-lg font-bold text-gray-900">{ag.clientes?.nome || '—'}</div>
+                                    )}
                                     <div className="mt-0.5 text-sm text-gray-500">{planoIcon} {planoLabel}</div>
                                     <div className="mt-2">
                                       {!ag.coach_id && coachesLivres.length > 0 && (
