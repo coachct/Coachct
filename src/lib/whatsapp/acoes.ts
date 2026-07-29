@@ -498,7 +498,14 @@ export async function entrarFilaClub(
     ocorrencia_id: ocorrenciaId, cliente_id: clienteId, tipo_credito: tipoCredito,
     status: 'aguardando', data: dataStr, horario: horarioFull, unidade_id: aula.unidade_id,
   })
-  if (error) return { ok: false, mensagem: 'Tive um erro ao entrar na fila. Pode tentar de novo?', erroTecnico: true }
+  if (error) {
+    // Trava do banco: Wellhub/TotalPass já tem reserva no dia → entrar na fila é
+    // inútil (nunca seria promovido). Mensagem amigável em vez de "erro técnico".
+    if (error.message?.includes('já tem uma reserva')) {
+      return { ok: false, mensagem: 'Você já tem uma reserva nessa unidade nesse dia com esse plano 😊. Como Wellhub/TotalPass permite só uma por dia por unidade, não dá pra entrar na fila de outra aula no mesmo dia.' }
+    }
+    return { ok: false, mensagem: 'Tive um erro ao entrar na fila. Pode tentar de novo?', erroTecnico: true }
+  }
 
   // Posição na fila (após inserir).
   const { count: pos } = await supabase
