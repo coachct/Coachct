@@ -186,35 +186,31 @@ export default function AvaliacoesPage() {
 
   const selectCls = 'border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white'
 
-  // Bloco de comentário do aluno + resposta da equipe (usado na tabela e no drawer)
-  function blocoComentario(a: any) {
-    if (!a.comentario) return <span className="text-gray-300">—</span>
-    return (
-      <div>
-        <div className="whitespace-pre-wrap text-gray-600">{a.comentario}</div>
-
-        {a.resposta ? (
-          <div className="mt-2 bg-emerald-50 border border-emerald-100 rounded-lg px-2.5 py-2">
-            <div className="text-[11px] font-medium text-emerald-700 mb-0.5">
-              ✓ Respondido{a.resposta_em ? ` · ${dataHoraBR(a.resposta_em)}` : ''}
-            </div>
-            <div className="text-sm text-gray-600 whitespace-pre-wrap">{a.resposta}</div>
-            <button
-              onClick={() => abrirResposta(a)}
-              className="text-[11px] text-gray-400 underline mt-1"
-            >
-              Editar / reenviar
-            </button>
+  // Controle de resposta da equipe (botão Responder ou box "Respondido")
+  function respostaControle(a: any) {
+    if (a.resposta) {
+      return (
+        <div className="mt-2 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2 max-w-3xl">
+          <div className="text-[11px] font-medium text-emerald-700 mb-0.5">
+            ✓ Respondido{a.resposta_em ? ` · ${dataHoraBR(a.resposta_em)}` : ''}
           </div>
-        ) : (
+          <div className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed">{a.resposta}</div>
           <button
             onClick={() => abrirResposta(a)}
-            className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-[#ff2d9b] border border-[#ff2d9b]/30 rounded-lg px-2.5 py-1 hover:bg-[#ff2d9b]/5 transition-colors"
+            className="text-[11px] text-gray-400 underline mt-1"
           >
-            ✉ Responder
+            Editar / reenviar
           </button>
-        )}
-      </div>
+        </div>
+      )
+    }
+    return (
+      <button
+        onClick={() => abrirResposta(a)}
+        className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-[#ff2d9b] border border-[#ff2d9b]/30 rounded-lg px-2.5 py-1 hover:bg-[#ff2d9b]/5 transition-colors"
+      >
+        ✉ Responder
+      </button>
     )
   }
 
@@ -327,28 +323,26 @@ export default function AvaliacoesPage() {
                   <th className="text-center pb-3 pr-3">Prof.</th>
                   <th className="text-center pb-3 pr-3">Música</th>
                   <th className="text-center pb-3 pr-3">Ambiente</th>
-                  <th className="text-left pb-3 pr-3">Comentário</th>
                   <th className="text-left pb-3">Aluno</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
-                {filtradas.map((a) => (
-                  <tr key={a.id}>
-                    <td className="py-2.5 pr-3 text-gray-500 whitespace-nowrap">
+              {filtradas.map((a) => (
+                <tbody key={a.id} className="border-b border-gray-100 last:border-0">
+                  <tr>
+                    <td className="pt-3 pb-1 pr-3 text-gray-500 whitespace-nowrap align-top">
                       {dataBR(a.data_aula)}{a.horario ? ` ${a.horario}` : ''}
                       <div className="text-xs text-gray-400">avaliada {dataHoraBR(a.criado_em)}</div>
                     </td>
-                    <td className="py-2.5 pr-3 text-gray-700 whitespace-nowrap">
+                    <td className="pt-3 pb-1 pr-3 text-gray-700 whitespace-nowrap align-top">
                       {tipoLabel(a.tipo_aula)}
                       <div className="text-xs text-gray-400">{unidades.find(u => u.id === a.unidade_id)?.nome || ''}</div>
                     </td>
-                    <td className="py-2.5 pr-3 text-gray-600 whitespace-nowrap">{a.coach_nome || '—'}</td>
-                    <td className="py-2.5 pr-3 text-center"><Nota valor={a.nota_aula} /></td>
-                    <td className="py-2.5 pr-3 text-center"><Nota valor={a.nota_professor} /></td>
-                    <td className="py-2.5 pr-3 text-center"><Nota valor={a.nota_musica} /></td>
-                    <td className="py-2.5 pr-3 text-center"><Nota valor={a.nota_ambiente} /></td>
-                    <td className="py-2.5 pr-3 text-gray-600 max-w-xs align-top">{blocoComentario(a)}</td>
-                    <td className="py-2.5 text-gray-500 whitespace-nowrap">
+                    <td className="pt-3 pb-1 pr-3 text-gray-600 whitespace-nowrap align-top">{a.coach_nome || '—'}</td>
+                    <td className="pt-3 pb-1 pr-3 text-center align-top"><Nota valor={a.nota_aula} /></td>
+                    <td className="pt-3 pb-1 pr-3 text-center align-top"><Nota valor={a.nota_professor} /></td>
+                    <td className="pt-3 pb-1 pr-3 text-center align-top"><Nota valor={a.nota_musica} /></td>
+                    <td className="pt-3 pb-1 pr-3 text-center align-top"><Nota valor={a.nota_ambiente} /></td>
+                    <td className="pt-3 pb-1 text-gray-500 whitespace-nowrap align-top">
                       {a.cliente_id && a.clientes?.nome ? (
                         <button
                           onClick={() => abrirHistorico(a.cliente_id, a.clientes.nome)}
@@ -361,8 +355,19 @@ export default function AvaliacoesPage() {
                       )}
                     </td>
                   </tr>
-                ))}
-              </tbody>
+                  {a.comentario && (
+                    <tr>
+                      <td colSpan={8} className="pb-3 pr-3">
+                        <div className="bg-gray-50 rounded-lg px-4 py-3">
+                          <div className="text-[11px] text-gray-400 uppercase tracking-wide mb-1">Comentário do aluno</div>
+                          <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed max-w-3xl">{a.comentario}</div>
+                          {respostaControle(a)}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              ))}
             </table>
           </div>
         )}
@@ -457,7 +462,10 @@ export default function AvaliacoesPage() {
                           <span className="text-gray-500">Ambiente: <Nota valor={a.nota_ambiente} /></span>
                         </div>
                         {a.comentario && (
-                          <div className="mt-2 text-sm">{blocoComentario(a)}</div>
+                          <div className="mt-2">
+                            <div className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed">{a.comentario}</div>
+                            {respostaControle(a)}
+                          </div>
                         )}
                       </div>
                     ))}
