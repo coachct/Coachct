@@ -57,19 +57,30 @@ export default function AvaliacoesPage() {
   const [drawerAvals, setDrawerAvals] = useState<any[]>([])
   const [drawerLoading, setDrawerLoading] = useState(false)
 
-  // Resposta ao comentário do aluno
-  const [respId, setRespId] = useState<string | null>(null)   // avaliação em edição
+  // Resposta ao comentário do aluno (modal)
+  const [respAval, setRespAval] = useState<any>(null)   // avaliação em edição
   const [respTexto, setRespTexto] = useState('')
   const [respSalvando, setRespSalvando] = useState(false)
   const [respErro, setRespErro] = useState('')
+  const [respAviso, setRespAviso] = useState('')
 
   function abrirResposta(a: any) {
-    setRespId(a.id)
+    setRespAval(a)
     setRespTexto(a.resposta || '')
+    setRespErro('')
+    setRespAviso('')
+  }
+
+  function fecharResposta() {
+    if (respSalvando) return
+    setRespAval(null)
+    setRespTexto('')
     setRespErro('')
   }
 
-  async function salvarResposta(avaliacaoId: string) {
+  async function salvarResposta() {
+    if (!respAval) return
+    const avaliacaoId = respAval.id
     const texto = respTexto.trim()
     if (!texto) { setRespErro('Escreva a resposta antes de enviar.'); return }
     setRespSalvando(true)
@@ -90,13 +101,14 @@ export default function AvaliacoesPage() {
         ? { ...x, resposta: texto, resposta_em: new Date().toISOString() } : x)
       setAvaliacoes(prev => patch(prev))
       setDrawerAvals(prev => patch(prev))
-      if (d?.aviso) setRespErro(d.aviso)
-      setRespId(null)
+      setRespSalvando(false)
+      if (d?.aviso) { setRespAviso(d.aviso); return }  // mantém aberto pra mostrar o aviso
+      setRespAval(null)
       setRespTexto('')
     } catch {
       setRespErro('Erro ao salvar. Tente novamente.')
+      setRespSalvando(false)
     }
-    setRespSalvando(false)
   }
 
   useEffect(() => {
@@ -181,35 +193,7 @@ export default function AvaliacoesPage() {
       <div>
         <div className="whitespace-pre-wrap text-gray-600">{a.comentario}</div>
 
-        {respId === a.id ? (
-          <div className="mt-2">
-            <textarea
-              value={respTexto}
-              onChange={e => setRespTexto(e.target.value)}
-              placeholder="Escreva a resposta… (será enviada por e-mail ao aluno)"
-              maxLength={2000}
-              rows={3}
-              className="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-sm text-gray-700 outline-none focus:border-[#ff2d9b] resize-y"
-            />
-            {respErro && <div className="text-xs text-rose-600 mt-1">{respErro}</div>}
-            <div className="flex gap-2 mt-1.5">
-              <button
-                onClick={() => salvarResposta(a.id)}
-                disabled={respSalvando}
-                className="text-xs font-medium text-white bg-[#ff2d9b] rounded-lg px-3 py-1.5 disabled:opacity-60"
-              >
-                {respSalvando ? 'Enviando…' : 'Enviar e-mail'}
-              </button>
-              <button
-                onClick={() => { setRespId(null); setRespErro('') }}
-                disabled={respSalvando}
-                className="text-xs text-gray-400 underline px-1"
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        ) : a.resposta ? (
+        {a.resposta ? (
           <div className="mt-2 bg-emerald-50 border border-emerald-100 rounded-lg px-2.5 py-2">
             <div className="text-[11px] font-medium text-emerald-700 mb-0.5">
               ✓ Respondido{a.resposta_em ? ` · ${dataHoraBR(a.resposta_em)}` : ''}
@@ -225,9 +209,9 @@ export default function AvaliacoesPage() {
         ) : (
           <button
             onClick={() => abrirResposta(a)}
-            className="mt-1.5 text-xs font-medium text-[#ff2d9b] underline"
+            className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-[#ff2d9b] border border-[#ff2d9b]/30 rounded-lg px-2.5 py-1 hover:bg-[#ff2d9b]/5 transition-colors"
           >
-            Responder
+            ✉ Responder
           </button>
         )}
       </div>
@@ -478,6 +462,105 @@ export default function AvaliacoesPage() {
                       </div>
                     ))}
                   </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de resposta ao comentário */}
+      {respAval && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={fecharResposta} />
+          <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-xl overflow-hidden">
+            {/* Cabeçalho */}
+            <div className="px-6 pt-5 pb-4 border-b border-gray-100">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-lg font-semibold text-gray-800">Responder avaliação</div>
+                  <div className="text-sm text-gray-500 mt-0.5">
+                    {respAval.clientes?.nome || 'Aluno'}
+                  </div>
+                </div>
+                <button
+                  onClick={fecharResposta}
+                  className="text-gray-400 hover:text-gray-700 text-xl leading-none px-1"
+                  aria-label="Fechar"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="text-xs text-gray-400 mt-2">
+                {[
+                  tipoLabel(respAval.tipo_aula),
+                  unidades.find(u => u.id === respAval.unidade_id)?.nome,
+                  dataBR(respAval.data_aula) + (respAval.horario ? ` ${respAval.horario}` : ''),
+                  respAval.coach_nome,
+                ].filter(Boolean).join(' · ')}
+              </div>
+            </div>
+
+            <div className="px-6 py-5">
+              {/* Comentário original */}
+              <div className="mb-4">
+                <div className="text-xs text-gray-400 uppercase tracking-wide mb-1">Comentário do aluno</div>
+                <div className="bg-gray-50 border-l-2 border-gray-200 rounded-r-lg px-3 py-2 text-sm text-gray-700 whitespace-pre-wrap">
+                  {respAval.comentario}
+                </div>
+              </div>
+
+              {/* Resposta */}
+              <div>
+                <label className="text-xs text-gray-400 uppercase tracking-wide mb-1 block">Sua resposta</label>
+                <textarea
+                  value={respTexto}
+                  onChange={e => setRespTexto(e.target.value)}
+                  placeholder="Escreva a resposta para o aluno…"
+                  maxLength={2000}
+                  rows={6}
+                  autoFocus
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-[#ff2d9b] resize-y leading-relaxed"
+                />
+                <div className="flex items-center justify-between mt-1">
+                  <span className="text-xs text-gray-400">O aluno recebe por e-mail.</span>
+                  <span className="text-xs text-gray-300">{respTexto.length}/2000</span>
+                </div>
+              </div>
+
+              {respErro && <div className="mt-3 text-sm text-rose-600">{respErro}</div>}
+              {respAviso && (
+                <div className="mt-3 text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                  {respAviso}
+                </div>
+              )}
+            </div>
+
+            {/* Rodapé */}
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+              {respAviso ? (
+                <button
+                  onClick={() => { setRespAval(null); setRespTexto(''); setRespAviso('') }}
+                  className="text-sm font-medium text-white bg-gray-700 rounded-lg px-4 py-2"
+                >
+                  Entendi
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={fecharResposta}
+                    disabled={respSalvando}
+                    className="text-sm text-gray-500 px-4 py-2 hover:text-gray-700"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={salvarResposta}
+                    disabled={respSalvando || !respTexto.trim()}
+                    className="text-sm font-medium text-white bg-[#ff2d9b] rounded-lg px-5 py-2 disabled:opacity-50"
+                  >
+                    {respSalvando ? 'Enviando…' : 'Enviar e-mail'}
+                  </button>
                 </>
               )}
             </div>
