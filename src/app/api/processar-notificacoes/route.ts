@@ -126,6 +126,49 @@ function gerarHtml(tipo: string, mensagem: string, nomeCliente: string): { subje
     return wrapEmail(conteudo, `⚠️ Falta registrada — JustClub`)
   }
 
+  // ── Resposta da equipe a uma avaliação de aula ───────────────────────────
+  if (tipo === 'resposta_avaliacao') {
+    // mensagem vem em JSON: { resposta, comentario_original, aula, data_aula, horario }
+    let resposta = mensagem
+    let comentarioOriginal: string | null = null
+    let aula: string | null = null
+    let dataAula: string | null = null
+    let horario: string | null = null
+    try {
+      const p = JSON.parse(mensagem)
+      resposta = p.resposta || mensagem
+      comentarioOriginal = p.comentario_original || null
+      aula = p.aula || null
+      dataAula = p.data_aula || null
+      horario = p.horario || null
+    } catch { /* mensagem antiga/simples — usa o texto cru */ }
+
+    const escapar = (s: string) => (s || '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br/>')
+
+    const dataBR = dataAula ? dataAula.split('-').reverse().join('/') : null
+    const refAula = [aula, dataBR, horario].filter(Boolean).join(' · ')
+
+    const conteudo = `
+      <div style="font-size:18px;font-weight:700;color:#222;margin-bottom:8px;">Olá, ${primeiroNome} 👋</div>
+      <div style="font-size:15px;line-height:1.7;color:#444;margin-bottom:20px;">
+        Recebemos o seu comentário na avaliação${refAula ? ` da sua aula (<strong>${escapar(refAula)}</strong>)` : ' de aula'} e queremos responder:
+      </div>
+      ${comentarioOriginal ? `
+      <div style="border-left:3px solid #e5e5e5;padding:4px 0 4px 14px;margin-bottom:20px;color:#888;font-size:14px;line-height:1.6;font-style:italic;">
+        “${escapar(comentarioOriginal)}”
+      </div>` : ''}
+      <div style="background:#fdf2f8;border:1px solid #fbcfe8;border-radius:12px;padding:18px 20px;margin-bottom:24px;">
+        <div style="font-size:12px;font-weight:700;color:#9d174d;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Resposta da equipe Just</div>
+        <div style="font-size:15px;color:#333;line-height:1.7;">${escapar(resposta)}</div>
+      </div>
+      <div style="font-size:14px;line-height:1.7;color:#666;">
+        Obrigado por nos ajudar a melhorar cada vez mais. Qualquer coisa, é só falar com a recepção. 💪
+      </div>`
+    return wrapEmail(conteudo, `Resposta ao seu comentário — Just Club & CT`)
+  }
+
   // ── Genérico (fallback) ──────────────────────────────────────────────────
   const conteudo = `
     <div style="font-size:18px;font-weight:700;color:#222;margin-bottom:16px;">Olá, ${primeiroNome}</div>

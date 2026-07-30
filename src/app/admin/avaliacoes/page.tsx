@@ -57,6 +57,48 @@ export default function AvaliacoesPage() {
   const [drawerAvals, setDrawerAvals] = useState<any[]>([])
   const [drawerLoading, setDrawerLoading] = useState(false)
 
+  // Resposta ao comentário do aluno
+  const [respId, setRespId] = useState<string | null>(null)   // avaliação em edição
+  const [respTexto, setRespTexto] = useState('')
+  const [respSalvando, setRespSalvando] = useState(false)
+  const [respErro, setRespErro] = useState('')
+
+  function abrirResposta(a: any) {
+    setRespId(a.id)
+    setRespTexto(a.resposta || '')
+    setRespErro('')
+  }
+
+  async function salvarResposta(avaliacaoId: string) {
+    const texto = respTexto.trim()
+    if (!texto) { setRespErro('Escreva a resposta antes de enviar.'); return }
+    setRespSalvando(true)
+    setRespErro('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const t = session?.access_token
+      if (!t) { setRespErro('Sessão expirada. Recarregue a página.'); setRespSalvando(false); return }
+      const res = await fetch('/api/admin/responder-avaliacao', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` },
+        body: JSON.stringify({ avaliacao_id: avaliacaoId, resposta: texto }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) { setRespErro(d?.error || 'Erro ao salvar. Tente novamente.'); setRespSalvando(false); return }
+      // Atualiza estado local (lista e drawer) sem recarregar
+      const patch = (arr: any[]) => arr.map(x => x.id === avaliacaoId
+        ? { ...x, resposta: texto, resposta_em: new Date().toISOString() } : x)
+      setAvaliacoes(prev => patch(prev))
+      setDrawerAvals(prev => patch(prev))
+      if (d?.aviso) setRespErro(d.aviso)
+      setRespId(null)
+      setRespTexto('')
+    } catch {
+      setRespErro('Erro ao salvar. Tente novamente.')
+    }
+    setRespSalvando(false)
+  }
+
   useEffect(() => {
     async function load() {
       const [{ data: avals }, { data: unis }] = await Promise.all([
@@ -131,6 +173,66 @@ export default function AvaliacoesPage() {
     .sort((a, b) => parseFloat(b.texto.replace(',', '.')) - parseFloat(a.texto.replace(',', '.')))
 
   const selectCls = 'border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white'
+
+  // Bloco de comentário do aluno + resposta da equipe (usado na tabela e no drawer)
+  function blocoComentario(a: any) {
+    if (!a.comentario) return <span className="text-gray-300">—</span>
+    return (
+      <div>
+        <div className="whitespace-pre-wrap text-gray-600">{a.comentario}</div>
+
+        {respId === a.id ? (
+          <div className="mt-2">
+            <textarea
+              value={respTexto}
+              onChange={e => setRespTexto(e.target.value)}
+              placeholder="Escreva a resposta… (será enviada por e-mail ao aluno)"
+              maxLength={2000}
+              rows={3}
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-sm text-gray-700 outline-none focus:border-[#ff2d9b] resize-y"
+            />
+            {respErro && <div className="text-xs text-rose-600 mt-1">{respErro}</div>}
+            <div className="flex gap-2 mt-1.5">
+              <button
+                onClick={() => salvarResposta(a.id)}
+                disabled={respSalvando}
+                className="text-xs font-medium text-white bg-[#ff2d9b] rounded-lg px-3 py-1.5 disabled:opacity-60"
+              >
+                {respSalvando ? 'Enviando…' : 'Enviar e-mail'}
+              </button>
+              <button
+                onClick={() => { setRespId(null); setRespErro('') }}
+                disabled={respSalvando}
+                className="text-xs text-gray-400 underline px-1"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        ) : a.resposta ? (
+          <div className="mt-2 bg-emerald-50 border border-emerald-100 rounded-lg px-2.5 py-2">
+            <div className="text-[11px] font-medium text-emerald-700 mb-0.5">
+              ✓ Respondido{a.resposta_em ? ` · ${dataHoraBR(a.resposta_em)}` : ''}
+            </div>
+            <div className="text-sm text-gray-600 whitespace-pre-wrap">{a.resposta}</div>
+            <button
+              onClick={() => abrirResposta(a)}
+              className="text-[11px] text-gray-400 underline mt-1"
+            >
+              Editar / reenviar
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => abrirResposta(a)}
+            className="mt-1.5 text-xs font-medium text-[#ff2d9b] underline"
+          >
+            Responder
+          </button>
+        )}
+      </div>
+    )
+  }
 
   // Cálculos do drawer (aluno selecionado)
   const dAula = media(drawerAvals.map(a => a.nota_aula))
@@ -261,7 +363,7 @@ export default function AvaliacoesPage() {
                     <td className="py-2.5 pr-3 text-center"><Nota valor={a.nota_professor} /></td>
                     <td className="py-2.5 pr-3 text-center"><Nota valor={a.nota_musica} /></td>
                     <td className="py-2.5 pr-3 text-center"><Nota valor={a.nota_ambiente} /></td>
-                    <td className="py-2.5 pr-3 text-gray-600 max-w-xs whitespace-pre-wrap">{a.comentario || <span className="text-gray-300">—</span>}</td>
+                    <td className="py-2.5 pr-3 text-gray-600 max-w-xs align-top">{blocoComentario(a)}</td>
                     <td className="py-2.5 text-gray-500 whitespace-nowrap">
                       {a.cliente_id && a.clientes?.nome ? (
                         <button
@@ -371,7 +473,7 @@ export default function AvaliacoesPage() {
                           <span className="text-gray-500">Ambiente: <Nota valor={a.nota_ambiente} /></span>
                         </div>
                         {a.comentario && (
-                          <div className="mt-2 text-sm text-gray-600 whitespace-pre-wrap">{a.comentario}</div>
+                          <div className="mt-2 text-sm">{blocoComentario(a)}</div>
                         )}
                       </div>
                     ))}
