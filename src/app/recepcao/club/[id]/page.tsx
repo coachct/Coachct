@@ -19,6 +19,30 @@ function tipoLabel(t: string) {
   if (t==='running_funcional') return 'Running + Funcional'
   return t
 }
+// Rótulo curto da modalidade, pra caber na tag "1ª vez • …"
+function tipoLabelCurto(t: string) {
+  if (t==='lift')              return 'Lift'
+  if (t==='lift_for_girls')   return 'Lift for Girls'
+  if (t==='running_funcional') return 'Running'
+  return t
+}
+const ROXO = '#7c3aed'
+// Tag ao lado do nome: cliente que nunca compareceu (absoluta) ou nunca nesta modalidade
+function FlagPrimeira({ tipo, modalidade }: { tipo: 'absoluta' | 'modalidade'; modalidade?: string }) {
+  const absoluta = tipo === 'absoluta'
+  const cor = absoluta ? ROXO : AMARELO
+  return (
+    <span
+      title={absoluta
+        ? 'Primeiro treino no Club — nunca compareceu antes'
+        : `Primeira vez nesta modalidade${modalidade ? ` (${modalidade})` : ''}`}
+      style={{ fontSize:10, fontWeight:800, color:cor, background:`${cor}18`,
+        padding:'2px 8px', borderRadius:20, textTransform:'uppercase', letterSpacing:0.4,
+        whiteSpace:'nowrap', fontFamily:"'DM Sans', sans-serif", flexShrink:0 }}>
+      {absoluta ? '★ 1ª vez' : `1ª vez • ${modalidade || ''}`}
+    </span>
+  )
+}
 function parsePlanoKey(key: string) {
   const lower = (key||'').toLowerCase()
   if (lower.startsWith('wellhub_app'))   return { label:'Wellhub - app',  icon:'💜' }
@@ -76,6 +100,7 @@ export default function RecepcaoClubDetalhe() {
 
   const [ocorrencia,   setOcorrencia]   = useState<any>(null)
   const [reservas,     setReservas]     = useState<any[]>([])
+  const [flagsPrimeira, setFlagsPrimeira] = useState<Record<string, 'absoluta' | 'modalidade' | null>>({})
   const [loadingData,  setLoadingData]  = useState(true)
   const [atualizando,  setAtualizando]  = useState<string | null>(null)
   const [msg,          setMsg]          = useState('')
@@ -200,6 +225,38 @@ export default function RecepcaoClubDetalhe() {
       sorted.filter((r: any) => ['reservado','presente'].includes(r.status) && r.posicao)
             .map((r: any) => r.posicao)
     )
+
+    // NOVO: flag "1ª vez" — cliente sem PRESENÇA efetiva anterior no Club.
+    // 'absoluta' = nunca compareceu em nenhuma aula Club; 'modalidade' = já compareceu,
+    // mas nunca nesta modalidade (tipo). Blindado: se falhar, a lista segue normal sem tag.
+    try {
+      const idsCli = Array.from(new Set(sorted.map((r: any) => r.clientes?.id).filter(Boolean)))
+      const tipoAtual = oc?.club_aulas?.tipo || null
+      if (idsCli.length && oc?.data) {
+        const { data: hist } = await supabase
+          .from('club_reservas')
+          .select('cliente_id, club_ocorrencias!inner(data, club_aulas!inner(tipo))')
+          .in('cliente_id', idsCli)
+          .eq('status', 'presente')
+          .lt('club_ocorrencias.data', oc.data)
+        const tiposPorCliente: Record<string, Set<string>> = {}
+        for (const h of (hist || []) as any[]) {
+          const t = h.club_ocorrencias?.club_aulas?.tipo
+          if (!tiposPorCliente[h.cliente_id]) tiposPorCliente[h.cliente_id] = new Set()
+          if (t) tiposPorCliente[h.cliente_id].add(t)
+        }
+        const flags: Record<string, 'absoluta' | 'modalidade' | null> = {}
+        for (const id of idsCli) {
+          const tipos = tiposPorCliente[id as string]
+          if (!tipos || tipos.size === 0) flags[id as string] = 'absoluta'
+          else if (tipoAtual && !tipos.has(tipoAtual)) flags[id as string] = 'modalidade'
+          else flags[id as string] = null
+        }
+        setFlagsPrimeira(flags)
+      } else {
+        setFlagsPrimeira({})
+      }
+    } catch { setFlagsPrimeira({}) }
 
     // NOVO: carrega bloqueios pontuais desta ocorrência
     const { data: bloq } = await supabase
@@ -840,6 +897,7 @@ export default function RecepcaoClubDetalhe() {
               const { label, icon } = parsePlanoKey(r.tipo_credito || '')
               const isPresente  = r.status === 'presente'
               const isFalta     = r.status === 'falta'
+              const flagP       = cli?.id ? flagsPrimeira[cli.id] : null
 
               return (
                 <div key={r.id} style={{ display:'flex', alignItems:'center', gap:'1rem', padding:'0.85rem 1.5rem',
@@ -850,17 +908,20 @@ export default function RecepcaoClubDetalhe() {
                     {i+1}
                   </div>
                   <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:2 }}>
                     {cli?.id ? (
                       <button onClick={() => router.push(`/recepcao/clientes?id=${cli.id}`)}
                         title="Ver perfil do cliente"
-                        style={{ fontSize:14, fontWeight:600, color:ACCENT, marginBottom:2, background:'none', border:'none',
+                        style={{ fontSize:14, fontWeight:600, color:ACCENT, background:'none', border:'none',
                           padding:0, cursor:'pointer', textAlign:'left', fontFamily:"'DM Sans', sans-serif",
                           textDecoration:'underline', textUnderlineOffset:2 }}>
                         {cli.nome || '—'}
                       </button>
                     ) : (
-                      <div style={{ fontSize:14, fontWeight:600, color:'#111', marginBottom:2 }}>{cli?.nome||'—'}</div>
+                      <div style={{ fontSize:14, fontWeight:600, color:'#111' }}>{cli?.nome||'—'}</div>
                     )}
+                    {flagP && <FlagPrimeira tipo={flagP} modalidade={tipoLabelCurto(aula?.tipo)} />}
+                    </div>
                     <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
                       <span style={{ fontSize:11, color:'#888' }}>{icon} {(r as any).creditos_avulsos?.observacao || label}</span>
                       {r.posicao ? (
