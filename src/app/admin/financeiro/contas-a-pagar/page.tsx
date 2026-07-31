@@ -108,7 +108,7 @@ export default function ContasAPagarPage() {
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([])
 
   // ---- filtros ----
-  const [baseMes, setBaseMes] = useState<'competencia' | 'vencimento'>('competencia')
+  const [baseMes, setBaseMes] = useState<'competencia' | 'vencimento'>('vencimento')
   const [fPeriodo, setFPeriodo] = useState<'mes' | 'hoje' | '7dias' | 'prox7' | 'data'>('mes')
   const [fDataDe, setFDataDe] = useState(hoje)
   const [fDataAte, setFDataAte] = useState('')
