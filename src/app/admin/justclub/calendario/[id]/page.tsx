@@ -336,16 +336,20 @@ export default function RecepcaoClubDetalhe() {
 
   // NOVO: bloqueia/desbloqueia posição APENAS nesta ocorrência
   async function toggleBloqueioPontual(label: string) {
-    // Se posição tem reserva ativa, não permite bloquear direto — usuário deve trocar antes
-    const reservaAqui = reservas.find((r:any) =>
-      r.posicao === label && ['reservado','presente'].includes(r.status))
-    if (reservaAqui) {
-      const nome = reservaAqui.clientes?.nome?.split(' ')[0] || 'cliente'
-      showMsg(`⚠️ ${nome} está na ${label}. Use "Trocar" antes de bloquear.`)
-      return
+    const jaBloqueada = posicoesBloqueadasPontual.includes(label)
+    // Só ao BLOQUEAR: se a posição tem reserva ativa, não permite bloquear direto —
+    // usuário deve trocar antes. DESBLOQUEAR sempre pode (inclusive posição que ficou
+    // bloqueada E com cliente ao mesmo tempo — estado que travava o desbloqueio).
+    if (!jaBloqueada) {
+      const reservaAqui = reservas.find((r:any) =>
+        r.posicao === label && ['reservado','presente'].includes(r.status))
+      if (reservaAqui) {
+        const nome = reservaAqui.clientes?.nome?.split(' ')[0] || 'cliente'
+        showMsg(`⚠️ ${nome} está na ${label}. Use "Trocar" antes de bloquear.`)
+        return
+      }
     }
     setSalvandoBloqueio(label)
-    const jaBloqueada = posicoesBloqueadasPontual.includes(label)
     if (jaBloqueada) {
       const { error } = await supabase
         .from('club_posicoes_bloqueios_ocorrencia')
@@ -680,7 +684,10 @@ export default function RecepcaoClubDetalhe() {
       // - view: nunca desabilitado quando livre/bloqueada (clica pra toggle); só quando ocupada ou bloqueada globalmente
       // - walkin/troca: desabilitado se tomado por outro ou bloqueada (pontual ou global)
       let disabled = false
-      if (modo === 'view') disabled = tomado || salvandoEssa || bloqueadaGlobal
+      // view: clica pra alternar bloqueio pontual. Desabilita se salvando ou global.
+      // Ocupada só desabilita quando NÃO está bloqueada pontual — se estiver bloqueada
+      // E com cliente (estado inconsistente), precisa poder clicar pra desbloquear.
+      if (modo === 'view') disabled = salvandoEssa || bloqueadaGlobal || (tomado && !bloqueadaPontual)
       else if (modo === 'walkin') disabled = (tomado || bloqueadaPontual || bloqueadaGlobal) && label !== posicaoSel
       else if (modo === 'troca') disabled = !trocandoReserva
         ? (!tomado || bloqueadaPontual || bloqueadaGlobal)                             // fase 1: só ocupadas clicáveis
