@@ -65,3 +65,28 @@ export function aulaJaComecou(data?: string | null, horario?: string | null): bo
   if (d !== agora.data) return d < agora.data
   return String(horario).slice(0, 5) <= agora.hora
 }
+
+/**
+ * A aula já encerrou para fins de EXIBIÇÃO (escurecer/desativar o card)?
+ * Considera encerrada quando já se passaram `toleranciaMin` minutos do início
+ * (padrão 1 min) no horário de SP. Diferente de aulaJaComecou (que barra a
+ * reserva no minuto exato): aqui damos 1 min de folga só pro visual.
+ * Sem data/horário → false. Fail-safe no relógio do dispositivo se o fuso não resolver.
+ */
+export function aulaEncerrada(data?: string | null, horario?: string | null, toleranciaMin = 1): boolean {
+  if (!data || !horario) return false
+  const hhmm = String(horario).slice(0, 5)
+  const [h, m] = hhmm.split(':').map(Number)
+  if (Number.isNaN(h) || Number.isNaN(m)) return false
+
+  const agora = partesSP()
+  if (!agora) {
+    const inicio = new Date(`${data}T${hhmm}`)
+    if (isNaN(inicio.getTime())) return false
+    return Date.now() >= inicio.getTime() + toleranciaMin * 60000
+  }
+  const d = String(data).slice(0, 10)
+  if (d !== agora.data) return d < agora.data
+  const [ah, am] = agora.hora.split(':').map(Number)
+  return (ah * 60 + am) >= (h * 60 + m + toleranciaMin)
+}

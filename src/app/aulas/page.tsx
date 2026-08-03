@@ -7,7 +7,7 @@ import SiteHeader from '@/components/SiteHeader'
 import AvisoUnidade, { AvisoPopupPinheiros } from '@/components/AvisoUnidade'
 import ModalTelefone from '@/components/ModalTelefone'
 import { nomeCoachPublico } from '@/lib/mascaraCoachPublico'
-import { aulaJaComecou, dataHojeSP, horaAgoraSP, hojeSP } from '@/lib/tempo'
+import { aulaEncerrada, aulaJaComecou, dataHojeSP, hojeSP } from '@/lib/tempo'
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(true)
@@ -173,7 +173,6 @@ function AulasPageInner() {
   const dataSel    = diasSemana[diaSel]
   const dataSelStr = dataLocalStr(dataSel)
   const agora      = dataHojeSP()
-  const horaAtual  = horaAgoraSP()
   const isHoje     = dataSelStr === hojeSP()
 
   const dataSelEhProximoMes = dataSel.getMonth() !== agora.getMonth() || dataSel.getFullYear() !== agora.getFullYear()
@@ -475,7 +474,7 @@ function AulasPageInner() {
   }
 
   const ocsFiltradas = ocorrencias.filter(oc => {
-    if (isHoje && (oc.club_aulas?.horario||'').slice(0,5) <= horaAtual) return false
+    // Aulas já encerradas não somem mais: aparecem escurecidas/desativadas (ver aulaEncerrada).
     const hora = parseInt((oc.club_aulas?.horario||'').slice(0,2))
     if (periodo === 'manha') return hora < 12
     if (periodo === 'tarde') return hora >= 12 && hora < 18
@@ -689,9 +688,10 @@ function AulasPageInner() {
                     const nomeCoach  = primeiroNomeCoachOc(oc)
                     const duracao    = aula?.duracao_min||50
                     const poucasVagas = livres > 0 && livres <= 3
+                    const encerrada  = aulaEncerrada(oc.data, aula?.horario)
                     const borderColor = minhaRes ? CYAN+'55' : naFila ? AMARELO+'55' : cores.border
                     return (
-                      <div key={oc.id} style={{ background:cores.bg, border:`1px solid ${borderColor}`, borderRadius:12, padding:'10px', marginBottom:8, overflow:'hidden' }}>
+                      <div key={oc.id} style={{ background:cores.bg, border:`1px solid ${borderColor}`, borderRadius:12, padding:'10px', marginBottom:8, overflow:'hidden', opacity: encerrada ? 0.4 : 1, filter: encerrada ? 'grayscale(0.7)' : 'none' }}>
                         {/* Horário + duração */}
                         <div style={{ fontFamily:"'DM Mono', monospace", fontSize:13, fontWeight:700, color:'#fff', lineHeight:1 }}>
                           {(aula?.horario||'').slice(0,5)}
@@ -716,7 +716,9 @@ function AulasPageInner() {
                         </div>
 
                         {/* Status ou botão */}
-                        {minhaRes ? (
+                        {encerrada ? (
+                          <div style={{ fontSize:10, color:'#777', fontWeight:700, fontFamily:"'DM Mono', monospace", letterSpacing:0.5 }}>ENCERRADA</div>
+                        ) : minhaRes ? (
                           <>
                             <div style={{ fontSize:10, color:CYAN, fontWeight:700 }}>✓ Reservado</div>
                             {aula?.tipo !== 'running_funcional' && temAvulsoDisponivel && (
@@ -779,9 +781,10 @@ function AulasPageInner() {
               const nomeCoach=primeiroNomeCoachOc(oc)
               const duracao=aula?.duracao_min||50
               const poucasVagas=livres>0&&livres<=3
+              const encerrada=aulaEncerrada(oc.data, aula?.horario)
               const borderColor=minhaRes?CYAN+'55':naFila?AMARELO+'55':cores.border
               return (
-                <div key={oc.id} style={{ background:cores.bg, border:`1.5px solid ${borderColor}`, borderRadius:18, overflow:'hidden' }}>
+                <div key={oc.id} style={{ background:cores.bg, border:`1.5px solid ${borderColor}`, borderRadius:18, overflow:'hidden', opacity: encerrada ? 0.4 : 1, filter: encerrada ? 'grayscale(0.7)' : 'none' }}>
                   {/* Topo: horário à esquerda, badge à direita */}
                   <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', padding: isMobile ? '1rem 1.25rem 0.25rem' : '0.75rem 1rem 0.2rem' }}>
                     <div style={{ display:'flex', flexDirection:'column', gap:3, flexShrink:0 }}>
@@ -822,8 +825,15 @@ function AulasPageInner() {
                     </div>
                   </div>
 
+                  {/* Aula já encerrada: sem ação, só o selo */}
+                  {encerrada && (
+                    <div style={{ padding: isMobile ? '0 1.25rem 1.25rem' : '0 1rem 1rem' }}>
+                      <div style={{ width:'100%', textAlign:'center', color:'#777', fontSize:12, fontWeight:700, fontFamily:"'DM Mono', monospace", letterSpacing:1, padding:'0.7rem', border:'1px solid #222', borderRadius:12 }}>ENCERRADA</div>
+                    </div>
+                  )}
+
                   {/* Botão de ação — full-width, só aparece se não tiver reservado/fila */}
-                  {(!minhaRes || cliente?.is_classpass) && !naFila && (
+                  {!encerrada && (!minhaRes || cliente?.is_classpass) && !naFila && (
                     <div style={{ padding: isMobile ? '0 1.25rem 1.25rem' : '0 1rem 1rem' }}>
                       {lotado ? (
                         <button onClick={() => tentarFila(oc)} style={{
@@ -848,7 +858,7 @@ function AulasPageInner() {
                   )}
 
                   {/* Reserva-extra com avulso — só Lift/LFG já reservado e com avulso disponível */}
-                  {minhaRes && !naFila && !isRunning && temAvulsoDisponivel && (
+                  {!encerrada && minhaRes && !naFila && !isRunning && temAvulsoDisponivel && (
                     <div style={{ padding: isMobile ? '0 1.25rem 1.25rem' : '0 1rem 1rem' }}>
                       <button onClick={() => reReservarAvulso(oc)} style={{
                         width:'100%', background:'transparent', color:VERDE,
@@ -862,7 +872,7 @@ function AulasPageInner() {
                   )}
 
                   {/* Reserva-extra Running — vai ao mapa pra escolher outra posição */}
-                  {minhaRes && !naFila && isRunning && temAvulsoDisponivel && (
+                  {!encerrada && minhaRes && !naFila && isRunning && temAvulsoDisponivel && (
                     <div style={{ padding: isMobile ? '0 1.25rem 1.25rem' : '0 1rem 1rem' }}>
                       <button onClick={() => reReservarRunning(oc)} style={{
                         width:'100%', background:'transparent', color:VERDE,
