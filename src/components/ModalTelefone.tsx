@@ -16,13 +16,19 @@ export default function ModalTelefone({
   aberto,
   onFechar,
   onSucesso,
+  titulo = 'FALTA SÓ SEU TELEFONE',
+  descricao = 'Precisamos de um número de contato para concluir sua reserva e manter seu cadastro de pagamento em dia.',
+  valorInicial = '',
 }: {
   aberto: boolean
   onFechar: () => void
   onSucesso: (telefone: string) => void
+  titulo?: string
+  descricao?: string
+  valorInicial?: string
 }) {
   const supabase = createClient()
-  const [telefone, setTelefone] = useState('')
+  const [telefone, setTelefone] = useState(() => formatarTelefone(valorInicial))
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
 
@@ -85,10 +91,10 @@ export default function ModalTelefone({
       <div style={{ background: '#111', border: `1.5px solid ${ACCENT}55`, borderRadius: 20, width: '100%', maxWidth: 420, maxHeight: '90dvh', overflowY: 'auto', margin: 'auto', padding: '1.5rem', fontFamily: "'DM Sans', sans-serif" }}>
         <div style={{ fontSize: 36, marginBottom: '0.75rem', textAlign: 'center' }}>📱</div>
         <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', marginBottom: 8, textAlign: 'center', letterSpacing: 1 }}>
-          FALTA SÓ SEU TELEFONE
+          {titulo}
         </div>
         <div style={{ fontSize: 14, color: '#aaa', lineHeight: 1.7, marginBottom: '1.25rem', textAlign: 'center' }}>
-          Precisamos de um número de contato para concluir sua reserva e manter seu cadastro de pagamento em dia.
+          {descricao}
         </div>
 
         <label style={{ fontSize: 12, color: '#555', display: 'block', marginBottom: 6, textTransform: 'uppercase' as const, letterSpacing: 1 }}>

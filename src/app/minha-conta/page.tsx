@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
 import { dashboardDoRole } from '@/lib/auth-redirect'
 import SiteHeader from '@/components/SiteHeader'
+import ModalTelefone from '@/components/ModalTelefone'
 import { numerarTreinosDoMes, PLANOS_SEM_TETO } from '@/lib/treinos-numero'
 
 const ACCENT  = '#ff2d9b'
@@ -159,6 +160,9 @@ export default function MinhaContaPage() {
   const [salvandoSenha,  setSalvandoSenha]  = useState(false)
   const [erroSenha,      setErroSenha]      = useState('')
   const [senhaSalva,     setSenhaSalva]     = useState(false)
+
+  // ── Alterar telefone ──
+  const [modalTelefone, setModalTelefone] = useState(false)
 
   const contratoRef = useRef<HTMLDivElement>(null)
 
@@ -853,15 +857,25 @@ export default function MinhaContaPage() {
         <div style={{background:'#0d0d0d',border:'1px solid #181818',borderRadius:14,padding:'1.25rem',marginBottom:'2rem'}}>
           <div style={{fontSize:11,color:'#aaa',fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginBottom:'1rem'}}>👤 Minha conta</div>
           {[
-            {label:'Nome',    value:cliente?.nome},
-            {label:'Email',   value:cliente?.email||'—'},
-            {label:'Telefone',value:cliente?.telefone||'—'},
-          ].map((item,i,arr)=>(
+            {label:'Nome',  value:cliente?.nome},
+            {label:'Email', value:cliente?.email||'—'},
+          ].map((item,i)=>(
             <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'0.5rem 0',borderBottom:'1px solid #181818'}}>
               <span style={{fontSize:13,color:'#444'}}>{item.label}</span>
               <span style={{fontSize:13,color:'#888'}}>{item.value}</span>
             </div>
           ))}
+
+          {/* Telefone — editável (reaproveita a API /api/cliente/atualizar-telefone) */}
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,padding:'0.5rem 0',borderBottom:'1px solid #181818'}}>
+            <span style={{fontSize:13,color:'#444'}}>Telefone</span>
+            <div style={{display:'flex',alignItems:'center',gap:10,minWidth:0}}>
+              <span style={{fontSize:13,color:'#888',whiteSpace:'nowrap'}}>{cliente?.telefone||'—'}</span>
+              <button onClick={()=>setModalTelefone(true)} style={{background:'transparent',border:`1px solid ${ACCENT}44`,borderRadius:8,padding:'0.2rem 0.6rem',fontSize:11,color:ACCENT,fontWeight:600,cursor:'pointer',fontFamily:"'DM Sans', sans-serif",flexShrink:0}}>
+                Alterar
+              </button>
+            </div>
+          </div>
 
           {/* Gênero — libera aulas exclusivas (ex: Lift for Girls) */}
           <div style={{padding:'0.75rem 0',borderBottom:'1px solid #181818'}}>
@@ -892,6 +906,18 @@ export default function MinhaContaPage() {
           </span>
         </div>
       </div>
+
+      {/* ══════════════════════════════════════════
+          MODAL — ALTERAR TELEFONE
+      ══════════════════════════════════════════ */}
+      <ModalTelefone
+        aberto={modalTelefone}
+        onFechar={()=>setModalTelefone(false)}
+        titulo="ATUALIZAR TELEFONE"
+        descricao="Informe seu número de contato com DDD. Ele é usado para avisos de reserva e para manter seu cadastro de pagamento em dia."
+        valorInicial={cliente?.telefone||''}
+        onSucesso={(tel)=>{ setCliente((c:any)=>c?{...c,telefone:tel}:c); setModalTelefone(false) }}
+      />
 
       {/* ══════════════════════════════════════════
           MODAL — ALTERAR SENHA
