@@ -189,12 +189,24 @@ function CheckoutContent() {
   const semCpfCadastro = !!cliente && cpfCadastroLimpo.length !== 11
   const precisaCpf = semCpfCadastro || mostrarCpf
 
+  // Cliente logado sem telefone válido? (mesmo padrão do CPF: campo aparece inline)
+  // Telefone não é obrigatório pro Pagar.me, mas é essencial para avisos de reserva —
+  // então coletamos aqui, no único momento em que o cliente está preenchendo dados.
+  const telCadastroLimpo = (cliente?.telefone || '').replace(/\D/g, '')
+  const precisaTelefone = !!cliente && telCadastroLimpo.length < 10
+
   async function confirmarPagamento() {
     setErro('')
 
     // Pagar.me exige CPF (customer.document) tanto no cartão quanto no PIX.
     if (precisaCpf && cpf.replace(/\D/g, '').length !== 11) {
       setErro('Informe seu CPF para concluir a compra.')
+      return
+    }
+
+    // Telefone faltando no cadastro: coletamos aqui (usado em avisos de reserva).
+    if (precisaTelefone && telefone.replace(/\D/g, '').length < 10) {
+      setErro('Informe seu telefone com DDD para concluir a compra.')
       return
     }
 
@@ -217,6 +229,8 @@ function CheckoutContent() {
 
       // Cadastro sem CPF: manda o CPF informado aqui pra API validar e gravar.
       if (precisaCpf) payload.cpf = cpf.replace(/\D/g, '')
+      // Cadastro sem telefone: manda o telefone informado pra API gravar.
+      if (precisaTelefone) payload.telefone = telefone.replace(/\D/g, '')
 
       if (metodo === 'cartao') {
         payload.cartao = {
@@ -503,14 +517,29 @@ function CheckoutContent() {
               </div>
             )}
 
-            {!pixQrCode && precisaCpf && (
+            {!pixQrCode && (precisaCpf || precisaTelefone) && (
               <div style={{ ...card, marginBottom: '1.5rem' }}>
                 <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>Seus dados</div>
-                <label style={labelStyle}>CPF</label>
-                <input style={inputStyle} type="text" inputMode="numeric" placeholder="000.000.000-00" value={cpf} onChange={e => setCpf(formatarCPF(e.target.value))} />
-                <div style={{ fontSize: 12, color: '#888', marginTop: 6 }}>
-                  Seu cadastro está sem CPF. Informe-o para concluir a compra (exigência do pagamento).
-                </div>
+
+                {precisaCpf && (
+                  <div style={{ marginBottom: precisaTelefone ? '1.25rem' : 0 }}>
+                    <label style={labelStyle}>CPF</label>
+                    <input style={inputStyle} type="text" inputMode="numeric" placeholder="000.000.000-00" value={cpf} onChange={e => setCpf(formatarCPF(e.target.value))} />
+                    <div style={{ fontSize: 12, color: '#888', marginTop: 6 }}>
+                      Seu cadastro está sem CPF. Informe-o para concluir a compra (exigência do pagamento).
+                    </div>
+                  </div>
+                )}
+
+                {precisaTelefone && (
+                  <div>
+                    <label style={labelStyle}>Telefone / WhatsApp</label>
+                    <input style={inputStyle} type="text" inputMode="numeric" placeholder="(11) 99999-9999" value={telefone} onChange={e => setTelefone(formatarTel(e.target.value))} />
+                    <div style={{ fontSize: 12, color: '#888', marginTop: 6 }}>
+                      Seu cadastro está sem telefone. Informe-o para receber avisos das suas reservas.
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

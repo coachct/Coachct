@@ -48,7 +48,7 @@ function descreverErroPagarme(data: any): string {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { produto_id, cliente_id, metodo, parcelas, cartao, cpf: cpfInformado } = body
+    const { produto_id, cliente_id, metodo, parcelas, cartao, cpf: cpfInformado, telefone: telefoneInformado } = body
 
     if (!produto_id || !cliente_id || !metodo) {
       return NextResponse.json({ error: 'Dados incompletos' }, { status: 400 })
@@ -113,6 +113,19 @@ export async function POST(req: NextRequest) {
       }
       await supabase.from('clientes').update({ cpf: cpfNovo }).eq('id', cliente.id)
       cpfLimpo = cpfNovo
+    }
+
+    // Cadastro sem telefone: se o cliente informou um agora (campo do checkout),
+    // gravamos. Não é exigência do Pagar.me, mas alimenta o customer.phones e os
+    // avisos de reserva. Só grava quando o cadastro está de fato sem telefone válido.
+    if ((cliente.telefone || '').replace(/\D/g, '').length < 10) {
+      const telNovo = String(telefoneInformado || '').replace(/\D/g, '')
+      if (telNovo.length >= 10 && telNovo.length <= 11) {
+        await supabase.from('clientes')
+          .update({ telefone: telNovo, whatsapp: telNovo })
+          .eq('id', cliente.id)
+        cliente.telefone = telNovo
+      }
     }
 
     // GUARD anti-cobrança-duplicada (somente cartão): se já existe um pagamento recente
