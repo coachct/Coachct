@@ -170,7 +170,8 @@ export default function TotemPage() {
     if (force) setFaceMsg('Reconhecendo…')
     try {
       const emb = await detectar(idleVideoRef.current)
-      if (!emb) { setFaceMsg(force ? 'Rosto não detectado — tente de novo ou use o CPF' : 'Câmera ativa · olhe para reconhecer'); return }
+      if (!emb) { setFaceMsg('Câmera ativa · olhe para reconhecer'); return }
+      setFaceMsg('Reconhecendo…')
       const res = await api('/api/totem/reconhecer', { method: 'POST', body: JSON.stringify({ unidade: unidade.slug, embedding: emb, test: testRef.current }) })
       if (res?.resultado === 'sem_match') { setFaceMsg(force ? 'Não reconhecemos seu rosto. Use o CPF ou cadastre.' : 'Câmera ativa · olhe para reconhecer'); return }
       tratarResposta(res)
@@ -273,12 +274,9 @@ export default function TotemPage() {
                     <div className="scanline" />
                     <i className="fc fc1" /><i className="fc fc2" /><i className="fc fc3" /><i className="fc fc4" />
                   </div>
-                  <div className="live"><span className="dot" /> {faceMsg}</div>
+                  <div className="live"><span className="dot" /> {faceReady ? faceMsg : 'Preparando reconhecimento…'}</div>
                 </div>
                 <div className="stack">
-                  <button className="btn ok" disabled={!faceReady} onClick={() => reconhecer(true)}>
-                    {faceReady ? '▶ Entrar com reconhecimento' : 'Carregando reconhecimento…'}
-                  </button>
                   <button className="btn ghost sm" onClick={() => abrirCpf('checkin')}>Prefere digitar? Usar CPF</button>
                 </div>
                 <div className="center" style={{ marginTop: 10 }}>
