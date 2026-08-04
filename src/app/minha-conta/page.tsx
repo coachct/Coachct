@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import CadastroRosto from '@/components/CadastroRosto'
 import { createClient } from '@/lib/supabase'
 import { dashboardDoRole } from '@/lib/auth-redirect'
 import SiteHeader from '@/components/SiteHeader'
@@ -509,6 +510,9 @@ export default function MinhaContaPage() {
           </div>
           <div style={{fontSize:13,color:'#555',marginTop:3}}>Área do aluno</div>
         </div>
+
+        {/* ── CADASTRO FACIAL (Check-in Express) ── */}
+        <CadastroRosto />
 
         {/* ── BANNER BLOQUEIO ── */}
         {estaBloqueado && (
