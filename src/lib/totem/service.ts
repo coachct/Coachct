@@ -1,6 +1,8 @@
 // Totem Self Check-in (Just Club) — helpers de servidor.
 // Isolado: só as rotas /api/totem usam. Nada aqui altera fluxo existente.
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import { nomeCoachPublico } from '@/lib/mascaraCoachPublico'
+import { hojeSP, aulaEncerrada } from '@/lib/tempo'
 
 /** Client service_role (ignora RLS). Só em rota de servidor. */
 export function totemService(): SupabaseClient {
@@ -61,4 +63,95 @@ export function nomeAulaClub(tipo?: string | null, grupo?: string | null): strin
   if (tipo === 'running_funcional') return g ? `Running + Funcional · ${g}` : 'Running + Funcional'
   if (tipo === 'lift_for_girls') return g ? `Lift For Girls · ${g}` : 'Lift For Girls'
   return g ? `Lift ${g}` : 'Lift'
+}
+
+export type ClienteTotem = { id: string; nome: string; bloqueado?: boolean | null }
+
+/** Serializa embedding [num,...] para o formato aceito pelo cast ::vector. */
+export function embeddingToVectorText(embedding: number[]): string {
+  return `[${embedding.map((n) => Number(n)).join(',')}]`
+}
+
+/**
+ * Dado um cliente já identificado (por CPF ou rosto), monta a resposta do totem:
+ * bloqueado | sem_reserva | reserva (com o fluxo: confirmar / aguardar_parceiro / confirmado).
+ * Reusado pelas rotas identificar e reconhecer — fonte única da regra.
+ */
+export async function respostaParaCliente(
+  sb: SupabaseClient,
+  unidade: UnidadeTotem,
+  cliente: ClienteTotem
+) {
+  if (cliente.bloqueado) return { resultado: 'bloqueado', nome: cliente.nome }
+
+  const hoje = hojeSP()
+
+  const { data: reservas } = await sb
+    .from('club_reservas')
+    .select(`
+      id, status, tipo_credito, posicao, via_app,
+      ocorrencia:club_ocorrencias (
+        id, coach_id, data, status,
+        aula:club_aulas (
+          tipo, horario, duracao_min, coach_id, unidade_id,
+          grupo:grupos_musculares ( nome )
+        )
+      )
+    `)
+    .eq('cliente_id', cliente.id)
+    .in('status', ['reservado', 'presente'])
+
+  const candidatas = (reservas || [])
+    .map((r: any) => {
+      const o = r.ocorrencia
+      const a = o?.aula
+      if (!o || !a) return null
+      if (o.data !== hoje || o.status !== 'ativa') return null
+      if (a.unidade_id !== unidade.id) return null
+      if (aulaEncerrada(hoje, a.horario, a.duracao_min || 60)) return null
+      return {
+        reservaId: r.id as string,
+        status: r.status as string,
+        tipoCredito: r.tipo_credito as string,
+        posicao: (r.posicao || null) as string | null,
+        aulaTipo: a.tipo as string,
+        horario: String(a.horario || '').slice(0, 5),
+        coachId: (o.coach_id || a.coach_id || null) as string | null,
+        grupo: a.grupo?.nome || null,
+      }
+    })
+    .filter(Boolean) as any[]
+
+  if (candidatas.length === 0) return { resultado: 'sem_reserva', nome: cliente.nome }
+
+  candidatas.sort((a, b) => a.horario.localeCompare(b.horario))
+  const c = candidatas[0]
+
+  let coachNome = ''
+  if (c.coachId) {
+    const { data: coach } = await sb.from('coaches').select('id, nome').eq('id', c.coachId).maybeSingle()
+    coachNome = nomeCoachPublico(coach?.id, coach?.nome)
+  }
+
+  const parceiro = ehParceiro(c.tipoCredito)
+  const flow =
+    c.status === 'presente' ? 'confirmado'
+    : parceiro ? 'aguardar_parceiro'
+    : 'confirmar'
+
+  return {
+    resultado: 'reserva',
+    nome: cliente.nome,
+    reserva: {
+      id: c.reservaId,
+      aulaTipo: c.aulaTipo,
+      aulaNome: nomeAulaClub(c.aulaTipo, c.grupo),
+      horario: c.horario,
+      coach: coachNome,
+      posicao: c.aulaTipo === 'running_funcional' ? c.posicao : null,
+      origem: origemLabel(c.tipoCredito),
+      isPartner: parceiro,
+      flow,
+    },
+  }
 }

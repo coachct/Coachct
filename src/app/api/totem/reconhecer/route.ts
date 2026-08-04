@@ -1,7 +1,10 @@
-// POST /api/totem/identificar  { unidade, cpf }
-// Identifica o cliente por CPF e devolve a resposta do totem (reserva/sem_reserva/bloqueado).
+// POST /api/totem/reconhecer  { unidade, embedding:number[128] }
+// Match facial: acha o cliente pelo embedding (pgvector) e cai no MESMO fluxo do CPF.
 import { NextRequest, NextResponse } from 'next/server'
-import { totemService, resolverUnidadeClub, totemTokenOk, respostaParaCliente } from '@/lib/totem/service'
+import {
+  totemService, resolverUnidadeClub, totemTokenOk,
+  respostaParaCliente, embeddingToVectorText,
+} from '@/lib/totem/service'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -11,20 +14,27 @@ export async function POST(req: NextRequest) {
     if (!totemTokenOk(req)) return NextResponse.json({ erro: 'nao_autorizado' }, { status: 401 })
 
     const body = await req.json().catch(() => ({} as any))
-    const cpf = String(body?.cpf || '').replace(/\D/g, '')
+    const embedding = Array.isArray(body?.embedding) ? body.embedding : null
 
     const sb = totemService()
     const unidade = await resolverUnidadeClub(sb, String(body?.unidade || ''))
     if (!unidade) return NextResponse.json({ erro: 'unidade_invalida' }, { status: 400 })
-    if (cpf.length !== 11) return NextResponse.json({ resultado: 'cpf_invalido' })
+    if (!embedding || embedding.length !== 128) return NextResponse.json({ resultado: 'sem_match' })
+
+    const { data: match } = await sb.rpc('totem_match_face', {
+      p_unidade: unidade.id,
+      p_embedding: embeddingToVectorText(embedding),
+    })
+
+    const clienteId = Array.isArray(match) && match[0]?.cliente_id
+    if (!clienteId) return NextResponse.json({ resultado: 'sem_match' })
 
     const { data: cliente } = await sb
       .from('clientes')
       .select('id, nome, bloqueado')
-      .eq('cpf', cpf)
+      .eq('id', clienteId)
       .maybeSingle()
-
-    if (!cliente) return NextResponse.json({ resultado: 'nao_encontrado' })
+    if (!cliente) return NextResponse.json({ resultado: 'sem_match' })
 
     return NextResponse.json(await respostaParaCliente(sb, unidade, cliente))
   } catch (e: any) {
