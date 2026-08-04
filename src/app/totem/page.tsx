@@ -244,6 +244,12 @@ export default function TotemPage() {
     else setEnrollMsg('Não deu para salvar. Tente de novo ou fale com a recepção.')
   }
 
+  const toggleFull = () => {
+    const el: any = document.documentElement
+    if (!document.fullscreenElement) (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el)
+    else (document.exitFullscreen || (document as any).webkitExitFullscreen)?.call(document)
+  }
+
   const posLabel = (p: string | null) => (!p ? '' : p.toUpperCase().startsWith('F') ? `Funcional ${p}` : `Esteira ${p}`)
   const tipoClasse = (t: string) => (t === 'running_funcional' ? 'run' : 'lift')
   const tipoLabel = (t: string) => (t === 'running_funcional' ? 'Running + Funcional' : t === 'lift_for_girls' ? 'Lift For Girls' : 'Lift')
@@ -256,10 +262,13 @@ export default function TotemPage() {
         <div className="totem">
           <div className="top">
             <div>
-              <div className="logo">JUST <b>CLUB</b></div>
+              <div className="logo">JUST <b>{unidade?.tipo === 'ct' ? 'CT' : 'CLUB'}</b></div>
               <div className="unit">{unidade ? `Check-in Express · ${unidade.nome}` : 'Self Check-in'}</div>
             </div>
-            <div className="clock"><span>{clock.h}</span><small>{clock.d}</small></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div className="clock"><span>{clock.h}</span><small>{clock.d}</small></div>
+              <button className="fullbtn" onClick={toggleFull} aria-label="Tela cheia">⛶</button>
+            </div>
           </div>
 
           <div className="screens">
@@ -522,6 +531,8 @@ const CSS = `
 #tt .unit{font-size:11px;color:var(--mut);margin-top:2px}
 #tt .clock{font-variant-numeric:tabular-nums;font-weight:700;font-size:15px;text-align:right}
 #tt .clock small{display:block;font-weight:500;font-size:10px;color:var(--mut)}
+#tt .fullbtn{background:var(--panel);border:1px solid var(--line);color:var(--mut);border-radius:9px;width:30px;height:30px;font-size:15px;cursor:pointer;flex:0 0 auto;display:flex;align-items:center;justify-content:center}
+#tt .fullbtn:active{transform:scale(.94)}
 #tt .screens{position:relative;flex:1 1 auto;overflow:hidden}
 #tt .screen{position:absolute;inset:0;padding:10px 22px 18px;display:flex;flex-direction:column;animation:ttin .32s ease}
 @keyframes ttin{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
