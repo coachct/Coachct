@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, Suspense } from 'react'
+import { useEffect, useRef, useState, Suspense } from 'react'
 import { createClient } from '@/lib/supabase'
 import { gradeExtraDoDia } from '@/lib/grade'
 import { useAuth } from '@/hooks/useAuth'
@@ -157,6 +157,17 @@ function RecepcaoClientesPageInner() {
     if (perfil && id) abrirClientePorId(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [perfil, searchParams])
+
+  // Atalho vindo do walk-in: ?venda=1 abre o modal de venda assim que o cliente carrega
+  const vendaAutoRef = useRef(false)
+  useEffect(() => {
+    if (vendaAutoRef.current) return
+    if (clienteSel && unidadeAtiva && searchParams.get('venda') === '1') {
+      vendaAutoRef.current = true
+      abrirVenda()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clienteSel, unidadeAtiva, searchParams])
 
   async function abrirClientePorId(id: string) {
     const { data } = await supabase.from('clientes').select('*').eq('id', id).maybeSingle()

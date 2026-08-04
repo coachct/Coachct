@@ -1392,6 +1392,11 @@ export default function RecepcaoClubDetalhe() {
                         ))}
                       </div>
                     </div>
+                    <button onClick={() => router.push(`/recepcao/clientes?id=${clienteSel?.id}&venda=1`)}
+                      style={{ width:'100%', background:'#111', color:'#fff', border:'none', borderRadius:10,
+                        padding:'0.8rem', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
+                      💳 Vender crédito / avulso no balcão →
+                    </button>
                   </div>
                 ) : (
                   <div style={{ marginBottom:'1rem' }}>
