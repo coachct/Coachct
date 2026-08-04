@@ -170,6 +170,18 @@ export default function RecepcaoClubDetalhe() {
 
   useEffect(() => { if (ocId) carregarDados() }, [ocId])
 
+  // Tempo real: recarrega ao mudar reserva/ocorrência desta aula (ex.: totem marca presença)
+  useEffect(() => {
+    if (!ocId) return
+    const ch = supabase
+      .channel(`cal-club-${ocId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'club_reservas', filter: `ocorrencia_id=eq.${ocId}` }, () => carregarDados())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'club_ocorrencias', filter: `id=eq.${ocId}` }, () => carregarDados())
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ocId])
+
   async function carregarDados() {
     setLoadingData(true)
     // Inclui coach_escalado (FK coach_id da ocorrência) — prioridade sobre o coach da grade
