@@ -2,7 +2,7 @@
 // Salva o rosto (1 por cliente) + registra o consentimento LGPD. Via RPC totem_salvar_rosto.
 import { NextRequest, NextResponse } from 'next/server'
 import {
-  totemService, resolverUnidadeClub, totemTokenOk, embeddingToVectorText,
+  totemService, resolverUnidadeTotem, totemTokenOk, embeddingToVectorText,
 } from '@/lib/totem/service'
 
 export const runtime = 'nodejs'
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     const embedding = Array.isArray(body?.embedding) ? body.embedding : null
 
     const sb = totemService()
-    const unidade = await resolverUnidadeClub(sb, String(body?.unidade || ''))
+    const unidade = await resolverUnidadeTotem(sb, String(body?.unidade || ''))
     if (!unidade) return NextResponse.json({ ok: false, motivo: 'unidade_invalida' }, { status: 400 })
     if (cpf.length !== 11) return NextResponse.json({ ok: false, motivo: 'cpf_invalido' })
     if (!embedding || embedding.length !== 128) return NextResponse.json({ ok: false, motivo: 'rosto_invalido' })

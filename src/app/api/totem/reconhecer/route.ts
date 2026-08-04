@@ -1,9 +1,9 @@
 // POST /api/totem/reconhecer  { unidade, embedding:number[128] }
-// Match facial: acha o cliente pelo embedding (pgvector) e cai no MESMO fluxo do CPF.
+// Match facial (pgvector, global) → cai no MESMO fluxo do CPF (Club: reserva | CT: acesso).
 import { NextRequest, NextResponse } from 'next/server'
 import {
-  totemService, resolverUnidadeClub, totemTokenOk,
-  respostaParaCliente, embeddingToVectorText,
+  totemService, resolverUnidadeTotem, totemTokenOk,
+  respostaParaCliente, respostaCT, embeddingToVectorText,
 } from '@/lib/totem/service'
 
 export const runtime = 'nodejs'
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
     const embedding = Array.isArray(body?.embedding) ? body.embedding : null
 
     const sb = totemService()
-    const unidade = await resolverUnidadeClub(sb, String(body?.unidade || ''))
+    const unidade = await resolverUnidadeTotem(sb, String(body?.unidade || ''))
     if (!unidade) return NextResponse.json({ erro: 'unidade_invalida' }, { status: 400 })
     if (!embedding || embedding.length !== 128) return NextResponse.json({ resultado: 'sem_match' })
 
@@ -31,10 +31,12 @@ export async function POST(req: NextRequest) {
 
     const { data: cliente } = await sb
       .from('clientes')
-      .select('id, nome, bloqueado')
+      .select('id, nome, bloqueado, cpf, wellhub_id')
       .eq('id', clienteId)
       .maybeSingle()
     if (!cliente) return NextResponse.json({ resultado: 'sem_match' })
+
+    if (unidade.tipo === 'ct') return NextResponse.json(await respostaCT(sb, unidade, cliente))
 
     const test = body?.test === true || body?.test === '1'
     return NextResponse.json(await respostaParaCliente(sb, unidade, cliente, { ignorarEncerrada: test }))

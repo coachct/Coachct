@@ -12,24 +12,39 @@ export function totemService(): SupabaseClient {
   return createClient(url, key, { auth: { persistSession: false } })
 }
 
-export type UnidadeTotem = { id: string; slug: string; nome: string }
+export type UnidadeTotem = { id: string; slug: string; nome: string; tipo: 'club' | 'ct' }
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-/** Resolve ?unidade= (id OU slug) para uma unidade Club ATIVA. null se inválida. */
-export async function resolverUnidadeClub(
-  sb: SupabaseClient,
-  unidade: string
-): Promise<UnidadeTotem | null> {
+async function buscarUnidade(sb: SupabaseClient, unidade: string) {
   const v = (unidade || '').trim()
   if (!v) return null
   const q = sb.from('unidades').select('id, slug, nome, tipo, ativo')
   const { data } = UUID_RE.test(v)
     ? await q.eq('id', v).maybeSingle()
     : await q.eq('slug', v).maybeSingle()
+  return data || null
+}
+
+/** Resolve ?unidade= (id OU slug) para uma unidade Club ATIVA. null se inválida. */
+export async function resolverUnidadeClub(
+  sb: SupabaseClient,
+  unidade: string
+): Promise<UnidadeTotem | null> {
+  const data = await buscarUnidade(sb, unidade)
   if (!data || data.tipo !== 'club' || data.ativo === false) return null
-  return { id: data.id, slug: data.slug, nome: data.nome }
+  return { id: data.id, slug: data.slug, nome: data.nome, tipo: 'club' }
+}
+
+/** Resolve ?unidade= para uma unidade ATIVA do totem (Club OU CT). null se inválida. */
+export async function resolverUnidadeTotem(
+  sb: SupabaseClient,
+  unidade: string
+): Promise<UnidadeTotem | null> {
+  const data = await buscarUnidade(sb, unidade)
+  if (!data || data.ativo === false || (data.tipo !== 'club' && data.tipo !== 'ct')) return null
+  return { id: data.id, slug: data.slug, nome: data.nome, tipo: data.tipo }
 }
 
 /**
@@ -155,4 +170,67 @@ export async function respostaParaCliente(
       flow,
     },
   }
+}
+
+export type ClienteCT = { id: string; nome: string; cpf?: string | null; wellhub_id?: string | null; bloqueado?: boolean | null }
+
+// Janela em que um check-in de parceiro "vale agora" (a pessoa acabou de bipar).
+const CT_JANELA_HORAS = 4
+
+/**
+ * Acesso ao CT (musculação, SEM catraca — liberação visual):
+ *  - Parceiro (Wellhub/TotalPass) com check-in JÁ validado recente → liberado.
+ *  - Mensalista com plano open_gym ativo → liberado.
+ *  - Senão → aguardando (faz o check-in no app e espera, ou recepção).
+ * Tudo leitura — não escreve nada (não há catraca/registro pra membro direto).
+ */
+export async function respostaCT(
+  sb: SupabaseClient,
+  unidade: UnidadeTotem,
+  cliente: ClienteCT
+) {
+  if (cliente.bloqueado) return { resultado: 'bloqueado', nome: cliente.nome }
+
+  const desdeISO = new Date(Date.now() - CT_JANELA_HORAS * 3600 * 1000).toISOString()
+
+  // 1) Wellhub validado recente (casa pelo wellhub_id = id_externo)
+  if (cliente.wellhub_id) {
+    const { data } = await sb
+      .from('entradas_walkin')
+      .select('produto')
+      .eq('unidade_id', unidade.id).eq('status', 'validado').eq('origem', 'wellhub')
+      .eq('id_externo', cliente.wellhub_id)
+      .gte('recebido_em', desdeISO)
+      .order('recebido_em', { ascending: false }).limit(1)
+    if (data && data.length) return { resultado: 'liberado', nome: cliente.nome, origem: 'Wellhub', produto: data[0].produto || 'Musculação' }
+  }
+
+  // 2) TotalPass validado recente (casa pelo CPF dentro do raw)
+  if (cliente.cpf) {
+    const { data } = await sb
+      .from('entradas_walkin')
+      .select('produto')
+      .eq('unidade_id', unidade.id).eq('status', 'validado').eq('origem', 'totalpass')
+      .filter('raw->user->>document_number', 'eq', cliente.cpf)
+      .gte('recebido_em', desdeISO)
+      .order('recebido_em', { ascending: false }).limit(1)
+    if (data && data.length) return { resultado: 'liberado', nome: cliente.nome, origem: 'TotalPass', produto: data[0].produto || 'Musculação' }
+  }
+
+  // 3) Mensalista com plano de acesso livre (open_gym) ativo
+  const hoje = hojeSP()
+  const { data: cps } = await sb
+    .from('cliente_planos')
+    .select('plano_id')
+    .eq('cliente_id', cliente.id).eq('ativo', true).gte('fim', hoje)
+  const planoIds = (cps || []).map((c: any) => c.plano_id).filter(Boolean)
+  if (planoIds.length) {
+    const { data: og } = await sb
+      .from('planos_disponiveis')
+      .select('nome').in('id', planoIds).eq('open_gym', true).limit(1)
+    if (og && og.length) return { resultado: 'liberado', nome: cliente.nome, origem: `Plano ${og[0].nome}` }
+  }
+
+  // 4) Sem acesso ainda → aguardando parceiro / recepção
+  return { resultado: 'aguardando_ct', nome: cliente.nome, clienteId: cliente.id }
 }

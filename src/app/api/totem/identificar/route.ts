@@ -1,7 +1,7 @@
 // POST /api/totem/identificar  { unidade, cpf }
-// Identifica o cliente por CPF e devolve a resposta do totem (reserva/sem_reserva/bloqueado).
+// Identifica o cliente por CPF e devolve a resposta do totem (Club: reserva | CT: acesso).
 import { NextRequest, NextResponse } from 'next/server'
-import { totemService, resolverUnidadeClub, totemTokenOk, respostaParaCliente } from '@/lib/totem/service'
+import { totemService, resolverUnidadeTotem, totemTokenOk, respostaParaCliente, respostaCT } from '@/lib/totem/service'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -14,17 +14,19 @@ export async function POST(req: NextRequest) {
     const cpf = String(body?.cpf || '').replace(/\D/g, '')
 
     const sb = totemService()
-    const unidade = await resolverUnidadeClub(sb, String(body?.unidade || ''))
+    const unidade = await resolverUnidadeTotem(sb, String(body?.unidade || ''))
     if (!unidade) return NextResponse.json({ erro: 'unidade_invalida' }, { status: 400 })
     if (cpf.length !== 11) return NextResponse.json({ resultado: 'cpf_invalido' })
 
     const { data: cliente } = await sb
       .from('clientes')
-      .select('id, nome, bloqueado')
+      .select('id, nome, bloqueado, cpf, wellhub_id')
       .eq('cpf', cpf)
       .maybeSingle()
 
     if (!cliente) return NextResponse.json({ resultado: 'nao_encontrado' })
+
+    if (unidade.tipo === 'ct') return NextResponse.json(await respostaCT(sb, unidade, cliente))
 
     const test = body?.test === true || body?.test === '1'
     return NextResponse.json(await respostaParaCliente(sb, unidade, cliente, { ignorarEncerrada: test }))

@@ -5,7 +5,7 @@
 // Fonte visual/comportamental: self-checkin-club.html.
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-type Unidade = { id: string; slug: string; nome: string }
+type Unidade = { id: string; slug: string; nome: string; tipo: 'club' | 'ct' }
 type Reserva = {
   id: string; aulaTipo: string; aulaNome: string; horario: string; coach: string
   posicao: string | null; origem: string; isPartner: boolean; flow: string
@@ -13,6 +13,7 @@ type Reserva = {
 type Screen =
   | 'loading' | 'config' | 'idle' | 'cpf' | 'validate' | 'reserva' | 'recepcao'
   | 'waiting' | 'done' | 'enrollConsent' | 'enrollCapture' | 'enrollDone'
+  | 'ctLiberado' | 'ctAguardando'
 
 const POLL_MS = 3000
 const RESET_DONE_MS = 12000
@@ -28,6 +29,7 @@ export default function TotemPage() {
   const [reserva, setReserva] = useState<Reserva | null>(null)
   const [recepcaoMsg, setRecepcaoMsg] = useState('')
   const [statusMsg, setStatusMsg] = useState('')
+  const [ctInfo, setCtInfo] = useState<{ origem: string; produto?: string } | null>(null)
   const [faceReady, setFaceReady] = useState(false)
   const [faceMsg, setFaceMsg] = useState('Câmera ativa · olhe para reconhecer')
   const [consentOk, setConsentOk] = useState(false)
@@ -124,13 +126,16 @@ export default function TotemPage() {
     limparPoll(); busyRef.current = false
     setCpf(''); setNome(''); setReserva(null); setRecepcaoMsg(''); setStatusMsg('')
     setConsentOk(false); setEnrollNome(''); setEnrollCpf(''); setEnrollMsg('Posicione seu rosto')
+    setCtInfo(null)
     setFaceMsg('Câmera ativa · olhe para reconhecer'); setScreen('idle')
   }, [limparPoll])
   useEffect(() => {
     if (inatRef.current) clearTimeout(inatRef.current)
     if (screen === 'idle' || screen === 'loading' || screen === 'config') return
     if (screen === 'reserva' && reserva?.flow === 'aguardar_parceiro') return
-    const ms = screen === 'done' ? RESET_DONE_MS : INATIVIDADE_MS
+    const ms = (screen === 'done' || screen === 'ctLiberado') ? RESET_DONE_MS
+      : screen === 'ctAguardando' ? 120000
+      : INATIVIDADE_MS
     inatRef.current = setTimeout(irIdle, ms)
     return () => { if (inatRef.current) clearTimeout(inatRef.current) }
   }, [screen, reserva, irIdle])
@@ -150,7 +155,19 @@ export default function TotemPage() {
     await new Promise((res) => setTimeout(res, 1000))
     setScreen('done')
   }
+  const iniciarPollingCT = (clienteId: string) => {
+    limparPoll()
+    pollRef.current = setInterval(async () => {
+      const r = await api(`/api/totem/ct-status?unidade=${encodeURIComponent(unidade!.slug)}&clienteId=${clienteId}`)
+      if (r?.liberado) { limparPoll(); setCtInfo({ origem: r.origem, produto: r.produto }); setScreen('ctLiberado') }
+    }, POLL_MS)
+  }
+
   const tratarResposta = (res: any) => {
+    // CT (musculação/acesso)
+    if (res?.resultado === 'liberado') { setNome(res.nome || ''); setCtInfo({ origem: res.origem, produto: res.produto }); setScreen('ctLiberado'); return }
+    if (res?.resultado === 'aguardando_ct') { setNome(res.nome || ''); iniciarPollingCT(res.clienteId); setScreen('ctAguardando'); return }
+    // Club (reserva)
     if (res?.resultado === 'reserva' && res.reserva) {
       setNome(res.nome || ''); setReserva(res.reserva)
       if (res.reserva.flow === 'confirmado') { registrarPresenca(res.reserva, true); return }
@@ -263,8 +280,13 @@ export default function TotemPage() {
                 <div className="express-hdr">
                   <div className="ex-title">CHECK-IN <span>EXPRESS</span></div>
                   <div className="ex-sub">
-                    Se você já possui reserva, <b>olhe para a câmera</b> ou <b>digite seu CPF</b>.<br />
-                    Se for sua 1ª vez ou estiver sem reserva, <b>dirija-se ao atendimento</b>.
+                    {unidade?.tipo === 'ct' ? (
+                      <>Se você já tem acesso (plano ou app parceiro), <b>olhe para a câmera</b> ou <b>digite seu CPF</b>.<br />
+                      Sem acesso? <b>Dirija-se ao atendimento</b>.</>
+                    ) : (
+                      <>Se você já possui reserva, <b>olhe para a câmera</b> ou <b>digite seu CPF</b>.<br />
+                      Se for sua 1ª vez ou estiver sem reserva, <b>dirija-se ao atendimento</b>.</>
+                    )}
                   </div>
                 </div>
                 <div className="grow center">
@@ -375,6 +397,39 @@ export default function TotemPage() {
                 </div>
                 <div className="grow" />
                 <button className="btn ghost sm" onClick={irIdle}>Concluir</button>
+              </section>
+            )}
+
+            {/* CT: acesso liberado */}
+            {screen === 'ctLiberado' && (
+              <section className="screen on center">
+                <div className="check-badge">✓</div>
+                <div className="bigmsg">Acesso liberado!</div>
+                <p className="sub">{nome} · bom treino 💪</p>
+                <div className="nextcard" style={{ marginTop: 6 }}>
+                  <div className="lbl">Entrada registrada</div>
+                  <div className="cls" style={{ fontSize: 16 }}>{ctInfo?.produto || 'Musculação'}</div>
+                  {ctInfo?.origem && <div className="row"><span className="chip time">via {ctInfo.origem}</span></div>}
+                </div>
+                <div className="grow" />
+                <button className="btn ghost sm" onClick={irIdle}>Concluir</button>
+              </section>
+            )}
+
+            {/* CT: aguardando check-in do parceiro */}
+            {screen === 'ctAguardando' && (
+              <section className="screen on center">
+                <div className="avatar">🧑</div>
+                <h2>Olá, {nome.split(' ')[0]}</h2>
+                <div className="status pend" style={{ marginTop: 8 }}>
+                  <span className="si">⏳</span>
+                  <span>Ainda não encontramos seu acesso. Faça o <b>check-in no app (Wellhub / TotalPass)</b> aqui na unidade — assim que validar, liberamos automaticamente.</span>
+                </div>
+                <div className="live"><span className="dot" /> aguardando check-in no app…</div>
+                <div className="grow" />
+                <div className="stack">
+                  <button className="btn ghost sm" onClick={irIdle}>Não consigo — falar com a recepção</button>
+                </div>
               </section>
             )}
 
