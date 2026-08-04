@@ -26,7 +26,8 @@ export async function POST(req: NextRequest) {
 
     if (!cliente) return NextResponse.json({ resultado: 'nao_encontrado' })
 
-    return NextResponse.json(await respostaParaCliente(sb, unidade, cliente))
+    const test = body?.test === true || body?.test === '1'
+    return NextResponse.json(await respostaParaCliente(sb, unidade, cliente, { ignorarEncerrada: test }))
   } catch (e: any) {
     return NextResponse.json({ erro: 'falha', detalhe: String(e?.message || e) }, { status: 500 })
   }

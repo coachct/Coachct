@@ -80,7 +80,8 @@ export function embeddingToVectorText(embedding: number[]): string {
 export async function respostaParaCliente(
   sb: SupabaseClient,
   unidade: UnidadeTotem,
-  cliente: ClienteTotem
+  cliente: ClienteTotem,
+  opts: { ignorarEncerrada?: boolean } = {}
 ) {
   if (cliente.bloqueado) return { resultado: 'bloqueado', nome: cliente.nome }
 
@@ -108,7 +109,7 @@ export async function respostaParaCliente(
       if (!o || !a) return null
       if (o.data !== hoje || o.status !== 'ativa') return null
       if (a.unidade_id !== unidade.id) return null
-      if (aulaEncerrada(hoje, a.horario, a.duracao_min || 60)) return null
+      if (!opts.ignorarEncerrada && aulaEncerrada(hoje, a.horario, a.duracao_min || 60)) return null
       return {
         reservaId: r.id as string,
         status: r.status as string,

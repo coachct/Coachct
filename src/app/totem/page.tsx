@@ -36,6 +36,7 @@ export default function TotemPage() {
   const [enrollMsg, setEnrollMsg] = useState('Posicione seu rosto')
 
   const tokenRef = useRef<string | null>(null)
+  const testRef = useRef(false)
   const pollRef = useRef<any>(null)
   const inatRef = useRef<any>(null)
   const idleVideoRef = useRef<HTMLVideoElement | null>(null)
@@ -58,6 +59,7 @@ export default function TotemPage() {
     const qs = new URLSearchParams(window.location.search)
     const u = qs.get('unidade') || ''
     tokenRef.current = qs.get('k')
+    testRef.current = qs.get('test') === '1'
     if (!u) { setScreen('config'); return }
     api(`/api/totem/unidade?u=${encodeURIComponent(u)}`)
       .then((res) => { if (res?.unidade) { setUnidade(res.unidade); setScreen('idle') } else setScreen('config') })
@@ -169,7 +171,7 @@ export default function TotemPage() {
     try {
       const emb = await detectar(idleVideoRef.current)
       if (!emb) { setFaceMsg(force ? 'Rosto não detectado — tente de novo ou use o CPF' : 'Câmera ativa · olhe para reconhecer'); return }
-      const res = await api('/api/totem/reconhecer', { method: 'POST', body: JSON.stringify({ unidade: unidade.slug, embedding: emb }) })
+      const res = await api('/api/totem/reconhecer', { method: 'POST', body: JSON.stringify({ unidade: unidade.slug, embedding: emb, test: testRef.current }) })
       if (res?.resultado === 'sem_match') { setFaceMsg(force ? 'Não reconhecemos seu rosto. Use o CPF ou cadastre.' : 'Câmera ativa · olhe para reconhecer'); return }
       tratarResposta(res)
     } catch { setFaceMsg('Câmera ativa · olhe para reconhecer') }
@@ -205,7 +207,7 @@ export default function TotemPage() {
       return
     }
     setScreen('validate')
-    const res = await api('/api/totem/identificar', { method: 'POST', body: JSON.stringify({ unidade: unidade.slug, cpf }) })
+    const res = await api('/api/totem/identificar', { method: 'POST', body: JSON.stringify({ unidade: unidade.slug, cpf, test: testRef.current }) })
     await new Promise((r) => setTimeout(r, 700))
     if (res?.resultado === 'cpf_invalido') { setCpf(''); setScreen('cpf'); return }
     tratarResposta(res)
