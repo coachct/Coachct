@@ -177,12 +177,68 @@ export type ClienteCT = { id: string; nome: string; cpf?: string | null; wellhub
 // Janela em que um check-in de parceiro "vale agora" (a pessoa acabou de bipar).
 const CT_JANELA_HORAS = 4
 
+// Mensalista com plano de acesso livre (open_gym) ativo → nome do plano, senão null.
+async function planoOpenGymAtivo(sb: SupabaseClient, clienteId: string, hoje: string): Promise<string | null> {
+  const { data: cps } = await sb.from('cliente_planos').select('plano_id')
+    .eq('cliente_id', clienteId).eq('ativo', true).gte('fim', hoje)
+  const ids = (cps || []).map((c: any) => c.plano_id).filter(Boolean)
+  if (!ids.length) return null
+  const { data: og } = await sb.from('planos_disponiveis').select('nome').in('id', ids).eq('open_gym', true).limit(1)
+  return og && og.length ? og[0].nome : null
+}
+
+// Já registrou entrada no CT hoje? (fail-safe: se a tabela não existir, retorna null)
+async function entradaCtHoje(sb: SupabaseClient, clienteId: string, hoje: string): Promise<{ origem: string } | null> {
+  try {
+    const { data, error } = await sb.from('totem_entradas_ct').select('origem')
+      .eq('cliente_id', clienteId).eq('data', hoje).limit(1)
+    if (error) return null
+    return data && data.length ? { origem: data[0].origem } : null
+  } catch { return null }
+}
+
+// Marca a entrada do dia (idempotente por cliente+data). Fail-safe.
+async function registrarEntradaCt(sb: SupabaseClient, clienteId: string, unidadeId: string, origem: string, hoje: string) {
+  try {
+    await sb.from('totem_entradas_ct').upsert(
+      { cliente_id: clienteId, unidade_id: unidadeId, origem, data: hoje },
+      { onConflict: 'cliente_id,data', ignoreDuplicates: true }
+    )
+  } catch { /* tabela ainda não criada → segue liberando normalmente */ }
+}
+
+// Acesso disponível AGORA (parceiro validado recente ou crédito avulso). null se não houver.
+async function acessoCtDisponivel(sb: SupabaseClient, unidade: UnidadeTotem, cliente: ClienteCT, hoje: string) {
+  const desdeISO = new Date(Date.now() - CT_JANELA_HORAS * 3600 * 1000).toISOString()
+
+  if (cliente.wellhub_id) {
+    const { data } = await sb.from('entradas_walkin').select('produto')
+      .eq('unidade_id', unidade.id).eq('status', 'validado').eq('origem', 'wellhub')
+      .eq('id_externo', cliente.wellhub_id).gte('recebido_em', desdeISO)
+      .order('recebido_em', { ascending: false }).limit(1)
+    if (data && data.length) return { origem: 'Wellhub', produto: data[0].produto || 'Musculação' }
+  }
+  if (cliente.cpf) {
+    const { data } = await sb.from('entradas_walkin').select('produto')
+      .eq('unidade_id', unidade.id).eq('status', 'validado').eq('origem', 'totalpass')
+      .filter('raw->user->>document_number', 'eq', cliente.cpf).gte('recebido_em', desdeISO)
+      .order('recebido_em', { ascending: false }).limit(1)
+    if (data && data.length) return { origem: 'TotalPass', produto: data[0].produto || 'Musculação' }
+  }
+  // Avulso: crédito de treino disponível (o CONSUMO do crédito ainda é pendência)
+  const { data: cred } = await sb.from('creditos_avulsos').select('id')
+    .eq('cliente_id', cliente.id).eq('tipo', 'credito_treino').eq('usado', false)
+    .gte('validade', hoje).limit(1)
+  if (cred && cred.length) return { origem: 'Crédito avulso', produto: 'Musculação' }
+
+  return null
+}
+
 /**
  * Acesso ao CT (musculação, SEM catraca — liberação visual):
- *  - Parceiro (Wellhub/TotalPass) com check-in JÁ validado recente → liberado.
- *  - Mensalista com plano open_gym ativo → liberado.
- *  - Senão → aguardando (faz o check-in no app e espera, ou recepção).
- * Tudo leitura — não escreve nada (não há catraca/registro pra membro direto).
+ *  - Mensalista (plano open_gym) → SEMPRE libera (ilimitado).
+ *  - Parceiro/avulso → 1 entrada por dia: 1ª vez libera+registra; re-scan → "já registrada".
+ *  - Sem acesso → aguardando (faz o check-in no app e espera, ou recepção).
  */
 export async function respostaCT(
   sb: SupabaseClient,
@@ -190,45 +246,21 @@ export async function respostaCT(
   cliente: ClienteCT
 ) {
   if (cliente.bloqueado) return { resultado: 'bloqueado', nome: cliente.nome }
-
-  const desdeISO = new Date(Date.now() - CT_JANELA_HORAS * 3600 * 1000).toISOString()
-
-  // 1) Wellhub validado recente (casa pelo wellhub_id = id_externo)
-  if (cliente.wellhub_id) {
-    const { data } = await sb
-      .from('entradas_walkin')
-      .select('produto')
-      .eq('unidade_id', unidade.id).eq('status', 'validado').eq('origem', 'wellhub')
-      .eq('id_externo', cliente.wellhub_id)
-      .gte('recebido_em', desdeISO)
-      .order('recebido_em', { ascending: false }).limit(1)
-    if (data && data.length) return { resultado: 'liberado', nome: cliente.nome, origem: 'Wellhub', produto: data[0].produto || 'Musculação' }
-  }
-
-  // 2) TotalPass validado recente (casa pelo CPF dentro do raw)
-  if (cliente.cpf) {
-    const { data } = await sb
-      .from('entradas_walkin')
-      .select('produto')
-      .eq('unidade_id', unidade.id).eq('status', 'validado').eq('origem', 'totalpass')
-      .filter('raw->user->>document_number', 'eq', cliente.cpf)
-      .gte('recebido_em', desdeISO)
-      .order('recebido_em', { ascending: false }).limit(1)
-    if (data && data.length) return { resultado: 'liberado', nome: cliente.nome, origem: 'TotalPass', produto: data[0].produto || 'Musculação' }
-  }
-
-  // 3) Mensalista com plano de acesso livre (open_gym) ativo
   const hoje = hojeSP()
-  const { data: cps } = await sb
-    .from('cliente_planos')
-    .select('plano_id')
-    .eq('cliente_id', cliente.id).eq('ativo', true).gte('fim', hoje)
-  const planoIds = (cps || []).map((c: any) => c.plano_id).filter(Boolean)
-  if (planoIds.length) {
-    const { data: og } = await sb
-      .from('planos_disponiveis')
-      .select('nome').in('id', planoIds).eq('open_gym', true).limit(1)
-    if (og && og.length) return { resultado: 'liberado', nome: cliente.nome, origem: `Plano ${og[0].nome}` }
+
+  // 1) Mensalista → ilimitado (não conta como entrada única)
+  const plano = await planoOpenGymAtivo(sb, cliente.id, hoje)
+  if (plano) return { resultado: 'liberado', nome: cliente.nome, origem: `Plano ${plano}` }
+
+  // 2) Já entrou hoje (parceiro/avulso = 1/dia) → já registrada
+  const log = await entradaCtHoje(sb, cliente.id, hoje)
+  if (log) return { resultado: 'ct_ja_registrada', nome: cliente.nome, origem: log.origem }
+
+  // 3) Tem acesso agora? → libera e marca a entrada do dia
+  const acesso = await acessoCtDisponivel(sb, unidade, cliente, hoje)
+  if (acesso) {
+    await registrarEntradaCt(sb, cliente.id, unidade.id, acesso.origem, hoje)
+    return { resultado: 'liberado', nome: cliente.nome, origem: acesso.origem, produto: acesso.produto }
   }
 
   // 4) Sem acesso ainda → aguardando parceiro / recepção

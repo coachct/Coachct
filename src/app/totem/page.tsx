@@ -13,7 +13,7 @@ type Reserva = {
 type Screen =
   | 'loading' | 'config' | 'idle' | 'cpf' | 'validate' | 'reserva' | 'recepcao'
   | 'waiting' | 'done' | 'enrollConsent' | 'enrollCapture' | 'enrollDone'
-  | 'ctLiberado' | 'ctAguardando'
+  | 'ctLiberado' | 'ctAguardando' | 'ctJaRegistrada'
 
 const POLL_MS = 3000
 const RESET_DONE_MS = 12000
@@ -133,7 +133,7 @@ export default function TotemPage() {
     if (inatRef.current) clearTimeout(inatRef.current)
     if (screen === 'idle' || screen === 'loading' || screen === 'config') return
     if (screen === 'reserva' && reserva?.flow === 'aguardar_parceiro') return
-    const ms = (screen === 'done' || screen === 'ctLiberado') ? RESET_DONE_MS
+    const ms = (screen === 'done' || screen === 'ctLiberado' || screen === 'ctJaRegistrada') ? RESET_DONE_MS
       : screen === 'ctAguardando' ? 120000
       : INATIVIDADE_MS
     inatRef.current = setTimeout(irIdle, ms)
@@ -166,6 +166,7 @@ export default function TotemPage() {
   const tratarResposta = (res: any) => {
     // CT (musculação/acesso)
     if (res?.resultado === 'liberado') { setNome(res.nome || ''); setCtInfo({ origem: res.origem, produto: res.produto }); setScreen('ctLiberado'); return }
+    if (res?.resultado === 'ct_ja_registrada') { setNome(res.nome || ''); setCtInfo({ origem: res.origem }); setScreen('ctJaRegistrada'); return }
     if (res?.resultado === 'aguardando_ct') { setNome(res.nome || ''); iniciarPollingCT(res.clienteId); setScreen('ctAguardando'); return }
     // Club (reserva)
     if (res?.resultado === 'reserva' && res.reserva) {
@@ -411,6 +412,23 @@ export default function TotemPage() {
                   <div className="cls" style={{ fontSize: 16 }}>{ctInfo?.produto || 'Musculação'}</div>
                   {ctInfo?.origem && <div className="row"><span className="chip time">via {ctInfo.origem}</span></div>}
                 </div>
+                <div className="grow" />
+                <button className="btn ghost sm" onClick={irIdle}>Concluir</button>
+              </section>
+            )}
+
+            {/* CT: entrada já registrada hoje */}
+            {screen === 'ctJaRegistrada' && (
+              <section className="screen on center">
+                <div className="badge-warn">✓</div>
+                <div className="bigmsg" style={{ fontSize: 24 }}>Entrada já registrada hoje</div>
+                <p className="sub">{nome} · você já fez seu check-in hoje 💪</p>
+                {ctInfo?.origem && (
+                  <div className="nextcard" style={{ marginTop: 6 }}>
+                    <div className="lbl">Acesso de hoje</div>
+                    <div className="row"><span className="chip time">via {ctInfo.origem}</span></div>
+                  </div>
+                )}
                 <div className="grow" />
                 <button className="btn ghost sm" onClick={irIdle}>Concluir</button>
               </section>
