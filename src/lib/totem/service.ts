@@ -259,6 +259,10 @@ export async function respostaCT(
   // 3) Tem acesso agora? → libera e marca a entrada do dia
   const acesso = await acessoCtDisponivel(sb, unidade, cliente, hoje)
   if (acesso) {
+    // Avulso: desconta 1 crédito de treino (fail-safe: sem a RPC, libera sem descontar)
+    if (acesso.origem === 'Crédito avulso') {
+      try { await sb.rpc('totem_consumir_credito_treino', { p_cliente: cliente.id }) } catch { /* ignora */ }
+    }
     await registrarEntradaCt(sb, cliente.id, unidade.id, acesso.origem, hoje)
     return { resultado: 'liberado', nome: cliente.nome, origem: acesso.origem, produto: acesso.produto }
   }
