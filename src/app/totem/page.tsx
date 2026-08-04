@@ -277,10 +277,8 @@ export default function TotemPage() {
                   <div className="live"><span className="dot" /> {faceReady ? faceMsg : 'Preparando reconhecimento…'}</div>
                 </div>
                 <div className="stack">
-                  <button className="btn ghost sm" onClick={() => abrirCpf('checkin')}>Prefere digitar? Usar CPF</button>
-                </div>
-                <div className="center" style={{ marginTop: 10 }}>
-                  <span className="enroll-link" onClick={() => abrirCpf('enroll')}>Primeira vez com rosto? Cadastre aqui</span>
+                  <button className="btn" onClick={() => abrirCpf('checkin')}>Digitar CPF</button>
+                  <button className="btn pinkghost" onClick={() => abrirCpf('enroll')}>Cadastre aqui seu rosto</button>
                 </div>
               </section>
             )}
@@ -426,8 +424,6 @@ export default function TotemPage() {
               </section>
             )}
           </div>
-
-          <div className="help"><span>Precisa de ajuda? Chame a recepção</span></div>
         </div>
       </div>
     </div>
@@ -466,6 +462,7 @@ const CSS = `
 #tt .btn.ghost{background:var(--panel);border:1px solid var(--line);color:var(--txt);box-shadow:none;font-size:15px;padding:15px}
 #tt .btn.sm{padding:13px;font-size:14px}
 #tt .btn.ok{background:linear-gradient(135deg,#22c55e,#16a34a);box-shadow:0 10px 26px rgba(34,197,94,.28)}
+#tt .btn.pinkghost{background:rgba(255,45,142,.08);border:1px solid rgba(255,45,142,.4);color:var(--pink2);box-shadow:none;font-size:15px;padding:15px}
 #tt .btn[disabled]{opacity:.45;cursor:not-allowed;box-shadow:none}
 #tt .stack{display:flex;flex-direction:column;gap:12px}
 #tt .express-hdr{text-align:center;margin:4px 0 6px}
