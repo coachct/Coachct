@@ -7,7 +7,7 @@ const NUMERO = '5511917555878'
 const TEXTO = 'Olá! Vim pelo site da Just Club & CT 😊'
 
 // Não mostrar nas áreas internas (equipe), só no site/cliente.
-const OCULTAR_EM = ['/admin', '/coach', '/recepcao', '/ju']
+const OCULTAR_EM = ['/admin', '/coach', '/recepcao', '/ju', '/totem']
 
 export default function WhatsAppButton() {
   const pathname = usePathname() || ''
