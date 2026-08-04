@@ -204,11 +204,8 @@ function CheckoutContent() {
       return
     }
 
-    // Telefone faltando no cadastro: coletamos aqui (usado em avisos de reserva).
-    if (precisaTelefone && telefone.replace(/\D/g, '').length < 10) {
-      setErro('Informe seu telefone com DDD para concluir a compra.')
-      return
-    }
+    // Telefone NÃO trava a compra (não é exigência do Pagar.me): se preenchido, salvamos;
+    // se em branco, a venda segue normalmente. O campo fica visível como convite, não gate.
 
     if (metodo === 'cartao') {
       if (cartaoNumero.replace(/\s/g, '').length < 16) { setErro('Número do cartão inválido.'); return }
