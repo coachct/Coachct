@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ShoppingBag, CreditCard, Zap, CheckCircle, XCircle, Clock, Banknote, Store, Globe, Trash2 } from 'lucide-react'
+import { ShoppingBag, CreditCard, Zap, CheckCircle, XCircle, Clock, Banknote, Store, Globe, Trash2, Ticket, Copy, X } from 'lucide-react'
 
 type VendaUnificada = {
   id: string
@@ -36,6 +36,47 @@ export default function AdminVendasPage() {
   const [filtroOrigem, setFiltroOrigem] = useState<string>('todas')
   const [dataInicio, setDataInicio] = useState('')
   const [dataFim, setDataFim] = useState('')
+
+  // ── Gerar código de liberação de desconto ──
+  const [modalCodigo, setModalCodigo] = useState(false)
+  const [codDescontoMax, setCodDescontoMax] = useState<number>(20)
+  const [codValidadeMin, setCodValidadeMin] = useState<number>(60)
+  const [codMotivo, setCodMotivo] = useState('')
+  const [gerandoCod, setGerandoCod] = useState(false)
+  const [codGerado, setCodGerado] = useState<{ codigo: string; desconto_maximo: number; expira_em: string } | null>(null)
+  const [erroCod, setErroCod] = useState('')
+  const [codCopiado, setCodCopiado] = useState(false)
+
+  function abrirModalCodigo() {
+    setCodDescontoMax(20); setCodValidadeMin(60); setCodMotivo('')
+    setCodGerado(null); setErroCod(''); setCodCopiado(false); setModalCodigo(true)
+  }
+
+  async function gerarCodigo() {
+    if (!codDescontoMax || codDescontoMax <= 0 || codDescontoMax > 100) { setErroCod('Informe um desconto entre 1% e 100%.'); return }
+    setGerandoCod(true); setErroCod('')
+    const { data, error } = await supabase.rpc('gerar_codigo_liberacao', {
+      p_gerado_por: perfil?.id, p_desconto_maximo: codDescontoMax,
+      p_validade_minutos: codValidadeMin, p_motivo: codMotivo.trim() || null,
+    })
+    setGerandoCod(false)
+    if (error) { setErroCod('Erro: ' + error.message); return }
+    if (!data?.sucesso) {
+      const M: Record<string,string> = {
+        sem_permissao: 'Você não tem permissão para gerar código.',
+        desconto_invalido: 'Desconto inválido.',
+        sem_codigo_disponivel: 'Não há código disponível no momento, tente de novo.',
+      }
+      setErroCod(M[data?.motivo] || ('Erro: ' + (data?.motivo || 'desconhecido'))); return
+    }
+    setCodGerado({ codigo: data.codigo, desconto_maximo: data.desconto_maximo, expira_em: data.expira_em })
+  }
+
+  async function copiarCodigo() {
+    if (!codGerado) return
+    try { await navigator.clipboard.writeText(codGerado.codigo); setCodCopiado(true); setTimeout(() => setCodCopiado(false), 3000) }
+    catch { alert('Não foi possível copiar.') }
+  }
 
   useEffect(() => {
     if (!loading && perfil?.role !== 'admin') router.push('/')
@@ -265,9 +306,69 @@ export default function AdminVendasPage() {
             <h1 className="text-lg font-semibold text-gray-900">Vendas</h1>
             <p className="text-xs text-gray-400 mt-0.5">Todas as vendas — site e balcão</p>
           </div>
-          <ShoppingBag size={20} className="text-gray-300" />
+          <button onClick={abrirModalCodigo}
+            className="btn bg-emerald-600 text-white hover:bg-emerald-700 gap-1.5 text-sm">
+            <Ticket size={15}/> Código de liberação
+          </button>
         </div>
       </div>
+
+      {modalCodigo && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setModalCodigo(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2"><Ticket size={18} className="text-emerald-600"/> Código de liberação</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Autoriza um desconto na recepção — 1 uso só</p>
+              </div>
+              <button onClick={() => setModalCodigo(false)} className="text-gray-400 hover:text-gray-600"><X size={18}/></button>
+            </div>
+
+            {!codGerado ? (
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block font-medium">Desconto máximo (%)</label>
+                  <input type="number" min={1} max={100} step={1} className="input w-full" value={codDescontoMax||''}
+                    onChange={e => setCodDescontoMax(Math.min(100, Math.max(0, parseInt(e.target.value)||0)))}/>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block font-medium">Validade</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[30,60,120].map(m => (
+                      <button key={m} type="button" onClick={() => setCodValidadeMin(m)}
+                        className={`p-2 rounded-xl border text-sm font-medium transition-all ${codValidadeMin===m?'border-emerald-400 bg-emerald-50 text-emerald-700':'border-gray-200 text-gray-600'}`}>
+                        {m>=60?`${m/60}h`:`${m}min`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block font-medium">Motivo (opcional)</label>
+                  <input type="text" className="input w-full" placeholder="Ex: cliente antigo, promoção..." value={codMotivo}
+                    onChange={e => setCodMotivo(e.target.value)}/>
+                </div>
+                {erroCod && <div className="bg-red-50 border border-red-200 rounded-lg p-2.5 text-sm text-red-600">{erroCod}</div>}
+                <button onClick={gerarCodigo} disabled={gerandoCod} className="btn w-full bg-emerald-600 text-white hover:bg-emerald-700">
+                  {gerandoCod ? 'Gerando...' : 'Gerar código'}
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
+                  <div className="text-xs uppercase tracking-wide text-emerald-700 mb-1">Código</div>
+                  <div className="text-4xl font-bold font-mono tracking-[0.3em] text-emerald-800">{codGerado.codigo}</div>
+                  <div className="text-xs text-emerald-700 mt-2">até {codGerado.desconto_maximo}% · vale por {codValidadeMin>=60?`${codValidadeMin/60}h`:`${codValidadeMin}min`} · 1 uso</div>
+                </div>
+                <button onClick={copiarCodigo} className="btn w-full border border-emerald-300 text-emerald-700 hover:bg-emerald-50 gap-1.5">
+                  <Copy size={14}/> {codCopiado ? 'Copiado!' : 'Copiar código'}
+                </button>
+                <p className="text-xs text-gray-400 text-center">Passe esse número para a recepção. Ele some depois de 1 uso ou quando expirar.</p>
+                <button onClick={() => setModalCodigo(false)} className="btn w-full text-gray-500 border border-gray-200">Fechar</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="max-w-4xl mx-auto px-6 py-5">
 

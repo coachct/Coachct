@@ -124,6 +124,11 @@ function RecepcaoClientesPageInner() {
   })
   const [vendendo, setVendendo] = useState(false)
   const [erroVenda, setErroVenda] = useState('')
+  // ── Código de liberação de desconto (recepção) ──
+  const [codigoLiberacao, setCodigoLiberacao] = useState('')
+  const [liberacao, setLiberacao] = useState<{ desconto_maximo: number } | null>(null)
+  const [validandoCodigo, setValidandoCodigo] = useState(false)
+  const [erroCodigo, setErroCodigo] = useState('')
 
   const [modalAtivarPlano, setModalAtivarPlano] = useState<any>(null)
   const [salvandoPlano, setSalvandoPlano] = useState(false)
@@ -134,6 +139,7 @@ function RecepcaoClientesPageInner() {
   const [erroVencimento, setErroVencimento] = useState('')
 
   const isClub = unidadeAtiva?.tipo === 'club'
+  const ehRecepcao = perfil?.role === 'recepcao'
 
   useEffect(() => {
     if (loading) return
@@ -573,12 +579,31 @@ function RecepcaoClientesPageInner() {
       quantidade: 1, valor_unitario: data && data[0] ? Number(data[0].valor) : 0,
       desconto_percentual: 0, forma_pagamento: 'pix', observacao: '',
     })
+    setCodigoLiberacao(''); setLiberacao(null); setErroCodigo('')
     setErroVenda(''); setModalVenda(true)
   }
 
   function selecionarProduto(produtoId: string) {
     const p = produtosDisp.find(x => x.id === produtoId)
-    if (p) setFormVenda({ ...formVenda, produto_id: produtoId, valor_unitario: Number(p.valor) })
+    // trocar de produto zera qualquer desconto/liberação em andamento
+    if (p) setFormVenda({ ...formVenda, produto_id: produtoId, valor_unitario: Number(p.valor), desconto_percentual: 0 })
+    setCodigoLiberacao(''); setLiberacao(null); setErroCodigo('')
+  }
+
+  async function validarCodigoLiberacao() {
+    const cod = codigoLiberacao.trim()
+    if (!cod) { setErroCodigo('Digite o código.'); return }
+    setValidandoCodigo(true); setErroCodigo('')
+    const { data, error } = await supabase.rpc('validar_codigo_liberacao', { p_codigo: cod })
+    setValidandoCodigo(false)
+    if (error) { setErroCodigo('Erro ao validar: ' + error.message); return }
+    if (!data || !data.valido) {
+      setLiberacao(null)
+      setErroCodigo('Código inválido ou expirado. Peça um novo ao admin.')
+      return
+    }
+    setLiberacao({ desconto_maximo: Number(data.desconto_maximo) })
+    setErroCodigo('')
   }
 
   async function confirmarVenda() {
@@ -586,8 +611,12 @@ function RecepcaoClientesPageInner() {
     if (!formVenda.produto_id) { setErroVenda('Selecione um produto.'); return }
     if (formVenda.quantidade < 1 || formVenda.quantidade > 20) { setErroVenda('Quantidade deve ser entre 1 e 20.'); return }
     if (formVenda.valor_unitario <= 0) { setErroVenda('Informe um valor válido.'); return }
-    if (formVenda.desconto_percentual < 0 || formVenda.desconto_percentual > 20) {
-      setErroVenda('Desconto máximo permitido para recepção é 20%. Para descontos maiores, solicite ao administrador.'); return
+    // Recepção: desconto só com código de liberação válido (o resto o banco garante)
+    if (ehRecepcao && formVenda.desconto_percentual > 0) {
+      if (!liberacao) { setErroVenda('Para aplicar desconto, valide um código de liberação do admin.'); return }
+      if (formVenda.desconto_percentual > liberacao.desconto_maximo) {
+        setErroVenda(`Esse código libera desconto de até ${liberacao.desconto_maximo}%.`); return
+      }
     }
     setVendendo(true); setErroVenda('')
     const { data, error } = await supabase.rpc('registrar_venda', {
@@ -596,10 +625,19 @@ function RecepcaoClientesPageInner() {
       p_forma_pagamento: formVenda.forma_pagamento, p_vendido_por: perfil?.id,
       p_unidade_id: unidadeAtiva.id, p_observacao: formVenda.observacao.trim()||null,
       p_desconto_percentual: formVenda.desconto_percentual,
+      p_codigo_liberacao: (ehRecepcao && liberacao) ? codigoLiberacao.trim() : null,
     })
     setVendendo(false)
     if (error) { setErroVenda('Erro ao registrar venda: ' + error.message); return }
-    if (data && !data.sucesso) { setErroVenda('Erro: ' + (data.motivo||'desconhecido')); return }
+    if (data && !data.sucesso) {
+      const MOTIVOS: Record<string,string> = {
+        preco_alterado_sem_autorizacao: 'O valor não confere com o preço do produto.',
+        desconto_sem_liberacao: 'Desconto exige um código de liberação do admin.',
+        codigo_invalido_ou_expirado: 'Código de liberação inválido ou expirado.',
+        desconto_acima_do_teto: `Desconto acima do liberado por esse código${data.teto?` (até ${data.teto}%)`:''}.`,
+      }
+      setErroVenda(MOTIVOS[data.motivo] || ('Erro: ' + (data.motivo||'desconhecido'))); return
+    }
     setModalVenda(false)
     await Promise.all([carregarSaldo(clienteSel.id), carregarVendas(clienteSel.id), carregarPlanosCliente(clienteSel.id)])
     setAba('vendas')
@@ -1533,22 +1571,64 @@ function RecepcaoClientesPageInner() {
                   </div>
                   <div>
                     <label className="text-xs text-gray-500 mb-1 block font-medium">Valor unitário (R$)</label>
-                    <input type="number" min={0} step="0.01" className="input w-full" value={formVenda.valor_unitario}
-                      onChange={e => setFormVenda({...formVenda, valor_unitario: parseFloat(e.target.value)||0})}/>
+                    {ehRecepcao ? (
+                      <div className="input w-full bg-gray-50 text-gray-700 flex items-center justify-between cursor-not-allowed">
+                        <span className="font-mono">R$ {formVenda.valor_unitario.toFixed(2).replace('.',',')}</span>
+                        <span className="text-[10px] uppercase tracking-wide text-gray-400">preço do produto</span>
+                      </div>
+                    ) : (
+                      <input type="number" min={0} step="0.01" className="input w-full" value={formVenda.valor_unitario}
+                        onChange={e => setFormVenda({...formVenda, valor_unitario: parseFloat(e.target.value)||0})}/>
+                    )}
                   </div>
                 </div>
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-amber-800">Desconto (até 20%)</span>
-                    <span className="text-xs text-gray-500">Acima disso: pedir ao admin</span>
+                {ehRecepcao ? (
+                  !liberacao ? (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-amber-800">Desconto</span>
+                        <span className="text-xs text-gray-500">Precisa de código do admin</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input type="text" inputMode="numeric" maxLength={6} className="input flex-1" placeholder="Código de liberação"
+                          value={codigoLiberacao}
+                          onChange={e => { setCodigoLiberacao(e.target.value.replace(/\D/g,'')); setErroCodigo('') }}
+                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); validarCodigoLiberacao() } }}/>
+                        <button type="button" onClick={validarCodigoLiberacao} disabled={validandoCodigo}
+                          className="btn bg-amber-600 text-white hover:bg-amber-700 text-sm px-3">
+                          {validandoCodigo ? 'Validando...' : 'Liberar'}
+                        </button>
+                      </div>
+                      {erroCodigo && <div className="text-xs text-red-600">{erroCodigo}</div>}
+                    </div>
+                  ) : (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Desconto liberado (até {liberacao.desconto_maximo}%)</span>
+                        <button type="button" onClick={() => { setLiberacao(null); setCodigoLiberacao(''); setFormVenda({...formVenda, desconto_percentual: 0}) }}
+                          className="text-xs text-emerald-700 underline">trocar código</button>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input type="number" min={0} max={liberacao.desconto_maximo} step={1} className="input flex-1" placeholder="0"
+                          value={formVenda.desconto_percentual||''}
+                          onChange={e => setFormVenda({...formVenda, desconto_percentual: Math.min(liberacao.desconto_maximo, Math.max(0, parseFloat(e.target.value)||0))})}/>
+                        <span className="text-sm text-emerald-800 font-medium">%</span>
+                      </div>
+                    </div>
+                  )
+                ) : (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-amber-800">Desconto</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input type="number" min={0} max={100} step={1} className="input flex-1" placeholder="0"
+                        value={formVenda.desconto_percentual||''}
+                        onChange={e => setFormVenda({...formVenda, desconto_percentual: Math.min(100, Math.max(0, parseFloat(e.target.value)||0))})}/>
+                      <span className="text-sm text-amber-800 font-medium">%</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <input type="number" min={0} max={20} step={1} className="input flex-1" placeholder="0"
-                      value={formVenda.desconto_percentual||''}
-                      onChange={e => setFormVenda({...formVenda, desconto_percentual: Math.min(20, parseFloat(e.target.value)||0)})}/>
-                    <span className="text-sm text-amber-800 font-medium">%</span>
-                  </div>
-                </div>
+                )}
                 <div className="rounded-xl p-3 bg-green-50 border border-green-200">
                   {formVenda.desconto_percentual > 0 && (
                     <div className="flex items-center justify-between mb-1">
