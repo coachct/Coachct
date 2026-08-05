@@ -238,7 +238,7 @@ export async function aulasClubDisponiveis(
 
 /**
  * Posições livres de uma aula de Running Funcional: "R" = esteira, "F" = funcional.
- * Livre = posição ativa, não bloqueada e não reservada/presente naquela ocorrência.
+ * Livre = posição ativa, não bloqueada (global nem pontual) e não reservada/presente naquela ocorrência.
  * Labels no formato R01..R13 / F01..F13 (mesmo padrão do app).
  */
 export async function posicoesLivresClub(
@@ -253,15 +253,18 @@ export async function posicoesLivresClub(
   if (!oc || !aula) return { erro: 'aula não encontrada' }
   if (aula.tipo !== 'running_funcional') return { unidadeId: aula.unidade_id, esteira: [], funcional: [] }
 
-  const [posRes, tomRes] = await Promise.all([
+  const [posRes, tomRes, bloqRes] = await Promise.all([
     supabase.from('club_posicoes').select('tipo, numero, bloqueado').eq('unidade_id', aula.unidade_id).eq('ativo', true),
     supabase.from('club_reservas').select('posicao').eq('ocorrencia_id', ocorrenciaId).in('status', ['reservado', 'presente']),
+    supabase.from('club_posicoes_bloqueios_ocorrencia').select('posicao').eq('ocorrencia_id', ocorrenciaId),
   ])
   const tomadas = new Set((tomRes.data ?? []).map((t: any) => t.posicao).filter(Boolean))
+  // Bloqueio pontual desta aula (manutenção) também remove a posição da lista de livres.
+  const bloqPontual = new Set((bloqRes.data ?? []).map((b: any) => b.posicao).filter(Boolean))
   const livres = (posRes.data ?? [])
     .filter((p: any) => !p.bloqueado)
     .map((p: any) => ({ tipo: p.tipo, label: `${p.tipo}${String(p.numero).padStart(2, '0')}` }))
-    .filter((p: any) => !tomadas.has(p.label))
+    .filter((p: any) => !tomadas.has(p.label) && !bloqPontual.has(p.label))
 
   return {
     unidadeId: aula.unidade_id,

@@ -349,20 +349,11 @@ export default function RecepcaoClubDetalhe() {
   // NOVO: bloqueia/desbloqueia posição APENAS nesta ocorrência
   async function toggleBloqueioPontual(label: string) {
     const jaBloqueada = posicoesBloqueadasPontual.includes(label)
-    // Só ao BLOQUEAR: se a posição tem reserva ativa, não permite bloquear direto —
-    // usuário deve trocar antes. DESBLOQUEAR sempre pode (inclusive posição que ficou
-    // bloqueada E com cliente ao mesmo tempo — estado que travava o desbloqueio).
-    if (!jaBloqueada) {
-      const reservaAqui = reservas.find((r:any) =>
-        r.posicao === label && ['reservado','presente'].includes(r.status))
-      if (reservaAqui) {
-        const nome = reservaAqui.clientes?.nome?.split(' ')[0] || 'cliente'
-        showMsg(`⚠️ ${nome} está na ${label}. Use "Trocar" antes de bloquear.`)
-        return
-      }
-    }
-    setSalvandoBloqueio(label)
+
+    // DESBLOQUEAR sempre pode (inclusive posição que ficou bloqueada E com cliente
+    // ao mesmo tempo — estado legado que travava o desbloqueio).
     if (jaBloqueada) {
+      setSalvandoBloqueio(label)
       const { error } = await supabase
         .from('club_posicoes_bloqueios_ocorrencia')
         .delete()
@@ -371,18 +362,49 @@ export default function RecepcaoClubDetalhe() {
       if (error) { showMsg('Erro: '+error.message); setSalvandoBloqueio(null); return }
       setPosicoesBloqueadasPontual(prev => prev.filter(p => p !== label))
       showMsg(`✅ Posição ${label} desbloqueada`)
-    } else {
-      const { error } = await supabase
-        .from('club_posicoes_bloqueios_ocorrencia')
-        .insert({
-          ocorrencia_id: ocId,
-          posicao: label,
-          criado_por: perfil?.id || null,
-        })
-      if (error) { showMsg('Erro: '+error.message); setSalvandoBloqueio(null); return }
-      setPosicoesBloqueadasPontual(prev => [...prev, label])
-      showMsg(`🚫 Posição ${label} bloqueada nesta aula`)
+      setSalvandoBloqueio(null)
+      return
     }
+
+    // BLOQUEAR. O bloqueio SEMPRE prevalece — uma posição travada não é vaga válida
+    // em nenhum canal. Se tem cliente na posição, move pra primeira livre (mesmo tipo
+    // primeiro: esteira→esteira, funcional→funcional). Se a aula está lotada e não há
+    // livre, o cliente fica reservado em stand-by (sem posição) — resolvido na hora.
+    setSalvandoBloqueio(label)
+    const reservaAqui = reservas.find((r:any) =>
+      r.posicao === label && ['reservado','presente'].includes(r.status))
+    let moveuMsg = ''
+    if (reservaAqui) {
+      const nome = reservaAqui.clientes?.nome?.split(' ')[0] || 'cliente'
+      const ocupadas = new Set<string>([
+        ...posicoesTomadas, ...posicoesBloqueadasGlobal, ...posicoesBloqueadasPontual, label,
+      ])
+      const tipoBloq = label[0]
+      const livres = posicoes
+        .map((p:any) => ({ lbl: `${p.tipo}${String(p.numero).padStart(2,'0')}`, tipo: p.tipo }))
+        .filter((p:any) => !ocupadas.has(p.lbl))
+      const destino = livres.find((p:any) => p.tipo === tipoBloq)?.lbl || livres[0]?.lbl || null
+
+      const { error: eMove } = await supabase.from('club_reservas')
+        .update({ posicao: destino }).eq('id', reservaAqui.id)
+      if (eMove) { showMsg('Erro ao mover cliente: '+eMove.message); setSalvandoBloqueio(null); return }
+      moveuMsg = destino
+        ? ` — ${nome} movido pra ${destino}`
+        : ` — ${nome} ficou em stand-by (aula lotada)`
+    }
+
+    const { error } = await supabase
+      .from('club_posicoes_bloqueios_ocorrencia')
+      .insert({
+        ocorrencia_id: ocId,
+        posicao: label,
+        criado_por: perfil?.id || null,
+      })
+    if (error) { showMsg('Erro: '+error.message); setSalvandoBloqueio(null); return }
+
+    showMsg(`🚫 Posição ${label} bloqueada nesta aula${moveuMsg}`)
+    if (reservaAqui) await carregarDados()   // ressincroniza reservas/posições após mover
+    else setPosicoesBloqueadasPontual(prev => [...prev, label])
     setSalvandoBloqueio(null)
   }
 
@@ -626,7 +648,8 @@ export default function RecepcaoClubDetalhe() {
           nome:null, atual:false, bloqueada:true }
         if (!tomado) return { bg:`${ACCENT}15`, border:ACCENT, icon:ACCENT, cursor:'pointer',
           nome:null, atual:false, bloqueada:false }
-        return { bg:'#e5e5e5', border:'#bbb', icon:'#bbb', cursor:'default',
+        // ocupada: clicável para bloquear (move o cliente pra primeira livre)
+        return { bg:'#e5e5e5', border:'#bbb', icon:'#bbb', cursor:'pointer',
           nome: reserva?.clientes?.nome?.split(' ')[0] || '?', atual:false, bloqueada:false }
       }
       if (modo === 'walkin') {
@@ -658,6 +681,13 @@ export default function RecepcaoClubDetalhe() {
     function handleClick(label: string) {
       if (modo === 'view') {
         if (posicoesBloqueadasGlobal.includes(label)) return // bloqueio global: destravar só em /admin/posicoes
+        // Bloquear posição ocupada move o cliente — confirma antes (evita clique errado).
+        const reservaAqui = reservas.find((r:any) => r.posicao === label && ['reservado','presente'].includes(r.status))
+        const jaBloq = posicoesBloqueadasPontual.includes(label)
+        if (reservaAqui && !jaBloq) {
+          const nome = reservaAqui.clientes?.nome?.split(' ')[0] || 'cliente'
+          if (!window.confirm(`Bloquear ${label} por manutenção?\n\n${nome} será movido pra primeira posição livre (ou fica em stand-by se a aula estiver lotada).`)) return
+        }
         toggleBloqueioPontual(label)
         return
       }
@@ -699,7 +729,7 @@ export default function RecepcaoClubDetalhe() {
       // view: clica pra alternar bloqueio pontual. Desabilita se salvando ou global.
       // Ocupada só desabilita quando NÃO está bloqueada pontual — se estiver bloqueada
       // E com cliente (estado inconsistente), precisa poder clicar pra desbloquear.
-      if (modo === 'view') disabled = salvandoEssa || bloqueadaGlobal || (tomado && !bloqueadaPontual)
+      if (modo === 'view') disabled = salvandoEssa || bloqueadaGlobal
       else if (modo === 'walkin') disabled = (tomado || bloqueadaPontual || bloqueadaGlobal) && label !== posicaoSel
       else if (modo === 'troca') disabled = !trocandoReserva
         ? (!tomado || bloqueadaPontual || bloqueadaGlobal)                             // fase 1: só ocupadas clicáveis
@@ -745,7 +775,7 @@ export default function RecepcaoClubDetalhe() {
         padding:'0.85rem 0.75rem' }}>
         {modo === 'view' && (
           <div style={{ fontSize:11, color:'#888', textAlign:'center', marginBottom:8, lineHeight:1.5 }}>
-            💡 Clique numa posição livre para bloquear nesta aula. Posição com cliente: use "Trocar" antes.
+            💡 Clique numa posição para bloquear nesta aula. Se tiver cliente, ele é movido pra primeira livre automaticamente.
           </div>
         )}
         {posR.length > 0 && (

@@ -141,6 +141,8 @@ function AulasPageInner() {
   const [diaSel,          setDiaSel]          = useState(0)
   const [periodo,         setPeriodo]         = useState<'todos'|'manha'|'tarde'|'noite'>('todos')
   const [bloqueadasCount, setBloqueadasCount] = useState(0)
+  // Bloqueio pontual por ocorrência (manutenção nesta aula): { ocorrenciaId: qtd }
+  const [bloqPontualCont, setBloqPontualCont] = useState<Record<string, number>>({})
   const [ocorrenciasSemana, setOcorrenciasSemana] = useState<Record<string, any[]>>({})
   const [loadingSemana,    setLoadingSemana]    = useState(false)
 
@@ -330,6 +332,12 @@ function AulasPageInner() {
     const { data: bloqData } = await supabase.from('club_posicoes').select('id').eq('unidade_id', unidadeId).eq('ativo', true).eq('bloqueado', true)
     setBloqueadasCount((bloqData || []).length)
 
+    // Bloqueio pontual (manutenção só nesta aula) por ocorrência — desconta do contador de vagas.
+    const { data: bloqPont } = await supabase.from('club_posicoes_bloqueios_ocorrencia').select('ocorrencia_id').in('ocorrencia_id', ocIds)
+    const contPont: Record<string, number> = {}
+    for (const b of (bloqPont||[])) contPont[b.ocorrencia_id] = (contPont[b.ocorrencia_id]||0)+1
+    setBloqPontualCont(contPont)
+
     if (cliente) {
       const [{ data: minhas }, { data: filas }] = await Promise.all([
         supabase.from('club_reservas').select('*').in('ocorrencia_id', ocIds).eq('cliente_id', cliente.id).neq('status','cancelado'),
@@ -490,7 +498,8 @@ function AulasPageInner() {
   function vagasInfo(oc: any) {
     const cap=oc.club_aulas?.capacidade||0; const usadas=reservasCont[oc.id]||0
     const isRunning=oc.club_aulas?.tipo==='running_funcional'
-    const efetivas = isRunning ? Math.max(0, cap - bloqueadasCount) : Math.max(0, cap - (oc.vagas_bloqueadas||0))
+    // Running: desconta bloqueio global (unidade) + pontual (só desta aula).
+    const efetivas = isRunning ? Math.max(0, cap - bloqueadasCount - (bloqPontualCont[oc.id]||0)) : Math.max(0, cap - (oc.vagas_bloqueadas||0))
     const livres=Math.max(0,efetivas-usadas)
     return { livres, lotado: livres<=0 }
   }
