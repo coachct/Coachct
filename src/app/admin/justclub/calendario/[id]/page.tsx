@@ -498,8 +498,15 @@ export default function RecepcaoClubDetalhe() {
   async function buscarCliente() {
     if (!buscaTexto.trim()) return
     setBuscando(true)
-    const { data } = await supabase.from('clientes').select('id, nome, email, telefone')
-      .or(`nome.ilike.%${buscaTexto}%,email.ilike.%${buscaTexto}%,telefone.ilike.%${buscaTexto}%`)
+    const cpfDigits = buscaTexto.replace(/\D/g, '')
+    const filtros = [
+      `nome.ilike.%${buscaTexto}%`,
+      `email.ilike.%${buscaTexto}%`,
+      `telefone.ilike.%${buscaTexto}%`,
+    ]
+    if (cpfDigits.length >= 3) filtros.push(`cpf.ilike.%${cpfDigits}%`)
+    const { data } = await supabase.from('clientes').select('id, nome, email, telefone, cpf')
+      .or(filtros.join(','))
       .limit(5)
     setResultados(data || [])
     setBuscando(false)
