@@ -512,6 +512,15 @@ export default function RecepcaoClubDetalhe() {
     setBuscando(false)
   }
 
+  // Busca ao vivo: conforme digita (3+ caracteres), sugere sozinho (sem apertar Buscar)
+  useEffect(() => {
+    const t = buscaTexto.trim()
+    if (t.length < 3) { setResultados([]); return }
+    const timer = setTimeout(() => { buscarCliente() }, 300)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buscaTexto])
+
   async function selecionarCliente(cli: any) {
     // Verifica se cliente já tem reserva ativa nessa ocorrência
     const { data: jaReservou } = await supabase.from('club_reservas')
