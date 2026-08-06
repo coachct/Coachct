@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase'
 import SiteHeader from '@/components/SiteHeader'
 import AvisoUnidade, { AvisoPopupPinheiros } from '@/components/AvisoUnidade'
 import ModalTelefone from '@/components/ModalTelefone'
+import CardCheckinExpress from '@/components/CardCheckinExpress'
 import { nomeCoachPublico } from '@/lib/mascaraCoachPublico'
 import { aulaEncerrada, aulaJaComecou, dataHojeSP, hojeSP } from '@/lib/tempo'
 
@@ -164,6 +165,7 @@ function AulasPageInner() {
   const [modalSoAvulso,  setModalSoAvulso]  = useState(false)
   // Modal de telefone (Pagar.me exige telefone no customer para cobrar multa)
   const [modalTelefone,  setModalTelefone]  = useState(false)
+  const [cardCheckin,    setCardCheckin]    = useState(false)
   const [pendingReserva, setPendingReserva] = useState<(() => void) | null>(null)
 
   // Toda a grade parte do "hoje" em São Paulo, não do relógio do dispositivo: cliente
@@ -454,6 +456,8 @@ function AulasPageInner() {
     }
     if (nova?.id) dispararEmailReserva(nova.id)
     setConfirmando(false); setModalReserva(null); setModalSoAvulso(false)
+    // Reserva Wellhub (Club): oferece o Check-in Express (email Wellhub + foto) antes de sair
+    if (/^wellhub/i.test(tipoCredito) && !cliente?.is_classpass) { setCardCheckin(true); return }
     // ClassPass reserva em sequência (empilha): mantém na página e recarrega; clientes normais vão pra minha-conta
     if (cliente?.is_classpass) { await carregarOcorrencias(dataSelStr) }
     else { router.push('/minha-conta') }
@@ -1175,6 +1179,8 @@ function AulasPageInner() {
           if (acao) acao()
         }}
       />
+
+      {cardCheckin && <CardCheckinExpress onClose={() => router.push('/minha-conta')} />}
     </div>
   )
 }
