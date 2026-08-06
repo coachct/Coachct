@@ -60,13 +60,17 @@ async function resolverUnidadeInfo(
 async function marcarPresencaImediata(
   supabase: SupabaseClient,
   gympassId: string | null,
-  gymId: string | null
+  gymId: string | null,
+  email: string | null,
+  nome: string | null
 ): Promise<void> {
   if (!gympassId || !gymId) return;
   try {
     const { data, error } = await supabase.rpc('wellhub_marcar_presenca_por_checkin', {
       p_gympass_id: String(gympassId),
       p_gym_id: String(gymId),
+      p_email: email,
+      p_nome: nome,
     });
     if (error) console.error('[wellhub/checkin] presenca imediata falhou:', error);
     else if (data) console.log('[wellhub/checkin] presenca marcada na hora:', data);
@@ -133,7 +137,13 @@ function extrair(payload: any) {
   const eventoId: string | null =
     gympassId && timestamp != null ? `${gympassId}:${timestamp}` : null;
 
-  return { gympassId, eventoId, gymId, produto, produtoId, produtoDescricao };
+  // Identidade extra do check-in — pra casar/vincular a reserva feita no site
+  // (que não tem wellhub_id). email e nome vêm no payload; CPF NÃO vem.
+  const email: string | null = d?.user?.email ?? null;
+  const nome: string | null =
+    [d?.user?.first_name, d?.user?.last_name].filter(Boolean).join(' ').trim() || null;
+
+  return { gympassId, eventoId, gymId, produto, produtoId, produtoDescricao, email, nome };
 }
 
 // ---------------------------------------------------------------------------
@@ -163,7 +173,7 @@ export async function POST(req: NextRequest) {
     return new NextResponse(null, { status: 200 });
   }
 
-  const { gympassId, eventoId, gymId, produto, produtoId, produtoDescricao } =
+  const { gympassId, eventoId, gymId, produto, produtoId, produtoDescricao, email, nome } =
     extrair(payload);
 
   if (!gympassId) {
@@ -222,7 +232,7 @@ export async function POST(req: NextRequest) {
     if (ehClub) {
       // Aulas (Club): marca presença NA HORA (se reservou pelo app). NÃO valida
       // como musculação — some do painel de check-ins do CT.
-      waitUntil(marcarPresencaImediata(supabase, gympassId, gymId));
+      waitUntil(marcarPresencaImediata(supabase, gympassId, gymId, email, nome));
     } else {
       // CT (musculação): validação automática de sempre (Etapa 1). INTOCADO.
       waitUntil(
