@@ -21,7 +21,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { waitUntil } from '@vercel/functions';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { validarCheckinTotalpass } from '@/lib/totalpass/validar-checkin';
 
 export const runtime = 'nodejs';
@@ -33,6 +33,24 @@ const UNIDADE_CT = 'c28bf4bb-56f8-44ff-818a-c7836e58bcef';
 // Resposta padrão que a TotalPass espera: 200 com corpo "1".
 function ok1() {
   return new NextResponse('1', { status: 200 });
+}
+
+// Marca presença de aula (Club) NA HORA pelo CPF do check-in. Interno: só mexe
+// na nossa reserva (club_reservas), NÃO chama a TotalPass e NÃO cobra. Fail-safe.
+async function marcarPresencaClubTotalpass(
+  supabase: SupabaseClient,
+  cpf: string | null
+): Promise<void> {
+  if (!cpf) return;
+  try {
+    const { data, error } = await supabase.rpc('totalpass_marcar_presenca_por_checkin', {
+      p_cpf: String(cpf),
+    });
+    if (error) console.error('[totalpass/checkin] presenca club falhou:', error);
+    else if (data) console.log('[totalpass/checkin] presenca club marcada:', data);
+  } catch (e) {
+    console.error('[totalpass/checkin] presenca club excecao:', e);
+  }
 }
 
 // Extrai os campos do payload CHECK_IN_CREATED.
@@ -108,9 +126,23 @@ export async function POST(
     auth: { persistSession: false },
   });
 
-  // 5a. Resolve a unidade pelo place.code. Hoje só Just CT; fallback na CT.
+  // 5a. Roteia por unidade. Club (aulas) x CT (musculação) — mesma blindagem do
+  //     Wellhub: o CT (fluxo legado) fica INTOCADO. Detecta Club pelo place.name
+  //     conter "club" (o CT é "Just CT", nunca bate).
+  const placeName = String(payload?.place?.name ?? '');
+  const ehClub = placeName.toLowerCase().includes('club');
+
   let unidadeId = UNIDADE_CT;
-  if (placeCode) {
+  if (ehClub) {
+    // resolve a unidade Club pelo nome (Pinheiros x demais Club)
+    const { data: clubs } = await supabase.from('unidades').select('id, nome').eq('tipo', 'club');
+    const isPin = placeName.toLowerCase().includes('pinheiros');
+    const match = (clubs || []).find((u: any) =>
+      isPin ? String(u.nome || '').toLowerCase().includes('pinheiros')
+            : !String(u.nome || '').toLowerCase().includes('pinheiros')
+    );
+    if (match?.id) unidadeId = match.id as string;
+  } else if (placeCode) {
     const { data: uni } = await supabase
       .from('unidades')
       .select('id')
@@ -129,7 +161,7 @@ export async function POST(
       id_externo: String(userCode),
       evento_id: eventoId ? String(eventoId) : null,
       produto: planCode ?? null,
-      status: ativo ? 'recebido' : 'observado',
+      status: !ativo ? 'observado' : (ehClub ? 'aula' : 'recebido'),
       raw: payload,
     })
     .select('id')
@@ -147,15 +179,21 @@ export async function POST(
   //    valor. Em modo observação (desligado) a entrada fica 'observado' e nada
   //    é confirmado nem cobrado; serve só pra inspeção do payload real.
   if (ativo && inserida?.id) {
-    waitUntil(
-      validarCheckinTotalpass({
-        entradaId: inserida.id,
-        planCode,
-        startedAt,
-        endpoint,
-        cpf,
-      })
-    );
+    if (ehClub) {
+      // Club (aulas): marca presença NA HORA pelo CPF. NÃO valida/cobra como CT.
+      waitUntil(marcarPresencaClubTotalpass(supabase, cpf));
+    } else {
+      // CT (musculação): fluxo legado INTOCADO — confirma de volta + validado + valor.
+      waitUntil(
+        validarCheckinTotalpass({
+          entradaId: inserida.id,
+          planCode,
+          startedAt,
+          endpoint,
+          cpf,
+        })
+      );
+    }
   } else if (!ativo) {
     console.log('[totalpass/checkin] OBSERVACAO — gravado sem confirmar/cobrar:', eventoId);
   }
