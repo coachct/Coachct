@@ -78,15 +78,38 @@ async function tirarDaFila(supabase: SupabaseClient, ocId: string, enfileiradoEm
     .eq('enfileirado_em', enfileiradoEm)
 }
 
+// RESILIÊNCIA: em vez de deixar um item que ERRA no head (bloqueando todos atrás —
+// o worker lê ORDER BY enfileirado_em ASC LIMIT 50), reenfileira no FIM (re-stamp).
+// Assim um place com chave inválida ou a API fora do ar não trava as demais unidades
+// (incidente 08/08: a chave da Vila Olímpia caiu e os itens dela entupiram até o
+// Pinheiros). Só re-stampa se o item não foi reenfileirado por uma escrita nova no meio.
+async function moverParaFim(supabase: SupabaseClient, ocId: string, enfileiradoEm: string) {
+  await supabase
+    .from('totalpass_slot_sync_queue')
+    .update({ enfileirado_em: new Date().toISOString() })
+    .eq('ocorrencia_id', ocId)
+    .eq('enfileirado_em', enfileiradoEm)
+}
+
 type Resultado = 'sync' | 'skip' | 'erro'
 
 async function processarItem(supabase: SupabaseClient, ocId: string, enfileiradoEm: string): Promise<Resultado> {
   // Estado da unidade a partir da ocorrência.
   const { data: info } = await supabase
     .from('club_ocorrencias')
-    .select('id, status, club_aulas(unidade_id, unidades(totalpass_estado))')
+    .select('id, status, data, club_aulas(unidade_id, unidades(totalpass_estado))')
     .eq('id', ocId)
     .maybeSingle()
+
+  // RESILIÊNCIA: aula em dia passado nunca precisa sincronizar capacidade. Se ficasse
+  // na fila, o PUT falharia pra sempre (ocorrência vencida na TotalPass) e, como o
+  // worker lê ORDER BY enfileirado_em ASC, esses mortos entopiam o HEAD e travam as
+  // aulas futuras (incidente 08/08 — 104 aulas passadas presas). Tira da fila e segue.
+  const hojeSP = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
+  if (info && (info as any).data && (info as any).data < hojeSP) {
+    await tirarDaFila(supabase, ocId, enfileiradoEm)
+    return 'skip'
+  }
 
   const estado = (info as any)?.club_aulas?.unidades?.totalpass_estado
 
@@ -108,7 +131,8 @@ async function processarItem(supabase: SupabaseClient, ocId: string, enfileirado
   // (env faltando) não dá pra falar com a API — mantém na fila pra retry.
   const apiKey = apiKeyPorPlace(String((map as any).place_id || ''))
   if (!apiKey) {
-    console.warn('[totalpass/sync] sem place_api_key pro place', (map as any).place_id, '— mantendo na fila')
+    console.warn('[totalpass/sync] sem place_api_key pro place', (map as any).place_id, '— reenfileirando no fim')
+    await moverParaFim(supabase, ocId, enfileiradoEm)
     return 'erro'
   }
 
@@ -120,7 +144,8 @@ async function processarItem(supabase: SupabaseClient, ocId: string, enfileirado
       await tirarDaFila(supabase, ocId, enfileiradoEm)
       return 'sync'
     }
-    console.warn('[totalpass/sync] DELETE falhou, mantendo na fila:', ocId, del.status)
+    console.warn('[totalpass/sync] DELETE falhou, reenfileirando no fim:', ocId, del.status)
+    await moverParaFim(supabase, ocId, enfileiradoEm)
     return 'erro'
   }
 
@@ -138,6 +163,7 @@ async function processarItem(supabase: SupabaseClient, ocId: string, enfileirado
     return 'sync'
   }
   // Falha → mantém na fila pra retry.
-  console.warn('[totalpass/sync] PUT slots falhou, mantendo na fila:', ocId, resp.status, resp.erro)
+  console.warn('[totalpass/sync] PUT slots falhou, reenfileirando no fim:', ocId, resp.status, resp.erro)
+  await moverParaFim(supabase, ocId, enfileiradoEm)
   return 'erro'
 }
