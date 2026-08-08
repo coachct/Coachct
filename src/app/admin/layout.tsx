@@ -1,6 +1,6 @@
 'use client'
 import SidebarLayout from '@/components/layout/SidebarLayout'
-import { Dumbbell, Footprints, Clock, Users, ShoppingCart, BarChart3, UserCog, BookOpen, Settings, MessageCircle, Instagram } from 'lucide-react'
+import { Dumbbell, Footprints, Clock, Users, ShoppingCart, BarChart3, UserCog, BookOpen, Settings, MessageCircle, Instagram, Activity } from 'lucide-react'
 const nav = [
   {
     label: 'Coach CT',
@@ -31,6 +31,13 @@ const nav = [
     icon: Clock,
     children: [
       { label: 'Fila de espera', href: '/admin/fila-espera' },
+    ],
+  },
+  {
+    label: 'Sistema',
+    icon: Activity,
+    children: [
+      { label: 'Saúde das Integrações', href: '/admin/saude' },
     ],
   },
   {
