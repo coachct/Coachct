@@ -53,13 +53,14 @@ export default function SaudeIntegracoes() {
   const filaTp  = dbCheck?.fila_totalpass ?? { itens: 0, mais_antigo_min: 0 }
   const filaWh  = dbCheck?.fila_wellhub ?? { itens: 0, mais_antigo_min: 0 }
   const authTp  = (snapshot?.relatorio?.auth_totalpass ?? []) as any[]
-  const authRuim = authTp.filter(a => !a.ok)
+  const authWh  = (snapshot?.relatorio?.auth_wellhub ?? []) as any[]
+  const authRuim = [...authTp, ...authWh].filter(a => !a.ok)
   const filaTpRuim = (filaTp.mais_antigo_min ?? 0) > 30
   const filaWhRuim = (filaWh.mais_antigo_min ?? 0) > 30
 
   const problemas: string[] = []
   if (over.length) problemas.push(`${over.length} aula(s) futura(s) com overbooking`)
-  if (authRuim.length) problemas.push(`auth TotalPass falhando (${authRuim.map(a => a.unidade).join(', ')})`)
+  if (authRuim.length) problemas.push(`conexão com app falhando (${authRuim.map(a => a.unidade).join(', ')})`)
   if (filaTpRuim) problemas.push('fila de sync TotalPass atrasada')
   if (filaWhRuim) problemas.push('fila de sync Wellhub atrasada')
   if (semPos.length) problemas.push(`${semPos.length} aula(s) com reserva sem posição`)
@@ -112,14 +113,20 @@ export default function SaudeIntegracoes() {
             <strong>Conexão com os apps</strong>
             <Pill cor={authRuim.length ? VERMELHO : VERDE} texto={authRuim.length ? 'FALHA' : 'OK'} />
           </div>
-          {authTp.length === 0 && <span style={{ color: CINZA, fontSize: 13 }}>Sem snapshot ainda (aguarde o 1º ciclo do cron).</span>}
-          {authTp.map((a, i) => (
-            <div key={i} style={{ fontSize: 13, display: 'flex', gap: 6 }}>
-              <span>{a.ok ? '🟢' : '🔴'}</span>
-              <span><b>{a.unidade}</b>{!a.ok && a.erro ? ` — ${a.erro}` : ''}</span>
-            </div>
+          {authTp.length === 0 && authWh.length === 0 && <span style={{ color: CINZA, fontSize: 13 }}>Sem snapshot ainda (aguarde o 1º ciclo do cron ou clique em Verificar agora).</span>}
+          {[{ app: 'TotalPass', lista: authTp }, { app: 'Wellhub', lista: authWh }].map(({ app, lista }) => (
+            lista.length > 0 && (
+              <div key={app} style={{ marginTop: 2 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: CINZA, textTransform: 'uppercase', letterSpacing: 0.5 }}>{app}</div>
+                {lista.map((a: any, i: number) => (
+                  <div key={i} style={{ fontSize: 13, display: 'flex', gap: 6 }}>
+                    <span>{a.ok ? '🟢' : '🔴'}</span>
+                    <span><b>{a.unidade}</b>{!a.ok && a.erro ? ` — ${a.erro}` : ''}</span>
+                  </div>
+                ))}
+              </div>
+            )
           ))}
-          <span style={{ color: CINZA, fontSize: 11 }}>TotalPass. (Wellhub entra na próxima versão.)</span>
         </div>
 
         {/* Filas de sync */}

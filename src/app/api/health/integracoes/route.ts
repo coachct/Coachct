@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { listarSlots } from '@/lib/totalpass/booking-api'
 import { placesAtivos } from '@/lib/totalpass/places'
+import { listClasses } from '@/lib/wellhub/booking-api'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -54,6 +55,24 @@ export async function POST(req: NextRequest) {
     authTp.push({ unidade: '(falha geral)', ok: false, erro: String(e?.message ?? e) })
   }
   rel.auth_totalpass = authTp
+
+  // 2b) Auth probe Wellhub — lista as classes do gym (autentica na Booking API).
+  // gymId único por unidade; chave única (WELLHUB_BOOKING_API_KEY). Só unidades ativas.
+  const authWh: Array<{ unidade: string; ok: boolean; erro: string | null }> = []
+  try {
+    const { data: gyms } = await supabase
+      .from('unidades')
+      .select('nome, wellhub_gym_id')
+      .eq('wellhub_estado', 'ativo')
+      .not('wellhub_gym_id', 'is', null)
+    for (const u of (gyms || [])) {
+      const r = await listClasses(String((u as any).wellhub_gym_id))
+      authWh.push({ unidade: (u as any).nome, ok: r.ok, erro: r.ok ? null : (r.erro || `HTTP ${r.status}`) })
+    }
+  } catch (e: any) {
+    authWh.push({ unidade: '(falha geral)', ok: false, erro: String(e?.message ?? e) })
+  }
+  rel.auth_wellhub = authWh
   rel.verificado_em = agora.toISOString()
 
   // 3) Semáforo geral.
@@ -62,6 +81,7 @@ export async function POST(req: NextRequest) {
   const semPos = Array.isArray(rel.sem_posicao) ? rel.sem_posicao : []
   if (over.length) problemas.push(`${over.length} aula(s) futura(s) com overbooking`)
   if (authTp.some(a => !a.ok)) problemas.push(`auth TotalPass falhando (${authTp.filter(a => !a.ok).map(a => a.unidade).join(', ')})`)
+  if (authWh.some(a => !a.ok)) problemas.push(`auth Wellhub falhando (${authWh.filter(a => !a.ok).map(a => a.unidade).join(', ')})`)
   if ((rel.fila_totalpass?.mais_antigo_min ?? 0) > FILA_ATRASO_MIN) problemas.push('fila de sync TotalPass atrasada')
   if ((rel.fila_wellhub?.mais_antigo_min ?? 0) > FILA_ATRASO_MIN) problemas.push('fila de sync Wellhub atrasada')
   if (semPos.length) problemas.push(`${semPos.length} aula(s) com reserva sem posição`)
