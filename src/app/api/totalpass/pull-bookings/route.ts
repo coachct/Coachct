@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
       const sl = await listarSlots(place.apiKey!, { slotDateFrom: agora.toISOString(), slotDateTo: fim.toISOString() })
       const arr: any[] = Array.isArray(sl.body) ? sl.body : (sl.body?.data ?? [])
       porUnidade.push({
-        unidade: place.nome, ok: sl.ok, status: sl.status, total: arr.length,
+        unidade: place.nome, ok: sl.ok, status: sl.status, erro: sl.erro, total: arr.length,
         amostra: arr.slice(0, 3).map((s: any) => ({
           topKeys: Object.keys(s || {}), userKeys: Object.keys(s?.user || {}),
           user: maskObj(s?.user), slotMascarado: maskObj(s),
