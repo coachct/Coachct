@@ -30,6 +30,7 @@ export default function TotemPage() {
   const [recepcaoMsg, setRecepcaoMsg] = useState('')
   const [statusMsg, setStatusMsg] = useState('')
   const [ctInfo, setCtInfo] = useState<{ origem: string; produto?: string } | null>(null)
+  const [scale, setScale] = useState(1)
   const [faceReady, setFaceReady] = useState(false)
   const [faceMsg, setFaceMsg] = useState('Câmera ativa · olhe para reconhecer')
   const [consentOk, setConsentOk] = useState(false)
@@ -118,6 +119,16 @@ export default function TotemPage() {
       setClock({ h: `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`, d: `${wd} · ${dt.getDate()} ${mo}` })
     }
     tick(); const t = setInterval(tick, 1000); return () => clearInterval(t)
+  }, [])
+
+  // ---- escala pra preencher o máximo do tablet (proporcional, sem distorcer) ----
+  useEffect(() => {
+    const calc = () => {
+      const s = Math.min(window.innerWidth / 440, window.innerHeight / 840)
+      setScale(s > 0 ? s : 1)
+    }
+    calc(); window.addEventListener('resize', calc)
+    return () => window.removeEventListener('resize', calc)
   }, [])
 
   // ---------- reset por inatividade ----------
@@ -259,7 +270,7 @@ export default function TotemPage() {
     <div id="tt">
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <div className="stage">
-        <div className="totem">
+        <div className="totem" style={{ transform: `scale(${scale})` }}>
           <div className="top">
             <div>
               <div className="logo">JUST <b>{unidade?.tipo === 'ct' ? 'CT' : 'CLUB'}</b></div>
@@ -514,7 +525,7 @@ export default function TotemPage() {
 
 // CSS escopado sob #tt (adaptado do protótipo self-checkin-club.html)
 const CSS = `
-#tt{position:fixed;inset:0;z-index:99999;overflow:auto;
+#tt{position:fixed;inset:0;z-index:99999;overflow:hidden;
   --bg:#0a0a0f;--panel:#111119;--panel2:#16161f;--line:#26263a;--pink:#ff2d8e;--pink2:#ff5aa6;
   --lift:#5b8def;--run:#22c55e;--run2:#16a34a;--txt:#f5f5fa;--mut:#9a9ab0;--ok:#22c55e;--warn:#f59e0b;
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
@@ -522,9 +533,8 @@ const CSS = `
   display:flex;align-items:center;justify-content:center;padding:20px}
 #tt *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 #tt .stage{display:flex;flex-direction:column;align-items:center}
-#tt .totem{position:relative;width:440px;max-width:96vw;height:840px;max-height:94vh;background:var(--bg);
-  border-radius:34px;border:1px solid #2a2a3d;box-shadow:0 40px 90px rgba(0,0,0,.6),inset 0 0 0 8px #0c0c14;
-  overflow:hidden;display:flex;flex-direction:column}
+#tt .totem{position:relative;width:440px;height:840px;background:var(--bg);
+  overflow:hidden;display:flex;flex-direction:column;transform-origin:center center;flex:0 0 auto}
 #tt .top{display:flex;align-items:center;justify-content:space-between;padding:16px 20px 8px;flex:0 0 auto}
 #tt .logo{font-weight:800;letter-spacing:1px;font-size:15px}
 #tt .logo b{color:var(--pink)}
