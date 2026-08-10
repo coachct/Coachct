@@ -18,7 +18,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { waitUntil } from '@vercel/functions';
 import crypto from 'crypto';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { validarCheckin } from '@/lib/wellhub/validar-checkin';
+import { validarCheckin, buscarValor } from '@/lib/wellhub/validar-checkin';
+import { validarTicket } from '@/lib/wellhub/validate';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -76,6 +77,42 @@ async function marcarPresencaImediata(
     else if (data) console.log('[wellhub/checkin] presenca marcada na hora:', data);
   } catch (e) {
     console.error('[wellhub/checkin] presenca imediata excecao:', e);
+  }
+}
+
+// Valida o check-in de aula (Club) DE VOLTA no Wellhub (confirma no portal +
+// repasse), usando o gym do CLUB (não o do CT). Mantém status 'aula' — só grava
+// validado_em + valor. Fail-safe: nunca afeta o check-in nem a presença.
+async function validarCheckinClub(
+  supabase: SupabaseClient,
+  entradaId: string,
+  gympassId: string | null,
+  gymId: string | null,
+  produtoId: string | null,
+  produtoDescricao: string | null
+): Promise<void> {
+  if (!gympassId || !gymId) return;
+  try {
+    let r = await validarTicket(gympassId, gymId);
+    let t = 1;
+    while (!r.valido && r.status === 404 && t < 4) {
+      await new Promise((s) => setTimeout(s, 1500));
+      t++;
+      r = await validarTicket(gympassId, gymId);
+    }
+    const jaValidado =
+      !r.valido && r.status === 400 &&
+      (r.raw as any)?.errors?.[0]?.key === 'checkin.already.validated';
+    if (r.valido || jaValidado) {
+      const valor = await buscarValor(supabase, produtoId, produtoDescricao);
+      await supabase.from('entradas_walkin')
+        .update({ validado_em: r.validatedAt ?? new Date().toISOString(), valor })
+        .eq('id', entradaId);
+    } else {
+      console.warn('[wellhub/checkin] club validate nao ok:', gympassId, r.status, r.erro);
+    }
+  } catch (e) {
+    console.error('[wellhub/checkin] club validate excecao:', e);
   }
 }
 
@@ -233,6 +270,8 @@ export async function POST(req: NextRequest) {
       // Aulas (Club): marca presença NA HORA (se reservou pelo app). NÃO valida
       // como musculação — some do painel de check-ins do CT.
       waitUntil(marcarPresencaImediata(supabase, gympassId, gymId, email, nome));
+      // Completa o loop: valida o check-in de volta no Wellhub (portal + repasse).
+      waitUntil(validarCheckinClub(supabase, inserida.id, gympassId, gymId, produtoId, produtoDescricao));
     } else {
       // CT (musculação): validação automática de sempre (Etapa 1). INTOCADO.
       waitUntil(

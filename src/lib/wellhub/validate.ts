@@ -26,7 +26,7 @@ export type ResultadoValidate = {
 
 const SANDBOX_BASE = 'https://apitesting.partners.gympass.com';
 
-export async function validarTicket(gympassId: string): Promise<ResultadoValidate> {
+export async function validarTicket(gympassId: string, gymIdOverride?: string): Promise<ResultadoValidate> {
   const base: ResultadoValidate = {
     valido: false,
     gympassId,
@@ -38,7 +38,7 @@ export async function validarTicket(gympassId: string): Promise<ResultadoValidat
   };
 
   const apiKey = process.env.WELLHUB_API_KEY;
-  const gymId = process.env.WELLHUB_GYM_ID ?? '465';
+  const gymId = gymIdOverride || process.env.WELLHUB_GYM_ID || '465';
   const apiBase = process.env.WELLHUB_API_BASE ?? SANDBOX_BASE;
 
   if (!apiKey) return { ...base, erro: 'WELLHUB_API_KEY ausente' };

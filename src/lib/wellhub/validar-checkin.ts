@@ -123,7 +123,7 @@ export async function corrigirValor(input: {
 // cai pra descrição (e, casando por descrição, faz o backfill do produto_id no
 // cadastro — assim o sistema "aprende" o id no 1o check-in real). Sem match,
 // retorna null e loga (produto novo a cadastrar).
-async function buscarValor(
+export async function buscarValor(
   supabase: SupabaseClient,
   produtoId: string | null,
   descricao: string | null
