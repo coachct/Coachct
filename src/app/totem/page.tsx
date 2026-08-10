@@ -550,24 +550,24 @@ const CSS = `
 #tt h2{font-size:22px;margin:4px 0 2px;font-weight:800;line-height:1.15}
 #tt .sub{color:var(--mut);font-size:13px;margin:0 0 12px}
 #tt .grow{flex:1 1 auto}
-#tt .btn{border:none;border-radius:18px;padding:18px;font-size:17px;font-weight:700;color:#fff;
+#tt .btn{border:none;border-radius:18px;padding:22px;font-size:20px;font-weight:700;color:#fff;
   background:linear-gradient(135deg,var(--pink),#e01f7c);cursor:pointer;width:100%;box-shadow:0 10px 26px rgba(255,45,142,.28)}
 #tt .btn:active{transform:scale(.975)}
 #tt .btn.ghost{background:var(--panel);border:1px solid var(--line);color:var(--txt);box-shadow:none;font-size:15px;padding:15px}
 #tt .btn.sm{padding:13px;font-size:14px}
 #tt .btn.ok{background:linear-gradient(135deg,#22c55e,#16a34a);box-shadow:0 10px 26px rgba(34,197,94,.28)}
-#tt .btn.pinkghost{background:rgba(255,45,142,.08);border:1px solid rgba(255,45,142,.4);color:var(--pink2);box-shadow:none;font-size:15px;padding:15px}
+#tt .btn.pinkghost{background:rgba(255,45,142,.08);border:1px solid rgba(255,45,142,.4);color:var(--pink2);box-shadow:none;font-size:18px;padding:18px}
 #tt .btn[disabled]{opacity:.45;cursor:not-allowed;box-shadow:none}
 #tt .stack{display:flex;flex-direction:column;gap:12px}
-#tt .express-hdr{text-align:center;margin:4px 0 6px}
-#tt .ex-title{font-size:25px;font-weight:900;letter-spacing:1px;line-height:1}
+#tt .express-hdr{text-align:center;margin:8px 0 14px}
+#tt .ex-title{font-size:36px;font-weight:900;letter-spacing:1px;line-height:1}
 #tt .ex-title span{color:var(--pink)}
-#tt .ex-sub{margin-top:10px;font-size:12.5px;font-weight:700;color:#fcd34d;background:rgba(245,158,11,.1);
-  border:1px solid rgba(245,158,11,.32);padding:10px 14px;border-radius:14px;display:inline-block;line-height:1.5}
+#tt .ex-sub{margin-top:14px;font-size:15px;font-weight:700;color:#fcd34d;background:rgba(245,158,11,.1);
+  border:1px solid rgba(245,158,11,.32);padding:14px 18px;border-radius:16px;display:inline-block;line-height:1.55}
 #tt .ex-sub b{color:#fde68a}
-#tt .idlecam{position:relative;width:190px;height:190px;border-radius:24px;margin:0 auto;overflow:hidden;
+#tt .idlecam{position:relative;width:300px;height:360px;border-radius:26px;margin:0 auto;overflow:hidden;
   background:linear-gradient(160deg,#14141f,#0c0c14);border:1px solid var(--line);display:flex;align-items:center;justify-content:center}
-#tt .idlecam .face{font-size:80px;opacity:.6;position:absolute}
+#tt .idlecam .face{font-size:150px;opacity:.6;position:absolute}
 #tt .idlecam video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
 #tt .scanline{position:absolute;left:0;right:0;height:3px;background:linear-gradient(90deg,transparent,var(--pink),transparent);box-shadow:0 0 14px var(--pink);animation:scan 2s ease-in-out infinite}
 @keyframes scan{0%{top:6%}50%{top:92%}100%{top:6%}}
@@ -576,8 +576,8 @@ const CSS = `
 #tt .fc2{top:12px;right:12px;border-left:none;border-bottom:none;border-radius:0 6px 0 0}
 #tt .fc3{bottom:12px;left:12px;border-right:none;border-top:none;border-radius:0 0 0 6px}
 #tt .fc4{bottom:12px;right:12px;border-left:none;border-top:none;border-radius:0 0 6px 0}
-#tt .live{display:inline-flex;gap:8px;align-items:center;justify-content:center;font-size:12px;color:var(--pink2);
-  background:rgba(255,45,142,.1);border:1px solid rgba(255,45,142,.25);padding:7px 13px;border-radius:999px;margin-top:14px;text-align:center}
+#tt .live{display:inline-flex;gap:9px;align-items:center;justify-content:center;font-size:15px;color:var(--pink2);
+  background:rgba(255,45,142,.1);border:1px solid rgba(255,45,142,.25);padding:11px 20px;border-radius:999px;margin-top:22px;text-align:center}
 #tt .dot{width:7px;height:7px;border-radius:50%;background:var(--pink);box-shadow:0 0 10px var(--pink);animation:pulse 1.6s infinite;flex:0 0 auto}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 #tt .enroll-link{color:var(--pink2);font-size:13px;border-bottom:1px dashed rgba(255,90,166,.5);cursor:pointer}
