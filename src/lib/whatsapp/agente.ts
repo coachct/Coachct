@@ -708,8 +708,12 @@ export async function responderMensagem(params: {
   for (let i = 0; i < MAX_ITERACOES; i++) {
     const resposta = await client.messages.create({
       model: MODELO,
-      max_tokens: 1024,
-      thinking: { type: 'disabled' }, // resposta rápida; chat não precisa de raciocínio longo
+      max_tokens: 3000,
+      // Raciocínio LIGADO: antes de responder, o bot pensa "isso está na base/nas
+      // ferramentas? é assunto de conta ou info geral?" — reduz muito invenção e
+      // deflexão (ele passa a USAR o que está gravado, em vez de reagir no reflexo).
+      // budget_tokens < max_tokens (thinking + resposta cabem no max_tokens).
+      thinking: { type: 'enabled', budget_tokens: 1600 },
       system: systemPrompt(cliente, ctx, hoje),
       tools: TOOLS,
       messages,
@@ -940,8 +944,10 @@ Português do Brasil, caloroso e DIRETO. Mensagens CURTAS (é WhatsApp, não é 
   for (let i = 0; i < 4; i++) {
     const resposta = await client.messages.create({
       model: MODELO,
-      max_tokens: 900,
-      thinking: { type: 'disabled' },
+      max_tokens: 2600,
+      // Raciocínio LIGADO (ver nota no responderMensagem): pensa antes de responder
+      // — usa a base/regras em vez de reagir no reflexo. budget_tokens < max_tokens.
+      thinking: { type: 'enabled', budget_tokens: 1600 },
       system,
       tools: TOOLS_VISITANTE,
       messages,
