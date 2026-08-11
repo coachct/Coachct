@@ -125,6 +125,21 @@ export default function AdminAgendaPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [abaAtiva, data, perfil, unidadeAtiva?.id])
 
+  // 🔧 Realtime: presença marcada pelo check-in do parceiro (RPC) aparece NA HORA
+  // na tela da recepção, sem esperar o refresh de 1 min. Só recarrega quando está
+  // vendo o dia de hoje. (Requer a tabela agendamentos na publicação supabase_realtime.)
+  useEffect(() => {
+    if (!perfil || !unidadeAtiva) return
+    const ch = supabase
+      .channel(`agenda-ct-${unidadeAtiva.id}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'agendamentos', filter: `unidade_id=eq.${unidadeAtiva.id}` },
+        () => { if (data === hoje) loadData(true) })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [perfil, unidadeAtiva?.id, data])
+
   async function loadData(manter_scroll = false) {
     if (!unidadeAtiva) return
     if (manter_scroll) scrollRef.current = window.scrollY
