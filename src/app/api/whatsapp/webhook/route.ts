@@ -196,9 +196,12 @@ async function processar(de: string, texto: string, wamid: string, botaoId: stri
     // Respeita opt-out anterior.
     if (cliente.whatsapp_opt_out) return
 
-    // Atendimento humano ativo nesta conversa: guarda a mensagem (pra aparecer no
-    // painel) e NÃO aciona o agente — quem responde é o atendente, pelo painel.
-    if (await emModoHumano(supabase, telefone)) {
+    // Atendimento humano ativo (modo_humano) OU já escalado/aguardando equipe
+    // (aguardando_humano): guarda a mensagem (pra aparecer no painel) e NÃO aciona o
+    // agente — quem responde é o atendente. Sem isso, cada nova mensagem re-rodava o
+    // agente e re-escalava, DUPLICANDO o "Vou transferir". (O caminho do visitante já
+    // tinha esse portão; o do cliente identificado não — corrigido aqui.)
+    if (await emModoHumano(supabase, telefone) || await estaAguardandoHumano(supabase, telefone)) {
       await salvarMensagem(supabase, { telefone, clienteId: cliente.id, role: 'user', conteudo: texto })
       return
     }
