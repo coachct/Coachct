@@ -54,6 +54,19 @@ export default function RecepcaoMusculacaoLivrePage() {
     if (perfil) carregarAcessos()
   }, [perfil])
 
+  // ─── Tempo real: novo check-in (Wellhub/TotalPass) recarrega a lista sozinho ───
+  useEffect(() => {
+    if (!perfil) return
+    const ch = supabase
+      .channel('musc-livre-ct')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'entradas_walkin', filter: `unidade_id=eq.${CT_UNIDADE_ID}` },
+        () => carregarAcessos())
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [perfil])
+
   async function carregarAcessos() {
     setLoadingAcessos(true)
 
