@@ -78,14 +78,29 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { token: string } }
 ) {
-  // 1. Autenticação: o token do path tem que bater com o nosso segredo.
-  const segredo = process.env.TOTALPASS_WEBHOOK_TOKEN;
-  if (!segredo || params.token !== segredo) {
-    return new NextResponse('nao autorizado', { status: 401 });
-  }
-
-  // 2. Corpo
+  // 0. Corpo cru + token (lidos primeiro pro LOG de diagnóstico).
   const rawBody = await req.text();
+  const segredo = process.env.TOTALPASS_WEBHOOK_TOKEN;
+  const tokenOk = !!segredo && params.token === segredo;
+
+  // LOG DIAGNÓSTICO (temporário): registra TODA batida no webhook — mesmo 401 /
+  // tipo inesperado — pra descobrir por que os check-ins pararam de chegar.
+  try {
+    const _u = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
+    const _k = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (_u && _k) {
+      let pn: string | null = null, uc: string | null = null, tp: string | null = null;
+      try { const _p = JSON.parse(rawBody); pn = _p?.place?.name ?? null; uc = _p?.user?.code ?? null; tp = _p?.type ?? null; } catch {}
+      await createClient(_u, _k, { auth: { persistSession: false } })
+        .from('totalpass_webhook_hits')
+        .insert({ token_ok: tokenOk, token_prefixo: (params.token || '').slice(0, 6), place_name: pn ? `${pn} | ${tp ?? ''}` : tp, user_code: uc, body_len: rawBody?.length ?? 0 });
+    }
+  } catch { /* log é best-effort, nunca quebra o webhook */ }
+
+  // 1. Autenticação.
+  if (!tokenOk) return new NextResponse('nao autorizado', { status: 401 });
+
+  // 2. Parse.
   let payload: any;
   try {
     payload = JSON.parse(rawBody);
