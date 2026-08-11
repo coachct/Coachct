@@ -15,6 +15,7 @@
 // marcada 'validado' mesmo assim (a falta de valor é sinalizada por log).
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { ehModoPersonal, marcarPresencaCoachCt } from '@/lib/coach-ct/presenca-checkin';
 
 type ValidarInput = {
   entradaId: string; // id da linha em entradas_walkin
@@ -63,6 +64,14 @@ export async function validarCheckinTotalpass(input: ValidarInput): Promise<void
     .update(patch)
     .eq('id', entradaId);
   if (error) console.error('[totalpass/validar] erro ao gravar validado:', error);
+
+  // 4. Presença automática Coach CT — aqui o nome legível do plano já foi
+  //    resolvido (o payload TotalPass só traz o plan_code em hash). Se o
+  //    check-in foi no modo Personal, marca presença no agendamento de hoje.
+  //    À prova de falha (a função engole erro). Musculação livre não dispara.
+  if (descricao && ehModoPersonal(descricao)) {
+    await marcarPresencaCoachCt(supabase, 'totalpass', { cpf });
+  }
 }
 
 // POST de confirmação no endpoint que veio no payload. A URL já carrega um

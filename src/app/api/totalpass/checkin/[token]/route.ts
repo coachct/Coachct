@@ -23,7 +23,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { waitUntil } from '@vercel/functions';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { validarCheckinTotalpass } from '@/lib/totalpass/validar-checkin';
-import { ehModoPersonal, marcarPresencaCoachCt } from '@/lib/coach-ct/presenca-checkin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -209,11 +208,9 @@ export async function POST(
           cpf,
         })
       );
-      // Check-in no MODO PERSONAL (Coach CT): marca presença no agendamento de
-      // hoje pelo CPF, em paralelo e à prova de falha. Musculação livre não dispara.
-      if (ehModoPersonal(planCode)) {
-        waitUntil(marcarPresencaCoachCt(supabase, 'totalpass', { cpf }));
-      }
+      // Obs.: a presença automática Coach CT no modo Personal é disparada DENTRO
+      // de validarCheckinTotalpass — lá o nome legível do plano já foi resolvido
+      // (o payload só traz o plan_code em hash, não dá pra detectar "personal" aqui).
     }
   } else if (!ativo) {
     console.log('[totalpass/checkin] OBSERVACAO — gravado sem confirmar/cobrar:', eventoId);
