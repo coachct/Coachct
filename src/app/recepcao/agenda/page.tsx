@@ -114,6 +114,20 @@ export default function RecepcaoAgendaPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [abaAtiva, data, perfil, unidadeAtiva?.id])
 
+  // 🔧 Realtime: presença marcada pelo check-in do parceiro (RPC) aparece NA HORA
+  // na tela do balcão, sem esperar o refresh de 1 min. Só recarrega vendo hoje.
+  useEffect(() => {
+    if (!perfil || !unidadeAtiva) return
+    const ch = supabase
+      .channel(`recepcao-agenda-ct-${unidadeAtiva.id}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'agendamentos', filter: `unidade_id=eq.${unidadeAtiva.id}` },
+        () => { if (data === hoje) loadData(true) })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [perfil, unidadeAtiva?.id, data])
+
   async function loadData(manter_scroll = false) {
     if (!unidadeAtiva) return
     if (manter_scroll) scrollRef.current = window.scrollY
@@ -799,17 +813,25 @@ export default function RecepcaoAgendaPage() {
                               const { label: planoLabel, icon: planoIcon } = parsePlanoKey(ag.tipo_credito || '')
                               const feito = ag.status === 'realizado'
                               const faltou = ag.status === 'falta'
+                              const viaCheckin = feito && ag.presenca_checkin
+                              const modoErrado = !feito && !faltou && ag.checkin_modo_errado
                               const coachesHorario = usaEscalaFds ? coachesFds : coachesPorHorario(h)
                               const agsH = agendamentosPorHorario(h).filter(a => a.status !== 'cancelado')
                               const coachesLivres = coachesHorario.filter(c => !agsH.some(a => a.id !== ag.id && a.coach_id === c.coaches?.id))
                               return (
-                                <div key={ag.id} className={`flex items-start gap-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm border-l-4 ${feito ? 'border-l-gray-300 opacity-70' : faltou ? 'border-l-orange-400' : ag.coach_id ? 'border-l-green-400' : 'border-l-primary-400'}`}>
+                                <div key={ag.id} className={`flex items-start gap-4 rounded-2xl border p-4 shadow-sm border-l-4 ${viaCheckin ? 'border-emerald-200 bg-emerald-50 border-l-emerald-500' : modoErrado ? 'border-amber-200 bg-amber-50 border-l-amber-500' : feito ? 'border-gray-100 bg-white border-l-gray-300 opacity-70' : faltou ? 'border-gray-100 bg-white border-l-orange-400' : ag.coach_id ? 'border-gray-100 bg-white border-l-green-400' : 'border-gray-100 bg-white border-l-primary-400'}`}>
                                   <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-primary-100 text-sm font-bold text-primary-800">
                                     {ag.clientes?.nome?.slice(0, 2).toUpperCase()}
                                   </div>
                                   <div className="min-w-0 flex-1">
                                     <div className="truncate text-lg font-bold text-gray-900">{ag.clientes?.nome || '—'}</div>
                                     <div className="mt-0.5 text-sm text-gray-500">{planoIcon} {planoLabel}</div>
+                                    {modoErrado && (
+                                      <div className="mt-1.5 flex items-start gap-1.5 rounded-lg bg-amber-100/70 px-2 py-1 text-xs font-medium text-amber-800">
+                                        <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
+                                        <span>Check-in feito no modo <strong>Musculação Livre</strong> — o certo é <strong>Personal</strong>. Peça pra refazer no app ou marque a presença manual.</span>
+                                      </div>
+                                    )}
                                     <div className="mt-2">
                                       {!ag.coach_id && coachesLivres.length > 0 && (
                                         <select className="input input-sm text-xs max-w-[230px]" defaultValue=""
@@ -832,9 +854,15 @@ export default function RecepcaoAgendaPage() {
                                     </div>
                                   </div>
                                   {feito || faltou ? (
-                                    <span className={`flex-shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${statusConfig[ag.status]?.color}`}>
-                                      {statusConfig[ag.status]?.label}
-                                    </span>
+                                    viaCheckin ? (
+                                      <span className="flex flex-shrink-0 items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700" title={`Presença confirmada pelo check-in ${ag.presenca_checkin_origem === 'totalpass' ? 'TotalPass' : 'Wellhub'}`}>
+                                        <CheckCircle size={13} /> Check-in confirmado
+                                      </span>
+                                    ) : (
+                                      <span className={`flex-shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${statusConfig[ag.status]?.color}`}>
+                                        {statusConfig[ag.status]?.label}
+                                      </span>
+                                    )
                                   ) : (
                                     <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row">
                                       <button onClick={() => marcarPresenca(ag.id)} className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
