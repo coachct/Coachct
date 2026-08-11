@@ -23,6 +23,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { waitUntil } from '@vercel/functions';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { validarCheckinTotalpass } from '@/lib/totalpass/validar-checkin';
+import { ehModoPersonal, marcarPresencaCoachCt } from '@/lib/coach-ct/presenca-checkin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -208,6 +209,11 @@ export async function POST(
           cpf,
         })
       );
+      // Check-in no MODO PERSONAL (Coach CT): marca presença no agendamento de
+      // hoje pelo CPF, em paralelo e à prova de falha. Musculação livre não dispara.
+      if (ehModoPersonal(planCode)) {
+        waitUntil(marcarPresencaCoachCt(supabase, 'totalpass', { cpf }));
+      }
     }
   } else if (!ativo) {
     console.log('[totalpass/checkin] OBSERVACAO — gravado sem confirmar/cobrar:', eventoId);

@@ -667,11 +667,12 @@ export default function AdminAgendaPage() {
                               const { label: planoLabel, icon: planoIcon } = parsePlanoKey(ag.tipo_credito || '')
                               const feito = ag.status === 'realizado'
                               const faltou = ag.status === 'falta'
+                              const viaCheckin = feito && ag.presenca_checkin
                               const coachesHorario = coachesPorHorario(h)
                               const agsH = agendamentosPorHorario(h).filter(a => a.status !== 'cancelado')
                               const coachesLivres = coachesHorario.filter(c => !agsH.some(a => a.id !== ag.id && a.coach_id === c.coaches?.id))
                               return (
-                                <div key={ag.id} className={`flex items-start gap-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm border-l-4 ${feito ? 'border-l-gray-300 opacity-70' : faltou ? 'border-l-orange-400' : ag.coach_id ? 'border-l-green-400' : 'border-l-primary-400'}`}>
+                                <div key={ag.id} className={`flex items-start gap-4 rounded-2xl border p-4 shadow-sm border-l-4 ${viaCheckin ? 'border-emerald-200 bg-emerald-50 border-l-emerald-500' : feito ? 'border-gray-100 bg-white border-l-gray-300 opacity-70' : faltou ? 'border-gray-100 bg-white border-l-orange-400' : ag.coach_id ? 'border-gray-100 bg-white border-l-green-400' : 'border-gray-100 bg-white border-l-primary-400'}`}>
                                   <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-primary-100 text-sm font-bold text-primary-800">
                                     {ag.clientes?.nome?.slice(0, 2).toUpperCase()}
                                   </div>
@@ -705,9 +706,15 @@ export default function AdminAgendaPage() {
                                     </div>
                                   </div>
                                   {feito || faltou ? (
-                                    <span className={`flex-shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${statusConfig[ag.status]?.color}`}>
-                                      {statusConfig[ag.status]?.label}
-                                    </span>
+                                    viaCheckin ? (
+                                      <span className="flex flex-shrink-0 items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700" title={`Presença confirmada pelo check-in ${ag.presenca_checkin_origem === 'totalpass' ? 'TotalPass' : 'Wellhub'}`}>
+                                        <CheckCircle size={13} /> Check-in confirmado
+                                      </span>
+                                    ) : (
+                                      <span className={`flex-shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${statusConfig[ag.status]?.color}`}>
+                                        {statusConfig[ag.status]?.label}
+                                      </span>
+                                    )
                                   ) : (
                                     <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row">
                                       <button onClick={() => marcarPresenca(ag.id)} className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
