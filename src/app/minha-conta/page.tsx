@@ -414,7 +414,9 @@ export default function MinhaContaPage() {
     if (pode && diffHoras <= 12) {
       let temFila = false
       if (item.tipo==='ct') {
-        const {data:f} = await supabase.from('fila_espera').select('id').eq('data',item.data).eq('unidade_id',item.original.unidade_id).eq('status','aguardando').limit(1)
+        // Fila DESTE horário — não basta haver fila em qualquer horário do dia
+        // (bug antigo: filtrava só data+unidade e liberava cancelamento tardio).
+        const {data:f} = await supabase.from('fila_espera').select('id').eq('data',item.data).eq('horario',item.original.horario).eq('unidade_id',item.original.unidade_id).eq('status','aguardando').limit(1)
         temFila = (f||[]).length>0
       } else {
         const {data:f} = await supabase.from('fila_espera').select('id').eq('ocorrencia_id',item.original.club_ocorrencias?.id).eq('status','aguardando').limit(1)

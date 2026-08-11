@@ -772,6 +772,7 @@ export async function cancelarAgendamentoCt(
       .from('fila_espera')
       .select('id')
       .eq('data', ag.data)
+      .eq('horario', ag.horario)
       .eq('unidade_id', ag.unidade_id)
       .eq('status', 'aguardando')
       .limit(1)
