@@ -166,6 +166,7 @@ function AulasPageInner() {
   // Modal de telefone (Pagar.me exige telefone no customer para cobrar multa)
   const [modalTelefone,  setModalTelefone]  = useState(false)
   const [cardCheckin,    setCardCheckin]    = useState(false)
+  const [wellhubEmailInput, setWellhubEmailInput] = useState('')
   const [pendingReserva, setPendingReserva] = useState<(() => void) | null>(null)
 
   // Toda a grade parte do "hoje" em São Paulo, não do relógio do dispositivo: cliente
@@ -401,6 +402,7 @@ function AulasPageInner() {
   }
   async function abrirModalReserva(oc: any, soAvulso: boolean = false) {
     setModalReserva(oc); setPosicaoSel(''); setErroModal(''); setModalSoAvulso(soAvulso); setAvisoLotou(false)
+    setWellhubEmailInput(cliente?.email || '') // pré-preenche o email do Wellhub com o da conta
     // ClassPass usa crédito fixo 'classpass'; em modo só-avulso pré-seleciona o avulso disponível
     setTipoCredito(cliente?.is_classpass ? 'classpass' : (soAvulso ? (avulsoDisponiveis[0] || '') : ''))
     if (oc.club_aulas?.tipo === 'running_funcional') await carregarPosicoes(oc.id)
@@ -425,6 +427,25 @@ function AulasPageInner() {
     if (modalReserva?.club_aulas?.tipo === 'running_funcional' && !posicaoSel) { setErroModal('Selecione sua posição no mapa.'); return }
     if (!cliente || !modalReserva) return
     setConfirmando(true); setErroModal('')
+    // Wellhub sem vínculo: EXIGE o email do Wellhub (bloqueia a reserva até informar).
+    // É o que casa o check-in com a reserva na chegada. Uma vez informado, nunca mais pede.
+    if (/^wellhub/i.test(tipoCredito) && !cliente?.wellhub_id && !cliente?.wellhub_email) {
+      const e = wellhubEmailInput.trim().toLowerCase()
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) {
+        setErroModal('Informe o email que você usa no Wellhub — é o que valida seu check-in na chegada.')
+        setConfirmando(false); return
+      }
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const r = await fetch('/api/conta/wellhub-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+          body: JSON.stringify({ email: e }),
+        }).then((x) => x.json()).catch(() => ({}))
+        if (!r?.ok) { setErroModal('Não deu pra salvar o email do Wellhub. Tente de novo.'); setConfirmando(false); return }
+        setCliente((prev: any) => (prev ? { ...prev, wellhub_email: e } : prev))
+      } catch { setErroModal('Não deu pra salvar o email do Wellhub. Tente de novo.'); setConfirmando(false); return }
+    }
     // Trava anti-aba-velha: bloqueia reservar aula que já começou (mesmo furo do /mapa —
     // a lista esconde no render, mas o modal aberto há horas gravava sem revalidar a hora).
     // Compara no fuso de São Paulo (lib/tempo), não no relógio do dispositivo.
@@ -1039,6 +1060,17 @@ function AulasPageInner() {
               <div style={{ background:'#0a0a0a', border:'1px solid #1a1a1a', borderRadius:10, padding:'0.75rem 1rem', marginBottom:'1.25rem', fontSize:12, color:'#444', lineHeight:1.7 }}>
                 ⚠️ Cancelamento gratuito <strong style={{ color:'#666' }}>até 12h antes</strong>. Com fila de espera, prazo reduz para 3h. Falta sem aviso gera multa de <strong style={{ color:'#666' }}>R$49,90</strong>.
               </div>
+              {/^wellhub/i.test(tipoCredito) && !cliente?.is_classpass && !cliente?.wellhub_id && !cliente?.wellhub_email && (
+                <div style={{ background:'#12081a', border:'1px solid #ff2d9b44', borderRadius:10, padding:'0.9rem 1rem', marginBottom:'1rem' }}>
+                  <div style={{ fontSize:13, fontWeight:700, color:'#ff5aa6', marginBottom:6 }}>💜 Confirme seu email do Wellhub</div>
+                  <div style={{ fontSize:12, color:'#888', lineHeight:1.5, marginBottom:10 }}>
+                    É o email que você usa no app do Wellhub — precisamos dele pra validar seu check-in na chegada, sem fila. (Você só informa uma vez.)
+                  </div>
+                  <input type="email" inputMode="email" value={wellhubEmailInput} onChange={(ev) => setWellhubEmailInput(ev.target.value)}
+                    placeholder="email do app Wellhub"
+                    style={{ width:'100%', background:'#0a0a0a', border:'1px solid #2a2a2a', borderRadius:8, padding:'0.7rem', color:'#fff', fontSize:14, fontFamily:"'DM Sans', sans-serif" }} />
+                </div>
+              )}
               {erroModal && <div style={{ background:'#ff2d9b15', border:'1px solid #ff2d9b44', borderRadius:8, padding:'0.6rem 1rem', fontSize:13, color:ACCENT, marginBottom:'1rem' }}>{erroModal}</div>}
               <div style={{ display:'flex', gap:8 }}>
                 <button onClick={fecharModalReserva} style={{ flex:1, background:'transparent', border:'1px solid #2a2a2a', borderRadius:10, padding:'0.85rem', color:'#555', fontSize:14, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>Cancelar</button>
