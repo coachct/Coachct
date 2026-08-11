@@ -668,11 +668,12 @@ export default function AdminAgendaPage() {
                               const feito = ag.status === 'realizado'
                               const faltou = ag.status === 'falta'
                               const viaCheckin = feito && ag.presenca_checkin
+                              const modoErrado = !feito && !faltou && ag.checkin_modo_errado
                               const coachesHorario = coachesPorHorario(h)
                               const agsH = agendamentosPorHorario(h).filter(a => a.status !== 'cancelado')
                               const coachesLivres = coachesHorario.filter(c => !agsH.some(a => a.id !== ag.id && a.coach_id === c.coaches?.id))
                               return (
-                                <div key={ag.id} className={`flex items-start gap-4 rounded-2xl border p-4 shadow-sm border-l-4 ${viaCheckin ? 'border-emerald-200 bg-emerald-50 border-l-emerald-500' : feito ? 'border-gray-100 bg-white border-l-gray-300 opacity-70' : faltou ? 'border-gray-100 bg-white border-l-orange-400' : ag.coach_id ? 'border-gray-100 bg-white border-l-green-400' : 'border-gray-100 bg-white border-l-primary-400'}`}>
+                                <div key={ag.id} className={`flex items-start gap-4 rounded-2xl border p-4 shadow-sm border-l-4 ${viaCheckin ? 'border-emerald-200 bg-emerald-50 border-l-emerald-500' : modoErrado ? 'border-amber-200 bg-amber-50 border-l-amber-500' : feito ? 'border-gray-100 bg-white border-l-gray-300 opacity-70' : faltou ? 'border-gray-100 bg-white border-l-orange-400' : ag.coach_id ? 'border-gray-100 bg-white border-l-green-400' : 'border-gray-100 bg-white border-l-primary-400'}`}>
                                   <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-primary-100 text-sm font-bold text-primary-800">
                                     {ag.clientes?.nome?.slice(0, 2).toUpperCase()}
                                   </div>
@@ -683,6 +684,12 @@ export default function AdminAgendaPage() {
                                       <div className="truncate text-lg font-bold text-gray-900">{ag.clientes?.nome || '—'}</div>
                                     )}
                                     <div className="mt-0.5 text-sm text-gray-500">{planoIcon} {planoLabel}</div>
+                                    {modoErrado && (
+                                      <div className="mt-1.5 flex items-start gap-1.5 rounded-lg bg-amber-100/70 px-2 py-1 text-xs font-medium text-amber-800">
+                                        <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
+                                        <span>Check-in feito no modo <strong>Musculação Livre</strong> — o certo é <strong>Personal</strong>. Peça pra refazer no app ou marque a presença manual.</span>
+                                      </div>
+                                    )}
                                     <div className="mt-2">
                                       {!ag.coach_id && coachesLivres.length > 0 && (
                                         <select className="input input-sm text-xs max-w-[230px]" defaultValue=""

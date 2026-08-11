@@ -20,7 +20,7 @@ import crypto from 'crypto';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { validarCheckin, buscarValor } from '@/lib/wellhub/validar-checkin';
 import { validarTicket } from '@/lib/wellhub/validate';
-import { ehModoPersonal, marcarPresencaCoachCt } from '@/lib/coach-ct/presenca-checkin';
+import { ehModoPersonal, registrarCheckinCoachCt } from '@/lib/coach-ct/presenca-checkin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -283,10 +283,12 @@ export async function POST(req: NextRequest) {
           produtoDescricao,
         })
       );
-      // Check-in no MODO PERSONAL (Coach CT): marca presença no agendamento de
-      // hoje, em paralelo e à prova de falha. Musculação livre não dispara isto.
-      if (ehModoPersonal(produtoDescricao, produto)) {
-        waitUntil(marcarPresencaCoachCt(supabase, 'wellhub', { wellhubId: gympassId, email, nome }));
+      // Reação Coach CT: personal marca presença no agendamento de hoje;
+      // musculação livre sinaliza "modo errado" se a pessoa tiver treino Coach CT
+      // hoje. Em paralelo e à prova de falha (a descrição já vem no payload).
+      {
+        const modo = ehModoPersonal(produtoDescricao, produto) ? 'personal' : 'walkin';
+        waitUntil(registrarCheckinCoachCt(supabase, 'wellhub', modo, { wellhubId: gympassId, email, nome }));
       }
     }
   }
