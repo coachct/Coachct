@@ -85,6 +85,38 @@ async function registrarPlace(
   }
 }
 
+// Seta/atualiza a URL do webhook CHECKIN do place. O create diz "já existe" e o
+// GET mostra placeWebhookUrl=null — então precisamos ATUALIZAR. A doc não deu o
+// endpoint de update; sonda candidatos comuns (mandando a nossa URL correta) e
+// para no 1o 2xx.
+async function atualizarPlace(placeId: string, partnerKey: string, webhookUrl: string): Promise<any> {
+  const a = await autenticar(placeId, partnerKey);
+  if ('erro' in a) return a.erro;
+  const bodyPadrao = JSON.stringify({ webhook_url: webhookUrl, webhook_type: 'CHECKIN' });
+  const candidatos = [
+    { m: 'PUT',   p: '/partner/webhook',        body: bodyPadrao },
+    { m: 'POST',  p: '/partner/webhook/update', body: bodyPadrao },
+    { m: 'PATCH', p: '/partner/webhook',        body: bodyPadrao },
+    { m: 'PUT',   p: '/partner/webhook/checkin', body: bodyPadrao },
+  ];
+  const tentativas: any[] = [];
+  for (const c of candidatos) {
+    try {
+      const r = await fetch(`${GYM_SERVICE_BASE}${c.p}`, {
+        method: c.m,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${a.jwt}` },
+        body: c.body,
+      });
+      const txt = await r.text();
+      tentativas.push({ endpoint: `${c.m} ${c.p}`, status: r.status, resposta: txt?.slice(0, 400) });
+      if (r.ok) break; // achou o endpoint certo
+    } catch (e: any) {
+      tentativas.push({ endpoint: `${c.m} ${c.p}`, erro: e?.message ?? String(e) });
+    }
+  }
+  return { placeId, tentativas };
+}
+
 // Diagnóstico: lista os webhooks já registrados no place (pra ver qual URL está lá).
 // Prova vários caminhos REST comuns porque a doc não deu o de listagem.
 async function listarPlace(placeId: string, partnerKey: string): Promise<any> {
@@ -135,6 +167,13 @@ export async function POST(req: NextRequest) {
     const resultados = [];
     for (const p of places) resultados.push(await listarPlace(p, partnerKey));
     return NextResponse.json({ acao, resultados });
+  }
+
+  // Atualiza a URL do webhook CHECKIN (quando o create diz "já existe").
+  if (acao === 'atualizar') {
+    const resultados = [];
+    for (const p of places) resultados.push(await atualizarPlace(p, partnerKey, webhookUrl));
+    return NextResponse.json({ acao, webhook_url: `${WEBHOOK_HOST}/api/totalpass/checkin/${token.slice(0, 4)}…`, resultados });
   }
 
   const resultados: PassoResultado[] = [];
