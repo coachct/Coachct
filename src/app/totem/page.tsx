@@ -302,22 +302,20 @@ export default function TotemPage() {
 
             {/* IDLE — menu de entrada (câmera só abre no toque) */}
             {screen === 'idle' && (
-              <section className="screen on">
+              <section className="screen on center">
                 <div className="express-hdr">
                   <div className="ex-title">CHECK-IN <span>EXPRESS</span></div>
                   <div className="ex-sub">Se você já possui reserva, escolha a opção abaixo</div>
                 </div>
-                <div className="grow center">
-                  <div className="tiles">
-                    <button className="tile primary" onClick={() => { setFaceMsg('Olhe para a câmera'); setScreen('face') }}>
-                      <span className="tico">📷</span>
-                      <span className="tlab">Reconhecimento<br />Facial</span>
-                    </button>
-                    <button className="tile" onClick={() => abrirCpf('checkin')}>
-                      <span className="tico">🔢</span>
-                      <span className="tlab">CPF</span>
-                    </button>
-                  </div>
+                <div className="tiles">
+                  <button className="tile primary" onClick={() => { setFaceMsg('Olhe para a câmera'); setScreen('face') }}>
+                    <span className="tico">📷</span>
+                    <span className="tlab">Reconhecimento<br />Facial</span>
+                  </button>
+                  <button className="tile" onClick={() => abrirCpf('checkin')}>
+                    <span className="tico">🔢</span>
+                    <span className="tlab">CPF</span>
+                  </button>
                 </div>
               </section>
             )}
