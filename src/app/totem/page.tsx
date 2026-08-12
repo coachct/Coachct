@@ -305,11 +305,7 @@ export default function TotemPage() {
               <section className="screen on">
                 <div className="express-hdr">
                   <div className="ex-title">CHECK-IN <span>EXPRESS</span></div>
-                  <div className="ex-sub">
-                    {unidade?.tipo === 'ct'
-                      ? <>Se você já tem acesso, escolha a opção abaixo:</>
-                      : <>Se você já possui reserva, escolha a opção abaixo:</>}
-                  </div>
+                  <div className="ex-sub">Se você já possui reserva, escolha a opção abaixo</div>
                 </div>
                 <div className="grow center">
                   <div className="tiles">
