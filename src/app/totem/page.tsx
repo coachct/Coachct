@@ -366,45 +366,49 @@ export default function TotemPage() {
             {/* RESERVA */}
             {screen === 'reserva' && reserva && (
               <section className="screen on center">
-                <h2 style={{ marginBottom: 8 }}>Olá, {nome.split(' ')[0]}</h2>
-
-                {reserva.flow === 'confirmar' ? (
-                  <div className="status ok" style={{ fontSize: 15 }}><span className="si">✓</span><span>Reserva com crédito Just Club — confirme que você chegou.</span></div>
+                {reserva.flow === 'aguardar_parceiro' ? (
+                  // PENDENTE: NÃO mostra infos da aula (evita a pessoa achar que já
+                  // está confirmada). Só o aviso de fazer o check-in no app.
+                  <>
+                    {nome && <p className="wait-hi">Olá, {nome.split(' ')[0]} 👋</p>}
+                    <div className="wait-emoji">⏳</div>
+                    <div className="wait-big">Confirme o seu check-in no app parceiro</div>
+                    <p className="wait-sub">Abra o app do <b>{reserva.origem}</b> aqui na unidade e confirme seu check-in. Assim que confirmar, sua reserva aparece aqui automaticamente.</p>
+                    <div className="live"><span className="dot" /> aguardando seu check-in…</div>
+                    <div className="grow" />
+                    <div className="stack">
+                      <button className="btn" onClick={irIdle}>Voltar ao início</button>
+                    </div>
+                  </>
                 ) : (
-                  <div className="status pend" style={{ fontSize: 16 }}><span className="si">⏳</span><span><b>Faça seu check-in no app parceiro</b>, para confirmar seu check-in.</span></div>
-                )}
-
-                <div className="nextcard">
-                  <div className="lbl">Sua aula</div>
-                  <div className="cls" style={{ fontSize: 24 }}>{reserva.aulaNome}</div>
-                  <div className="row">
-                    <span className={'chip ' + tipoClasse(reserva.aulaTipo)}>{tipoLabel(reserva.aulaTipo)}</span>
-                    <span className="chip time">{reserva.horario}</span>
-                    {reserva.coach && <span className="chip time">{reserva.coach}</span>}
-                  </div>
-                  <div className="origem">
-                    <span className="oico" style={{ background: reserva.isPartner ? 'rgba(245,158,11,.18)' : 'rgba(91,141,239,.18)' }}>{reserva.isPartner ? '🎫' : '💳'}</span>
-                    Reserva via <b>{reserva.origem}</b>
-                  </div>
-                </div>
-
-                {reserva.aulaTipo === 'running_funcional' && reserva.posicao && (
-                  <div className="posbox">
-                    <div className="l">Sua posição</div>
-                    <div className="n">{reserva.posicao}</div>
-                    <div className="pt">{reserva.posicao.toUpperCase().startsWith('F') ? 'Funcional' : 'Esteira'}</div>
-                    <div className="posnote-in">⚠️ Respeite a posição agendada</div>
-                  </div>
-                )}
-
-                <div className="grow" />
-                {reserva.flow === 'confirmar' ? (
-                  <div className="stack"><button className="btn ok" onClick={() => registrarPresenca(reserva)}>Confirmar presença ✓</button></div>
-                ) : (
-                  <div className="stack">
-                    <div className="live" style={{ marginTop: 0 }}><span className="dot" /> aguardando seu check-in…</div>
-                    <button className="btn" onClick={irIdle}>Voltar ao início</button>
-                  </div>
+                  // CONFIRMAR (crédito Just Club): mostra aula + posição e o botão.
+                  <>
+                    <h2 style={{ marginBottom: 8 }}>Olá, {nome.split(' ')[0]}</h2>
+                    <div className="status ok" style={{ fontSize: 15 }}><span className="si">✓</span><span>Reserva com crédito Just Club — confirme que você chegou.</span></div>
+                    <div className="nextcard">
+                      <div className="lbl">Sua aula</div>
+                      <div className="cls" style={{ fontSize: 24 }}>{reserva.aulaNome}</div>
+                      <div className="row">
+                        <span className={'chip ' + tipoClasse(reserva.aulaTipo)}>{tipoLabel(reserva.aulaTipo)}</span>
+                        <span className="chip time">{reserva.horario}</span>
+                        {reserva.coach && <span className="chip time">{reserva.coach}</span>}
+                      </div>
+                      <div className="origem">
+                        <span className="oico" style={{ background: reserva.isPartner ? 'rgba(245,158,11,.18)' : 'rgba(91,141,239,.18)' }}>{reserva.isPartner ? '🎫' : '💳'}</span>
+                        Reserva via <b>{reserva.origem}</b>
+                      </div>
+                    </div>
+                    {reserva.aulaTipo === 'running_funcional' && reserva.posicao && (
+                      <div className="posbox">
+                        <div className="l">Sua posição</div>
+                        <div className="n">{reserva.posicao}</div>
+                        <div className="pt">{reserva.posicao.toUpperCase().startsWith('F') ? 'Funcional' : 'Esteira'}</div>
+                        <div className="posnote-in">⚠️ Respeite a posição agendada</div>
+                      </div>
+                    )}
+                    <div className="grow" />
+                    <div className="stack"><button className="btn ok" onClick={() => registrarPresenca(reserva)}>Confirmar presença ✓</button></div>
+                  </>
                 )}
               </section>
             )}
@@ -427,7 +431,12 @@ export default function TotemPage() {
                 <div className="check-badge">✓</div><div className="bigmsg">Bom treino!</div>
                 <p className="sub">{nome} · presença confirmada</p>
                 {reserva.aulaTipo === 'running_funcional' && reserva.posicao && (
-                  <div className="posbox"><div className="l">Sua posição</div><div className="n">{reserva.posicao}</div></div>
+                  <div className="posbox">
+                    <div className="l">Sua posição</div>
+                    <div className="n">{reserva.posicao}</div>
+                    <div className="pt">{reserva.posicao.toUpperCase().startsWith('F') ? 'Funcional' : 'Esteira'}</div>
+                    <div className="posnote-in">⚠️ Respeite a posição agendada</div>
+                  </div>
                 )}
                 <div className="nextcard" style={{ marginTop: 6 }}>
                   <div className="lbl">Presença registrada</div>
