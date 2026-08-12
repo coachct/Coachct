@@ -23,6 +23,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { waitUntil } from '@vercel/functions';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { validarCheckinTotalpass } from '@/lib/totalpass/validar-checkin';
+import { validarCheckinClubTotalpass } from '@/lib/totalpass/validar-checkin-club';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -149,15 +150,17 @@ export async function POST(
   const ehClub = placeName.toLowerCase().includes('club');
 
   let unidadeId = UNIDADE_CT;
+  let unidadePlaceId: string | null = null; // totalpass_place_id da unidade Club (auth do repasse)
   if (ehClub) {
     // resolve a unidade Club pelo nome (Pinheiros x demais Club)
-    const { data: clubs } = await supabase.from('unidades').select('id, nome').eq('tipo', 'club');
+    const { data: clubs } = await supabase.from('unidades').select('id, nome, totalpass_place_id').eq('tipo', 'club');
     const isPin = placeName.toLowerCase().includes('pinheiros');
     const match = (clubs || []).find((u: any) =>
       isPin ? String(u.nome || '').toLowerCase().includes('pinheiros')
             : !String(u.nome || '').toLowerCase().includes('pinheiros')
     );
     if (match?.id) unidadeId = match.id as string;
+    if (match?.totalpass_place_id) unidadePlaceId = String(match.totalpass_place_id);
   } else if (placeCode) {
     const { data: uni } = await supabase
       .from('unidades')
@@ -196,8 +199,20 @@ export async function POST(
   //    é confirmado nem cobrado; serve só pra inspeção do payload real.
   if (ativo && inserida?.id) {
     if (ehClub) {
-      // Club (aulas): marca presença NA HORA pelo CPF. NÃO valida/cobra como CT.
+      // Club (aulas): marca presença NA HORA pelo CPF...
       waitUntil(marcarPresencaClubTotalpass(supabase, cpf));
+      // ...e valida de volta na TotalPass (repasse), com a chave do place Club.
+      // Mantém status 'aula'; só carimba validado_em + valor. Isolado/à prova de falha.
+      waitUntil(
+        validarCheckinClubTotalpass({
+          entradaId: inserida.id,
+          endpoint,
+          cpf,
+          planCode,
+          placeId: unidadePlaceId,
+          startedAt,
+        })
+      );
     } else {
       // CT (musculação): fluxo legado INTOCADO — confirma de volta + validado + valor.
       waitUntil(
