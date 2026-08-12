@@ -306,30 +306,22 @@ export default function TotemPage() {
                 <div className="express-hdr">
                   <div className="ex-title">CHECK-IN <span>EXPRESS</span></div>
                   <div className="ex-sub">
-                    {unidade?.tipo === 'ct' ? (
-                      <>Já tem acesso (plano ou app parceiro)? Escolha abaixo.<br />
-                      Sem acesso? <b>Dirija-se ao atendimento</b>.</>
-                    ) : (
-                      <>Já possui reserva? Escolha abaixo.<br />
-                      1ª vez ou sem reserva? <b>Dirija-se ao atendimento</b>.</>
-                    )}
+                    {unidade?.tipo === 'ct'
+                      ? <>Se você já tem acesso, escolha a opção abaixo:</>
+                      : <>Se você já possui reserva, escolha a opção abaixo:</>}
                   </div>
                 </div>
                 <div className="grow center">
-                  <div className="menu-q">Como você quer fazer seu check-in?</div>
                   <div className="tiles">
                     <button className="tile primary" onClick={() => { setFaceMsg('Olhe para a câmera'); setScreen('face') }}>
                       <span className="tico">📷</span>
-                      <span className="tlab">Reconhecer<br />meu rosto</span>
+                      <span className="tlab">Reconhecimento<br />Facial</span>
                     </button>
                     <button className="tile" onClick={() => abrirCpf('checkin')}>
                       <span className="tico">🔢</span>
-                      <span className="tlab">Digitar<br />meu CPF</span>
+                      <span className="tlab">CPF</span>
                     </button>
                   </div>
-                </div>
-                <div className="stack">
-                  <button className="btn pinkghost" onClick={() => abrirCpf('enroll')}>Cadastrar meu rosto</button>
                 </div>
               </section>
             )}
@@ -405,11 +397,11 @@ export default function TotemPage() {
                   </>
                 ) : (
                   <>
-                    <div className="status pend"><span className="si">⏳</span><span>Check-in do <b>{reserva.origem}</b> pendente. Faça o check-in no app — assim que confirmar, seu treino é liberado automaticamente.</span></div>
+                    <div className="status pend" style={{ fontSize: 15 }}><span className="si">⏳</span><span><b>Faça seu check-in no app {reserva.origem}</b> aqui na unidade. Assim que confirmar, sua presença é registrada automaticamente.</span></div>
+                    <div className="live"><span className="dot" /> aguardando seu check-in…</div>
                     <div className="grow" />
                     <div className="stack">
-                      <button className="btn" disabled>Aguardando check-in do app…</button>
-                      <button className="btn ghost sm" onClick={irIdle}>Não consigo — falar com a recepção</button>
+                      <button className="btn" onClick={irIdle}>Voltar ao início</button>
                     </div>
                   </>
                 )}
@@ -485,16 +477,14 @@ export default function TotemPage() {
             {/* CT: aguardando check-in do parceiro */}
             {screen === 'ctAguardando' && (
               <section className="screen on center">
-                <div className="avatar">🧑</div>
-                <h2>Olá, {nome.split(' ')[0]}</h2>
-                <div className="status pend" style={{ marginTop: 8 }}>
-                  <span className="si">⏳</span>
-                  <span>Ainda não encontramos seu acesso. Faça o <b>check-in no app (Wellhub / TotalPass)</b> aqui na unidade — assim que validar, liberamos automaticamente.</span>
-                </div>
-                <div className="live"><span className="dot" /> aguardando check-in no app…</div>
+                {nome && <p className="wait-hi">Olá, {nome.split(' ')[0]} 👋</p>}
+                <div className="wait-emoji">⏳</div>
+                <div className="wait-big">FAÇA SEU<br />CHECK-IN NO<br />APP PARCEIRO</div>
+                <p className="wait-sub">Abra o <b>Wellhub</b> ou <b>TotalPass</b> aqui na unidade e faça o check-in. Seu acesso libera <b>automaticamente</b>.</p>
+                <div className="live"><span className="dot" /> aguardando seu check-in…</div>
                 <div className="grow" />
                 <div className="stack">
-                  <button className="btn ghost sm" onClick={irIdle}>Não consigo — falar com a recepção</button>
+                  <button className="btn" onClick={irIdle}>Voltar ao início</button>
                 </div>
               </section>
             )}
@@ -587,7 +577,11 @@ const CSS = `
 #tt .btn.pinkghost{background:rgba(255,45,142,.08);border:1px solid rgba(255,45,142,.4);color:var(--pink2);box-shadow:none;font-size:18px;padding:18px}
 #tt .btn[disabled]{opacity:.45;cursor:not-allowed;box-shadow:none}
 #tt .stack{display:flex;flex-direction:column;gap:12px}
-#tt .menu-q{font-size:15px;font-weight:700;color:var(--mut);margin:2px 0 16px;text-align:center}
+#tt .wait-hi{font-size:19px;font-weight:700;color:#e9e9f2;margin:0 0 6px}
+#tt .wait-emoji{font-size:76px;line-height:1;margin-bottom:8px;animation:pulse 1.6s infinite}
+#tt .wait-big{font-size:38px;font-weight:900;line-height:1.1;letter-spacing:.5px;color:#fcd34d;margin:2px 0 16px}
+#tt .wait-sub{font-size:17px;line-height:1.5;color:#dcdce8;max-width:360px;margin:0 0 18px}
+#tt .wait-sub b{color:#fde68a}
 #tt .tiles{display:grid;grid-template-columns:1fr 1fr;gap:14px;width:100%}
 #tt .tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:32px 12px;border-radius:22px;cursor:pointer;background:var(--panel2);border:1px solid var(--line);color:var(--txt)}
 #tt .tile:active{transform:scale(.97)}
