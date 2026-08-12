@@ -1007,10 +1007,33 @@ function AdminClientesPageInner() {
   const saldosPorUnidade: Record<string, any[]> = {}
   const saldosGlobais: any[] = []
   for (const [key, info] of Object.entries(saldoMes)) {
-    const uid = (info as any).unidade_id
-    if (!uid) { saldosGlobais.push({ key, ...info as any }); continue }
+    const i = info as any
+    // Pacote avulso sem saldo (ex.: migração vencida com 0 disponível) não entra
+    // no card — só polui. Plano mensal continua aparecendo mesmo zerado no mês.
+    if (i.tipo_plano === 'avulso' && (i.disponivel || 0) <= 0) continue
+    const uid = i.unidade_id
+    if (!uid) { saldosGlobais.push({ key, ...i }); continue }
     if (!saldosPorUnidade[uid]) saldosPorUnidade[uid] = []
-    saldosPorUnidade[uid].push({ key, ...info as any })
+    saldosPorUnidade[uid].push({ key, ...i })
+  }
+
+  // Walk-in do CT (credito_treino) é omitido de propósito pelo RPC de saldo: ele
+  // é saldo de AGENDAMENTO e walk-in nunca agenda Coach CT. Mas este card é sobre
+  // o que o cliente TEM disponível — então injetamos aqui, só para exibição, os
+  // pacotes de walk-in do CT com saldo. Não toca no RPC nem no saldoMes usado
+  // para agendar, então o crédito não vaza para o Coach CT.
+  for (const pac of avulsosPacotes) {
+    if (pac.unidade_tipo !== 'ct' || pac.tipo !== 'credito_treino') continue
+    if (!pac.unidade_id || (pac.disponiveis || 0) <= 0) continue
+    ;(saldosPorUnidade[pac.unidade_id] ||= []).push({
+      key: 'avulso_walkin:' + pac.chave,
+      tipo_plano: 'avulso',
+      disponivel: pac.disponiveis,
+      total: pac.total,
+      unidade_id: pac.unidade_id,
+      unidade_nome: pac.unidade_nome,
+      nome_pacote: pac.observacao,
+    })
   }
 
   // Nome do pacote de origem por escopo do pool avulso (display-only, via vínculo credito_avulso_id).
@@ -1024,6 +1047,7 @@ function AdminClientesPageInner() {
   }
   function labelSaldo(s: any): string {
     const k = String(s.key || '').toLowerCase()
+    if (k.startsWith('avulso_walkin')) return s.nome_pacote || 'Walk-in CT'
     if ((k.startsWith('avulso') || k.startsWith('credito')) && k !== 'avulso_importado') {
       const scope = s.unidade_id ? 'unit:' + s.unidade_id : 'global'
       const nomes = nomesAvulsoPorScope[scope]
