@@ -187,6 +187,7 @@ function AdminClientesPageInner() {
 
   const [historico, setHistorico] = useState<any[]>([])
   const [clubReservas, setClubReservas] = useState<any[]>([])
+  const [acessosWalkin, setAcessosWalkin] = useState<any[]>([])
   const [saldoMes, setSaldoMes] = useState<Record<string, any>>({})
   const [vendas, setVendas] = useState<any[]>([])
   const [planosCliente, setPlanosCliente] = useState<any[]>([])
@@ -320,10 +321,11 @@ function AdminClientesPageInner() {
       router.replace(`/admin/clientes?id=${cliente.id}`, { scroll: false })
     }
     setClienteSel(cliente); setForm({ ...cliente }); setEditando(false); setAba('dados')
-    setHistorico([]); setClubReservas([]); setVendas([]); setModalSlot(null); setTipoCredito('')
+    setHistorico([]); setClubReservas([]); setAcessosWalkin([]); setVendas([]); setModalSlot(null); setTipoCredito('')
     setErroCriarAcesso(''); setFotoUrl(null); setStatusSync('idle'); setErroSync(''); setAcessoBloqueado(false)
     await Promise.all([
       carregarSaldo(cliente.id), carregarHistorico(cliente.id), carregarClubReservas(cliente.id),
+      carregarAcessosWalkin(cliente.id),
       carregarVendas(cliente.id), carregarPlanosCliente(cliente.id), carregarFotoUrl(cliente),
       carregarAvulsos(cliente.id), carregarBloqueioAcesso(cliente),
     ])
@@ -377,6 +379,18 @@ function AdminClientesPageInner() {
       .order('created_at', { ascending: false })
       .limit(50)
     setClubReservas(data || [])
+  }
+
+  async function carregarAcessosWalkin(clienteId: string) {
+    // Walk-ins de musculação livre no CT. Não geram agendamento nem reserva de
+    // Club — vivem só aqui — então precisam ser lidos à parte pro histórico.
+    const { data } = await supabase.from('acessos_livres_ct')
+      .select('id, data, unidade_id, criado_em, creditos_avulsos(observacao)')
+      .eq('cliente_id', clienteId)
+      .is('cancelado_em', null)
+      .order('data', { ascending: false })
+      .limit(50)
+    setAcessosWalkin(data || [])
   }
 
   async function carregarVendas(clienteId: string) {
@@ -435,10 +449,14 @@ function AdminClientesPageInner() {
         }
       }
       grupos[chave].total++
+      // A fonte de verdade do débito é a coluna `usado` — setada por qualquer
+      // consumo (reserva de Club OU walk-in do CT em acessos_livres_ct). O vínculo
+      // de club_reservas é só para exibir QUAL reserva consumiu; se contarmos
+      // usados por ele, walk-ins do CT somem e o pacote aparece cheio (bug).
       const links = reservasPorCredito[c.id]
-      if (links && links.length > 0) {
+      if (links && links.length > 0) grupos[chave].reservas.push(...links)
+      if (c.usado) {
         grupos[chave].usados++
-        grupos[chave].reservas.push(...links)
       } else if ((c.validade || '') >= hoje) {
         grupos[chave].disponiveis++
       }
@@ -949,6 +967,20 @@ function AdminClientesPageInner() {
     const data = cr.club_ocorrencias?.data
     return (data && data < hoje) || ['presente','falta','realizado'].includes(cr.status)
   }).sort((a, b) => (b.club_ocorrencias?.data || '').localeCompare(a.club_ocorrencias?.data || ''))
+
+  // Coach CT e Club numa lista só, ordenada por dia (chave = data+horário) —
+  // futuros do mais próximo em diante, passados do mais recente pro mais antigo.
+  const chaveCt = (a: any) => `${a.data || ''}T${(a.horario || '').slice(0,5)}`
+  const chaveClub = (cr: any) => `${cr.club_ocorrencias?.data || ''}T${(cr.club_ocorrencias?.club_aulas?.horario || '').slice(0,5)}`
+  const itensFuturos = [
+    ...agendamentosFuturos.map(a => ({ kind: 'ct' as const, chave: chaveCt(a), item: a })),
+    ...clubReservasFuturas.map(cr => ({ kind: 'club' as const, chave: chaveClub(cr), item: cr })),
+  ].sort((a, b) => a.chave.localeCompare(b.chave))
+  const itensPassados = [
+    ...agendamentosPassados.map(a => ({ kind: 'ct' as const, chave: chaveCt(a), item: a })),
+    ...clubReservasPassadas.map(cr => ({ kind: 'club' as const, chave: chaveClub(cr), item: cr })),
+    ...acessosWalkin.map(w => ({ kind: 'walkin' as const, chave: `${w.data || ''}T00:00`, item: w })),
+  ].sort((a, b) => b.chave.localeCompare(a.chave))
 
   const totalFuturos = agendamentosFuturos.length + clubReservasFuturas.length
 
@@ -1587,7 +1619,9 @@ function AdminClientesPageInner() {
                   <div className="card text-center py-12 text-gray-400 text-sm">Nenhum agendamento futuro.</div>
                 ) : (
                   <div className="space-y-2">
-                    {agendamentosFuturos.map(ag => {
+                    {itensFuturos.map(it => {
+                      if (it.kind === 'ct') {
+                      const ag = it.item
                       const cred = creditoLabel(ag.tipo_credito)
                       return (
                       <div key={ag.id} className="card border-l-4 border-l-blue-400">
@@ -1622,8 +1656,8 @@ function AdminClientesPageInner() {
                         </div>
                       </div>
                       )
-                    })}
-                    {clubReservasFuturas.map(cr => {
+                      }
+                      const cr = it.item
                       const oc = cr.club_ocorrencias
                       const aula = oc?.club_aulas
                       const data = oc?.data || ''
@@ -1669,11 +1703,38 @@ function AdminClientesPageInner() {
             {aba === 'historico' && (
               <div>
                 <div className="text-sm font-semibold text-gray-900 mb-4">Histórico de treinos</div>
-                {(agendamentosPassados.length === 0 && clubReservasPassadas.length === 0) ? (
+                {itensPassados.length === 0 ? (
                   <div className="card text-center py-12 text-gray-400 text-sm">Nenhum histórico encontrado.</div>
                 ) : (
                   <div className="space-y-2">
-                    {agendamentosPassados.map(ag => {
+                    {itensPassados.map(it => {
+                      if (it.kind === 'walkin') {
+                      const w = it.item
+                      const uNome = todasUnidades.find((u: any) => u.id === w.unidade_id)?.nome
+                      const pacote = (w as any).creditos_avulsos?.observacao
+                      return (
+                      <div key={w.id} className="card flex items-center gap-3 border-l-4 border-l-green-400">
+                        <div className="w-10 h-10 rounded-xl flex flex-col items-center justify-center flex-shrink-0 bg-green-50">
+                          <div className="text-sm font-bold leading-none text-green-700">{w.data ? new Date(w.data + 'T12:00:00').getDate() : '—'}</div>
+                          <div className="text-xs uppercase text-green-500">{w.data ? new Date(w.data + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' }) : ''}</div>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-base font-bold text-gray-900">Musculação Livre</span>
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 font-medium">Walk-in CT</span>
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">Realizado</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-500 mt-0.5">
+                            <span className="capitalize">{w.data ? new Date(w.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long' }) : '—'}</span>
+                            {uNome && <><span className="text-gray-300">·</span><span>{uNome}</span></>}
+                          </div>
+                          {pacote && <div className="text-xs text-gray-500 mt-1">📦 {pacote}</div>}
+                        </div>
+                      </div>
+                      )
+                      }
+                      if (it.kind === 'ct') {
+                      const ag = it.item
                       const cred = creditoLabel(ag.tipo_credito)
                       return (
                       <div key={ag.id} className={`card flex items-center gap-3 border-l-4 ${ag.status === 'realizado' ? 'border-l-green-400' : ag.status === 'falta' ? 'border-l-orange-400' : 'border-l-gray-200'}`}>
@@ -1703,8 +1764,8 @@ function AdminClientesPageInner() {
                         </div>
                       </div>
                       )
-                    })}
-                    {clubReservasPassadas.map(cr => {
+                      }
+                      const cr = it.item
                       const oc = cr.club_ocorrencias
                       const aula = oc?.club_aulas
                       const data = oc?.data || ''
