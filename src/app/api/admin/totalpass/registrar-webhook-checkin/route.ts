@@ -38,18 +38,15 @@ type PassoResultado = {
   erro?: string;
 };
 
-async function registrarPlace(
+// Autentica um place e devolve o JWT (ou um resultado de erro).
+async function autenticar(
   placeId: string,
-  partnerKey: string,
-  webhookUrl: string
-): Promise<PassoResultado> {
+  partnerKey: string
+): Promise<{ jwt: string } | { erro: PassoResultado }> {
   const placeKey = apiKeyPorPlace(placeId);
   if (!placeKey) {
-    return { placeId, ok: false, etapa: 'config', erro: `place_api_key ausente no ambiente para o place ${placeId}` };
+    return { erro: { placeId, ok: false, etapa: 'config', erro: `place_api_key ausente no ambiente para o place ${placeId}` } };
   }
-
-  // 1) auth -> JWT
-  let jwt: string | null = null;
   try {
     const r = await fetch(`${GYM_SERVICE_BASE}/partner/auth`, {
       method: 'POST',
@@ -59,22 +56,26 @@ async function registrarPlace(
     const txt = await r.text();
     let body: any = null;
     try { body = txt ? JSON.parse(txt) : null; } catch { body = null; }
-    if (!r.ok) {
-      return { placeId, ok: false, etapa: 'auth', status: r.status, resposta: txt?.slice(0, 300) };
-    }
-    jwt = body?.token ?? body?.access_token ?? body?.jwt ?? body?.data?.token ?? null;
-    if (!jwt) {
-      return { placeId, ok: false, etapa: 'auth', erro: 'auth OK mas sem token no corpo', resposta: txt?.slice(0, 300) };
-    }
+    if (!r.ok) return { erro: { placeId, ok: false, etapa: 'auth', status: r.status, resposta: txt?.slice(0, 300) } };
+    const jwt = body?.token ?? body?.access_token ?? body?.jwt ?? body?.data?.token ?? null;
+    if (!jwt) return { erro: { placeId, ok: false, etapa: 'auth', erro: 'auth OK mas sem token no corpo', resposta: txt?.slice(0, 300) } };
+    return { jwt };
   } catch (e: any) {
-    return { placeId, ok: false, etapa: 'auth', erro: e?.message ?? String(e) };
+    return { erro: { placeId, ok: false, etapa: 'auth', erro: e?.message ?? String(e) } };
   }
+}
 
-  // 2) webhook/create
+async function registrarPlace(
+  placeId: string,
+  partnerKey: string,
+  webhookUrl: string
+): Promise<PassoResultado> {
+  const a = await autenticar(placeId, partnerKey);
+  if ('erro' in a) return a.erro;
   try {
     const r = await fetch(`${GYM_SERVICE_BASE}/partner/webhook/create`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${a.jwt}` },
       body: JSON.stringify({ webhook_url: webhookUrl, webhook_type: 'CHECKIN' }),
     });
     const txt = await r.text();
@@ -82,6 +83,32 @@ async function registrarPlace(
   } catch (e: any) {
     return { placeId, ok: false, etapa: 'webhook/create', erro: e?.message ?? String(e) };
   }
+}
+
+// Diagnóstico: lista os webhooks já registrados no place (pra ver qual URL está lá).
+// Prova vários caminhos REST comuns porque a doc não deu o de listagem.
+async function listarPlace(placeId: string, partnerKey: string): Promise<any> {
+  const a = await autenticar(placeId, partnerKey);
+  if ('erro' in a) return a.erro;
+  const candidatos = [
+    { m: 'GET', p: '/partner/webhook' },
+    { m: 'GET', p: '/partner/webhooks' },
+    { m: 'GET', p: '/partner/webhook/list' },
+  ];
+  const tentativas: any[] = [];
+  for (const c of candidatos) {
+    try {
+      const r = await fetch(`${GYM_SERVICE_BASE}${c.p}`, {
+        method: c.m,
+        headers: { Authorization: `Bearer ${a.jwt}` },
+      });
+      const txt = await r.text();
+      tentativas.push({ endpoint: `${c.m} ${c.p}`, status: r.status, resposta: txt?.slice(0, 500) });
+    } catch (e: any) {
+      tentativas.push({ endpoint: `${c.m} ${c.p}`, erro: e?.message ?? String(e) });
+    }
+  }
+  return { placeId, tentativas };
 }
 
 export async function POST(req: NextRequest) {
@@ -101,6 +128,14 @@ export async function POST(req: NextRequest) {
   // Permite mirar um place específico (?place=6242); por padrão faz os dois Club.
   const alvo = req.nextUrl.searchParams.get('place');
   const places = alvo ? [alvo] : CLUB_PLACES;
+  const acao = req.nextUrl.searchParams.get('acao') ?? 'criar';
+
+  // Diagnóstico: lista os webhooks já registrados (pra ver qual URL está lá).
+  if (acao === 'listar') {
+    const resultados = [];
+    for (const p of places) resultados.push(await listarPlace(p, partnerKey));
+    return NextResponse.json({ acao, resultados });
+  }
 
   const resultados: PassoResultado[] = [];
   for (const p of places) {
