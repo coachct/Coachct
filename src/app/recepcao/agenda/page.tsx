@@ -226,29 +226,6 @@ export default function RecepcaoAgendaPage() {
     return Math.max(0, total - ocupadas - bloqueadas)
   }
 
-  async function criarNotificacaoCoach(agendamentoId: string, coachId: string) {
-    if (!unidadeAtiva) return
-    const { data: ag } = await supabase
-      .from('agendamentos')
-      .select('*, clientes(id, nome)')
-      .eq('id', agendamentoId)
-      .maybeSingle()
-
-    if (!ag || !ag.clientes) return
-
-    const horario = (ag.horario || '').slice(0, 5)
-    const mensagem = `${ag.clientes.nome} chegou e te aguarda na recepção para o treino das ${horario}.`
-
-    await supabase.from('notificacoes_coach').insert({
-      coach_id: coachId,
-      cliente_id: ag.clientes.id,
-      agendamento_id: agendamentoId,
-      unidade_id: unidadeAtiva.id,
-      tipo: 'cliente_chegou',
-      mensagem,
-    })
-  }
-
   async function alocarCoach(agendamentoId: string, coachId: string) {
     setAlocandoId(agendamentoId)
 
@@ -259,23 +236,21 @@ export default function RecepcaoAgendaPage() {
       .maybeSingle()
 
     if (!coachId) {
-      // 🔧 Desalocar — deixar sem coach (mantém status, não notifica coach)
+      // 🔧 Desalocar — deixar sem coach (mantém status)
       await supabase.from('agendamentos').update({
         coach_id: null,
         alocado_em: null,
         alocado_por: null
       }).eq('id', agendamentoId)
     } else {
+      // Preserva a presença: alocar coach num aluno já presente (check-in) NÃO pode
+      // reverter pra 'confirmado'. O aviso ao coach sai pelo trigger do banco.
       await supabase.from('agendamentos').update({
         coach_id: coachId,
         alocado_em: new Date().toISOString(),
         alocado_por: perfil?.id,
-        status: 'confirmado'
+        status: agAtual?.status === 'realizado' ? 'realizado' : 'confirmado'
       }).eq('id', agendamentoId)
-
-      if (agAtual?.status === 'realizado') {
-        await criarNotificacaoCoach(agendamentoId, coachId)
-      }
     }
 
     await loadData(true)
@@ -283,17 +258,8 @@ export default function RecepcaoAgendaPage() {
   }
 
   async function marcarPresenca(agendamentoId: string) {
+    // Aviso ao coach sai pelo trigger do banco (aluno presente + com coach).
     await supabase.from('agendamentos').update({ status: 'realizado' }).eq('id', agendamentoId)
-
-    const { data: ag } = await supabase
-      .from('agendamentos')
-      .select('coach_id')
-      .eq('id', agendamentoId)
-      .maybeSingle()
-
-    if (ag?.coach_id) {
-      await criarNotificacaoCoach(agendamentoId, ag.coach_id)
-    }
 
     await loadData(true)
   }
