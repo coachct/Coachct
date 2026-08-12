@@ -130,9 +130,13 @@ function RecepcaoClientesPageInner() {
   const [validandoCodigo, setValidandoCodigo] = useState(false)
   const [erroCodigo, setErroCodigo] = useState('')
   // ── Tela de venda finalizada + atalho walk-in (só produtos credito_treino) ──
-  const [vendaSucesso, setVendaSucesso] = useState<{ cliente_id: string; cliente_nome: string; nome_produto: string | null; walkin: boolean } | null>(null)
+  const [vendaSucesso, setVendaSucesso] = useState<{ cliente_id: string; cliente_nome: string; nome_produto: string | null; contexto: 'ct' | 'club' | null } | null>(null)
   const [entradaStatus, setEntradaStatus] = useState<'idle' | 'registrando' | 'ok' | 'erro'>('idle')
   const [entradaErro, setEntradaErro] = useState('')
+  // Aulas de hoje do Club para o atalho da tela de sucesso (contexto 'club')
+  const [aulasClubSucesso, setAulasClubSucesso] = useState<any[]>([])
+  const [contagensClubSucesso, setContagensClubSucesso] = useState<Record<string, any>>({})
+  const [loadingAulasSucesso, setLoadingAulasSucesso] = useState(false)
 
   const [modalAtivarPlano, setModalAtivarPlano] = useState<any>(null)
   const [salvandoPlano, setSalvandoPlano] = useState(false)
@@ -585,7 +589,51 @@ function RecepcaoClientesPageInner() {
     })
     setCodigoLiberacao(''); setLiberacao(null); setErroCodigo('')
     setVendaSucesso(null); setEntradaStatus('idle'); setEntradaErro('')
+    setAulasClubSucesso([]); setContagensClubSucesso({})
     setErroVenda(''); setModalVenda(true)
+  }
+
+  // Carrega as aulas de HOJE da unidade Club atual (atalho da tela de sucesso).
+  // Mesma leitura da aba Agendar, mas isolada pra não mexer no estado dela.
+  async function carregarAulasClubHoje() {
+    if (!unidadeAtiva) return
+    setLoadingAulasSucesso(true)
+    setAulasClubSucesso([]); setContagensClubSucesso({})
+    const hoje = dataLocalStr(new Date())
+    const { data: aulasIds } = await supabase.from('club_aulas').select('id')
+      .eq('unidade_id', unidadeAtiva.id).eq('ativo', true)
+    const ids = (aulasIds || []).map((a: any) => a.id)
+    if (!ids.length) { setLoadingAulasSucesso(false); return }
+    const { data: ocs } = await supabase.from('club_ocorrencias')
+      .select('*, club_aulas(tipo, horario, capacidade, duracao_min, coaches(nome), grupos_musculares(nome))')
+      .in('aula_id', ids).eq('data', hoje).eq('status', 'ativa')
+    const lista = (ocs || []).sort((a: any, b: any) =>
+      (a.club_aulas?.horario || '').localeCompare(b.club_aulas?.horario || ''))
+    setAulasClubSucesso(lista)
+    if (lista.length) {
+      const { data: reservas } = await supabase.from('club_reservas')
+        .select('ocorrencia_id, status').in('ocorrencia_id', lista.map((o: any) => o.id))
+      const cont: Record<string, any> = {}
+      for (const oc of lista) {
+        const rs = (reservas || []).filter((r: any) => r.ocorrencia_id === oc.id)
+        cont[oc.id] = {
+          total: oc.club_aulas?.capacidade || 0,
+          reservado: rs.filter((r: any) => r.status === 'reservado').length,
+          presente: rs.filter((r: any) => r.status === 'presente').length,
+          falta: rs.filter((r: any) => r.status === 'falta').length,
+        }
+      }
+      setContagensClubSucesso(cont)
+    }
+    setLoadingAulasSucesso(false)
+  }
+
+  // Atalho Club: fecha a venda e abre o modal de reserva que já existe
+  // (o crédito avulso recém-comprado aparece como opção "avulso").
+  function irParaReservaClub(oc: any) {
+    setModalVenda(false)
+    setVendaSucesso(null)
+    abrirModalAulaClub(oc)
   }
 
   // Fecha o modal de venda e volta pra aba de vendas (usado no X e no "Fechar" da tela de sucesso)
@@ -669,15 +717,19 @@ function RecepcaoClientesPageInner() {
     }
     const prod = produtosDisp.find(p => p.id === formVenda.produto_id)
     await Promise.all([carregarSaldo(clienteSel.id), carregarVendas(clienteSel.id), carregarPlanosCliente(clienteSel.id)])
+    // Atalho só para crédito de treino: no CT vira walk-in (musculação livre),
+    // no Club vira reserva numa aula do dia. Nas demais unidades, sem atalho.
+    const contexto: 'ct' | 'club' | null = prod?.tipo === 'credito_treino'
+      ? (unidadeAtiva.tipo === 'ct' ? 'ct' : unidadeAtiva.tipo === 'club' ? 'club' : null)
+      : null
     setVendaSucesso({
       cliente_id: clienteSel.id,
       cliente_nome: clienteSel.nome,
       nome_produto: prod?.nome ?? null,
-      // Atalho walk-in só faz sentido para crédito de treino vendido no CT
-      // (musculação livre é exclusiva da unidade Just CT).
-      walkin: prod?.tipo === 'credito_treino' && unidadeAtiva.tipo === 'ct',
+      contexto,
     })
     setEntradaStatus('idle'); setEntradaErro('')
+    if (contexto === 'club') carregarAulasClubHoje()
   }
 
   async function ativarPlano(planoId: string) {
@@ -1584,7 +1636,7 @@ function RecepcaoClientesPageInner() {
                 </div>
               </div>
 
-              {vendaSucesso.walkin && (
+              {vendaSucesso.contexto === 'ct' && (
                 entradaStatus === 'ok' ? (
                   <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-4 flex items-center gap-3">
                     <CheckCircle2 size={20} className="text-emerald-600 flex-shrink-0"/>
@@ -1607,6 +1659,45 @@ function RecepcaoClientesPageInner() {
                     </button>
                   </div>
                 )
+              )}
+
+              {vendaSucesso.contexto === 'club' && (
+                <div className="bg-primary-50 border border-primary-200 rounded-xl p-4 mb-4">
+                  <div className="flex items-start gap-3 mb-3">
+                    <Calendar size={18} className="text-primary-600 mt-0.5 flex-shrink-0"/>
+                    <div className="text-sm text-primary-900">Vai fazer aula agora? Reserve numa aula de hoje sem sair daqui — usa o crédito avulso recém-comprado.</div>
+                  </div>
+                  {loadingAulasSucesso ? (
+                    <div className="text-center py-6 text-sm text-gray-400">Carregando aulas de hoje...</div>
+                  ) : aulasClubSucesso.length === 0 ? (
+                    <div className="text-center py-6 text-sm text-gray-400">Nenhuma aula hoje em {unidadeAtiva.nome}.</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {aulasClubSucesso.map(oc => {
+                        const aula = oc.club_aulas
+                        const cont = contagensClubSucesso[oc.id] || { total:0, reservado:0, presente:0, falta:0 }
+                        const vagas = Math.max(0, cont.total - (cont.reservado + cont.presente + cont.falta))
+                        const cor = tipoCorClub(aula?.tipo)
+                        return (
+                          <button key={oc.id} onClick={() => irParaReservaClub(oc)} disabled={vagas===0}
+                            className={`w-full text-left bg-white rounded-xl border p-3 flex items-center gap-3 transition-all ${vagas===0?'opacity-50 cursor-not-allowed':'hover:border-primary-300 active:scale-[0.99]'}`}
+                            style={{ borderLeftWidth:4, borderLeftColor: cor }}>
+                            <div className="font-mono text-base font-bold text-gray-900 w-12 flex-shrink-0">{(aula?.horario||'').slice(0,5)}</div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-bold" style={{ color:cor }}>{tipoLabelClub(aula?.tipo)}</div>
+                              <div className="text-sm font-semibold text-gray-900 truncate">{aula?.grupos_musculares?.nome || '—'}</div>
+                              <div className="text-xs text-gray-400 truncate">👤 {aula?.coaches?.nome?.split(' ')[0] || '—'}</div>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <div className={`text-lg font-bold ${vagas===0?'text-gray-300':vagas<=3?'text-orange-500':'text-gray-900'}`}>{vagas}</div>
+                              <div className="text-[10px] text-gray-400">vagas</div>
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
               )}
 
               <button onClick={fecharModalVenda} className="btn w-full text-gray-600 border border-gray-200">
