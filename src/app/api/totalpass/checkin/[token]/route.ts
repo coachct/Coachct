@@ -62,6 +62,7 @@ async function marcarPresencaClubTotalpass(
 function extrair(payload: any) {
   const userCode: string | null = payload?.user?.code ?? null;
   const cpf: string | null = payload?.user?.document_number ?? null;
+  const nome: string | null = payload?.user?.name ?? null;
   const planCode: string | null = payload?.check_in?.plan_code ?? null;
   const placeCode: string | null = payload?.place?.code ?? null;
   const startedAt: string | null = payload?.check_in?.started_at ?? null;
@@ -71,7 +72,7 @@ function extrair(payload: any) {
   const eventoId: string | null =
     userCode && startedAt ? `${userCode}:${startedAt}` : null;
 
-  return { userCode, cpf, planCode, placeCode, startedAt, endpoint, eventoId };
+  return { userCode, cpf, nome, planCode, placeCode, startedAt, endpoint, eventoId };
 }
 
 export async function POST(
@@ -119,7 +120,7 @@ export async function POST(
     return ok1();
   }
 
-  const { userCode, cpf, planCode, placeCode, startedAt, endpoint, eventoId } =
+  const { userCode, cpf, nome, planCode, placeCode, startedAt, endpoint, eventoId } =
     extrair(payload);
 
   if (!userCode) {
@@ -206,6 +207,7 @@ export async function POST(
           startedAt,
           endpoint,
           cpf,
+          nome,
         })
       );
       // Obs.: a presença automática Coach CT no modo Personal é disparada DENTRO

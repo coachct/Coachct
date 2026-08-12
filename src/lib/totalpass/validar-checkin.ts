@@ -23,10 +23,11 @@ type ValidarInput = {
   startedAt: string | null; // check_in.started_at
   endpoint: string | null; // payload.endpoint (URL de confirmação)
   cpf: string | null; // user.document_number (pra log/rastreio)
+  nome?: string | null; // user.name (fallback de casamento p/ cliente sem CPF)
 };
 
 export async function validarCheckinTotalpass(input: ValidarInput): Promise<void> {
-  const { entradaId, planCode, startedAt, endpoint, cpf } = input;
+  const { entradaId, planCode, startedAt, endpoint, cpf, nome } = input;
 
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
@@ -71,7 +72,7 @@ export async function validarCheckinTotalpass(input: ValidarInput): Promise<void
   //    À prova de falha (a função engole erro). Sem nome resolvido, não faz nada.
   if (descricao) {
     const modo = ehModoPersonal(descricao) ? 'personal' : 'walkin';
-    await registrarCheckinCoachCt(supabase, 'totalpass', modo, { cpf });
+    await registrarCheckinCoachCt(supabase, 'totalpass', modo, { cpf, nome });
   }
 }
 
