@@ -130,7 +130,7 @@ function RecepcaoClientesPageInner() {
   const [validandoCodigo, setValidandoCodigo] = useState(false)
   const [erroCodigo, setErroCodigo] = useState('')
   // ── Tela de venda finalizada + atalho walk-in (só produtos credito_treino) ──
-  const [vendaSucesso, setVendaSucesso] = useState<{ cliente_id: string; cliente_nome: string; tipo: string | null; nome_produto: string | null } | null>(null)
+  const [vendaSucesso, setVendaSucesso] = useState<{ cliente_id: string; cliente_nome: string; nome_produto: string | null; walkin: boolean } | null>(null)
   const [entradaStatus, setEntradaStatus] = useState<'idle' | 'registrando' | 'ok' | 'erro'>('idle')
   const [entradaErro, setEntradaErro] = useState('')
 
@@ -672,8 +672,10 @@ function RecepcaoClientesPageInner() {
     setVendaSucesso({
       cliente_id: clienteSel.id,
       cliente_nome: clienteSel.nome,
-      tipo: prod?.tipo ?? null,
       nome_produto: prod?.nome ?? null,
+      // Atalho walk-in só faz sentido para crédito de treino vendido no CT
+      // (musculação livre é exclusiva da unidade Just CT).
+      walkin: prod?.tipo === 'credito_treino' && unidadeAtiva.tipo === 'ct',
     })
     setEntradaStatus('idle'); setEntradaErro('')
   }
@@ -1582,7 +1584,7 @@ function RecepcaoClientesPageInner() {
                 </div>
               </div>
 
-              {vendaSucesso.tipo === 'credito_treino' && (
+              {vendaSucesso.walkin && (
                 entradaStatus === 'ok' ? (
                   <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-4 flex items-center gap-3">
                     <CheckCircle2 size={20} className="text-emerald-600 flex-shrink-0"/>

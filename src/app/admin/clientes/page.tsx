@@ -5,7 +5,7 @@ import { gradeExtraDoDia } from '@/lib/grade'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Search, Plus, ChevronRight, X, Check, Calendar, Lock, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap, Gift, CalendarClock, Edit2, Mail, Copy, Clock, Link as LinkIcon, UserPlus, KeyRound, Camera, Upload, Trash, Wifi, WifiOff } from 'lucide-react'
+import { Search, Plus, ChevronRight, X, Check, Calendar, Lock, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap, Gift, CalendarClock, Edit2, Mail, Copy, Clock, Link as LinkIcon, UserPlus, KeyRound, Camera, Upload, Trash, Wifi, WifiOff, Dumbbell, CheckCircle2 } from 'lucide-react'
 import UnidadeSelector from '@/components/UnidadeSelector'
 import { numerarTreinosDoMes, PLANOS_SEM_TETO } from '@/lib/treinos-numero'
 
@@ -227,6 +227,10 @@ function AdminClientesPageInner() {
   })
   const [vendendo, setVendendo] = useState(false)
   const [erroVenda, setErroVenda] = useState('')
+  // ── Tela de venda finalizada + atalho walk-in (só credito_treino no CT) ──
+  const [vendaSucesso, setVendaSucesso] = useState<{ cliente_id: string; cliente_nome: string; nome_produto: string | null; walkin: boolean } | null>(null)
+  const [entradaStatus, setEntradaStatus] = useState<'idle' | 'registrando' | 'ok' | 'erro'>('idle')
+  const [entradaErro, setEntradaErro] = useState('')
 
   const [modalAtivarPlano, setModalAtivarPlano] = useState<any>(null)
   const [salvandoPlano, setSalvandoPlano] = useState(false)
@@ -674,7 +678,32 @@ function AdminClientesPageInner() {
       desconto_percentual: 0, forma_pagamento: 'pix', observacao: '',
       unidade_faturamento_id: unidadeAtiva.id,
     })
+    setVendaSucesso(null); setEntradaStatus('idle'); setEntradaErro('')
     setErroVenda(''); setModalVenda(true)
+  }
+
+  // Fecha o modal de venda e volta pra aba de vendas (X e "Fechar" da tela de sucesso)
+  function fecharModalVenda() {
+    setModalVenda(false)
+    if (vendaSucesso) { setAba('vendas'); setVendaSucesso(null) }
+  }
+
+  // Atalho da tela de sucesso: registra a entrada na Musculação Livre agora,
+  // descontando 1 crédito avulso (credito_treino). Reaproveita a RPC do walk-in.
+  async function registrarEntradaWalkin() {
+    if (!vendaSucesso) return
+    setEntradaStatus('registrando'); setEntradaErro('')
+    const { error } = await supabase.rpc('registrar_acesso_livre_ct', { p_cliente_id: vendaSucesso.cliente_id })
+    if (error) {
+      const msg = error.message || ''
+      if (msg.includes('SEM_CREDITO')) setEntradaErro('Cliente está sem saldo avulso disponível.')
+      else if (msg.includes('NAO_AUTORIZADO')) setEntradaErro('Você não tem permissão para registrar.')
+      else setEntradaErro('Erro ao registrar: ' + msg)
+      setEntradaStatus('erro')
+      return
+    }
+    setEntradaStatus('ok')
+    await carregarSaldo(vendaSucesso.cliente_id)
   }
 
   function selecionarProduto(produtoId: string) {
@@ -703,9 +732,17 @@ function AdminClientesPageInner() {
     setVendendo(false)
     if (error) { setErroVenda('Erro ao registrar venda: ' + error.message); return }
     if (data && !data.sucesso) { setErroVenda('Erro: ' + (data.motivo || 'desconhecido')); return }
-    setModalVenda(false)
+    const prod = produtosDisp.find(p => p.id === formVenda.produto_id)
     await Promise.all([carregarSaldo(clienteSel.id), carregarVendas(clienteSel.id), carregarPlanosCliente(clienteSel.id)])
-    setAba('vendas')
+    setVendaSucesso({
+      cliente_id: clienteSel.id,
+      cliente_nome: clienteSel.nome,
+      nome_produto: prod?.nome ?? null,
+      // Atalho walk-in só faz sentido para crédito de treino vendido no CT
+      // (musculação livre é exclusiva da unidade Just CT).
+      walkin: prod?.tipo === 'credito_treino' && unidadeAtiva.tipo === 'ct',
+    })
+    setEntradaStatus('idle'); setEntradaErro('')
   }
 
   async function ativarPlano(planoId: string) {
@@ -1955,6 +1992,52 @@ function AdminClientesPageInner() {
       {modalVenda && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+            {vendaSucesso ? (
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div className="font-bold text-gray-900 flex items-center gap-2"><CheckCircle2 size={18} className="text-green-600"/> Venda registrada</div>
+                <button onClick={fecharModalVenda} className="text-gray-400 hover:text-gray-600"><X size={18}/></button>
+              </div>
+
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-green-100 text-green-600 flex items-center justify-center flex-shrink-0"><Check size={18}/></div>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-gray-900 truncate">{vendaSucesso.nome_produto || 'Produto'}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">para {vendaSucesso.cliente_nome}</div>
+                </div>
+              </div>
+
+              {vendaSucesso.walkin && (
+                entradaStatus === 'ok' ? (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-4 flex items-center gap-3">
+                    <CheckCircle2 size={20} className="text-emerald-600 flex-shrink-0"/>
+                    <div className="text-sm text-emerald-800"><strong>Entrada registrada</strong> na Musculação Livre — 1 crédito descontado.</div>
+                  </div>
+                ) : (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-4">
+                    <div className="flex items-start gap-3 mb-3">
+                      <Dumbbell size={18} className="text-emerald-600 mt-0.5 flex-shrink-0"/>
+                      <div className="text-sm text-emerald-900">Vai treinar agora? Registre a entrada na <strong>Musculação Livre</strong> sem sair daqui — desconta 1 crédito avulso.</div>
+                    </div>
+                    {entradaErro && (
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-2.5 mb-3 text-sm text-red-600 flex items-start gap-2">
+                        <AlertCircle size={14} className="mt-0.5 flex-shrink-0"/>{entradaErro}
+                      </div>
+                    )}
+                    <button onClick={registrarEntradaWalkin} disabled={entradaStatus==='registrando'}
+                      className="btn w-full gap-2 bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 font-semibold">
+                      <Dumbbell size={16}/> {entradaStatus==='registrando' ? 'Registrando...' : 'Registrar entrada na musculação agora'}
+                    </button>
+                  </div>
+                )
+              )}
+
+              <button onClick={fecharModalVenda} className="btn w-full text-gray-600 border border-gray-200">
+                {entradaStatus === 'ok' ? 'Concluir' : 'Fechar'}
+              </button>
+            </div>
+            ) : (
+            <>
             <div className="flex items-center justify-between mb-5">
               <div>
                 {/* ✅ PATCH: título do modal também atualizado */}
@@ -2076,6 +2159,8 @@ function AdminClientesPageInner() {
                   </button>
                 </div>
               </div>
+            )}
+            </>
             )}
           </div>
         </div>
