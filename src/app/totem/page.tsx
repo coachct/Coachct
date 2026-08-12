@@ -366,9 +366,14 @@ export default function TotemPage() {
             {/* RESERVA */}
             {screen === 'reserva' && reserva && (
               <section className="screen on center">
-                <div className="avatar">🧑</div>
-                <h2>Olá, {nome.split(' ')[0]}</h2>
-                <p className="sub" style={{ marginBottom: 4 }}>Encontramos sua reserva</p>
+                <h2 style={{ marginBottom: 8 }}>Olá, {nome.split(' ')[0]}</h2>
+
+                {reserva.flow === 'confirmar' ? (
+                  <div className="status ok" style={{ fontSize: 15 }}><span className="si">✓</span><span>Reserva com crédito Just Club — confirme que você chegou.</span></div>
+                ) : (
+                  <div className="status pend" style={{ fontSize: 16 }}><span className="si">⏳</span><span><b>Faça seu check-in no app parceiro</b>, para confirmar seu check-in.</span></div>
+                )}
+
                 <div className="nextcard">
                   <div className="lbl">Sua aula</div>
                   <div className="cls" style={{ fontSize: 24 }}>{reserva.aulaNome}</div>
@@ -382,31 +387,24 @@ export default function TotemPage() {
                     Reserva via <b>{reserva.origem}</b>
                   </div>
                 </div>
+
                 {reserva.aulaTipo === 'running_funcional' && reserva.posicao && (
-                  <>
-                    <div className="posbox">
-                      <div className="l">Sua posição</div>
-                      <div className="n">{reserva.posicao}</div>
-                      <div className="pt">{reserva.posicao.toUpperCase().startsWith('F') ? 'Funcional' : 'Esteira'}</div>
-                    </div>
-                    <div className="posnote">⚠️ Respeite a posição agendada.</div>
-                  </>
+                  <div className="posbox">
+                    <div className="l">Sua posição</div>
+                    <div className="n">{reserva.posicao}</div>
+                    <div className="pt">{reserva.posicao.toUpperCase().startsWith('F') ? 'Funcional' : 'Esteira'}</div>
+                    <div className="posnote-in">⚠️ Respeite a posição agendada</div>
+                  </div>
                 )}
+
+                <div className="grow" />
                 {reserva.flow === 'confirmar' ? (
-                  <>
-                    <div className="status ok"><span className="si">✓</span><span>Reserva com crédito Just Club — confirme que você chegou.</span></div>
-                    <div className="grow" />
-                    <div className="stack"><button className="btn ok" onClick={() => registrarPresenca(reserva)}>Confirmar presença ✓</button></div>
-                  </>
+                  <div className="stack"><button className="btn ok" onClick={() => registrarPresenca(reserva)}>Confirmar presença ✓</button></div>
                 ) : (
-                  <>
-                    <div className="status pend" style={{ fontSize: 15 }}><span className="si">⏳</span><span><b>Faça seu check-in no app {reserva.origem}</b> aqui na unidade. Assim que confirmar, sua presença é registrada automaticamente.</span></div>
-                    <div className="live"><span className="dot" /> aguardando seu check-in…</div>
-                    <div className="grow" />
-                    <div className="stack">
-                      <button className="btn" onClick={irIdle}>Voltar ao início</button>
-                    </div>
-                  </>
+                  <div className="stack">
+                    <div className="live" style={{ marginTop: 0 }}><span className="dot" /> aguardando seu check-in…</div>
+                    <button className="btn" onClick={irIdle}>Voltar ao início</button>
+                  </div>
                 )}
               </section>
             )}
@@ -648,7 +646,7 @@ const CSS = `
 #tt .posbox .n{font-size:56px;font-weight:900;color:#86efac;line-height:1}
 #tt .posbox .l{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:1.5px}
 #tt .posbox .pt{font-size:17px;font-weight:800;color:#86efac;margin-top:4px}
-#tt .posnote{font-size:15px;font-weight:800;color:#fcd34d;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:14px;padding:12px 14px;margin:0 0 12px;text-align:center;width:100%}
+#tt .posbox .posnote-in{margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.14);font-size:14px;font-weight:800;color:#fde68a}
 #tt .idpill{display:flex;align-items:center;gap:9px;background:rgba(91,141,239,.12);border:1px solid rgba(91,141,239,.35);border-radius:12px;padding:11px 13px;font-size:13px;color:#cfe0ff;margin-bottom:12px}
 #tt .idpill b{color:#fff}
 #tt .idpill .idico{font-size:16px}
