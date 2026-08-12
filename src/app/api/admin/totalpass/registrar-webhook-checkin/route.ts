@@ -94,10 +94,7 @@ async function atualizarPlace(placeId: string, partnerKey: string, webhookUrl: s
   if ('erro' in a) return a.erro;
   const bodyPadrao = JSON.stringify({ webhook_url: webhookUrl, webhook_type: 'CHECKIN' });
   const candidatos = [
-    { m: 'PUT',   p: '/partner/webhook',        body: bodyPadrao },
-    { m: 'POST',  p: '/partner/webhook/update', body: bodyPadrao },
-    { m: 'PATCH', p: '/partner/webhook',        body: bodyPadrao },
-    { m: 'PUT',   p: '/partner/webhook/checkin', body: bodyPadrao },
+    { m: 'PUT',   p: '/partner/webhook/update', body: bodyPadrao }, // confirmado na doc (llms.txt)
   ];
   const tentativas: any[] = [];
   for (const c of candidatos) {
