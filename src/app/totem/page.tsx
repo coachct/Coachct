@@ -371,18 +371,27 @@ export default function TotemPage() {
                 <p className="sub" style={{ marginBottom: 4 }}>Encontramos sua reserva</p>
                 <div className="nextcard">
                   <div className="lbl">Sua aula</div>
-                  <div className="cls">{reserva.aulaNome}</div>
+                  <div className="cls" style={{ fontSize: 24 }}>{reserva.aulaNome}</div>
                   <div className="row">
                     <span className={'chip ' + tipoClasse(reserva.aulaTipo)}>{tipoLabel(reserva.aulaTipo)}</span>
                     <span className="chip time">{reserva.horario}</span>
                     {reserva.coach && <span className="chip time">{reserva.coach}</span>}
-                    {reserva.posicao && <span className="chip run">{posLabel(reserva.posicao)}</span>}
                   </div>
                   <div className="origem">
                     <span className="oico" style={{ background: reserva.isPartner ? 'rgba(245,158,11,.18)' : 'rgba(91,141,239,.18)' }}>{reserva.isPartner ? '🎫' : '💳'}</span>
                     Reserva via <b>{reserva.origem}</b>
                   </div>
                 </div>
+                {reserva.aulaTipo === 'running_funcional' && reserva.posicao && (
+                  <>
+                    <div className="posbox">
+                      <div className="l">Sua posição</div>
+                      <div className="n">{reserva.posicao}</div>
+                      <div className="pt">{reserva.posicao.toUpperCase().startsWith('F') ? 'Funcional' : 'Esteira'}</div>
+                    </div>
+                    <div className="posnote">⚠️ Respeite a posição agendada.</div>
+                  </>
+                )}
                 {reserva.flow === 'confirmar' ? (
                   <>
                     <div className="status ok"><span className="si">✓</span><span>Reserva com crédito Just Club — confirme que você chegou.</span></div>
@@ -636,8 +645,10 @@ const CSS = `
 #tt .status.pend{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.4);color:#fcd34d}
 #tt .bigmsg{font-size:30px;font-weight:900;margin:8px 0 4px}
 #tt .posbox{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.4);border-radius:18px;padding:18px;margin:12px 0;width:100%}
-#tt .posbox .n{font-size:44px;font-weight:900;color:#86efac;line-height:1}
+#tt .posbox .n{font-size:56px;font-weight:900;color:#86efac;line-height:1}
 #tt .posbox .l{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:1.5px}
+#tt .posbox .pt{font-size:17px;font-weight:800;color:#86efac;margin-top:4px}
+#tt .posnote{font-size:15px;font-weight:800;color:#fcd34d;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:14px;padding:12px 14px;margin:0 0 12px;text-align:center;width:100%}
 #tt .idpill{display:flex;align-items:center;gap:9px;background:rgba(91,141,239,.12);border:1px solid rgba(91,141,239,.35);border-radius:12px;padding:11px 13px;font-size:13px;color:#cfe0ff;margin-bottom:12px}
 #tt .idpill b{color:#fff}
 #tt .idpill .idico{font-size:16px}
