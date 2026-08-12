@@ -11,7 +11,7 @@ type Reserva = {
   posicao: string | null; origem: string; isPartner: boolean; flow: string
 }
 type Screen =
-  | 'loading' | 'config' | 'idle' | 'cpf' | 'validate' | 'reserva' | 'recepcao'
+  | 'loading' | 'config' | 'idle' | 'face' | 'cpf' | 'validate' | 'reserva' | 'recepcao'
   | 'waiting' | 'done' | 'enrollConsent' | 'enrollCapture' | 'enrollDone'
   | 'ctLiberado' | 'ctAguardando' | 'ctJaRegistrada'
 
@@ -213,14 +213,19 @@ export default function TotemPage() {
   useEffect(() => {
     if (!unidade) return
     let interval: any
-    if (screen === 'idle') {
+    if (screen === 'face') {
+      // Câmera + reconhecimento SÓ nesta tela (aberta sob toque). A idle fica sem
+      // câmera — evita ler quem passa na recepção, poupa CPU e respeita a LGPD.
       attachCamera(idleVideoRef.current)
       if (faceReady) interval = setInterval(() => tryRef.current(false), SCAN_MS)
     } else if (screen === 'enrollCapture') {
       attachCamera(enrollVideoRef.current)
+    } else {
+      // Qualquer outra tela (idle inclusive): câmera desligada.
+      stopCamera()
     }
     return () => { if (interval) clearInterval(interval) }
-  }, [screen, faceReady, unidade, attachCamera])
+  }, [screen, faceReady, unidade, attachCamera, stopCamera])
 
   // ---------- CPF ----------
   const kp = (k: string) => setCpf((c) => (k === 'back' ? c.slice(0, -1) : c.length < 11 ? c + k : c))
@@ -295,33 +300,56 @@ export default function TotemPage() {
               </section>
             )}
 
-            {/* IDLE — fiel ao desenho */}
+            {/* IDLE — menu de entrada (câmera só abre no toque) */}
             {screen === 'idle' && (
               <section className="screen on">
                 <div className="express-hdr">
                   <div className="ex-title">CHECK-IN <span>EXPRESS</span></div>
                   <div className="ex-sub">
                     {unidade?.tipo === 'ct' ? (
-                      <>Se você já tem acesso (plano ou app parceiro), <b>olhe para a câmera</b> ou <b>digite seu CPF</b>.<br />
+                      <>Já tem acesso (plano ou app parceiro)? Escolha abaixo.<br />
                       Sem acesso? <b>Dirija-se ao atendimento</b>.</>
                     ) : (
-                      <>Se você já possui reserva, <b>olhe para a câmera</b> ou <b>digite seu CPF</b>.<br />
-                      Se for sua 1ª vez ou estiver sem reserva, <b>dirija-se ao atendimento</b>.</>
+                      <>Já possui reserva? Escolha abaixo.<br />
+                      1ª vez ou sem reserva? <b>Dirija-se ao atendimento</b>.</>
                     )}
                   </div>
                 </div>
                 <div className="grow center">
-                  <div className="idlecam">
-                    <span className="face">🙂</span>
-                    <video ref={idleVideoRef} autoPlay playsInline muted />
-                    <div className="scanline" />
-                    <i className="fc fc1" /><i className="fc fc2" /><i className="fc fc3" /><i className="fc fc4" />
+                  <div className="menu-q">Como você quer fazer seu check-in?</div>
+                  <div className="tiles">
+                    <button className="tile primary" onClick={() => { setFaceMsg('Olhe para a câmera'); setScreen('face') }}>
+                      <span className="tico">📷</span>
+                      <span className="tlab">Reconhecer<br />meu rosto</span>
+                    </button>
+                    <button className="tile" onClick={() => abrirCpf('checkin')}>
+                      <span className="tico">🔢</span>
+                      <span className="tlab">Digitar<br />meu CPF</span>
+                    </button>
                   </div>
-                  <div className="live"><span className="dot" /> {faceReady ? faceMsg : 'Preparando reconhecimento…'}</div>
                 </div>
                 <div className="stack">
-                  <button className="btn" onClick={() => abrirCpf('checkin')}>Digitar CPF</button>
-                  <button className="btn pinkghost" onClick={() => abrirCpf('enroll')}>Cadastre aqui seu rosto</button>
+                  <button className="btn pinkghost" onClick={() => abrirCpf('enroll')}>Cadastrar meu rosto</button>
+                </div>
+              </section>
+            )}
+
+            {/* FACE — câmera aberta sob toque, com a pessoa já na frente */}
+            {screen === 'face' && (
+              <section className="screen on center">
+                <button className="back" onClick={irIdle} style={{ alignSelf: 'flex-start' }}>← Voltar</button>
+                <h2>Olhe para a câmera</h2>
+                <p className="sub">Rosto centralizado, boa luz. O reconhecimento é automático.</p>
+                <div className="idlecam">
+                  <span className="face">🙂</span>
+                  <video ref={idleVideoRef} autoPlay playsInline muted />
+                  <div className="scanline" />
+                  <i className="fc fc1" /><i className="fc fc2" /><i className="fc fc3" /><i className="fc fc4" />
+                </div>
+                <div className="live"><span className="dot" /> {faceReady ? faceMsg : 'Preparando reconhecimento…'}</div>
+                <div className="grow" />
+                <div className="stack">
+                  <button className="btn ghost sm" onClick={() => abrirCpf('checkin')}>Prefiro digitar o CPF</button>
                 </div>
               </section>
             )}
@@ -559,6 +587,14 @@ const CSS = `
 #tt .btn.pinkghost{background:rgba(255,45,142,.08);border:1px solid rgba(255,45,142,.4);color:var(--pink2);box-shadow:none;font-size:18px;padding:18px}
 #tt .btn[disabled]{opacity:.45;cursor:not-allowed;box-shadow:none}
 #tt .stack{display:flex;flex-direction:column;gap:12px}
+#tt .menu-q{font-size:15px;font-weight:700;color:var(--mut);margin:2px 0 16px;text-align:center}
+#tt .tiles{display:grid;grid-template-columns:1fr 1fr;gap:14px;width:100%}
+#tt .tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:32px 12px;border-radius:22px;cursor:pointer;background:var(--panel2);border:1px solid var(--line);color:var(--txt)}
+#tt .tile:active{transform:scale(.97)}
+#tt .tile.primary{background:linear-gradient(135deg,var(--pink),#e01f7c);border-color:transparent;color:#fff;box-shadow:0 10px 26px rgba(255,45,142,.28)}
+#tt .tile .tico{font-size:50px;line-height:1;color:var(--pink2)}
+#tt .tile.primary .tico{color:#fff}
+#tt .tile .tlab{font-size:18px;font-weight:800;line-height:1.2;text-align:center}
 #tt .express-hdr{text-align:center;margin:8px 0 14px}
 #tt .ex-title{font-size:36px;font-weight:900;letter-spacing:1px;line-height:1}
 #tt .ex-title span{color:var(--pink)}
