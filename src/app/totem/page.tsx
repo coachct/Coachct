@@ -156,7 +156,13 @@ export default function TotemPage() {
     limparPoll()
     pollRef.current = setInterval(async () => {
       const res = await api(`/api/totem/reserva-status?unidade=${encodeURIComponent(unidade!.slug)}&reservaId=${r.id}`)
-      if (res?.status === 'presente') { limparPoll(); registrarPresenca(r, true) }
+      if (res?.status === 'presente') {
+        limparPoll()
+        // usa a posição da reserva realmente presente (robusto a reservas duplicadas)
+        const rr: Reserva = res.posicao != null ? { ...r, posicao: String(res.posicao) } : r
+        setReserva(rr)
+        registrarPresenca(rr, true)
+      }
     }, POLL_MS)
   }
   const registrarPresenca = async (r: Reserva, jaConfirmado = false) => {
