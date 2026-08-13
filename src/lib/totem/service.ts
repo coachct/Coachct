@@ -9,7 +9,13 @@ export function totemService(): SupabaseClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!url || !key) throw new Error('totem: variáveis Supabase ausentes')
-  return createClient(url, key, { auth: { persistSession: false } })
+  return createClient(url, key, {
+    auth: { persistSession: false },
+    // IMPORTANTE: força cada leitura a ir FRESCA ao banco. Sem isto o Next.js
+    // cacheia o GET do Supabase e o polling do totem (reserva-status/ct-status)
+    // fica preso no 1º valor lido ('reservado') e nunca enxerga 'presente'.
+    global: { fetch: (input: any, init?: any) => fetch(input, { ...init, cache: 'no-store' }) },
+  })
 }
 
 export type UnidadeTotem = { id: string; slug: string; nome: string; tipo: 'club' | 'ct' }
