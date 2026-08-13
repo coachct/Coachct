@@ -10,10 +10,6 @@ const AMARELO  = '#ffaa00'
 const VERMELHO = '#ff4444'
 const CYAN     = '#00e5ff'
 
-// Kill switch da "Troca de aula" (mover reserva pra outra aula do mesmo dia/unidade).
-// Dark launch: só aparece quando NEXT_PUBLIC_TROCA_AULA_ATIVO='true' na Vercel.
-const TROCA_ATIVO = process.env.NEXT_PUBLIC_TROCA_AULA_ATIVO === 'true'
-
 function dataLocalStr(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
@@ -1080,7 +1076,7 @@ export default function RecepcaoClubDetalhe() {
                   {/* Presença / Falta — livre, com toggle (clicar no ativo desmarca; falta pede confirmação) */}
                   <div style={{ display:'flex', gap:6, flexShrink:0 }}>
                     {/* NOVO: Trocar de aula — só reserva nossa (não app parceiro) e aula não encerrada */}
-                    {TROCA_ATIVO && !isPassado && ['reservado','presente'].includes(r.status)
+                    {!isPassado && ['reservado','presente'].includes(r.status)
                       && !r.via_app && !r.wellhub_booking_number && !r.totalpass_slot_id && (
                       <button
                         onClick={() => origemLotada
