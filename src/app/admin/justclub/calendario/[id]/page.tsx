@@ -134,6 +134,16 @@ export default function RecepcaoClubDetalhe() {
   const [salvandoTroca,   setSalvandoTroca]   = useState(false)
   const [modoTrocaAtivo,  setModoTrocaAtivo]  = useState(false)
 
+  // NOVO: Troca de AULA — mover uma reserva pra outra ocorrência do mesmo dia/unidade (com vaga)
+  const [trocaAulaReserva,   setTrocaAulaReserva]   = useState<any>(null) // reserva sendo movida
+  const [candidatos,         setCandidatos]         = useState<any[]>([])  // aulas destino com vaga
+  const [carregandoCand,     setCarregandoCand]     = useState(false)
+  const [destinoSel,         setDestinoSel]         = useState<any>(null)  // ocorrência destino escolhida
+  const [destTaken,          setDestTaken]          = useState<string[]>([]) // posições ocupadas no destino
+  const [destPontual,        setDestPontual]        = useState<string[]>([]) // bloqueios pontuais no destino
+  const [posDestSel,         setPosDestSel]         = useState('')
+  const [salvandoTrocaAula,  setSalvandoTrocaAula]  = useState(false)
+
   // NOVO: bloqueio de vagas (Lift / Lift for Girls)
   const [vagasBloqueadas, setVagasBloqueadas] = useState(0)
   const [salvandoVagas,   setSalvandoVagas]   = useState(false)
@@ -225,7 +235,7 @@ export default function RecepcaoClubDetalhe() {
 
     const { data: res } = await supabase
       .from('club_reservas')
-      .select('id, status, tipo_credito, posicao, credito_avulso_id, creditos_avulsos(observacao), clientes(id, nome, email, telefone)')
+      .select('id, status, tipo_credito, posicao, credito_avulso_id, via_app, wellhub_booking_number, totalpass_slot_id, creditos_avulsos(observacao), clientes(id, nome, email, telefone)')
       .eq('ocorrencia_id', ocId)
       .neq('status', 'cancelado')
     const sorted = (res || []).sort((a: any, b: any) =>
@@ -344,6 +354,121 @@ export default function RecepcaoClubDetalhe() {
     await carregarDados()
     setSalvandoTroca(false)
     showMsg('✅ Posição alterada!')
+  }
+
+  // ── NOVO: Troca de AULA ──────────────────────────────────────────────
+  async function abrirTrocaAula(reserva: any) {
+    setTrocaAulaReserva(reserva)
+    setDestinoSel(null); setPosDestSel(''); setDestTaken([]); setDestPontual([])
+    await carregarCandidatos()
+  }
+
+  function fecharTrocaAula() {
+    setTrocaAulaReserva(null); setDestinoSel(null); setPosDestSel('')
+    setCandidatos([]); setDestTaken([]); setDestPontual([])
+  }
+
+  // Lista as outras aulas do mesmo dia/unidade que têm vaga (mesma fórmula da vaga usada no app)
+  async function carregarCandidatos() {
+    if (!ocorrencia?.club_aulas?.unidade_id || !ocorrencia?.data) return
+    setCarregandoCand(true)
+    const uid = ocorrencia.club_aulas.unidade_id
+    const { data: aulasIds } = await supabase.from('club_aulas').select('id')
+      .eq('unidade_id', uid).eq('ativo', true)
+    const ids = (aulasIds || []).map((a: any) => a.id)
+    if (!ids.length) { setCandidatos([]); setCarregandoCand(false); return }
+    const { data: ocs } = await supabase.from('club_ocorrencias')
+      .select('id, vagas_bloqueadas, club_aulas(tipo, horario, capacidade)')
+      .in('aula_id', ids).eq('data', ocorrencia.data).eq('status', 'ativa')
+    const outras = (ocs || []).filter((o: any) => o.id !== ocorrencia.id)
+    const ocIds = outras.map((o: any) => o.id)
+
+    // Ocupação (reservado+presente) e bloqueios pontuais por ocorrência
+    const usadasPorOc: Record<string, number> = {}
+    const pontualPorOc: Record<string, number> = {}
+    if (ocIds.length) {
+      const { data: rs } = await supabase.from('club_reservas')
+        .select('ocorrencia_id, status').in('ocorrencia_id', ocIds).in('status', ['reservado','presente'])
+      for (const r of (rs || []) as any[]) usadasPorOc[r.ocorrencia_id] = (usadasPorOc[r.ocorrencia_id] || 0) + 1
+      const { data: bl } = await supabase.from('club_posicoes_bloqueios_ocorrencia')
+        .select('ocorrencia_id').in('ocorrencia_id', ocIds)
+      for (const b of (bl || []) as any[]) pontualPorOc[b.ocorrencia_id] = (pontualPorOc[b.ocorrencia_id] || 0) + 1
+    }
+
+    // Bloqueios globais da unidade (valem pra todas as aulas). Se a aula atual não é running,
+    // o estado ainda não foi carregado — busca aqui e já deixa as posições prontas pro mapa do destino.
+    let globalBlocks = posicoesBloqueadasGlobal.length
+    const temRunning = outras.some((o: any) => o.club_aulas?.tipo === 'running_funcional')
+    if (temRunning && posicoes.length === 0) {
+      const { data: pos } = await supabase.from('club_posicoes').select('*')
+        .eq('unidade_id', uid).eq('ativo', true).order('tipo').order('numero')
+      setPosicoes(pos || [])
+      const globais = (pos || []).filter((p: any) => p.bloqueado)
+        .map((p: any) => `${p.tipo}${String(p.numero).padStart(2, '0')}`)
+      setPosicoesBloqueadasGlobal(globais)
+      globalBlocks = globais.length
+    }
+
+    const lista = outras.map((o: any) => {
+      const tipo = o.club_aulas?.tipo
+      const cap  = o.club_aulas?.capacidade || 0
+      const usadas = usadasPorOc[o.id] || 0
+      const vagas = tipo === 'running_funcional'
+        ? cap - globalBlocks - (pontualPorOc[o.id] || 0) - usadas
+        : cap - (o.vagas_bloqueadas || 0) - usadas
+      return { id: o.id, tipo, horario: o.club_aulas?.horario, capacidade: cap, vagas }
+    })
+    .filter((o: any) => o.vagas >= 1)
+    .sort((a: any, b: any) => (a.horario || '').localeCompare(b.horario || ''))
+
+    setCandidatos(lista)
+    setCarregandoCand(false)
+  }
+
+  async function selecionarDestino(cand: any) {
+    setDestinoSel(cand); setPosDestSel('')
+    if (cand.tipo === 'running_funcional') {
+      const { data: rs } = await supabase.from('club_reservas')
+        .select('posicao, status').eq('ocorrencia_id', cand.id).neq('status', 'cancelado')
+      setDestTaken((rs || []).filter((r: any) => r.posicao).map((r: any) => r.posicao))
+      const { data: bl } = await supabase.from('club_posicoes_bloqueios_ocorrencia')
+        .select('posicao').eq('ocorrencia_id', cand.id)
+      setDestPontual((bl || []).map((b: any) => b.posicao))
+    } else {
+      setDestTaken([]); setDestPontual([])
+    }
+  }
+
+  function traduzErroTroca(m: string) {
+    if (m.includes('ORIGEM_LOTADA'))       return 'A aula de origem está lotada — troca não permitida (regra: origem não pode estar cheia).'
+    if (m.includes('DESTINO_LOTADO'))       return 'A aula de destino ficou sem vaga. Recarregue e tente outra.'
+    if (m.includes('POSICAO_OCUPADA'))      return 'Essa posição já foi ocupada. Escolha outra.'
+    if (m.includes('POSICAO_BLOQUEADA'))    return 'Essa posição está bloqueada nesta aula.'
+    if (m.includes('POSICAO_INVALIDA'))     return 'Posição inválida para esta unidade.'
+    if (m.includes('POSICAO_OBRIGATORIA'))  return 'Escolha uma posição no destino.'
+    if (m.includes('RESERVA_APP_PARCEIRO')) return 'Reserva feita pelo app do parceiro não pode ser trocada aqui.'
+    if (m.includes('RESERVA_INVALIDA'))     return 'Só dá pra trocar reserva ativa (reservado/presente).'
+    if (m.includes('DIA_DIFERENTE') || m.includes('UNIDADE_DIFERENTE')) return 'Só é possível trocar entre aulas do mesmo dia e unidade.'
+    return m
+  }
+
+  async function confirmarTrocaAula() {
+    if (!trocaAulaReserva || !destinoSel) return
+    if (destinoSel.tipo === 'running_funcional' && !posDestSel) {
+      showMsg('⚠️ Escolha a posição no destino.'); return
+    }
+    setSalvandoTrocaAula(true)
+    const { error } = await supabase.rpc('trocar_aula_club', {
+      p_reserva_id: trocaAulaReserva.id,
+      p_destino_ocorrencia_id: destinoSel.id,
+      p_nova_posicao: destinoSel.tipo === 'running_funcional' ? posDestSel : null,
+    })
+    setSalvandoTrocaAula(false)
+    if (error) { showMsg('❌ ' + traduzErroTroca(error.message)); return }
+    const nome = trocaAulaReserva.clientes?.nome?.split(' ')[0] || 'Aluno'
+    fecharTrocaAula()
+    await carregarDados()
+    showMsg(`✅ ${nome} movido para ${(destinoSel.horario || '').slice(0,5)}!`)
   }
 
   // NOVO: bloqueia/desbloqueia posição APENAS nesta ocorrência
@@ -633,6 +758,14 @@ export default function RecepcaoClubDetalhe() {
   const aguardando = reservas.filter(r => r.status === 'reservado').length
   const planosDisp = Object.entries(saldoCliente).filter(([,v]:any) => v?.disponivel > 0).map(([k]) => k)
   const nomeCoachExibir = ocorrencia ? primeiroNomeCoachOc(ocorrencia) : null
+
+  // NOVO: origem não pode estar lotada para permitir troca (garante que não há fila esperando o slot).
+  // Mesma fórmula de vaga usada no app: running usa posições bloqueadas; lift usa vagas_bloqueadas.
+  const usadasOrigem = reservas.filter(r => ['reservado','presente'].includes(r.status)).length
+  const capOrigem = isRunning
+    ? (aula?.capacidade || 0) - posicoesBloqueadasGlobal.length - posicoesBloqueadasPontual.length
+    : (aula?.capacidade || 0) - vagasBloqueadas
+  const origemLotada = !!aula && usadasOrigem >= capOrigem
 
   function badgeData() {
     if (isHoje)   return { label:'Hoje',               cor: VERDE }
@@ -1272,6 +1405,22 @@ export default function RecepcaoClubDetalhe() {
 
                   {/* Presença / Falta — livre, com toggle (clicar no ativo desmarca; falta pede confirmação) */}
                   <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                    {/* NOVO: Trocar de aula — só reserva nossa (não app parceiro) e aula não encerrada */}
+                    {!isPassado && ['reservado','presente'].includes(r.status)
+                      && !r.via_app && !r.wellhub_booking_number && !r.totalpass_slot_id && (
+                      <button
+                        onClick={() => origemLotada
+                          ? showMsg('⚠️ Aula lotada — troca indisponível (a aula de origem não pode estar cheia).')
+                          : abrirTrocaAula(r)}
+                        disabled={atualizando===r.id}
+                        title={origemLotada ? 'Aula de origem lotada — troca indisponível' : 'Trocar de aula'}
+                        style={{ padding:'0.35rem 0.7rem', borderRadius:8, border:`1.5px solid ${origemLotada?'#e5e7eb':CYAN}`,
+                          background:'#fff', color:origemLotada?'#ccc':CYAN,
+                          fontSize:14, fontWeight:700, cursor: (atualizando===r.id||origemLotada) ? 'default' : 'pointer',
+                          opacity:atualizando===r.id?0.5:1, fontFamily:"'DM Sans', sans-serif", lineHeight:1 }}>
+                        ⇄
+                      </button>
+                    )}
                     <button onClick={() => marcarStatus(r.id, isPresente ? 'reservado' : 'presente')} disabled={atualizando===r.id}
                       title={isPresente ? 'Clique para desmarcar' : 'Marcar presença'}
                       style={{ padding:'0.35rem 0.75rem', borderRadius:8, border:`1.5px solid ${isPresente?VERDE:'#e5e7eb'}`,
@@ -1496,6 +1645,162 @@ export default function RecepcaoClubDetalhe() {
           Aula encerrada — não é possível adicionar novas presenças.
         </div>
       )}
+
+      {/* NOVO: Modal Troca de aula */}
+      {trocaAulaReserva && (() => {
+        const nomeAluno = trocaAulaReserva.clientes?.nome || 'Aluno'
+        const destRunning = destinoSel?.tipo === 'running_funcional'
+
+        const estadoDest = (label: string) => {
+          if (label === posDestSel) return { bg:`${ACCENT}15`, border:ACCENT, icon:ACCENT, disabled:false, blocked:false }
+          if (posicoesBloqueadasGlobal.includes(label) || destPontual.includes(label))
+            return { bg:`${VERMELHO}15`, border:VERMELHO, icon:VERMELHO, disabled:true, blocked:true }
+          if (destTaken.includes(label)) return { bg:'#f3f4f6', border:'#d1d5db', icon:'#d1d5db', disabled:true, blocked:false }
+          return { bg:'#fff', border:'#e5e7eb', icon:'#aaa', disabled:false, blocked:false }
+        }
+        const BtnDest = ({ label, tipo }: { label: string; tipo: 'R'|'F' }) => {
+          const s = estadoDest(label)
+          return (
+            <button disabled={s.disabled} onClick={() => !s.disabled && setPosDestSel(label)} title={label}
+              style={{ border:`1.5px solid ${s.border}`, background:s.bg, borderRadius:8,
+                cursor:s.disabled?'not-allowed':'pointer', padding:'4px 0', display:'flex',
+                flexDirection:'column', alignItems:'center', gap:2, position:'relative', minWidth:0 }}>
+              <div style={{ width:'65%', maxWidth:28 }}>
+                {tipo === 'R' ? <IconEsteira color={s.icon}/> : <IconHaltere color={s.icon}/>}
+              </div>
+              <span style={{ fontSize:7, fontFamily:"'DM Mono', monospace", fontWeight:700, color:s.icon, lineHeight:1 }}>{label}</span>
+              {s.blocked && <span style={{ position:'absolute', top:1, right:2, fontSize:10, fontWeight:900, color:VERMELHO, lineHeight:1 }}>✕</span>}
+            </button>
+          )
+        }
+
+        return (
+          <div onClick={fecharTrocaAula}
+            style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', zIndex:60,
+              display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}>
+            <div onClick={e => e.stopPropagation()}
+              style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:520, maxHeight:'90vh',
+                overflowY:'auto', fontFamily:"'DM Sans', sans-serif" }}>
+              <div style={{ padding:'1.1rem 1.5rem', borderBottom:'1px solid #f3f4f6',
+                display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12 }}>
+                <div>
+                  <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:22, color:'#111', letterSpacing:1 }}>
+                    Trocar {nomeAluno.split(' ')[0]} de aula
+                  </div>
+                  <div style={{ fontSize:12, color:'#888', marginTop:2 }}>
+                    Saindo de <strong>{tipoLabel(aula?.tipo)} {(aula?.horario||'').slice(0,5)}</strong>
+                    {trocaAulaReserva.posicao && (
+                      <span style={{ fontFamily:"'DM Mono', monospace", fontWeight:700, color:ACCENT, marginLeft:6 }}>
+                        {trocaAulaReserva.posicao}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button onClick={fecharTrocaAula}
+                  style={{ background:'transparent', border:'none', color:'#aaa', cursor:'pointer', fontSize:20, lineHeight:1 }}>✕</button>
+              </div>
+
+              <div style={{ padding:'1.25rem 1.5rem' }}>
+                <div style={{ fontSize:12, color:'#888', marginBottom:10, textTransform:'uppercase', letterSpacing:1 }}>
+                  Aula destino (mesmo dia, com vaga)
+                </div>
+                {carregandoCand ? (
+                  <div style={{ textAlign:'center', color:'#aaa', fontSize:13, padding:'1rem' }}>Carregando aulas...</div>
+                ) : candidatos.length === 0 ? (
+                  <div style={{ background:'#fff8f0', border:'1px solid #fed7aa', borderRadius:10,
+                    padding:'0.85rem 1rem', fontSize:13, color:'#9a3412' }}>
+                    Nenhuma outra aula do dia com vaga livre nesta unidade.
+                  </div>
+                ) : (
+                  <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                    {candidatos.map(c => {
+                      const sel = destinoSel?.id === c.id
+                      return (
+                        <button key={c.id} onClick={() => selecionarDestino(c)}
+                          style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10,
+                            padding:'0.75rem 1rem', borderRadius:10, textAlign:'left',
+                            border:`1.5px solid ${sel?ACCENT:'#e5e7eb'}`, background:sel?`${ACCENT}0c`:'#fff',
+                            cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
+                          <div>
+                            <div style={{ fontSize:14, fontWeight:600, color:sel?ACCENT:'#111' }}>
+                              {tipoLabel(c.tipo)} — {(c.horario||'').slice(0,5)}
+                            </div>
+                            <div style={{ fontSize:11, color:'#aaa', marginTop:2 }}>{tipoLabelCurto(c.tipo)}</div>
+                          </div>
+                          <span style={{ fontSize:11, fontWeight:700, color:VERDE, background:`${VERDE}15`,
+                            padding:'3px 10px', borderRadius:20, whiteSpace:'nowrap' }}>
+                            {c.vagas} vaga{c.vagas>1?'s':''}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {destinoSel && destRunning && (
+                  <div style={{ marginTop:'1.25rem' }}>
+                    <div style={{ fontSize:12, color:'#888', marginBottom:10, textTransform:'uppercase', letterSpacing:1 }}>
+                      Escolha a posição no destino
+                    </div>
+                    <div style={{ background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:12, padding:'0.85rem 0.75rem' }}>
+                      {posR.length > 0 && (
+                        <div style={{ marginBottom:'1rem' }}>
+                          <div style={{ fontSize:9, color:'#aaa', letterSpacing:2, textAlign:'center', marginBottom:6 }}>ESTEIRAS</div>
+                          <div style={{ display:'grid', gridTemplateColumns:`repeat(${posR.length}, 1fr)`, gap:3 }}>
+                            {posR.map((pos:any) => <BtnDest key={pos.id} label={`R${String(pos.numero).padStart(2,'0')}`} tipo="R" />)}
+                          </div>
+                        </div>
+                      )}
+                      {posR.length > 0 && posF_imp.length > 0 && (
+                        <div style={{ height:1, background:'#e5e7eb', margin:'0 -0.75rem 1rem' }}/>
+                      )}
+                      {posF_imp.length > 0 && (
+                        <div>
+                          <div style={{ fontSize:9, color:'#aaa', letterSpacing:2, textAlign:'center', marginBottom:6 }}>FUNCIONAL</div>
+                          <div style={{ display:'grid', gridTemplateColumns:`repeat(${posF_imp.length}, 1fr)`, gap:3, marginBottom:3 }}>
+                            {posF_imp.map((pos:any) => <BtnDest key={pos.id} label={`F${String(pos.numero).padStart(2,'0')}`} tipo="F" />)}
+                          </div>
+                          {posF_par.length > 0 && (
+                            <div style={{ paddingLeft:`calc(100% / ${posF_imp.length * 2})` }}>
+                              <div style={{ display:'grid', gridTemplateColumns:`repeat(${posF_par.length}, 1fr)`, gap:3 }}>
+                                {posF_par.map((pos:any) => <BtnDest key={pos.id} label={`F${String(pos.numero).padStart(2,'0')}`} tipo="F" />)}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    {posDestSel && (
+                      <div style={{ background:`${ACCENT}08`, border:`1px solid ${ACCENT}30`, borderRadius:8,
+                        padding:'0.5rem 1rem', fontSize:13, color:ACCENT, marginTop:10, fontWeight:600 }}>
+                        Posição: <span style={{ fontFamily:"'DM Mono', monospace" }}>{posDestSel}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div style={{ display:'flex', gap:8, marginTop:'1.5rem' }}>
+                  <button onClick={fecharTrocaAula}
+                    style={{ flex:1, background:'#f3f4f6', border:'none', borderRadius:10,
+                      padding:'0.85rem', fontSize:13, color:'#555', cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
+                    Cancelar
+                  </button>
+                  <button onClick={confirmarTrocaAula}
+                    disabled={!destinoSel || (destRunning && !posDestSel) || salvandoTrocaAula}
+                    style={{ flex:2, border:'none', borderRadius:10, padding:'0.85rem', fontSize:13, fontWeight:600,
+                      fontFamily:"'DM Sans', sans-serif",
+                      background:(!destinoSel || (destRunning && !posDestSel)) ? '#e5e7eb' : ACCENT,
+                      color:(!destinoSel || (destRunning && !posDestSel)) ? '#aaa' : '#fff',
+                      cursor:(!destinoSel || (destRunning && !posDestSel) || salvandoTrocaAula) ? 'default' : 'pointer',
+                      opacity:salvandoTrocaAula?0.7:1 }}>
+                    {salvandoTrocaAula ? 'Movendo...' : '⇄ Confirmar troca'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* NOVO: modal de correção de coach (só esta ocorrência) */}
       {modalCoach && (
