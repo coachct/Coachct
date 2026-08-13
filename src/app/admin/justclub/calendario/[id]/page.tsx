@@ -760,8 +760,9 @@ export default function RecepcaoClubDetalhe() {
   const nomeCoachExibir = ocorrencia ? primeiroNomeCoachOc(ocorrencia) : null
 
   // NOVO: origem não pode estar lotada para permitir troca (garante que não há fila esperando o slot).
-  // Mesma fórmula de vaga usada no app: running usa posições bloqueadas; lift usa vagas_bloqueadas.
-  const usadasOrigem = reservas.filter(r => ['reservado','presente'].includes(r.status)).length
+  // "Lotada" = igual ao "X de Y vagas" do topo: conta TODAS as reservas ativas, INCLUSIVE faltas
+  // (a aula estava cheia no booking; falta não reabre a vaga pra efeito desta trava).
+  const usadasOrigem = reservas.length
   const capOrigem = isRunning
     ? (aula?.capacidade || 0) - posicoesBloqueadasGlobal.length - posicoesBloqueadasPontual.length
     : (aula?.capacidade || 0) - vagasBloqueadas
