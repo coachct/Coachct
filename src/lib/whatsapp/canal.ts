@@ -247,12 +247,19 @@ export async function salvarMensagem(
  * A trava é atômica no banco (primary key), segura contra entregas concorrentes.
  * Em erro (ex.: tabela ainda não criada), retorna true para não travar o atendimento.
  */
-export async function registrarProcessada(supabase: SupabaseClient, wamid: string): Promise<boolean> {
+export async function registrarProcessada(
+  supabase: SupabaseClient,
+  wamid: string,
+  extra?: { telefone?: string; texto?: string },
+): Promise<boolean> {
   const id = String(wamid ?? '').trim()
   if (!id) return true // sem id não dá pra deduplicar; processa (não deve ocorrer)
+  const row: any = { wamid: id }
+  if (extra?.telefone) row.telefone = extra.telefone
+  if (extra?.texto !== undefined) row.texto = extra.texto
   const { data, error } = await supabase
     .from('whatsapp_processadas')
-    .upsert({ wamid: id }, { onConflict: 'wamid', ignoreDuplicates: true })
+    .upsert(row, { onConflict: 'wamid', ignoreDuplicates: true })
     .select('wamid')
   if (error) {
     console.error('[whatsapp/canal] falha na dedup (processa mesmo assim):', error.message)

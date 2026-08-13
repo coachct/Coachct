@@ -36,6 +36,18 @@ import {
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+// Espaço pro processamento em background (waitUntil): thinking + debounce podem
+// somar alguns segundos; sem isso a Vercel cortaria a função antes de responder.
+export const maxDuration = 60
+
+// DEBOUNCE de mensagens "picadas": muita gente manda uma frase única quebrada em
+// 2-3 mensagens seguidas — e o bot respondia cada uma. Com o debounce, ao chegar
+// uma mensagem o bot espera N ms; se vier outra, JUNTA e responde UMA vez só.
+// DESLIGADO por padrão (0). Liga setando WHATSAPP_DEBOUNCE_MS (ex.: 6000) no Vercel;
+// removendo a env, volta ao comportamento atual na hora. Só vale pra TEXTO (clique
+// de botão nunca espera).
+const DEBOUNCE_MS = parseInt(process.env.WHATSAPP_DEBOUNCE_MS || '0', 10) || 0
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 const AVISO_LGPD =
   'E aí! 👊 Aqui é a Just Club & CT no seu WhatsApp. Pra te ajudar certinho, dou uma olhada no seu cadastro (nome, plano, treinos) — seguindo a conversa, você concorda com a nossa Política de Privacidade. Se um dia quiser parar de receber mensagens, é só mandar PARAR. Bora? Como posso te ajudar hoje? 💪'
@@ -146,9 +158,43 @@ async function processar(de: string, texto: string, wamid: string, botaoId: stri
     const telefone = normalizarTelefone(de)
 
     // Idempotência: a Meta entrega cada inbound "pelo menos uma vez". Se já vimos
-    // este wamid, é reentrega — ignora para não duplicar a resposta.
-    const novo = await registrarProcessada(supabase, wamid)
+    // este wamid, é reentrega — ignora para não duplicar a resposta. Guarda também
+    // telefone+texto (buffer do debounce).
+    const novo = await registrarProcessada(supabase, wamid, { telefone, texto })
     if (!novo) return
+
+    // DEBOUNCE (só quando ligado): a pessoa costuma quebrar UMA frase em 2-3
+    // mensagens. Espera um pouco; se vier outra, o ÚLTIMO da rajada responde SÓ UMA
+    // vez, juntando o texto de todas. Clique de botão nunca espera. Fail-safe: se
+    // qualquer coisa falhar aqui, segue o fluxo normal (responde a mensagem única).
+    if (DEBOUNCE_MS > 0 && !botaoId) {
+      try {
+        await sleep(DEBOUNCE_MS)
+        const { data: minha } = await supabase
+          .from('whatsapp_processadas').select('criado_em').eq('wamid', wamid).maybeSingle()
+        const meuTs = (minha as any)?.criado_em
+        if (meuTs) {
+          // Chegou outra mensagem DEPOIS desta? Então não sou o último da rajada — saio;
+          // a mais nova responde pela rajada inteira.
+          const { data: novas } = await supabase
+            .from('whatsapp_processadas').select('wamid')
+            .eq('telefone', telefone).eq('respondido', false).gt('criado_em', meuTs).limit(1)
+          if (novas && novas.length) return
+          // Sou o último: junto o texto das não-respondidas (até a minha) e marco todas.
+          const { data: rajada } = await supabase
+            .from('whatsapp_processadas').select('texto')
+            .eq('telefone', telefone).eq('respondido', false).lte('criado_em', meuTs)
+            .order('criado_em', { ascending: true })
+          const textos = (rajada ?? []).map((r: any) => r.texto).filter((t: any) => t && String(t).trim())
+          if (textos.length > 1) texto = textos.join('\n')
+          await supabase.from('whatsapp_processadas')
+            .update({ respondido: true })
+            .eq('telefone', telefone).eq('respondido', false).lte('criado_em', meuTs)
+        }
+      } catch (e: any) {
+        console.error('[whatsapp/webhook] debounce falhou (segue normal):', e?.message)
+      }
+    }
 
     // DEBUG: registra que a mensagem chegou no nosso webhook (antes de tudo).
     await registrarAcessoLgpd(supabase, { telefone, acao: 'wa_inbound', detalhe: { de, texto } })
