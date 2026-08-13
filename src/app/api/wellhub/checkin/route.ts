@@ -20,7 +20,7 @@ import crypto from 'crypto';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { validarCheckin, buscarValor } from '@/lib/wellhub/validar-checkin';
 import { validarTicket } from '@/lib/wellhub/validate';
-import { ehModoPersonal, registrarCheckinCoachCt } from '@/lib/coach-ct/presenca-checkin';
+import { ehModoPersonal, registrarCheckinCoachCt, marcarEntradaSemValidar } from '@/lib/coach-ct/presenca-checkin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -274,22 +274,19 @@ export async function POST(req: NextRequest) {
       // Completa o loop: valida o check-in de volta no Wellhub (portal + repasse).
       waitUntil(validarCheckinClub(supabase, inserida.id, gympassId, gymId, produtoId, produtoDescricao));
     } else {
-      // CT (musculação): validação automática de sempre (Etapa 1). INTOCADO.
-      waitUntil(
-        validarCheckin({
-          entradaId: inserida.id,
-          gympassId,
-          produtoId,
-          produtoDescricao,
-        })
-      );
-      // Reação Coach CT: personal marca presença no agendamento de hoje;
-      // musculação livre sinaliza "modo errado" se a pessoa tiver treino Coach CT
-      // hoje. Em paralelo e à prova de falha (a descrição já vem no payload).
-      {
-        const modo = ehModoPersonal(produtoDescricao, produto) ? 'personal' : 'walkin';
-        waitUntil(registrarCheckinCoachCt(supabase, 'wellhub', modo, { wellhubId: gympassId, email, nome }));
-      }
+      // CT (musculação): Coach CT primeiro (marca presença / sinaliza modo errado),
+      // e SÓ valida se não for o caso "tem Coach CT agendado + bateu Musculação
+      // Livre" — nesse modo errado NÃO valida (prejuízo); a pessoa refaz no Personal.
+      const modo = ehModoPersonal(produtoDescricao, produto) ? 'personal' : 'walkin';
+      waitUntil((async () => {
+        const agCoach = await registrarCheckinCoachCt(supabase, 'wellhub', modo, { wellhubId: gympassId, email, nome });
+        if (modo === 'walkin' && agCoach) {
+          await marcarEntradaSemValidar(supabase, inserida.id, produtoDescricao);
+          console.warn(`[wellhub/checkin] NAO validado — Coach CT agendado + modo livre (gympassId=${gympassId})`);
+          return;
+        }
+        await validarCheckin({ entradaId: inserida.id, gympassId, produtoId, produtoDescricao });
+      })());
     }
   }
 

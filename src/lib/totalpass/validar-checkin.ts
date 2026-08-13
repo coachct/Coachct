@@ -15,7 +15,7 @@
 // marcada 'validado' mesmo assim (a falta de valor é sinalizada por log).
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { ehModoPersonal, registrarCheckinCoachCt } from '@/lib/coach-ct/presenca-checkin';
+import { ehModoPersonal, registrarCheckinCoachCt, marcarEntradaSemValidar } from '@/lib/coach-ct/presenca-checkin';
 
 type ValidarInput = {
   entradaId: string; // id da linha em entradas_walkin
@@ -40,40 +40,39 @@ export async function validarCheckinTotalpass(input: ValidarInput): Promise<void
     auth: { persistSession: false },
   });
 
-  // 1. Confirma de volta na TotalPass (aceite do check-in). Best-effort.
+  // 1. Valor + nome legível do plano ANTES de validar (o payload só traz o
+  //    plan_code em hash; o nome/modo vêm de valores_checkin).
+  const { valor, descricao } = await buscarProduto(supabase, planCode);
+  const modo = descricao ? (ehModoPersonal(descricao) ? 'personal' : 'walkin') : null;
+
+  // 2. Coach CT: personal marca presença; musculação livre sinaliza "modo errado"
+  //    se a pessoa tiver treino Coach CT hoje. Retorna o agendamento (não-nulo =
+  //    tem Coach CT agendado).
+  let agCoach: string | null = null;
+  if (modo) agCoach = await registrarCheckinCoachCt(supabase, 'totalpass', modo, { cpf, nome });
+
+  // 3. TRAVA: tem Coach CT agendado + bateu Musculação Livre => NÃO valida (prejuízo).
+  //    A pessoa refaz no modo Personal (o alerta âmbar no agendamento orienta).
+  if (modo === 'walkin' && agCoach) {
+    await marcarEntradaSemValidar(supabase, entradaId, descricao);
+    console.warn(`[totalpass/validar] NAO validado — Coach CT agendado + modo livre (cpf=${cpf})`);
+    return;
+  }
+
+  // 4. Fluxo normal: confirma de volta na TotalPass (repasse) + marca validado + valor.
   if (endpoint) {
     await confirmarNaTotalpass(endpoint, cpf);
   } else {
     console.warn('[totalpass/validar] payload sem endpoint de confirmacao');
   }
-
-  // 2. Valor + nome legível do plano (por produto_id = plan_code).
-  const { valor, descricao } = await buscarProduto(supabase, planCode);
-
-  // 3. Marca validado. O check-in já é válido por definição (CHECK_IN_CREATED).
-  //    Grava o nome legível no 'produto' (pras telas) quando conhecido; se não,
-  //    mantém o plan_code que já está lá.
   const patch: Record<string, unknown> = {
     status: 'validado',
     validado_em: startedAt ?? new Date().toISOString(),
     valor,
   };
   if (descricao) patch.produto = descricao;
-
-  const { error } = await supabase
-    .from('entradas_walkin')
-    .update(patch)
-    .eq('id', entradaId);
+  const { error } = await supabase.from('entradas_walkin').update(patch).eq('id', entradaId);
   if (error) console.error('[totalpass/validar] erro ao gravar validado:', error);
-
-  // 4. Reação Coach CT — aqui o nome legível do plano já foi resolvido (o payload
-  //    TotalPass só traz o plan_code em hash). Personal marca presença; musculação
-  //    livre sinaliza "modo errado" se a pessoa tiver treino Coach CT hoje.
-  //    À prova de falha (a função engole erro). Sem nome resolvido, não faz nada.
-  if (descricao) {
-    const modo = ehModoPersonal(descricao) ? 'personal' : 'walkin';
-    await registrarCheckinCoachCt(supabase, 'totalpass', modo, { cpf, nome });
-  }
 }
 
 // POST de confirmação no endpoint que veio no payload. A URL já carrega um
