@@ -66,6 +66,11 @@ export default function RecepcaoAgendaPage() {
   const [qtdLiberar, setQtdLiberar] = useState(1)
   const [desbloqueando, setDesbloqueando] = useState(false)
 
+  // 🔧 Modal de confirmação de presença/falta — evita clique por engano no balcão.
+  // A recepção só MARCA (não altera depois de marcado); ajuste retroativo é só no admin.
+  const [modalConfirmar, setModalConfirmar] = useState<{ ag: any; acao: 'presenca' | 'falta' } | null>(null)
+  const [salvandoStatus, setSalvandoStatus] = useState(false)
+
   const scrollRef = useRef<number>(0)
   const dateInputRef = useRef<HTMLInputElement>(null)
   const hoje = new Date().toISOString().split('T')[0]
@@ -267,9 +272,18 @@ export default function RecepcaoAgendaPage() {
   async function marcarFalta(agendamentoId: string) {
     // Marcar falta NÃO bloqueia o cliente. O bloqueio só nasce de FALHA DE COBRANÇA
     // da multa (ver /api/admin/cobrar-cartao-salvo e /api/admin/cobrar-noshow-club).
-    if (!confirm('Marcar como falta?')) return
     await supabase.from('agendamentos').update({ status: 'falta' }).eq('id', agendamentoId)
     await loadData(true)
+  }
+
+  // 🔧 Confirma a ação do modal. Só altera o status (igual às funções acima).
+  async function confirmarStatus() {
+    if (!modalConfirmar || salvandoStatus) return
+    setSalvandoStatus(true)
+    if (modalConfirmar.acao === 'presenca') await marcarPresenca(modalConfirmar.ag.id)
+    else await marcarFalta(modalConfirmar.ag.id)
+    setSalvandoStatus(false)
+    setModalConfirmar(null)
   }
 
   async function cancelarAgendamento(agendamentoId: string) {
@@ -619,11 +633,11 @@ export default function RecepcaoAgendaPage() {
                             {/* Presença / Falta / Cancelar — só enquanto não realizado/falta */}
                             {ag.status !== 'realizado' && ag.status !== 'falta' && (
                               <>
-                                <button onClick={() => marcarPresenca(ag.id)}
+                                <button onClick={() => setModalConfirmar({ ag, acao: 'presenca' })}
                                   className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
                                   <CheckCircle size={12} /> Presença
                                 </button>
-                                <button onClick={() => marcarFalta(ag.id)}
+                                <button onClick={() => setModalConfirmar({ ag, acao: 'falta' })}
                                   className="btn btn-sm gap-1 text-orange-600 hover:bg-orange-50">
                                   <XCircle size={12} /> Falta
                                 </button>
@@ -747,10 +761,10 @@ export default function RecepcaoAgendaPage() {
                         <div key={ag.id} className="flex items-center gap-3 rounded-xl border border-orange-100 bg-white px-3 py-2">
                           <span className="font-mono font-bold text-gray-700">{norm(ag.horario)}</span>
                           <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900">{ag.clientes?.nome}</span>
-                          <button onClick={() => marcarPresenca(ag.id)} className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
+                          <button onClick={() => setModalConfirmar({ ag, acao: 'presenca' })} className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
                             <CheckCircle size={12} /> Presença
                           </button>
-                          <button onClick={() => marcarFalta(ag.id)} className="btn btn-sm gap-1 text-orange-600 hover:bg-orange-50">
+                          <button onClick={() => setModalConfirmar({ ag, acao: 'falta' })} className="btn btn-sm gap-1 text-orange-600 hover:bg-orange-50">
                             <XCircle size={12} /> Falta
                           </button>
                         </div>
@@ -831,10 +845,10 @@ export default function RecepcaoAgendaPage() {
                                     )
                                   ) : (
                                     <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row">
-                                      <button onClick={() => marcarPresenca(ag.id)} className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
+                                      <button onClick={() => setModalConfirmar({ ag, acao: 'presenca' })} className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
                                         <CheckCircle size={14} /> Presença
                                       </button>
-                                      <button onClick={() => marcarFalta(ag.id)} className="btn btn-sm gap-1 text-orange-600 hover:bg-orange-50">
+                                      <button onClick={() => setModalConfirmar({ ag, acao: 'falta' })} className="btn btn-sm gap-1 text-orange-600 hover:bg-orange-50">
                                         <XCircle size={14} /> Falta
                                       </button>
                                     </div>
@@ -1016,6 +1030,37 @@ export default function RecepcaoAgendaPage() {
           </div>
         </div>
       )}
+
+      {modalConfirmar && (() => {
+        const ehPresenca = modalConfirmar.acao === 'presenca'
+        return (
+          <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl w-full max-w-sm p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <div className="font-bold text-gray-900 flex items-center gap-2">
+                    {ehPresenca ? <CheckCircle size={18} className="text-green-500" /> : <XCircle size={18} className="text-orange-500" />}
+                    {ehPresenca ? 'Confirmar presença' : 'Confirmar falta'}
+                  </div>
+                  <div className="text-sm text-gray-400 mt-0.5">{modalConfirmar.ag.clientes?.nome} · {norm(modalConfirmar.ag.horario)}</div>
+                </div>
+                <button onClick={() => setModalConfirmar(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              </div>
+              <div className={`rounded-lg p-3 mb-4 text-sm ${ehPresenca ? 'bg-green-50 border border-green-100 text-green-700' : 'bg-orange-50 border border-orange-100 text-orange-700'}`}>
+                Marcar <strong>{ehPresenca ? 'presença' : 'falta'}</strong> de <strong>{modalConfirmar.ag.clientes?.nome}</strong>?
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setModalConfirmar(null)} className="btn flex-1 text-gray-500 border border-gray-200">Cancelar</button>
+                <button onClick={confirmarStatus} disabled={salvandoStatus}
+                  className={`btn flex-1 gap-1 text-white ${ehPresenca ? 'bg-green-500 hover:bg-green-600' : 'bg-orange-500 hover:bg-orange-600'}`}>
+                  {ehPresenca ? <CheckCircle size={12} /> : <XCircle size={12} />}
+                  {salvandoStatus ? 'Salvando...' : ehPresenca ? 'Confirmar presença' : 'Confirmar falta'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
