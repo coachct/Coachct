@@ -82,6 +82,10 @@ export default function RecepcaoMusculacaoLivrePage() {
     const { data: agregadores } = await supabase.from('entradas_walkin')
       .select('id, origem, id_externo, produto, recebido_em, raw, clientes(nome, cpf)')
       .eq('unidade_id', CT_UNIDADE_ID)
+      // Esconde check-in em MODO ERRADO (Coach CT agendado + bateu Musculação Livre):
+      // fica 'observado' (não validado) e aparece só no alerta âmbar do agendamento,
+      // não como entrada de musculação.
+      .neq('status', 'observado')
       .gte('recebido_em', `${hoje}T00:00:00-03:00`)
       .order('recebido_em', { ascending: false })
 
