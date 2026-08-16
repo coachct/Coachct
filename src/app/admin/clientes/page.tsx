@@ -183,6 +183,7 @@ function AdminClientesPageInner() {
 
   const [editando, setEditando] = useState(false)
   const [form, setForm] = useState<any>({})
+  const [erroEdicao, setErroEdicao] = useState('')
   const [salvando, setSalvando] = useState(false)
 
   const [historico, setHistorico] = useState<any[]>([])
@@ -477,15 +478,43 @@ function AdminClientesPageInner() {
   }
 
   async function salvarEdicao() {
-    setSalvando(true)
-    const { error } = await supabase.from('clientes').update({
-      nome: form.nome, email: form.email, telefone: form.telefone, cpf: form.cpf,
-    }).eq('id', clienteSel.id)
-    if (!error) {
-      const updated = { ...clienteSel, ...form }
-      setClienteSel(updated); setEditando(false)
-      await carregarSaldo(updated.id); buscarClientes()
+    setSalvando(true); setErroEdicao('')
+    const cpfLimpo = (form.cpf || '').replace(/\D/g, '')
+    const emailLimpo = (form.email || '').trim().toLowerCase()
+
+    if (cpfLimpo && cpfLimpo.length !== 11) {
+      setErroEdicao('CPF inválido. Digite os 11 dígitos.'); setSalvando(false); return
     }
+    if (cpfLimpo) {
+      const { data: donoCpf } = await supabase.from('clientes').select('id, nome')
+        .eq('cpf', cpfLimpo).neq('id', clienteSel.id).maybeSingle()
+      if (donoCpf) {
+        setErroEdicao(`Este CPF já está no cadastro de ${donoCpf.nome}. Provavelmente é um cadastro duplicado — resolva o duplicado antes de salvar.`)
+        setSalvando(false); return
+      }
+    }
+    if (emailLimpo) {
+      const { data: donoEmail } = await supabase.from('clientes').select('id, nome')
+        .ilike('email', emailLimpo).neq('id', clienteSel.id).maybeSingle()
+      if (donoEmail) {
+        setErroEdicao(`Este email já está no cadastro de ${donoEmail.nome}.`)
+        setSalvando(false); return
+      }
+    }
+
+    const { data, error } = await supabase.from('clientes').update({
+      nome: form.nome, email: emailLimpo || null, telefone: form.telefone, cpf: cpfLimpo || null,
+    }).eq('id', clienteSel.id).select().maybeSingle()
+
+    if (error) {
+      setErroEdicao('Não foi possível salvar: ' + error.message); setSalvando(false); return
+    }
+    if (!data) {
+      setErroEdicao('Nada foi salvo — o cadastro não foi encontrado ou seu acesso não permite alterá-lo. Avise o suporte.')
+      setSalvando(false); return
+    }
+    setClienteSel(data); setForm({ ...data }); setEditando(false)
+    await carregarSaldo(data.id); buscarClientes()
     setSalvando(false)
   }
 
@@ -1414,10 +1443,10 @@ function AdminClientesPageInner() {
                   <div className="flex items-center justify-between mb-4">
                     <div className="text-sm font-semibold text-gray-900">Informações</div>
                     {!editando ? (
-                      <button onClick={() => setEditando(true)} className="btn btn-sm text-primary-600">Editar</button>
+                      <button onClick={() => { setErroEdicao(''); setEditando(true) }} className="btn btn-sm text-primary-600">Editar</button>
                     ) : (
                       <div className="flex gap-2">
-                        <button onClick={() => { setEditando(false); setForm(clienteSel) }} className="btn btn-sm text-gray-500">Cancelar</button>
+                        <button onClick={() => { setEditando(false); setErroEdicao(''); setForm(clienteSel) }} className="btn btn-sm text-gray-500">Cancelar</button>
                         <button onClick={salvarEdicao} disabled={salvando} className="btn btn-sm gap-1 bg-primary-600 text-white"><Check size={12} /> {salvando ? 'Salvando...' : 'Salvar'}</button>
                       </div>
                     )}
@@ -1439,6 +1468,10 @@ function AdminClientesPageInner() {
                       </div>
                     ))}
                   </div>
+
+                  {erroEdicao && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-2 mt-3 text-xs text-red-700">{erroEdicao}</div>
+                  )}
 
                   <div className="mt-4 pt-4 border-t border-gray-100">
                     <button onClick={gerarSenhaProvisoria} disabled={gerandoSenha} className="btn btn-sm gap-1 bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50">
