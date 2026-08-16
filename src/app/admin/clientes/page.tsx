@@ -2564,6 +2564,13 @@ function AdminClientesPageInner() {
               {resultadoUnificar.removido?.nome ? ` de ${resultadoUnificar.removido.nome}` : ''} passaram para este cliente,
               e o duplicado foi apagado.
             </div>
+            {!!resultadoUnificar.consolidados && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 mb-3 text-xs text-amber-800">
+                {resultadoUnificar.consolidados} registro(s) que existiam nos dois cadastros foram
+                consolidados em um só (plano repetido, pote de créditos do mesmo mês, reserva na mesma aula).
+                A cópia completa ficou guardada na auditoria.
+              </div>
+            )}
             {resultadoUnificar.movidos && Object.keys(resultadoUnificar.movidos).length > 0 && (
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-2 mb-3 text-xs text-gray-600 max-h-40 overflow-y-auto">
                 {Object.entries(resultadoUnificar.movidos).map(([tabela, n]: any) => (
