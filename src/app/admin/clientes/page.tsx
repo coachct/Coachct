@@ -5,7 +5,7 @@ import { gradeExtraDoDia } from '@/lib/grade'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Search, Plus, ChevronRight, X, Check, Calendar, Lock, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap, Gift, CalendarClock, Edit2, Mail, Copy, Clock, Link as LinkIcon, UserPlus, KeyRound, Camera, Upload, Trash, Wifi, WifiOff, Dumbbell, CheckCircle2 } from 'lucide-react'
+import { Search, Plus, ChevronRight, X, Check, Calendar, Lock, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap, Gift, CalendarClock, Edit2, Mail, Copy, Clock, Link as LinkIcon, UserPlus, KeyRound, Camera, Upload, Trash, Wifi, WifiOff, Dumbbell, CheckCircle2, Users, GitMerge } from 'lucide-react'
 import UnidadeSelector from '@/components/UnidadeSelector'
 import { numerarTreinosDoMes, PLANOS_SEM_TETO } from '@/lib/treinos-numero'
 
@@ -184,6 +184,11 @@ function AdminClientesPageInner() {
   const [editando, setEditando] = useState(false)
   const [form, setForm] = useState<any>({})
   const [erroEdicao, setErroEdicao] = useState('')
+  const [dupCliente, setDupCliente] = useState<any>(null)
+  const [modalUnificar, setModalUnificar] = useState(false)
+  const [unificando, setUnificando] = useState(false)
+  const [erroUnificar, setErroUnificar] = useState('')
+  const [resultadoUnificar, setResultadoUnificar] = useState<any>(null)
   const [salvando, setSalvando] = useState(false)
 
   const [historico, setHistorico] = useState<any[]>([])
@@ -326,6 +331,7 @@ function AdminClientesPageInner() {
       router.replace(`/admin/clientes?id=${cliente.id}`, { scroll: false })
     }
     setClienteSel(cliente); setForm({ ...cliente }); setEditando(false); setAba('dados')
+    setErroEdicao(''); setDupCliente(null)
     setHistorico([]); setClubReservas([]); setAcessosWalkin([]); setVendas([]); setModalSlot(null); setTipoCredito('')
     setErroCriarAcesso(''); setFotoUrl(null); setStatusSync('idle'); setErroSync(''); setAcessoBloqueado(false)
     await Promise.all([
@@ -477,33 +483,39 @@ function AdminClientesPageInner() {
     if (data) { setClienteSel(data); await carregarFotoUrl(data) }
   }
 
-  async function salvarEdicao() {
-    setSalvando(true); setErroEdicao('')
-    const cpfLimpo = (form.cpf || '').replace(/\D/g, '')
-    const emailLimpo = (form.email || '').trim().toLowerCase()
+  const CAMPOS_DUP = 'id, nome, email, telefone, cpf, criado_em, user_id, wellhub_id, totalpass_id'
+
+  async function salvarEdicao() { await salvarCliente(form) }
+
+  async function salvarCliente(valores: any) {
+    setSalvando(true); setErroEdicao(''); setDupCliente(null)
+    const cpfLimpo = (valores.cpf || '').replace(/\D/g, '')
+    const emailLimpo = (valores.email || '').trim().toLowerCase()
 
     if (cpfLimpo && cpfLimpo.length !== 11) {
       setErroEdicao('CPF inválido. Digite os 11 dígitos.'); setSalvando(false); return
     }
     if (cpfLimpo) {
-      const { data: donoCpf } = await supabase.from('clientes').select('id, nome')
+      const { data: donoCpf } = await supabase.from('clientes').select(CAMPOS_DUP)
         .eq('cpf', cpfLimpo).neq('id', clienteSel.id).maybeSingle()
       if (donoCpf) {
-        setErroEdicao(`Este CPF já está no cadastro de ${donoCpf.nome}. Provavelmente é um cadastro duplicado — resolva o duplicado antes de salvar.`)
+        setErroEdicao(`Este CPF já está no cadastro de ${donoCpf.nome} — é um cadastro duplicado.`)
+        setDupCliente({ ...donoCpf, motivo: 'CPF' })
         setSalvando(false); return
       }
     }
     if (emailLimpo) {
-      const { data: donoEmail } = await supabase.from('clientes').select('id, nome')
+      const { data: donoEmail } = await supabase.from('clientes').select(CAMPOS_DUP)
         .ilike('email', emailLimpo).neq('id', clienteSel.id).maybeSingle()
       if (donoEmail) {
-        setErroEdicao(`Este email já está no cadastro de ${donoEmail.nome}.`)
+        setErroEdicao(`Este email já está no cadastro de ${donoEmail.nome} — é um cadastro duplicado.`)
+        setDupCliente({ ...donoEmail, motivo: 'email' })
         setSalvando(false); return
       }
     }
 
     const { data, error } = await supabase.from('clientes').update({
-      nome: form.nome, email: emailLimpo || null, telefone: form.telefone, cpf: cpfLimpo || null,
+      nome: valores.nome, email: emailLimpo || null, telefone: valores.telefone, cpf: cpfLimpo || null,
     }).eq('id', clienteSel.id).select().maybeSingle()
 
     if (error) {
@@ -516,6 +528,41 @@ function AdminClientesPageInner() {
     setClienteSel(data); setForm({ ...data }); setEditando(false)
     await carregarSaldo(data.id); buscarClientes()
     setSalvando(false)
+  }
+
+  // Une o cadastro duplicado ao que está aberto: move todo o histórico, apaga o
+  // duplicado e já salva a edição que estava travada pelo conflito.
+  async function unificarCadastros() {
+    if (!dupCliente || !clienteSel) return
+    setUnificando(true); setErroUnificar('')
+    try {
+      const { data: sessao } = await supabase.auth.getSession()
+      const token = sessao?.session?.access_token
+      if (!token) { setErroUnificar('Sessão expirada. Recarregue a página e entre novamente.'); return }
+
+      const res = await fetch('/api/admin/unificar-clientes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ manter_id: clienteSel.id, remover_id: dupCliente.id }),
+      })
+      const result = await res.json()
+      if (!res.ok) { setErroUnificar(result.error || 'Não foi possível unificar os cadastros.'); return }
+
+      // O que o usuário digitou continua valendo; o resto vem do cadastro já unificado
+      const unificado = result.cliente || clienteSel
+      const valores = { ...unificado }
+      for (const k of ['nome', 'email', 'telefone', 'cpf']) {
+        if ((form[k] || '').toString().trim()) valores[k] = form[k]
+      }
+      setClienteSel(unificado); setForm(valores)
+      setDupCliente(null); setModalUnificar(false)
+      setResultadoUnificar(result)
+      await salvarCliente(valores)
+    } catch (e: any) {
+      setErroUnificar('Erro: ' + (e?.message || 'desconhecido'))
+    } finally {
+      setUnificando(false)
+    }
   }
 
   async function desbloquear() {
@@ -1446,7 +1493,7 @@ function AdminClientesPageInner() {
                       <button onClick={() => { setErroEdicao(''); setEditando(true) }} className="btn btn-sm text-primary-600">Editar</button>
                     ) : (
                       <div className="flex gap-2">
-                        <button onClick={() => { setEditando(false); setErroEdicao(''); setForm(clienteSel) }} className="btn btn-sm text-gray-500">Cancelar</button>
+                        <button onClick={() => { setEditando(false); setErroEdicao(''); setDupCliente(null); setForm(clienteSel) }} className="btn btn-sm text-gray-500">Cancelar</button>
                         <button onClick={salvarEdicao} disabled={salvando} className="btn btn-sm gap-1 bg-primary-600 text-white"><Check size={12} /> {salvando ? 'Salvando...' : 'Salvar'}</button>
                       </div>
                     )}
@@ -1470,7 +1517,16 @@ function AdminClientesPageInner() {
                   </div>
 
                   {erroEdicao && (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-2 mt-3 text-xs text-red-700">{erroEdicao}</div>
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-2 mt-3 text-xs text-red-700">
+                      {erroEdicao}
+                      {dupCliente && (
+                        <button
+                          onClick={() => { setErroUnificar(''); setModalUnificar(true) }}
+                          className="btn btn-sm gap-1 bg-red-600 text-white hover:bg-red-700 mt-2">
+                          <Users size={12} /> Unificar os dois cadastros
+                        </button>
+                      )}
+                    </div>
                   )}
 
                   <div className="mt-4 pt-4 border-t border-gray-100">
@@ -2434,6 +2490,89 @@ function AdminClientesPageInner() {
               {senhaCopiada ? <><Check size={14} /> Copiada!</> : <><Copy size={14} /> Copiar senha</>}
             </button>
             <button onClick={() => setModalSenhaProvisoria(null)} className="w-full btn bg-primary-600 text-white hover:bg-primary-700">Entendi</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Unificar cadastros duplicados ─────────────────────────────────── */}
+      {modalUnificar && dupCliente && clienteSel && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-5 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center gap-2 mb-1">
+              <GitMerge size={18} className="text-red-600" />
+              <div className="text-base font-semibold text-gray-900">Unificar cadastros duplicados</div>
+            </div>
+            <div className="text-xs text-gray-500 mb-4">
+              Mesmo {dupCliente.motivo} em dois cadastros. Todo o histórico do duplicado (aulas, reservas,
+              vendas, créditos, planos, cobranças, avaliações…) passa para o cadastro que fica, e o duplicado é apagado.
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              {[
+                { titulo: 'FICA (cadastro aberto)', cor: 'border-green-300 bg-green-50', c: clienteSel },
+                { titulo: 'SERÁ ABSORVIDO E APAGADO', cor: 'border-red-300 bg-red-50', c: dupCliente },
+              ].map((box, i) => (
+                <div key={i} className={`border rounded-xl p-3 ${box.cor}`}>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500 mb-2">{box.titulo}</div>
+                  <div className="text-sm font-semibold text-gray-900 mb-1">{box.c.nome}</div>
+                  <div className="text-xs text-gray-600 space-y-0.5">
+                    <div>CPF: <span className="font-mono">{box.c.cpf || '—'}</span></div>
+                    <div className="break-all">Email: {box.c.email || '—'}</div>
+                    <div>Telefone: {box.c.telefone || '—'}</div>
+                    <div>Criado: {box.c.criado_em ? formatarBR(box.c.criado_em.slice(0, 10)) : '—'}</div>
+                    <div>Acesso ao site: {box.c.user_id ? 'sim' : 'não'}</div>
+                    {(box.c.wellhub_id || box.c.totalpass_id) && (
+                      <div>App: {box.c.wellhub_id ? 'Wellhub ' : ''}{box.c.totalpass_id ? 'TotalPass' : ''}</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 text-xs text-amber-800 mb-3">
+              Campos vazios no cadastro que fica são preenchidos com os do duplicado (telefone, CPF, foto,
+              vínculo de Wellhub/TotalPass, cartão). Nada é sobrescrito. Uma cópia completa do cadastro
+              apagado fica guardada para auditoria.
+            </div>
+
+            {erroUnificar && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-2 text-xs text-red-700 mb-3">{erroUnificar}</div>
+            )}
+
+            <div className="flex gap-2">
+              <button onClick={() => { setModalUnificar(false); setErroUnificar('') }} disabled={unificando}
+                className="btn flex-1 bg-gray-100 text-gray-700 hover:bg-gray-200">Cancelar</button>
+              <button onClick={unificarCadastros} disabled={unificando}
+                className="btn flex-1 gap-1 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50">
+                <GitMerge size={14} /> {unificando ? 'Unificando...' : 'Unificar agora'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Resultado da unificação ───────────────────────────────────────── */}
+      {resultadoUnificar && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-5 max-w-md w-full">
+            <div className="flex items-center gap-2 mb-2">
+              <CheckCircle2 size={18} className="text-green-600" />
+              <div className="text-base font-semibold text-gray-900">Cadastros unificados</div>
+            </div>
+            <div className="text-xs text-gray-600 mb-3">
+              <strong>{resultadoUnificar.total_registros || 0}</strong> registro(s) do cadastro duplicado
+              {resultadoUnificar.removido?.nome ? ` de ${resultadoUnificar.removido.nome}` : ''} passaram para este cliente,
+              e o duplicado foi apagado.
+            </div>
+            {resultadoUnificar.movidos && Object.keys(resultadoUnificar.movidos).length > 0 && (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-2 mb-3 text-xs text-gray-600 max-h-40 overflow-y-auto">
+                {Object.entries(resultadoUnificar.movidos).map(([tabela, n]: any) => (
+                  <div key={tabela} className="flex justify-between"><span>{tabela.replace(/_/g, ' ')}</span><strong>{n}</strong></div>
+                ))}
+              </div>
+            )}
+            <button onClick={() => setResultadoUnificar(null)}
+              className="w-full btn bg-primary-600 text-white hover:bg-primary-700">Entendi</button>
           </div>
         </div>
       )}
