@@ -156,7 +156,8 @@ export default function TotemPage() {
     if (screen === 'idle' || screen === 'loading' || screen === 'config') return
     if (screen === 'reserva' && reserva?.flow === 'aguardar_parceiro') return
     if (screen === 'ctCoachAguardando') return // aguardando check-in Personal, não expira
-    const ms = (screen === 'done' || screen === 'ctLiberado' || screen === 'ctJaRegistrada' || screen === 'ctCoachPronto' || screen === 'ctConfirmado') ? RESET_DONE_MS
+    const ms = screen === 'ctConfirmado' ? 3000
+      : (screen === 'done' || screen === 'ctLiberado' || screen === 'ctJaRegistrada' || screen === 'ctCoachPronto') ? RESET_DONE_MS
       : (screen === 'ctAguardando' || screen === 'ctCoachEscolher') ? 120000
       : INATIVIDADE_MS
     inatRef.current = setTimeout(irIdle, ms)
