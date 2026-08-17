@@ -379,8 +379,12 @@ export default function AdminAgendaPage() {
   const agoraMin = agora.getHours() * 60 + agora.getMinutes()
   // horários (HH:MM) que têm pelo menos 1 agendamento não cancelado, ordenados
   const horariosComAgendamento = Array.from(new Set(agendamentosAtivos.map(a => norm(a.horario)))).sort()
+  // treino resolvido: presença já marcada (manual ou check-in) E coach alocado → some da tela
+  const treinoResolvido = (a: any) => a.status === 'realizado' && !!a.coach_id
   // próximos treinos: hoje aplica a janela; em outros dias mostra tudo
-  const horariosRecepcao = horariosComAgendamento.filter(h => !ehHoje || agoraMin < horaParaMin(h) + JANELA_MIN)
+  const horariosRecepcao = horariosComAgendamento
+    .filter(h => !ehHoje || agoraMin < horaParaMin(h) + JANELA_MIN)
+    .filter(h => agendamentosPorHorario(h).some(a => a.status !== 'cancelado' && !treinoResolvido(a)))
   // pendentes: horários já vencidos (hoje) com treino ainda sem presença/falta
   const pendentesRecepcao = ehHoje
     ? agendamentosAtivos.filter(a =>
@@ -681,13 +685,18 @@ export default function AdminAgendaPage() {
                 ) : (
                   <div className="space-y-7">
                     {horariosRecepcao.map(h => {
-                      const cards = agendamentosPorHorario(h).filter(a => a.status !== 'cancelado')
+                      const todosDoHorario = agendamentosPorHorario(h).filter(a => a.status !== 'cancelado')
+                      const cards = todosDoHorario.filter(a => !treinoResolvido(a))
+                      const resolvidos = todosDoHorario.length - cards.length
                       if (cards.length === 0) return null
                       return (
                         <div key={h}>
                           <div className="mb-3 flex items-baseline gap-3">
                             <span className="font-mono text-3xl font-extrabold text-primary-700">{h}</span>
                             <span className="text-sm font-medium text-gray-400">{cards.length} aluno{cards.length !== 1 ? 's' : ''}</span>
+                            {resolvidos > 0 && (
+                              <span className="text-xs text-gray-300">{resolvidos} já resolvido{resolvidos !== 1 ? 's' : ''}</span>
+                            )}
                           </div>
                           <div className="space-y-3">
                             {cards.map(ag => {
