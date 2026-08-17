@@ -14,7 +14,7 @@ type Screen =
   | 'loading' | 'config' | 'idle' | 'face' | 'cpf' | 'validate' | 'reserva' | 'recepcao'
   | 'waiting' | 'done' | 'enrollConsent' | 'enrollCapture' | 'enrollDone'
   | 'ctLiberado' | 'ctAguardando' | 'ctJaRegistrada'
-  | 'ctCoachAguardando' | 'ctCoachEscolher' | 'ctCoachPronto'
+  | 'ctCoachAguardando' | 'ctCoachEscolher' | 'ctCoachPronto' | 'ctConfirmado'
 
 const POLL_MS = 3000
 const RESET_DONE_MS = 12000
@@ -37,6 +37,9 @@ export default function TotemPage() {
   const [coachSel, setCoachSel] = useState('')
   const [confCoach, setConfCoach] = useState(false)
   const [coachMsg, setCoachMsg] = useState('')
+  // Feed de check-ins do CT (conferência do cliente na tela)
+  const [ctFeed, setCtFeed] = useState<{ id: string; nome: string; origem: string }[]>([])
+  const [confNome, setConfNome] = useState('')
   const [scale, setScale] = useState(1)
   const [faceReady, setFaceReady] = useState(false)
   const [faceMsg, setFaceMsg] = useState('Câmera ativa · olhe para reconhecer')
@@ -145,7 +148,7 @@ export default function TotemPage() {
     setCpf(''); setNome(''); setReserva(null); setRecepcaoMsg(''); setStatusMsg('')
     setConsentOk(false); setEnrollNome(''); setEnrollCpf(''); setEnrollMsg('Posicione seu rosto')
     setCtInfo(null)
-    setCoachAg(null); setCoachesCt([]); setCoachSel(''); setCoachMsg('')
+    setCoachAg(null); setCoachesCt([]); setCoachSel(''); setCoachMsg(''); setConfNome('')
     setFaceMsg('Câmera ativa · olhe para reconhecer'); setScreen('idle')
   }, [limparPoll])
   useEffect(() => {
@@ -153,7 +156,7 @@ export default function TotemPage() {
     if (screen === 'idle' || screen === 'loading' || screen === 'config') return
     if (screen === 'reserva' && reserva?.flow === 'aguardar_parceiro') return
     if (screen === 'ctCoachAguardando') return // aguardando check-in Personal, não expira
-    const ms = (screen === 'done' || screen === 'ctLiberado' || screen === 'ctJaRegistrada' || screen === 'ctCoachPronto') ? RESET_DONE_MS
+    const ms = (screen === 'done' || screen === 'ctLiberado' || screen === 'ctJaRegistrada' || screen === 'ctCoachPronto' || screen === 'ctConfirmado') ? RESET_DONE_MS
       : (screen === 'ctAguardando' || screen === 'ctCoachEscolher') ? 120000
       : INATIVIDADE_MS
     inatRef.current = setTimeout(irIdle, ms)
@@ -229,6 +232,19 @@ export default function TotemPage() {
     }
   }
 
+  // ---------- Feed de check-ins do CT ----------
+  const carregarFeed = useCallback(async () => {
+    if (!unidade || unidade.tipo !== 'ct') return
+    const r = await api(`/api/totem/ct-checkins?unidade=${encodeURIComponent(unidade.slug)}`)
+    setCtFeed((r?.checkins || []) as { id: string; nome: string; origem: string }[])
+  }, [unidade, api])
+  const confirmarEntrada = async (id: string, nome: string) => {
+    setConfNome(nome)
+    setCtFeed((prev) => prev.filter((c) => c.id !== id))
+    setScreen('ctConfirmado')
+    await api('/api/totem/ct-confirmar-entrada', { method: 'POST', body: JSON.stringify({ unidade: unidade!.slug, entradaId: id }) }).catch(() => ({}))
+  }
+
   const tratarResposta = (res: any) => {
     // Coach CT (tem agendamento hoje) → fazer check-in Personal e escolher coach
     if (res?.resultado === 'coach_ct' && res.agendamento) { setNome(res.nome || ''); setCoachAg(res.agendamento); irParaCoachCt(res.agendamento); return }
@@ -283,6 +299,14 @@ export default function TotemPage() {
     }
     return () => { if (interval) clearInterval(interval) }
   }, [screen, faceReady, unidade, attachCamera, stopCamera])
+
+  // ---------- feed de check-ins: atualiza na idle do CT ----------
+  useEffect(() => {
+    if (screen !== 'idle' || unidade?.tipo !== 'ct') return
+    carregarFeed()
+    const id = setInterval(carregarFeed, 4000)
+    return () => clearInterval(id)
+  }, [screen, unidade?.tipo, carregarFeed])
 
   // ---------- CPF ----------
   const kp = (k: string) => setCpf((c) => (k === 'back' ? c.slice(0, -1) : c.length < 11 ? c + k : c))
@@ -357,8 +381,42 @@ export default function TotemPage() {
               </section>
             )}
 
-            {/* IDLE — menu de entrada (câmera só abre no toque) */}
-            {screen === 'idle' && (
+            {/* IDLE CT — feed de check-ins (conferência) + Coach CT (rosto/CPF) */}
+            {screen === 'idle' && unidade?.tipo === 'ct' && (
+              <section className="screen on">
+                <div className="express-hdr" style={{ margin: '4px 0 8px' }}>
+                  <div className="ex-title" style={{ fontSize: 28 }}>CHECK-IN <span>EXPRESS</span></div>
+                </div>
+                <div className="feed">
+                  <div className="feed-lbl">Confirme sua entrada</div>
+                  {ctFeed.length === 0 ? (
+                    <div className="feed-empty">Faça seu check-in no app parceiro e seu nome aparece aqui pra confirmar.</div>
+                  ) : ctFeed.map((c) => (
+                    <div key={c.id} className="feedcard">
+                      <div className="fc-info">
+                        <div className="fc-nome">{c.nome}</div>
+                        <div className="fc-org">check-in via {c.origem}</div>
+                      </div>
+                      <button className="fc-btn" onClick={() => confirmarEntrada(c.id, c.nome)}>Confirmar</button>
+                    </div>
+                  ))}
+                </div>
+                <div className="ex-sub2">Se você possui Coach CT, escolha a opção abaixo</div>
+                <div className="tiles">
+                  <button className="tile primary" onClick={() => { setFaceMsg('Olhe para a câmera'); setScreen('face') }}>
+                    <span className="tico">📷</span>
+                    <span className="tlab">Reconhecimento<br />Facial</span>
+                  </button>
+                  <button className="tile" onClick={() => abrirCpf('checkin')}>
+                    <span className="tico">🔢</span>
+                    <span className="tlab">CPF</span>
+                  </button>
+                </div>
+              </section>
+            )}
+
+            {/* IDLE Club — menu de entrada (câmera só abre no toque) */}
+            {screen === 'idle' && unidade?.tipo !== 'ct' && (
               <section className="screen on center">
                 <div className="express-hdr">
                   <div className="ex-title">CHECK-IN <span>EXPRESS</span></div>
@@ -562,7 +620,7 @@ export default function TotemPage() {
                 {nome && <p className="wait-hi">Olá, {nome.split(' ')[0]} 👋</p>}
                 <div className="wait-emoji">🏋️</div>
                 <div className="wait-big">COACH CT · {coachAg?.horario}</div>
-                <p className="wait-sub">Faça seu check-in no <b>app parceiro</b> para escolher o seu coach.</p>
+                <p className="wait-sub">Faça seu check-in no <b>app parceiro</b>, no <b>modo Personal</b>, para escolher o seu coach.</p>
                 <div className="live"><span className="dot" /> aguardando seu check-in…</div>
                 <div className="grow" />
                 <div className="stack">
@@ -607,6 +665,17 @@ export default function TotemPage() {
                   <div className="cls" style={{ fontSize: 18 }}>Coach: {coachAg?.coachNome || '—'}</div>
                   <div className="row"><span className="chip time">Seu coach já foi avisado 🔔</span></div>
                 </div>
+                <div className="grow" />
+                <button className="btn ghost sm" onClick={irIdle}>Concluir</button>
+              </section>
+            )}
+
+            {/* CT: entrada confirmada pelo cliente (feed) */}
+            {screen === 'ctConfirmado' && (
+              <section className="screen on center">
+                <div className="check-badge">✓</div>
+                <div className="bigmsg">Bom treino!</div>
+                <p className="sub">{confNome} · entrada confirmada</p>
                 <div className="grow" />
                 <button className="btn ghost sm" onClick={irIdle}>Concluir</button>
               </section>
@@ -788,5 +857,15 @@ const CSS = `
 #tt .coachpick .ci{width:42px;height:42px;border-radius:50%;background:var(--panel);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;color:var(--pink2);flex:0 0 auto}
 #tt .coachpick .cn{flex:1;font-size:17px;font-weight:700}
 #tt .coachpick .ck{color:var(--pink2);font-size:20px;font-weight:900}
+#tt .feed{flex:1 1 auto;overflow-y:auto;display:flex;flex-direction:column;gap:10px;margin-bottom:12px}
+#tt .feed-lbl{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--mut);text-align:center;margin-bottom:2px}
+#tt .feed-empty{color:var(--mut);font-size:14px;text-align:center;padding:26px 14px;line-height:1.5}
+#tt .feedcard{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+#tt .feedcard .fc-info{flex:1;min-width:0}
+#tt .feedcard .fc-nome{font-size:16px;font-weight:800;line-height:1.15}
+#tt .feedcard .fc-org{font-size:12px;color:var(--mut);margin-top:2px}
+#tt .fc-btn{background:linear-gradient(135deg,var(--pink),#e01f7c);color:#fff;border:none;border-radius:12px;padding:12px 18px;font-size:15px;font-weight:800;cursor:pointer;flex:0 0 auto}
+#tt .fc-btn:active{transform:scale(.96)}
+#tt .ex-sub2{font-size:14px;font-weight:700;color:#fcd34d;text-align:center;margin:2px 0 12px}
 #tt .help{flex:0 0 auto;padding:8px 22px 14px;text-align:center;color:var(--mut);font-size:12px}
 `
