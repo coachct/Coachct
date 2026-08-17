@@ -561,8 +561,8 @@ export default function TotemPage() {
               <section className="screen on center">
                 {nome && <p className="wait-hi">Olá, {nome.split(' ')[0]} 👋</p>}
                 <div className="wait-emoji">🏋️</div>
-                <div className="wait-big">FAÇA SEU CHECK-IN<br />NO MODO PERSONAL</div>
-                <p className="wait-sub">Seu Coach CT é às <b>{coachAg?.horario}</b>. No app (Wellhub / TotalPass), escolha o modo <b>Personal / Musculação com Personal</b>. Assim que validar, você escolhe seu coach aqui.</p>
+                <div className="wait-big">COACH CT · {coachAg?.horario}</div>
+                <p className="wait-sub">Faça seu check-in no <b>app parceiro</b> para escolher o seu coach.</p>
                 <div className="live"><span className="dot" /> aguardando seu check-in…</div>
                 <div className="grow" />
                 <div className="stack">
