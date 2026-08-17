@@ -43,10 +43,10 @@ export const maxDuration = 60
 // DEBOUNCE de mensagens "picadas": muita gente manda uma frase única quebrada em
 // 2-3 mensagens seguidas — e o bot respondia cada uma. Com o debounce, ao chegar
 // uma mensagem o bot espera N ms; se vier outra, JUNTA e responde UMA vez só.
-// DESLIGADO por padrão (0). Liga setando WHATSAPP_DEBOUNCE_MS (ex.: 6000) no Vercel;
-// removendo a env, volta ao comportamento atual na hora. Só vale pra TEXTO (clique
-// de botão nunca espera).
-const DEBOUNCE_MS = parseInt(process.env.WHATSAPP_DEBOUNCE_MS || '0', 10) || 0
+// LIGADO por padrão em 15s (o Ricardo aceita a resposta não ser instantânea, até 30s).
+// Ajusta com a env WHATSAPP_DEBOUNCE_MS (ex.: 30000 = 30s; 0 = desliga) sem mexer no
+// código. Só vale pra TEXTO (clique de botão nunca espera).
+const DEBOUNCE_MS = parseInt(process.env.WHATSAPP_DEBOUNCE_MS || '15000', 10) || 0
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 const AVISO_LGPD =
