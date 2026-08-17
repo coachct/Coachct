@@ -19,7 +19,8 @@ tsconfig.tsbuildinfo
 
 # vercel / claude / editor
 .vercel
-.claude/
+.claude/*
+!.claude/settings.json
 
 # logs
 npm-debug.log*
