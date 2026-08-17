@@ -3,6 +3,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { nomeCoachPublico } from '@/lib/mascaraCoachPublico'
 import { hojeSP, aulaEncerrada } from '@/lib/tempo'
+import { agendamentoCoachCtHoje } from '@/lib/totem/coach-ct'
 
 /** Client service_role (ignora RLS). Só em rota de servidor. */
 export function totemService(): SupabaseClient {
@@ -253,6 +254,11 @@ export async function respostaCT(
 ) {
   if (cliente.bloqueado) return { resultado: 'bloqueado', nome: cliente.nome }
   const hoje = hojeSP()
+
+  // 0) Coach CT: se tem agendamento hoje, é fluxo Coach CT (fazer check-in Personal
+  //    e escolher o coach), NÃO musculação livre.
+  const agCoach = await agendamentoCoachCtHoje(sb, unidade.id, cliente.id, hoje)
+  if (agCoach) return { resultado: 'coach_ct', nome: cliente.nome, agendamento: agCoach }
 
   // 1) Mensalista → ilimitado (não conta como entrada única)
   const plano = await planoOpenGymAtivo(sb, cliente.id, hoje)

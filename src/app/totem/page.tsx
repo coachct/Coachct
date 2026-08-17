@@ -14,6 +14,7 @@ type Screen =
   | 'loading' | 'config' | 'idle' | 'face' | 'cpf' | 'validate' | 'reserva' | 'recepcao'
   | 'waiting' | 'done' | 'enrollConsent' | 'enrollCapture' | 'enrollDone'
   | 'ctLiberado' | 'ctAguardando' | 'ctJaRegistrada'
+  | 'ctCoachAguardando' | 'ctCoachEscolher' | 'ctCoachPronto'
 
 const POLL_MS = 3000
 const RESET_DONE_MS = 12000
@@ -30,6 +31,12 @@ export default function TotemPage() {
   const [recepcaoMsg, setRecepcaoMsg] = useState('')
   const [statusMsg, setStatusMsg] = useState('')
   const [ctInfo, setCtInfo] = useState<{ origem: string; produto?: string } | null>(null)
+  // Coach CT: agendamento + escolha do coach
+  const [coachAg, setCoachAg] = useState<{ id: string; horario: string; presente: boolean; coachId: string | null; coachNome: string | null } | null>(null)
+  const [coachesCt, setCoachesCt] = useState<{ id: string; nome: string }[]>([])
+  const [coachSel, setCoachSel] = useState('')
+  const [confCoach, setConfCoach] = useState(false)
+  const [coachMsg, setCoachMsg] = useState('')
   const [scale, setScale] = useState(1)
   const [faceReady, setFaceReady] = useState(false)
   const [faceMsg, setFaceMsg] = useState('Câmera ativa · olhe para reconhecer')
@@ -138,14 +145,16 @@ export default function TotemPage() {
     setCpf(''); setNome(''); setReserva(null); setRecepcaoMsg(''); setStatusMsg('')
     setConsentOk(false); setEnrollNome(''); setEnrollCpf(''); setEnrollMsg('Posicione seu rosto')
     setCtInfo(null)
+    setCoachAg(null); setCoachesCt([]); setCoachSel(''); setCoachMsg('')
     setFaceMsg('Câmera ativa · olhe para reconhecer'); setScreen('idle')
   }, [limparPoll])
   useEffect(() => {
     if (inatRef.current) clearTimeout(inatRef.current)
     if (screen === 'idle' || screen === 'loading' || screen === 'config') return
     if (screen === 'reserva' && reserva?.flow === 'aguardar_parceiro') return
-    const ms = (screen === 'done' || screen === 'ctLiberado' || screen === 'ctJaRegistrada') ? RESET_DONE_MS
-      : screen === 'ctAguardando' ? 120000
+    if (screen === 'ctCoachAguardando') return // aguardando check-in Personal, não expira
+    const ms = (screen === 'done' || screen === 'ctLiberado' || screen === 'ctJaRegistrada' || screen === 'ctCoachPronto') ? RESET_DONE_MS
+      : (screen === 'ctAguardando' || screen === 'ctCoachEscolher') ? 120000
       : INATIVIDADE_MS
     inatRef.current = setTimeout(irIdle, ms)
     return () => { if (inatRef.current) clearTimeout(inatRef.current) }
@@ -180,7 +189,49 @@ export default function TotemPage() {
     }, POLL_MS)
   }
 
+  // ---------- Coach CT ----------
+  const carregarCoachesCt = async (agId: string) => {
+    setCoachMsg('Carregando coaches…'); setCoachesCt([]); setCoachSel('')
+    const r = await api(`/api/totem/coach-ct-coaches?unidade=${encodeURIComponent(unidade!.slug)}&agendamentoId=${agId}`)
+    const list = (r?.coaches || []) as { id: string; nome: string }[]
+    setCoachesCt(list)
+    setCoachMsg(list.length ? '' : 'Nenhum coach disponível agora — fale com a recepção.')
+  }
+  const iniciarPollingCoachCt = (agId: string) => {
+    limparPoll()
+    pollRef.current = setInterval(async () => {
+      const r = await api(`/api/totem/coach-ct-status?unidade=${encodeURIComponent(unidade!.slug)}&agendamentoId=${agId}`)
+      if (r?.presente) {
+        limparPoll()
+        setCoachAg((prev) => (prev ? { ...prev, presente: true, coachId: r.coachId ?? null, coachNome: r.coachNome ?? null } : prev))
+        if (r.coachId) setScreen('ctCoachPronto')
+        else { setScreen('ctCoachEscolher'); carregarCoachesCt(agId) }
+      }
+    }, POLL_MS)
+  }
+  const irParaCoachCt = (ag: { id: string; presente: boolean; coachId: string | null }) => {
+    if (!ag.presente) { setScreen('ctCoachAguardando'); iniciarPollingCoachCt(ag.id) }
+    else if (!ag.coachId) { setScreen('ctCoachEscolher'); carregarCoachesCt(ag.id) }
+    else { setScreen('ctCoachPronto') }
+  }
+  const confirmarCoachEscolhido = async () => {
+    if (!coachSel || !coachAg) return
+    setConfCoach(true)
+    const r = await api('/api/totem/coach-ct-confirmar', { method: 'POST', body: JSON.stringify({ unidade: unidade!.slug, agendamentoId: coachAg.id, coachId: coachSel }) })
+    setConfCoach(false)
+    if (r?.ok) {
+      const nome = coachesCt.find((c) => c.id === coachSel)?.nome || ''
+      setCoachAg((prev) => (prev ? { ...prev, coachId: coachSel, coachNome: nome } : prev))
+      setScreen('ctCoachPronto')
+    } else {
+      setCoachMsg('Esse coach ficou indisponível. Escolha outro.')
+      carregarCoachesCt(coachAg.id)
+    }
+  }
+
   const tratarResposta = (res: any) => {
+    // Coach CT (tem agendamento hoje) → fazer check-in Personal e escolher coach
+    if (res?.resultado === 'coach_ct' && res.agendamento) { setNome(res.nome || ''); setCoachAg(res.agendamento); irParaCoachCt(res.agendamento); return }
     // CT (musculação/acesso)
     if (res?.resultado === 'liberado') { setNome(res.nome || ''); setCtInfo({ origem: res.origem, produto: res.produto }); setScreen('ctLiberado'); return }
     if (res?.resultado === 'ct_ja_registrada') { setNome(res.nome || ''); setCtInfo({ origem: res.origem }); setScreen('ctJaRegistrada'); return }
@@ -505,6 +556,62 @@ export default function TotemPage() {
               </section>
             )}
 
+            {/* COACH CT: aguardando check-in Personal */}
+            {screen === 'ctCoachAguardando' && (
+              <section className="screen on center">
+                {nome && <p className="wait-hi">Olá, {nome.split(' ')[0]} 👋</p>}
+                <div className="wait-emoji">🏋️</div>
+                <div className="wait-big">FAÇA SEU CHECK-IN<br />NO MODO PERSONAL</div>
+                <p className="wait-sub">Seu Coach CT é às <b>{coachAg?.horario}</b>. No app (Wellhub / TotalPass), escolha o modo <b>Personal / Musculação com Personal</b>. Assim que validar, você escolhe seu coach aqui.</p>
+                <div className="live"><span className="dot" /> aguardando seu check-in…</div>
+                <div className="grow" />
+                <div className="stack">
+                  <button className="btn" onClick={irIdle}>Voltar ao início</button>
+                </div>
+              </section>
+            )}
+
+            {/* COACH CT: escolher coach */}
+            {screen === 'ctCoachEscolher' && (
+              <section className="screen on">
+                <h2 style={{ textAlign: 'center' }}>Escolha seu coach</h2>
+                <p className="sub" style={{ textAlign: 'center' }}>Coach CT às {coachAg?.horario} · presença confirmada ✓</p>
+                {coachMsg && <div className="live" style={{ margin: '0 auto 12px' }}>{coachMsg}</div>}
+                <div className="grow" style={{ overflowY: 'auto' }}>
+                  <div className="coachlist">
+                    {coachesCt.map((c) => (
+                      <button key={c.id} className={'coachpick' + (coachSel === c.id ? ' sel' : '')} onClick={() => setCoachSel(c.id)}>
+                        <span className="ci">{c.nome.slice(0, 2).toUpperCase()}</span>
+                        <span className="cn">{c.nome}</span>
+                        {coachSel === c.id && <span className="ck">✓</span>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="stack">
+                  <button className="btn ok" disabled={!coachSel || confCoach} onClick={confirmarCoachEscolhido}>
+                    {confCoach ? 'Confirmando…' : 'Confirmar coach ✓'}
+                  </button>
+                </div>
+              </section>
+            )}
+
+            {/* COACH CT: pronto */}
+            {screen === 'ctCoachPronto' && (
+              <section className="screen on center">
+                <div className="check-badge">✓</div>
+                <div className="bigmsg">Bom treino!</div>
+                <p className="sub">{nome} · presença confirmada</p>
+                <div className="nextcard" style={{ marginTop: 6 }}>
+                  <div className="lbl">Coach CT · {coachAg?.horario}</div>
+                  <div className="cls" style={{ fontSize: 18 }}>Coach: {coachAg?.coachNome || '—'}</div>
+                  <div className="row"><span className="chip time">Seu coach já foi avisado 🔔</span></div>
+                </div>
+                <div className="grow" />
+                <button className="btn ghost sm" onClick={irIdle}>Concluir</button>
+              </section>
+            )}
+
             {/* ENROLL: consentimento */}
             {screen === 'enrollConsent' && (
               <section className="screen on">
@@ -674,5 +781,12 @@ const CSS = `
 #tt .cam-big .face{font-size:96px;opacity:.6;position:absolute}
 #tt .cam-big video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
 #tt .back{background:none;border:none;color:var(--mut);font-size:13px;cursor:pointer;padding:6px 0;text-align:left;align-self:flex-start}
+#tt .coachlist{display:flex;flex-direction:column;gap:10px}
+#tt .coachpick{display:flex;align-items:center;gap:12px;padding:14px;border-radius:16px;background:var(--panel2);border:1px solid var(--line);color:var(--txt);cursor:pointer;text-align:left;width:100%}
+#tt .coachpick:active{transform:scale(.98)}
+#tt .coachpick.sel{border-color:var(--pink);background:rgba(255,45,142,.1)}
+#tt .coachpick .ci{width:42px;height:42px;border-radius:50%;background:var(--panel);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;color:var(--pink2);flex:0 0 auto}
+#tt .coachpick .cn{flex:1;font-size:17px;font-weight:700}
+#tt .coachpick .ck{color:var(--pink2);font-size:20px;font-weight:900}
 #tt .help{flex:0 0 auto;padding:8px 22px 14px;text-align:center;color:var(--mut);font-size:12px}
 `
