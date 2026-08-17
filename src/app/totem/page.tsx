@@ -37,6 +37,7 @@ export default function TotemPage() {
   const [coachSel, setCoachSel] = useState('')
   const [confCoach, setConfCoach] = useState(false)
   const [coachMsg, setCoachMsg] = useState('')
+  const [coachErro, setCoachErro] = useState(false) // bateu no modo errado (Musculação Livre)
   // Feed de check-ins do CT (conferência do cliente na tela)
   const [ctFeed, setCtFeed] = useState<{ id: string; nome: string; origem: string }[]>([])
   const [confNome, setConfNome] = useState('')
@@ -148,7 +149,7 @@ export default function TotemPage() {
     setCpf(''); setNome(''); setReserva(null); setRecepcaoMsg(''); setStatusMsg('')
     setConsentOk(false); setEnrollNome(''); setEnrollCpf(''); setEnrollMsg('Posicione seu rosto')
     setCtInfo(null)
-    setCoachAg(null); setCoachesCt([]); setCoachSel(''); setCoachMsg(''); setConfNome('')
+    setCoachAg(null); setCoachesCt([]); setCoachSel(''); setCoachMsg(''); setConfNome(''); setCoachErro(false)
     setFaceMsg('Câmera ativa · olhe para reconhecer'); setScreen('idle')
   }, [limparPoll])
   useEffect(() => {
@@ -206,10 +207,13 @@ export default function TotemPage() {
     pollRef.current = setInterval(async () => {
       const r = await api(`/api/totem/coach-ct-status?unidade=${encodeURIComponent(unidade!.slug)}&agendamentoId=${agId}`)
       if (r?.presente) {
-        limparPoll()
+        limparPoll(); setCoachErro(false)
         setCoachAg((prev) => (prev ? { ...prev, presente: true, coachId: r.coachId ?? null, coachNome: r.coachNome ?? null } : prev))
         if (r.coachId) setScreen('ctCoachPronto')
         else { setScreen('ctCoachEscolher'); carregarCoachesCt(agId) }
+      } else {
+        // bateu no modo errado (Musculação Livre) → avisa o cliente na tela
+        setCoachErro(r?.modoErrado === true)
       }
     }, POLL_MS)
   }
@@ -619,9 +623,13 @@ export default function TotemPage() {
             {screen === 'ctCoachAguardando' && (
               <section className="screen on center">
                 {nome && <p className="wait-hi">Olá, {nome.split(' ')[0]} 👋</p>}
-                <div className="wait-emoji">🏋️</div>
+                <div className="wait-emoji">{coachErro ? '⚠️' : '🏋️'}</div>
                 <div className="wait-big">COACH CT · {coachAg?.horario}</div>
-                <p className="wait-sub">Faça seu check-in no <b>app parceiro</b>, no <b>modo Personal</b>, para escolher o seu coach.</p>
+                {coachErro ? (
+                  <div className="modoerro">Você fez o check-in no modo <b>Musculação Livre</b>. Refaça no app parceiro escolhendo o <b>modo Personal</b> para liberar a escolha do coach.</div>
+                ) : (
+                  <p className="wait-sub">Faça seu check-in no <b>app parceiro</b>, no <b>modo Personal</b>, para escolher o seu coach.</p>
+                )}
                 <div className="live"><span className="dot" /> aguardando seu check-in…</div>
                 <div className="grow" />
                 <div className="stack">
@@ -868,5 +876,7 @@ const CSS = `
 #tt .fc-btn{background:linear-gradient(135deg,var(--pink),#e01f7c);color:#fff;border:none;border-radius:12px;padding:12px 18px;font-size:15px;font-weight:800;cursor:pointer;flex:0 0 auto}
 #tt .fc-btn:active{transform:scale(.96)}
 #tt .ex-sub2{font-size:14px;font-weight:700;color:#fcd34d;text-align:center;margin:2px 0 12px}
+#tt .modoerro{font-size:16px;font-weight:700;line-height:1.5;color:#fca5a5;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.45);border-radius:16px;padding:14px 18px;max-width:360px;margin:0 0 16px}
+#tt .modoerro b{color:#fecaca}
 #tt .help{flex:0 0 auto;padding:8px 22px 14px;text-align:center;color:var(--mut);font-size:12px}
 `

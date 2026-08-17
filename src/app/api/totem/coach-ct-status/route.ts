@@ -19,13 +19,14 @@ export async function GET(req: NextRequest) {
 
     const { data: ag } = await sb
       .from('agendamentos')
-      .select('status, coach_id, presenca_checkin, unidade_id, coaches:coach_id ( id, nome )')
+      .select('status, coach_id, presenca_checkin, checkin_modo_errado, unidade_id, coaches:coach_id ( id, nome )')
       .eq('id', agId).maybeSingle()
     if (!ag || (ag as any).unidade_id !== unidade.id) return NextResponse.json({ erro: 'nao_encontrada' })
 
     const presente = (ag as any).status === 'realizado' || (ag as any).presenca_checkin === true
+    const modoErrado = !presente && (ag as any).checkin_modo_errado === true
     const coach = (ag as any).coaches
-    return NextResponse.json({ presente, coachId: (ag as any).coach_id || null, coachNome: coach?.nome ?? null })
+    return NextResponse.json({ presente, modoErrado, coachId: (ag as any).coach_id || null, coachNome: coach?.nome ?? null })
   } catch (e: any) {
     return NextResponse.json({ erro: 'falha', detalhe: String(e?.message || e) }, { status: 500 })
   }
