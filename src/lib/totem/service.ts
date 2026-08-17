@@ -257,7 +257,7 @@ export async function respostaCT(
 
   // 0) Coach CT: se tem agendamento hoje, é fluxo Coach CT (fazer check-in Personal
   //    e escolher o coach), NÃO musculação livre.
-  const agCoach = await agendamentoCoachCtHoje(sb, unidade.id, cliente.id, hoje)
+  const agCoach = await agendamentoCoachCtHoje(sb, unidade.id, cliente.id, hoje, cliente.nome)
   if (agCoach) return { resultado: 'coach_ct', nome: cliente.nome, agendamento: agCoach }
 
   // 1) Mensalista → ilimitado (não conta como entrada única)

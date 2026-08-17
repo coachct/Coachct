@@ -19,34 +19,15 @@ export type AgendamentoCoachCt = {
   coachNome: string | null
 }
 
-// Agendamento Coach CT relevante da pessoa HOJE nesta unidade (o mais próximo do
-// horário atual, entre agendado/confirmado/realizado — ignora cancelado/falta).
-export async function agendamentoCoachCtHoje(
-  sb: SupabaseClient,
-  unidadeId: string,
-  clienteId: string,
-  hoje: string
-): Promise<AgendamentoCoachCt | null> {
-  const { data } = await sb
-    .from('agendamentos')
-    .select('id, horario, status, coach_id, presenca_checkin, coaches:coach_id ( id, nome )')
-    .eq('cliente_id', clienteId)
-    .eq('unidade_id', unidadeId)
-    .eq('data', hoje)
-    .in('status', ['agendado', 'confirmado', 'realizado'])
-  if (!data || !data.length) return null
-
-  // escolhe o mais próximo do horário atual (SP)
-  const agoraMin = (() => {
-    const t = new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour12: false })
-    const [h, m] = t.split(':').map(Number)
-    return h * 60 + m
-  })()
+// Escolhe o agendamento mais próximo do horário atual (SP) e mapeia.
+function escolherAg(rows: any[]): AgendamentoCoachCt | null {
+  if (!rows || !rows.length) return null
+  const t = new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour12: false })
+  const [ah, am] = t.split(':').map(Number)
+  const agoraMin = ah * 60 + am
   const toMin = (hhmm: string) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m }
-  const rows = (data as any[]).slice().sort((a, b) =>
-    Math.abs(toMin(norm(a.horario)) - agoraMin) - Math.abs(toMin(norm(b.horario)) - agoraMin)
-  )
-  const ag = rows[0]
+  const ag = rows.slice().sort((a, b) =>
+    Math.abs(toMin(norm(a.horario)) - agoraMin) - Math.abs(toMin(norm(b.horario)) - agoraMin))[0]
   const coach = ag.coaches
   return {
     id: ag.id as string,
@@ -55,6 +36,43 @@ export async function agendamentoCoachCtHoje(
     coachId: (ag.coach_id as string) || null,
     coachNome: coach?.nome ?? null,
   }
+}
+
+// Agendamento Coach CT relevante da pessoa HOJE nesta unidade (o mais próximo do
+// horário atual, entre agendado/confirmado/realizado — ignora cancelado/falta).
+// Robusto a cadastro duplicado: se o cliente identificado (por CPF/rosto) não tem
+// agendamento, cai pro fallback por NOME (o agendamento pode estar noutro cadastro
+// de mesmo nome sem CPF), desde que seja único.
+export async function agendamentoCoachCtHoje(
+  sb: SupabaseClient,
+  unidadeId: string,
+  clienteId: string,
+  hoje: string,
+  nome?: string | null
+): Promise<AgendamentoCoachCt | null> {
+  // 1) direto pelo cliente identificado
+  const { data: d1 } = await sb
+    .from('agendamentos')
+    .select('id, horario, status, coach_id, presenca_checkin, coaches:coach_id ( id, nome )')
+    .eq('cliente_id', clienteId)
+    .eq('unidade_id', unidadeId)
+    .eq('data', hoje)
+    .in('status', ['agendado', 'confirmado', 'realizado'])
+  if (d1 && d1.length) return escolherAg(d1 as any[])
+
+  // 2) fallback por nome (cadastro duplicado) — só se casar 1 cliente único
+  const n = (nome || '').trim().toLowerCase()
+  if (!n) return null
+  const { data: d2 } = await sb
+    .from('agendamentos')
+    .select('id, horario, status, coach_id, presenca_checkin, coaches:coach_id ( id, nome ), clientes!inner ( id, nome )')
+    .eq('unidade_id', unidadeId)
+    .eq('data', hoje)
+    .in('status', ['agendado', 'confirmado', 'realizado'])
+  const mesmoNome = (d2 as any[] || []).filter((r) => String(r.clientes?.nome || '').trim().toLowerCase() === n)
+  const clientesDistintos = new Set(mesmoNome.map((r) => r.clientes?.id))
+  if (clientesDistintos.size === 1) return escolherAg(mesmoNome)
+  return null
 }
 
 // Coaches escalados NAQUELE horário/dia/unidade (grade base + fds + grade extra,
