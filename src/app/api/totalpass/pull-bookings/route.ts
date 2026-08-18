@@ -143,6 +143,7 @@ export async function POST(req: NextRequest) {
 
   // Puxa os slots de CADA unidade ativa com a chave dela (o eventId→ocorrência
   // é global, então o resto do processamento não muda por unidade).
+  const pendentes: { s: ReturnType<typeof extrairSlot>; apiKey: string }[] = []
   for (const place of places) {
     const slots = await listarSlots(place.apiKey!, { slotDateFrom: agora.toISOString(), slotDateTo: fim.toISOString() })
     if (!slots.ok) { errosApi.push({ unidade: place.nome, status: slots.status, erro: slots.erro }); continue }
@@ -153,16 +154,28 @@ export async function POST(req: NextRequest) {
       if (s.status) statusVistos.add(s.status)
       if (!s.slotId || STATUS_MORTOS.has(s.status)) continue
       ativosIds.add(s.slotId)
-
-      const r = await registrarReserva(supabase, s, ocPorEvento, place.apiKey!)
-      if (r === 'criada') criadas++
-      else if (r === 'reativada') reativadas++
-      else if (r === 'rejeitada') rejeitadas++
-      else if (r === 'ja') jaTinha++
-      else if (r === 'sem-mapa') semMapa++
-      else if (r === 'incompleto') incompletas++
-      else erros.push(s.slotId)
+      pendentes.push({ s, apiKey: place.apiKey! })
     }
+  }
+
+  // PRÉ-CARGA (latência): antes cada slot custava 2-3 idas ao banco — com ~120
+  // slots, quase todos JÁ registrados, o pull levava ~9s e a reserva do cliente
+  // demorava mais pra aparecer. Agora as reservas conhecidas e os cadastros delas
+  // vêm em 2 consultas, e só o slot realmente novo paga o caminho lento.
+  const reservaPorSlot = await carregarReservas(supabase, pendentes.map((p) => p.s.slotId!))
+  const clientePorId = await carregarClientes(
+    supabase, [...reservaPorSlot.values()].map((r: any) => r.cliente_id)
+  )
+
+  for (const { s, apiKey } of pendentes) {
+    const r = await registrarReserva(supabase, s, ocPorEvento, apiKey, reservaPorSlot, clientePorId)
+    if (r === 'criada') criadas++
+    else if (r === 'reativada') reativadas++
+    else if (r === 'rejeitada') rejeitadas++
+    else if (r === 'ja') jaTinha++
+    else if (r === 'sem-mapa') semMapa++
+    else if (r === 'incompleto') incompletas++
+    else erros.push(s.slotId)
   }
 
   // Cancelamentos: reservas nossas via TotalPass, ativas, cujo slot sumiu dos
@@ -246,11 +259,15 @@ async function garantirVaga(
 // real chega, sem sobrescrever nada que já esteja preenchido.
 async function backfillCliente(
   supabase: SupabaseClient, clienteId: string | null | undefined,
-  s: ReturnType<typeof extrairSlot>
+  s: ReturnType<typeof extrairSlot>, cache?: Map<string, any>
 ): Promise<void> {
   if (!clienteId) return
-  const { data: c } = await supabase
-    .from('clientes').select('nome, cpf, email').eq('id', clienteId).maybeSingle()
+  let c: any = cache?.get(clienteId) ?? null
+  if (!c) {
+    const { data } = await supabase
+      .from('clientes').select('nome, cpf, email').eq('id', clienteId).maybeSingle()
+    c = data
+  }
   if (!c) return
   const patch: Record<string, string> = {}
   const cpfDigits = s.cpf ? s.cpf.replace(/\D/g, '') : ''
@@ -260,22 +277,51 @@ async function backfillCliente(
   if (!(c as any).email && s.email) patch.email = s.email
   if (Object.keys(patch).length) {
     await supabase.from('clientes').update(patch).eq('id', clienteId)
+    if (cache) cache.set(clienteId, { ...c, ...patch }) // não repete o backfill no próximo poll do mesmo processo
   }
+}
+
+// Reservas já registradas dos slots deste poll, numa consulta (em blocos de 100
+// pra não estourar a URL). Substitui o SELECT por slot que rodava no loop.
+async function carregarReservas(supabase: SupabaseClient, slotIds: string[]): Promise<Map<string, any>> {
+  const mapa = new Map<string, any>()
+  const ids = slotIds.filter(Boolean)
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data } = await supabase
+      .from('club_reservas')
+      .select('id, cliente_id, status, ocorrencia_id, totalpass_slot_id')
+      .in('totalpass_slot_id', ids.slice(i, i + 100))
+    for (const r of (data || [])) mapa.set((r as any).totalpass_slot_id, r)
+  }
+  return mapa
+}
+
+// Cadastros das reservas conhecidas, numa consulta — alimenta o backfill sem
+// um SELECT por cliente.
+async function carregarClientes(supabase: SupabaseClient, clienteIds: any[]): Promise<Map<string, any>> {
+  const mapa = new Map<string, any>()
+  const ids = [...new Set(clienteIds.filter(Boolean))] as string[]
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data } = await supabase
+      .from('clientes').select('id, nome, cpf, email').in('id', ids.slice(i, i + 100))
+    for (const c of (data || [])) mapa.set((c as any).id, c)
+  }
+  return mapa
 }
 
 async function registrarReserva(
   supabase: SupabaseClient,
   s: ReturnType<typeof extrairSlot>,
   ocPorEvento: Record<string, string>,
-  apiKey: string
+  apiKey: string,
+  reservaPorSlot: Map<string, any>,
+  clientePorId: Map<string, any>
 ): Promise<ResReserva> {
   // Já registrada? Mesmo assim faz backfill: o cliente pode ter sido criado
   // antes (payload cru) e agora os dados chegaram — self-heal do "fantasma".
-  const { data: existente } = await supabase
-    .from('club_reservas').select('id, cliente_id, status, ocorrencia_id')
-    .eq('totalpass_slot_id', s.slotId).maybeSingle()
+  const existente = reservaPorSlot.get(s.slotId!) ?? null
   if (existente) {
-    await backfillCliente(supabase, (existente as any).cliente_id, s)
+    await backfillCliente(supabase, (existente as any).cliente_id, s, clientePorId)
     if ((existente as any).status !== 'cancelado') return 'ja'
 
     // SELF-HEAL: o slot voltou ATIVO neste poll, mas nossa reserva está cancelada.
@@ -317,7 +363,7 @@ async function registrarReserva(
   }
   // Backfill: se casou por totalpass_id num cadastro sem CPF/nome/email (ou num
   // fantasma antigo), completa com o que a TotalPass mandou.
-  await backfillCliente(supabase, clienteId as unknown as string, s)
+  await backfillCliente(supabase, clienteId as unknown as string, s, clientePorId)
 
   // Vaga real + posição (mesma regra da reativação).
   const vaga = await garantirVaga(supabase, ocorrenciaId, apiKey, s.slotId!)
