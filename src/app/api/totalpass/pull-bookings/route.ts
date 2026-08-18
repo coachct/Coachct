@@ -84,6 +84,42 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ raw: true, porUnidade })
   }
 
+  // DIAGNÓSTICO ?latencia=1: mede quanto tempo a reserva levou entre nascer no app
+  // da TotalPass (slot.createdAt) e existir aqui (club_reservas.created_at). Serve
+  // pra separar a demora DELES (o slot demorou a aparecer no GET /partner/slot) da
+  // NOSSA (janela do poll). Só leitura — não grava e não cancela nada. Sem PII: só
+  // slotId, os dois carimbos e a diferença.
+  if (new URL(req.url).searchParams.get('latencia')) {
+    const linhas: any[] = []
+    for (const place of await placesAtivos(supabase)) {
+      const sl = await listarSlots(place.apiKey!, { slotDateFrom: agora.toISOString(), slotDateTo: fim.toISOString() })
+      const arr: any[] = Array.isArray(sl.body) ? sl.body : (sl.body?.data ?? [])
+      for (const raw of arr) {
+        const s = extrairSlot(raw)
+        if (!s.slotId || !raw?.createdAt) continue
+        const { data: r } = await supabase
+          .from('club_reservas').select('created_at, status')
+          .eq('totalpass_slot_id', s.slotId).maybeSingle()
+        if (!r) continue
+        const nasceu = new Date(raw.createdAt).getTime()
+        const gravou = new Date((r as any).created_at).getTime()
+        linhas.push({
+          unidade: place.nome, slotId: s.slotId, statusSlot: s.status,
+          nasceuNaTotalpass: raw.createdAt, gravadoAqui: (r as any).created_at,
+          atrasoSeg: Math.round((gravou - nasceu) / 1000),
+        })
+      }
+    }
+    linhas.sort((a, b) => b.nasceuNaTotalpass.localeCompare(a.nasceuNaTotalpass))
+    const atrasos = linhas.map((l) => l.atrasoSeg).sort((a, b) => a - b)
+    const p = (q: number) => (atrasos.length ? atrasos[Math.min(atrasos.length - 1, Math.floor(atrasos.length * q))] : null)
+    return NextResponse.json({
+      latencia: true, casados: linhas.length,
+      atrasoMedianoSeg: p(0.5), atrasoP90Seg: p(0.9), atrasoMaxSeg: atrasos[atrasos.length - 1] ?? null,
+      ultimas: linhas.slice(0, 20),
+    })
+  }
+
   if (process.env.TOTALPASS_BOOKING_ATIVO !== 'true') {
     return NextResponse.json({ ok: true, msg: 'kill switch OFF — pull pausado' })
   }
