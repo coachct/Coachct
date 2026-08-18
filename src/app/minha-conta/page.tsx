@@ -148,6 +148,15 @@ export default function MinhaContaPage() {
   const [modalSairFila, setModalSairFila] = useState<any>(null)
   const [saindoFila,    setSaindoFila]    = useState(false)
 
+  // Troca de horário pelo cliente (um horário pra frente ou pra trás, mesmo dia)
+  const [trocaInfo,  setTrocaInfo]  = useState<Record<string, any>>({})
+  const [modalTroca, setModalTroca] = useState<any>(null)
+  const [opcaoTroca, setOpcaoTroca] = useState<any>(null)
+  const [posTroca,   setPosTroca]   = useState('')
+  const [trocando,   setTrocando]   = useState(false)
+  const [erroTroca,  setErroTroca]  = useState('')
+  const [trocaFeita, setTrocaFeita] = useState<any>(null)
+
   const [modalAtivar,    setModalAtivar]    = useState<any>(null)
   const [contratoAceito, setContratoAceito] = useState(false)
   const [ativando,       setAtivando]       = useState(false)
@@ -447,6 +456,97 @@ export default function MinhaContaPage() {
     setModalCancelar(null); setCancelando(false); await loadDados()
   }
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // TROCA DE HORÁRIO PELO CLIENTE
+  //
+  // Regra: só se a aula RESERVADA não estiver lotada, e só pro horário vizinho
+  // (um pra frente ou um pra trás) do mesmo dia e unidade, com vaga. Uma troca
+  // por reserva. NÃO é cancelamento — crédito, fila e multa não são tocados.
+  //
+  // Quem decide tudo isso é o banco (opcoes_troca_cliente). A tela só pergunta.
+  // Se a RPC falhar por qualquer motivo, o mapa fica vazio, o botão não aparece
+  // e a página segue funcionando exatamente como antes.
+  // ───────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const itens = [
+      ...agendamentos.filter((a:any) => ['agendado','confirmado'].includes(a.status))
+        .map((a:any) => ({ chave:`ct-${a.id}`,   tipo:'ct',   id:a.id })),
+      ...clubReservas.filter((r:any) => r.status==='reservado')
+        .map((r:any) => ({ chave:`club-${r.id}`, tipo:'club', id:r.id })),
+    ]
+    if (itens.length===0) { setTrocaInfo({}); return }
+    let vivo = true
+    ;(async () => {
+      const res = await Promise.all(itens.map(async it => {
+        try {
+          const { data, error } = await supabase.rpc('opcoes_troca_cliente', { p_tipo: it.tipo, p_id: it.id })
+          return error ? null : ([it.chave, data] as const)
+        } catch { return null }
+      }))
+      if (!vivo) return
+      const mapa: Record<string, any> = {}
+      for (const r of res) if (r && r[1]) mapa[r[0]] = r[1]
+      setTrocaInfo(mapa)
+    })()
+    return () => { vivo = false }
+  }, [agendamentos, clubReservas])
+
+  function abrirModalTroca(item: any, info: any) {
+    setModalTroca({ item, info })
+    setErroTroca(''); setTrocaFeita(null)
+    const unica = (info?.opcoes||[]).length===1 ? info.opcoes[0] : null
+    setOpcaoTroca(unica)
+    setPosTroca(unica?.exige_posicao ? (unica.posicoes_livres?.[0]||'') : '')
+  }
+
+  function selecionarOpcaoTroca(op: any) {
+    setOpcaoTroca(op); setErroTroca('')
+    setPosTroca(op.exige_posicao ? (op.posicoes_livres?.[0]||'') : '')
+  }
+
+  function traduzErroTroca(m: string) {
+    if (m.includes('ORIGEM_LOTADA'))       return 'Sua aula está lotada — nessa situação a troca não é liberada.'
+    if (m.includes('DESTINO_LOTADO'))      return 'Esse horário acabou de lotar. Volte e escolha outro.'
+    if (m.includes('DESTINO_JA_COMECOU'))  return 'Esse horário já começou. Não dá mais pra ir pra ele.'
+    if (m.includes('NAO_E_VIZINHO') || m.includes('LONGE_DEMAIS'))
+                                           return 'Só dá pra trocar por um horário logo antes ou logo depois do seu.'
+    if (m.includes('JA_TROCOU'))           return 'Essa reserva já foi trocada uma vez.'
+    if (m.includes('JA_FEZ_CHECKIN'))      return 'Você já fez check-in nessa aula.'
+    if (m.includes('POSICAO_OCUPADA'))     return 'Essa posição acabou de ser ocupada. Escolha outra.'
+    if (m.includes('POSICAO_BLOQUEADA') || m.includes('POSICAO_INVALIDA'))
+                                           return 'Essa posição não está disponível. Escolha outra.'
+    if (m.includes('JA_TEM_NESSE_HORARIO') || m.includes('JA_TEM_NESSA_AULA'))
+                                           return 'Você já tem uma reserva nesse horário.'
+    if (m.includes('RESERVA_APP_PARCEIRO')) return 'Reserva feita pelo app do parceiro não pode ser trocada por aqui.'
+    if (m.includes('STATUS_INVALIDO'))     return 'Essa reserva não está mais ativa.'
+    return 'Não foi possível trocar agora. Tente de novo.'
+  }
+
+  async function confirmarTroca() {
+    if (!modalTroca || !opcaoTroca) return
+    setTrocando(true); setErroTroca('')
+    const item = modalTroca.item
+    let error:any = null
+    if (item.tipo==='ct') {
+      const {error:e} = await supabase.rpc('trocar_horario_ct_cliente', {
+        p_agendamento_id: item.id,
+        p_novo_horario:   opcaoTroca.horario,
+      })
+      error = e
+    } else {
+      const {error:e} = await supabase.rpc('trocar_aula_club_cliente', {
+        p_reserva_id:            item.id,
+        p_destino_ocorrencia_id: opcaoTroca.ocorrencia_id,
+        p_nova_posicao:          opcaoTroca.exige_posicao ? (posTroca||null) : null,
+      })
+      error = e
+    }
+    setTrocando(false)
+    if (error) { setErroTroca(traduzErroTroca(error.message||'')); return }
+    setTrocaFeita({ de: item.horario, para: opcaoTroca.horario, tipo: item.tipo, tipoAula: opcaoTroca.tipo })
+    await loadDados()
+  }
+
   async function sairDaFila() {
     if (!modalSairFila) return
     setSaindoFila(true)
@@ -586,6 +686,7 @@ export default function MinhaContaPage() {
               {feedFuturo.map(item => {
                 const d = new Date(item.data+'T12:00:00')
                 const podeCancelar = ['agendado','confirmado','reservado'].includes(item.status)
+                const infoTroca = trocaInfo[`${item.tipo}-${item.id}`]
                 const isClub = item.tipo==='club'
                 const isProxMes = d.getMonth()!==agora.getMonth()||d.getFullYear()!==agora.getFullYear()
                 const sc = statusConfig[item.status]||{label:item.status,cor:'#888'}
@@ -626,12 +727,17 @@ export default function MinhaContaPage() {
                       </div>
                     </div>
 
-                    {/* Status + cancelar */}
+                    {/* Status + trocar/cancelar */}
                     <div style={{flexShrink:0,textAlign:'right'}}>
                       <div style={{fontSize:10,fontWeight:700,color:sc.cor,textTransform:'uppercase',marginBottom:4}}>{sc.label}</div>
-                      {podeCancelar && (
-                        <button onClick={()=>abrirModalCancelar(item)} style={{background:'transparent',border:'1px solid #2a2a2a',borderRadius:6,padding:'0.2rem 0.6rem',fontSize:10,color:'#666',cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>Cancelar</button>
-                      )}
+                      <div style={{display:'flex',gap:5,justifyContent:'flex-end'}}>
+                        {infoTroca?.pode && (
+                          <button onClick={()=>abrirModalTroca(item,infoTroca)} style={{background:'transparent',border:`1px solid ${CYAN}55`,borderRadius:6,padding:'0.2rem 0.6rem',fontSize:10,color:CYAN,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>⇄ Trocar</button>
+                        )}
+                        {podeCancelar && (
+                          <button onClick={()=>abrirModalCancelar(item)} style={{background:'transparent',border:'1px solid #2a2a2a',borderRadius:6,padding:'0.2rem 0.6rem',fontSize:10,color:'#666',cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>Cancelar</button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )
@@ -1078,6 +1184,91 @@ export default function MinhaContaPage() {
           </div>
         </div>
       )}
+
+      {/* MODAL TROCAR HORÁRIO */}
+      {modalTroca&&(()=>{
+        const it = modalTroca.item
+        const opcoes = modalTroca.info?.opcoes || []
+        return (
+          <div style={{position:'fixed',inset:0,background:'#000000cc',zIndex:100,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
+            <div style={{background:'#111',border:`1px solid ${CYAN}44`,borderRadius:20,width:'100%',maxWidth:440,padding:'1.5rem',maxHeight:'88vh',overflowY:'auto'}}>
+              {trocaFeita ? (
+                <div style={{textAlign:'center'}}>
+                  <div style={{fontSize:40,marginBottom:8}}>⇄</div>
+                  <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:24,color:VERDE,letterSpacing:1}}>HORÁRIO TROCADO!</div>
+                  <div style={{fontSize:14,color:'#ddd',marginTop:10}}>
+                    <span style={{color:'#666',textDecoration:'line-through'}}>{trocaFeita.de}</span>
+                    <span style={{margin:'0 8px',color:CYAN}}>→</span>
+                    <strong style={{color:'#fff'}}>{trocaFeita.para}</strong>
+                    {trocaFeita.tipo==='club'&&trocaFeita.tipoAula&&<span style={{color:ACCENT,fontSize:12}}> · {tipoAulaLabel(trocaFeita.tipoAula)}</span>}
+                  </div>
+                  <div style={{fontSize:12,color:'#777',marginTop:10,lineHeight:1.6}}>
+                    Seu crédito continua o mesmo — isso não foi um cancelamento.
+                    {it.tipo==='ct' && ' A recepção define seu coach no horário novo.'}
+                  </div>
+                  <button onClick={()=>{setModalTroca(null);setTrocaFeita(null)}} style={{width:'100%',marginTop:'1.25rem',background:VERDE,color:'#000',border:'none',borderRadius:12,padding:'0.85rem',fontWeight:700,fontSize:14,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
+                    Fechar
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:20,color:'#fff',marginBottom:4}}>TROCAR HORÁRIO</div>
+                  <div style={{fontSize:13,color:'#555',marginBottom:'1rem',textTransform:'capitalize'}}>
+                    Hoje você está às {it.horario} · {new Date(it.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'})}
+                    {it.tipo==='club'&&it.tipoAula&&<span style={{marginLeft:6,color:ACCENT,fontSize:12}}>· {tipoAulaLabel(it.tipoAula)}</span>}
+                  </div>
+
+                  <div style={{background:'#001a1a',border:`1px solid ${CYAN}33`,borderRadius:10,padding:'0.85rem',marginBottom:'1rem',fontSize:12,color:'#bcd',lineHeight:1.6}}>
+                    Sua aula ainda tem vaga, então você pode ir para o horário logo antes ou logo depois, no mesmo dia.
+                    <strong style={{color:'#fff'}}> Não é cancelamento</strong>: seu crédito continua igual. Vale uma troca por reserva.
+                  </div>
+
+                  <div style={{fontSize:10,color:'#666',fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:8}}>Escolha o novo horário</div>
+                  <div style={{display:'flex',flexDirection:'column',gap:6,marginBottom:'1rem'}}>
+                    {opcoes.map((op:any) => {
+                      const sel = it.tipo==='ct' ? opcaoTroca?.horario===op.horario : opcaoTroca?.ocorrencia_id===op.ocorrencia_id
+                      return (
+                        <button key={op.ocorrencia_id||op.horario} onClick={()=>selecionarOpcaoTroca(op)}
+                          style={{background:sel?`${CYAN}15`:'#161616',border:`1px solid ${sel?CYAN:'#2a2a2a'}`,borderRadius:10,padding:'0.75rem 0.9rem',cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,fontFamily:"'DM Sans', sans-serif"}}>
+                          <span style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
+                            <span style={{fontSize:15,fontWeight:700,color:sel?'#fff':'#ddd'}}>{op.horario}</span>
+                            {op.tipo&&<span style={{fontSize:10,color:ACCENT,background:`${ACCENT}15`,padding:'1px 7px',borderRadius:20,fontWeight:600}}>{tipoAulaLabel(op.tipo)}</span>}
+                          </span>
+                          <span style={{fontSize:11,color:op.vagas<=2?AMARELO:'#777',flexShrink:0}}>{op.vagas} vaga{op.vagas!==1?'s':''}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {opcaoTroca?.exige_posicao && (
+                    <div style={{marginBottom:'1rem'}}>
+                      <div style={{fontSize:10,color:'#666',fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:8}}>Sua posição</div>
+                      <div style={{display:'flex',flexWrap:'wrap',gap:6,maxHeight:150,overflowY:'auto'}}>
+                        {(opcaoTroca.posicoes_livres||[]).map((p:string) => (
+                          <button key={p} onClick={()=>setPosTroca(p)}
+                            style={{background:posTroca===p?VERDE:'#161616',color:posTroca===p?'#000':'#999',border:`1px solid ${posTroca===p?VERDE:'#2a2a2a'}`,borderRadius:8,padding:'0.35rem 0.6rem',fontSize:11,fontWeight:700,fontFamily:"'DM Mono', monospace",cursor:'pointer'}}>
+                            {p}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {erroTroca&&<div style={{background:'#ff2d9b15',border:'1px solid #ff2d9b44',borderRadius:8,padding:'0.6rem 1rem',fontSize:13,color:ACCENT,marginBottom:'1rem'}}>{erroTroca}</div>}
+
+                  <div style={{display:'flex',gap:8}}>
+                    <button onClick={()=>setModalTroca(null)} style={{flex:1,background:'transparent',border:'1px solid #333',borderRadius:10,padding:'0.85rem',color:'#888',fontSize:14,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>Voltar</button>
+                    <button onClick={confirmarTroca} disabled={!opcaoTroca||trocando||(opcaoTroca?.exige_posicao&&!posTroca)}
+                      style={{flex:2,background:(!opcaoTroca||trocando)?'#1a3a3a':CYAN,color:(!opcaoTroca||trocando)?'#557':'#000',border:'none',borderRadius:10,padding:'0.85rem',fontWeight:700,fontSize:14,cursor:(!opcaoTroca||trocando)?'default':'pointer',fontFamily:"'DM Sans', sans-serif"}}>
+                      {trocando?'Trocando...':'Confirmar troca'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* MODAL SAIR FILA */}
       {modalSairFila&&(
