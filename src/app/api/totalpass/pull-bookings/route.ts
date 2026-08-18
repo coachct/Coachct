@@ -140,6 +140,7 @@ export async function POST(req: NextRequest) {
   let criadas = 0, reativadas = 0, rejeitadas = 0, jaTinha = 0, semMapa = 0, incompletas = 0, totalSlots = 0
   const erros: any[] = []
   const errosApi: any[] = []
+  const rejeitadasIds: any[] = [] // quem teve o slot cancelado no app deles — sai na resposta pra dar pra rastrear
 
   // Puxa os slots de CADA unidade ativa com a chave dela (o eventId→ocorrência
   // é global, então o resto do processamento não muda por unidade).
@@ -171,7 +172,7 @@ export async function POST(req: NextRequest) {
     const r = await registrarReserva(supabase, s, ocPorEvento, apiKey, reservaPorSlot, clientePorId)
     if (r === 'criada') criadas++
     else if (r === 'reativada') reativadas++
-    else if (r === 'rejeitada') rejeitadas++
+    else if (r === 'rejeitada') { rejeitadas++; rejeitadasIds.push(s.slotId) }
     else if (r === 'ja') jaTinha++
     else if (r === 'sem-mapa') semMapa++
     else if (r === 'incompleto') incompletas++
@@ -205,7 +206,8 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     ok: true, slots: totalSlots, criadas, reativadas, rejeitadas, jaTinha, semMapa, incompletas,
-    canceladas, cancelamentoPulado, erros: erros.length, errosApi, statusVistos: [...statusVistos],
+    canceladas, cancelamentoPulado, erros: erros.length, errosApi, rejeitadasIds,
+    statusVistos: [...statusVistos],
   })
 }
 
