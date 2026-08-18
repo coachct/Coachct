@@ -224,7 +224,7 @@ type ResReserva = 'criada' | 'reativada' | 'rejeitada' | 'ja' | 'sem-mapa' | 'er
 // aulas devolve posicao:null.
 async function garantirVaga(
   supabase: SupabaseClient, ocorrenciaId: string, apiKey: string, slotId: string
-): Promise<{ ok: true; posicao: string | null } | { ok: false; motivo: string }> {
+): Promise<{ ok: boolean; posicao?: string | null; motivo?: string }> {
   // Vaga: total_capacity (já desconta site+outros apps) − reservas próprias da TotalPass.
   const { data: numsRaw } = await supabase.rpc('totalpass_slot_numbers', { p_ocorrencia_id: ocorrenciaId })
   const nums = Array.isArray(numsRaw) ? numsRaw[0] : numsRaw
