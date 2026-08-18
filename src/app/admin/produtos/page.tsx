@@ -5,6 +5,24 @@ import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { Plus, X, Edit2, Check, Package, AlertCircle, Coins, Calendar, Trophy } from 'lucide-react'
 
+// Subtipo 'pacote' é o mesmo motor de 'credito' (produtos antigos usam 'pacote').
+const ehCredito = (subtipo?: string | null) => subtipo === 'credito' || subtipo === 'pacote' || !subtipo
+
+// Onde o crédito vale. Coach CT e walk-in NUNCA compartilham crédito:
+// credito_coach agenda aula com o coach, credito_treino desconta na musculação livre.
+const DESTINOS_CREDITO = [
+  {
+    key: 'credito_coach',
+    label: 'Coach CT (aula com o coach)',
+    descricao: 'Cada agendamento de Coach CT consome 1 crédito. Não vale na musculação livre.',
+  },
+  {
+    key: 'credito_treino',
+    label: 'Musculação livre / walk-in',
+    descricao: 'A recepção desconta na entrada da musculação (ex: diária de personal, pacote de treinos). Não agenda Coach CT.',
+  },
+]
+
 const SUBTIPOS = [
   {
     key: 'credito',
@@ -100,6 +118,17 @@ function ProdutoCard({ produto, unidades, planos, onEditar, onAlternar }: any) {
               <span className="bg-green-50 text-green-700 px-2 py-0.5 rounded-full font-medium">
                 {produto.creditos_por_venda || 1} crédito{(produto.creditos_por_venda || 1) > 1 ? 's' : ''} por unidade
               </span>
+              {ehCredito(produto.subtipo) && (
+                produto.tipo === 'credito_treino' ? (
+                  <span className="bg-teal-50 text-teal-700 px-2 py-0.5 rounded-full font-medium">
+                    Vale na musculação livre
+                  </span>
+                ) : (
+                  <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-medium">
+                    Vale no Coach CT
+                  </span>
+                )
+              )}
               {produto.dias_validade && (
                 <span>Validade: {produto.dias_validade} dias</span>
               )}
@@ -135,7 +164,7 @@ export default function AdminProdutosPage() {
   const [modalProduto, setModalProduto] = useState<any>(null)
   const [form, setForm] = useState({
     nome: '',
-    subtipo: 'credito' as 'credito' | 'acesso' | 'coach_ct_pro',
+    subtipo: 'credito' as 'credito' | 'pacote' | 'acesso' | 'coach_ct_pro',
     tipo: 'credito_coach',
     valor: 0,
     creditos_por_venda: 1,
@@ -215,14 +244,17 @@ export default function AdminProdutosPage() {
     if (novoSubtipo === 'coach_ct_pro') {
       tipoNovo = 'coach_ct_pro'
     } else if (novoSubtipo === 'credito') {
-      tipoNovo = 'credito_coach'
+      // Preserva a escolha do destino (Coach CT × musculação livre); só cai no
+      // padrão quando vem de outro subtipo, que não tem destino de crédito.
+      tipoNovo = form.tipo === 'credito_treino' ? 'credito_treino' : 'credito_coach'
     } else if (novoSubtipo === 'acesso') {
       tipoNovo = 'acesso_ct'
     }
 
-    setForm({ 
-      ...form, 
-      subtipo: novoSubtipo,
+    setForm({
+      ...form,
+      // produto antigo de subtipo 'pacote' continua 'pacote' (mesmo motor)
+      subtipo: novoSubtipo === 'credito' && form.subtipo === 'pacote' ? 'pacote' : novoSubtipo,
       tipo: tipoNovo,
       plano_id: novoSubtipo === 'coach_ct_pro' ? form.plano_id : '',
     })
@@ -233,9 +265,12 @@ export default function AdminProdutosPage() {
     if (form.valor <= 0) { setErro('Informe um valor válido.'); return }
     if (form.max_parcelas < 1 || form.max_parcelas > 24) { setErro('Max parcelas deve ser entre 1 e 24.'); return }
 
-    if (form.subtipo === 'credito') {
+    if (ehCredito(form.subtipo)) {
       if (form.creditos_por_venda < 1) { setErro('A quantidade de créditos por venda deve ser pelo menos 1.'); return }
       if (form.dias_validade < 1) { setErro('A validade em dias deve ser pelo menos 1.'); return }
+      if (form.tipo !== 'credito_coach' && form.tipo !== 'credito_treino') {
+        setErro('Escolha onde o crédito vale: Coach CT ou musculação livre.'); return
+      }
     }
 
     if (form.subtipo === 'acesso') {
@@ -409,7 +444,7 @@ export default function AdminProdutosPage() {
                 <div className="space-y-2">
                   {SUBTIPOS.map(s => {
                     const Icon = s.icon
-                    const ativo = form.subtipo === s.key
+                    const ativo = s.key === 'credito' ? ehCredito(form.subtipo) : form.subtipo === s.key
                     const isPro = s.key === 'coach_ct_pro'
                     return (
                       <label key={s.key} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
@@ -433,8 +468,36 @@ export default function AdminProdutosPage() {
                 </div>
               </div>
 
-              {form.subtipo === 'credito' && (
+              {ehCredito(form.subtipo) && (
                 <>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block font-medium">Onde o crédito vale</label>
+                    <div className="space-y-2">
+                      {DESTINOS_CREDITO.map(d => {
+                        const ativo = form.tipo === d.key
+                        const isTreino = d.key === 'credito_treino'
+                        return (
+                          <label key={d.key} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                            ativo
+                              ? isTreino ? 'border-teal-400 bg-teal-50' : 'border-indigo-400 bg-indigo-50'
+                              : 'border-gray-200'
+                          }`}>
+                            <input type="radio" checked={ativo}
+                              onChange={() => setForm({ ...form, tipo: d.key })}
+                              className={`mt-1 ${isTreino ? 'accent-teal-600' : 'accent-indigo-600'}`} />
+                            <div className="flex-1">
+                              <div className="text-sm font-medium text-gray-900">{d.label}</div>
+                              <div className="text-xs text-gray-500 mt-0.5">{d.descricao}</div>
+                            </div>
+                          </label>
+                        )
+                      })}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      Um crédito serve a um dos dois — nunca aos dois ao mesmo tempo.
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs text-gray-500 mb-1 block font-medium">Valor (R$)</label>
