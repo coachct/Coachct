@@ -169,10 +169,10 @@ export async function POST(req: NextRequest) {
   )
 
   for (const { s, apiKey } of pendentes) {
-    const r = await registrarReserva(supabase, s, ocPorEvento, apiKey, reservaPorSlot, clientePorId)
+    const r = await registrarReserva(supabase, s, ocPorEvento, apiKey, reservaPorSlot, clientePorId, rejeitadasIds)
     if (r === 'criada') criadas++
     else if (r === 'reativada') reativadas++
-    else if (r === 'rejeitada') { rejeitadas++; rejeitadasIds.push(s.slotId) }
+    else if (r === 'rejeitada') rejeitadas++
     else if (r === 'ja') jaTinha++
     else if (r === 'sem-mapa') semMapa++
     else if (r === 'incompleto') incompletas++
@@ -224,7 +224,7 @@ type ResReserva = 'criada' | 'reativada' | 'rejeitada' | 'ja' | 'sem-mapa' | 'er
 // aulas devolve posicao:null.
 async function garantirVaga(
   supabase: SupabaseClient, ocorrenciaId: string, apiKey: string, slotId: string
-): Promise<{ ok: true; posicao: string | null } | { ok: false }> {
+): Promise<{ ok: true; posicao: string | null } | { ok: false; motivo: string }> {
   // Vaga: total_capacity (já desconta site+outros apps) − reservas próprias da TotalPass.
   const { data: numsRaw } = await supabase.rpc('totalpass_slot_numbers', { p_ocorrencia_id: ocorrenciaId })
   const nums = Array.isArray(numsRaw) ? numsRaw[0] : numsRaw
@@ -236,7 +236,7 @@ async function garantirVaga(
   const disponivel = (nums?.total_capacity ?? 0) - (tpAtuais ?? 0)
   if (disponivel <= 0) {
     await cancelarSlot(apiKey, slotId) // sem vaga → cancela a reserva no app deles
-    return { ok: false }
+    return { ok: false, motivo: `sem-vaga (capacidade ${nums?.total_capacity ?? 0}, tp ${tpAtuais ?? 0})` }
   }
 
   // Posição: Running exige posição. Auto-atribui a primeira esteira livre, depois
@@ -249,7 +249,7 @@ async function garantirVaga(
   const unidadeId = (ocInfo as any)?.club_aulas?.unidade_id
   if (tipo === 'running_funcional') {
     const posicao = await escolherPosicao(supabase, ocorrenciaId, unidadeId)
-    if (!posicao) { await cancelarSlot(apiKey, slotId); return { ok: false } }
+    if (!posicao) { await cancelarSlot(apiKey, slotId); return { ok: false, motivo: 'sem-posicao-livre' } }
     return { ok: true, posicao }
   }
   return { ok: true, posicao: null }
@@ -317,7 +317,8 @@ async function registrarReserva(
   ocPorEvento: Record<string, string>,
   apiKey: string,
   reservaPorSlot: Map<string, any>,
-  clientePorId: Map<string, any>
+  clientePorId: Map<string, any>,
+  rejeitadas: any[]
 ): Promise<ResReserva> {
   // Já registrada? Mesmo assim faz backfill: o cliente pode ter sido criado
   // antes (payload cru) e agora os dados chegaram — self-heal do "fantasma".
@@ -333,7 +334,10 @@ async function registrarReserva(
     // em vez de deixar a reserva morta pra sempre.
     const ocId = (existente as any).ocorrencia_id as string
     const vaga = await garantirVaga(supabase, ocId, apiKey, s.slotId!)
-    if (!vaga.ok) return 'rejeitada'
+    if (!vaga.ok) {
+      rejeitadas.push({ slotId: s.slotId, eventId: s.eventId, ocorrenciaId: ocId, motivo: vaga.motivo, etapa: 'reativacao' })
+      return 'rejeitada'
+    }
     const { error: errReat } = await supabase
       .from('club_reservas')
       .update({ status: 'reservado', cancelado_em: null, posicao: vaga.posicao })
@@ -369,7 +373,10 @@ async function registrarReserva(
 
   // Vaga real + posição (mesma regra da reativação).
   const vaga = await garantirVaga(supabase, ocorrenciaId, apiKey, s.slotId!)
-  if (!vaga.ok) return 'rejeitada'
+  if (!vaga.ok) {
+    rejeitadas.push({ slotId: s.slotId, eventId: s.eventId, ocorrenciaId, motivo: vaga.motivo, etapa: 'criacao' })
+    return 'rejeitada'
+  }
   const posicao = vaga.posicao
 
   // Insere. Trava de 1/dia/unidade (P0001) vale no app → rejeita limpo cancelando o slot.
@@ -389,6 +396,10 @@ async function registrarReserva(
     if ((errIns as any).code === '23505') return 'ja'
     console.warn('[totalpass/pull] insert recusado:', (errIns as any).code, (errIns as any).message)
     await cancelarSlot(apiKey, s.slotId!)
+    rejeitadas.push({
+      slotId: s.slotId, eventId: s.eventId, ocorrenciaId, etapa: 'insert',
+      motivo: `insert ${(errIns as any).code}: ${(errIns as any).message}`,
+    })
     return 'rejeitada'
   }
   return 'criada'
