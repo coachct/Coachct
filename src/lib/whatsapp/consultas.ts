@@ -269,14 +269,28 @@ export async function proximosAgendamentos(
   const hoje = opts.hoje ?? agoraEmSaoPaulo().dataStr
   const { data, error } = await supabase
     .from('agendamentos')
-    .select('id, data, horario, status, tipo_credito, unidades(nome)')
+    .select('id, data, horario, status, tipo_credito, unidade_id, unidades(nome)')
     .eq('cliente_id', clienteId)
     .in('status', ['agendado', 'confirmado'])
     .gte('data', hoje)
     .order('data', { ascending: true })
     .order('horario', { ascending: true })
   if (error) throw new Error(`agendamentos: ${error.message}`)
-  return (data ?? []).map((a: any) => {
+  const futuros = data ?? []
+
+  // tem_fila: há alguém na fila de espera desse treino AGORA? (mesma checagem que o
+  // cancelamento do Coach CT faz: fila_espera por data+horario+unidade, aguardando).
+  // Exposto ANTES pra o agente decidir sem "só dá pra ver na hora".
+  const datas = [...new Set(futuros.map((a: any) => a.data).filter(Boolean))]
+  const comFila = new Set<string>()
+  if (datas.length) {
+    const { data: filas } = await supabase
+      .from('fila_espera').select('data, horario, unidade_id')
+      .in('data', datas as string[]).eq('status', 'aguardando')
+    for (const f of filas ?? []) comFila.add(`${(f as any).data}|${(f as any).horario}|${(f as any).unidade_id}`)
+  }
+
+  return futuros.map((a: any) => {
     const horas = horasAteSP(a.data, a.horario)
     const rot = rotuloDataPt(a.data, hoje)
     return {
@@ -286,6 +300,7 @@ export async function proximosAgendamentos(
       quando: rot.quando,           // "hoje" | "amanhã" | null (a partir do registro)
       horas_ate: Math.round(horas * 10) / 10,
       cancelamento: regraCancelamento(horas),
+      tem_fila: comFila.has(`${a.data}|${a.horario}|${a.unidade_id}`),
     }
   })
 }

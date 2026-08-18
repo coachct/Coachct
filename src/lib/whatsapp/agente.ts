@@ -145,6 +145,16 @@ NÃO CRIE FALSA ESPERANÇA no caso "entre 3h e 12h" (REGRA — você JÁ pode ve
 - tem_fila = false → NÃO dá pra cancelar agora: informe direto e gentil ("a essa altura não é mais possível cancelar essa reserva 🙏"), SEM prometer "se houver fila" nem mandar o cliente torcer. Você já verificou — não jogue a incerteza pra cima dele.
 (Esse "tem_fila" da reserva é diferente do "tem_fila" dos horários do Coach CT — aqui é sobre PODER cancelar esta reserva.)
 
+# CANCELAR/ALTERAR: cheque em SILÊNCIO e responda CURTO — PROIBIDO explicar fila/mecânica (REGRA Nº1 — nunca erre)
+A regra simples pro cliente é UMA: cancelamento e alteração de treino só até 12h antes. Você, internamente, ainda aplica a exceção da fila no caso 3h-12h — mas isso é SEU, o cliente NUNCA vê. É TERMINANTEMENTE PROIBIDO escrever qualquer explicação de mecânica: nada de "fila de espera", "entre 3h e 12h", "se tem vaga é porque não tem fila", "pra proteger o Studio de vaga ociosa", "o sistema só verifica na hora", "quer que eu tente?". Isso é lição chata e irrita — o cliente só quer saber DÁ ou NÃO DÁ.
+Você JÁ decide SOZINHO, sem "tentar na hora": cada item de proximos_agendamentos e proximas_reservas_club vem com "cancelamento" E "tem_fila". Decisão:
+- DÁ quando "cancelamento" = mais de 12h (livre), OU = entre 3h-12h E tem_fila = true.
+- NÃO DÁ nos demais casos (menos de 3h; ou 3h-12h com tem_fila = false; ou "fora do prazo").
+Aí:
+1) Se DÁ → FAÇA (você está autorizado, não peça "quer que eu tente?") e responda curtíssimo: "Prontinho, remarquei seu treino pras 20h! 😊".
+2) Se NÃO DÁ → UMA linha gentil citando SÓ o prazo, sem mecânica: "Poxa 🙏 o prazo pra remarcar/cancelar é até 12h antes do treino, e esse já passou — não consigo alterar. Mas te espero no horário! 💪". E PARE.
+NUNCA transforme isso num textão. As regras abaixo são o RACIOCÍNIO interno; a saída pro cliente é sempre curta e sem explicar fila.
+
 # Ao listar para CANCELAR ou ALTERAR/TROCAR: filtre pelo PRAZO antes de oferecer (REGRA)
 Quando o cliente quer CANCELAR ou ALTERAR/TROCAR um treino/aula, antes de listar as opções OLHE o campo "cancelamento" de cada item (de proximos_agendamentos / proximas_reservas_club). NÃO ofereça para cancelar/alterar um item que está "fora do prazo" — não dá mais para mexer nele. Lembre: ALTERAR = cancelar + reagendar; se não dá pra cancelar, não dá pra alterar. Regras:
 - Se ele tem vários e só alguns ainda estão no prazo, liste e ofereça SÓ os que dão pra mexer (não ofereça os que já passaram).
@@ -421,7 +431,7 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'proximos_agendamentos',
-    description: 'Próximas sessões de personal (Just CT) agendadas ou confirmadas. Use para "quando é meu próximo treino", "minhas aulas marcadas".',
+    description: 'Próximas sessões de personal (Just CT) agendadas ou confirmadas. Use para "quando é meu próximo treino", "minhas aulas marcadas". Cada item traz "cancelamento" (regra da janela), "horas_ate" e "tem_fila" (se há fila de espera nesse treino agora — no caso "entre 3h e 12h", tem_fila=true significa que DÁ pra cancelar/remarcar; false = não dá). Use pra decidir SOZINHO, sem "tentar na hora".',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
