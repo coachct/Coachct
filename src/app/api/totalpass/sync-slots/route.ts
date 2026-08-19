@@ -183,6 +183,10 @@ async function processarItem(
   }
   // Falha → mantém na fila pra retry.
   console.warn('[totalpass/sync] PUT slots falhou, reenfileirando no fim:', ocId, resp.status, resp.erro)
-  await moverParaFim(supabase, ocId, enfileiradoEm, `PUT slots HTTP ${resp.status}: ${resp.erro ?? ''}`, tentativas)
+  await moverParaFim(
+    supabase, ocId, enfileiradoEm,
+    `PUT slots=${nums.total_capacity} HTTP ${resp.status}: ${typeof resp.body === 'string' ? resp.body : JSON.stringify(resp.body)}`,
+    tentativas
+  )
   return 'erro'
 }
