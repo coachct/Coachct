@@ -84,8 +84,51 @@ export async function POST(req: NextRequest) {
       }
       // min estritamente antes de max, ambos no passado (exigência da API deles).
       corpo = { bookingWindow: { minTimeToBook: fmt(anteontem), maxTimeToBook: fmt(ontem) } }
+    } else if (acao === 'abrir') {
+      // REABRIR: qual formato a API aceita pra devolver a janela ao normal? Antes de
+      // fechar, a ocorrência tinha minTimeToBook/maxTimeToBook NULOS. `modo` escolhe
+      // a variante a testar; `?modo=todos` tenta uma a uma e devolve o veredito.
+      const { data: oc } = await supabase
+        .from('totalpass_slot_map')
+        .select('club_ocorrencias(data, club_aulas(horario))')
+        .eq('occurrence_uuid', filtroUuid).maybeSingle()
+      const dataAula = (oc as any)?.club_ocorrencias?.data
+      const horaAula = (oc as any)?.club_ocorrencias?.club_aulas?.horario
+      const inicio = new Date(`${dataAula}T${horaAula}-03:00`)
+      const fmt = (d: Date) => {
+        const p: any = new Intl.DateTimeFormat('en-US', {
+          timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit', hour12: true,
+        }).formatToParts(d).reduce((a: any, x: any) => (a[x.type] = x.value, a), {})
+        return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute} ${p.dayPeriod}`
+      }
+      const variantes: Record<string, any> = {
+        nulos: { bookingWindow: { minTimeToBook: null, maxTimeToBook: null } },
+        semJanela: { bookingWindow: null },
+        antes: {
+          bookingWindow: {
+            minTimeToBook: fmt(new Date(inicio.getTime() - 30 * 24 * 3600 * 1000)),
+            maxTimeToBook: fmt(new Date(inicio.getTime() - 5 * 60 * 1000)),
+          },
+        },
+      }
+      const modo = url.searchParams.get('modo') || 'todos'
+      const tentar = modo === 'todos' ? Object.keys(variantes) : [modo]
+      const resultados: any[] = []
+      for (const nome of tentar) {
+        const c = variantes[nome]
+        if (!c) { resultados.push({ variante: nome, erro: 'variante inexistente' }); continue }
+        const r = await atualizarOcorrencia(apiKey, filtroUuid, c)
+        resultados.push({
+          variante: nome, enviado: c, ok: r.ok, status: r.status,
+          minTimeToBook: r.body?.minTimeToBook ?? null, maxTimeToBook: r.body?.maxTimeToBook ?? null,
+          mensagem: r.ok ? null : r.body?.message,
+        })
+        if (r.ok) break // primeira que funcionar já deixa a aula reaberta
+      }
+      return NextResponse.json({ teste: 'abrir', aula: `${dataAula} ${horaAula}`, resultados })
     } else {
-      return NextResponse.json({ error: 'acao deve ser inativa ou janela' }, { status: 400 })
+      return NextResponse.json({ error: 'acao deve ser inativa, janela ou abrir' }, { status: 400 })
     }
     const r = await atualizarOcorrencia(apiKey, filtroUuid, corpo)
     return NextResponse.json({ teste: acao, enviado: corpo, ok: r.ok, status: r.status, resposta: r.body })
