@@ -1071,6 +1071,12 @@ function AulasPageInner() {
                   <input type="email" inputMode="email" value={wellhubEmailInput} onChange={(ev) => setWellhubEmailInput(ev.target.value)}
                     placeholder="email do app Wellhub"
                     style={{ width:'100%', background:'#0a0a0a', border:'1px solid #2a2a2a', borderRadius:8, padding:'0.7rem', color:'#fff', fontSize:14, fontFamily:"'DM Sans', sans-serif" }} />
+                  {cliente?.email && wellhubEmailInput.trim().toLowerCase() !== String(cliente.email).trim().toLowerCase() && (
+                    <button type="button" onClick={() => setWellhubEmailInput(cliente.email)}
+                      style={{ marginTop:8, width:'100%', background:'#0a0a0a', border:'1px dashed #ff2d9b55', borderRadius:8, padding:'0.55rem', color:'#ff8ac4', fontSize:12, cursor:'pointer', fontFamily:"'DM Sans', sans-serif", textAlign:'left' }}>
+                      Uso este: {cliente.email}
+                    </button>
+                  )}
                 </div>
               )}
               {erroModal && <div style={{ background:'#ff2d9b15', border:'1px solid #ff2d9b44', borderRadius:8, padding:'0.6rem 1rem', fontSize:13, color:ACCENT, marginBottom:'1rem' }}>{erroModal}</div>}
