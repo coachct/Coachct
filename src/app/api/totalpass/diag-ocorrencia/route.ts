@@ -74,6 +74,7 @@ export async function POST(req: NextRequest) {
     } else if (acao === 'janela') {
       // Fecha a janela de reserva: maxTimeToBook no passado = ninguém mais reserva.
       const ontem = new Date(Date.now() - 24 * 60 * 60 * 1000)
+      const anteontem = new Date(Date.now() - 48 * 60 * 60 * 1000)
       const fmt = (d: Date) => {
         const p = new Intl.DateTimeFormat('en-US', {
           timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -81,7 +82,8 @@ export async function POST(req: NextRequest) {
         }).formatToParts(d).reduce((a: any, x) => (a[x.type] = x.value, a), {})
         return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute} ${p.dayPeriod}`
       }
-      corpo = { bookingWindow: { minTimeToBook: fmt(ontem), maxTimeToBook: fmt(ontem) } }
+      // min estritamente antes de max, ambos no passado (exigência da API deles).
+      corpo = { bookingWindow: { minTimeToBook: fmt(anteontem), maxTimeToBook: fmt(ontem) } }
     } else {
       return NextResponse.json({ error: 'acao deve ser inativa ou janela' }, { status: 400 })
     }
