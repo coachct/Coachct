@@ -51,7 +51,8 @@ export async function POST(req: NextRequest) {
         tipoBody: Array.isArray(b) ? 'array' : typeof b,
         chavesBody: b && !Array.isArray(b) ? Object.keys(b) : null,
         total: arr.length,
-        amostra: arr.slice(0, 2),
+        // ⚠️ `Places` traz a placeApiKey em claro — nunca devolver na resposta.
+        amostra: arr.slice(0, 2).map(({ Places, ...ev }: any) => ev),
       })
     }
     return NextResponse.json({ raw: true, out })
@@ -87,16 +88,16 @@ export async function POST(req: NextRequest) {
     if (!r.ok) { errosApi.push({ unidade: place.nome, status: r.status, erro: r.erro }); continue }
     const eventos: any[] = Array.isArray(r.body) ? r.body : (r.body?.data ?? r.body?.events ?? [])
     for (const ev of eventos) {
-      const ocs: any[] = ev?.eventOccurrences ?? ev?.occurrences ?? (ev?.eventOccurrenceUuid ? [ev] : [])
+      const ocs: any[] = ev?.EventOccurrences ?? ev?.eventOccurrences ?? []
       for (const o of ocs) {
-        const uuid = o?.eventOccurrenceUuid ?? o?.uuid ?? o?.occurrenceUuid
+        const uuid = o?.uuid ?? o?.eventOccurrenceUuid ?? o?.occurrenceUuid
         if (!uuid) continue
         porUuid[String(uuid)] = {
-          status: o?.status ?? ev?.status ?? null,
-          slots: o?.slots ?? null,
+          statusOcorrencia: o?.status ?? null,
+          statusEvento: ev?.status ?? null,
+          slots: o?.slots ?? ev?.slots ?? null,
           slotsInUse: o?.slotsInUse ?? o?.slots_in_use ?? null,
-          eventDate: o?.eventDate ?? o?.date ?? null,
-          startTime: o?.startTime ?? null,
+          chaves: Object.keys(o || {}), // pra conferir de onde vem cada número
         }
       }
     }
