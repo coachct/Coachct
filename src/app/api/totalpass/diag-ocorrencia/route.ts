@@ -13,8 +13,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { listarEventos } from '@/lib/totalpass/booking-api'
-import { placesAtivos } from '@/lib/totalpass/places'
+import { listarEventos, atualizarOcorrencia } from '@/lib/totalpass/booking-api'
+import { placesAtivos, apiKeyPorPlace } from '@/lib/totalpass/places'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -56,6 +56,37 @@ export async function POST(req: NextRequest) {
       })
     }
     return NextResponse.json({ raw: true, out })
+  }
+
+  // ?acao=inativa|janela&uuid=…: TESTE CONTROLADO de como fechar uma aula lotada na
+  // grade deles (a API recusa slots=0). Aplica o PUT num uuid específico e devolve a
+  // resposta crua — a releitura sai no modo normal deste endpoint.
+  const acao = url.searchParams.get('acao')
+  if (acao && filtroUuid) {
+    const { data: m } = await supabase
+      .from('totalpass_slot_map').select('place_id').eq('occurrence_uuid', filtroUuid).maybeSingle()
+    const apiKey = apiKeyPorPlace(String((m as any)?.place_id || ''))
+    if (!apiKey) return NextResponse.json({ error: 'uuid sem place/chave' }, { status: 400 })
+
+    let corpo: any
+    if (acao === 'inativa') {
+      corpo = { status: 'INACTIVE' }
+    } else if (acao === 'janela') {
+      // Fecha a janela de reserva: maxTimeToBook no passado = ninguém mais reserva.
+      const ontem = new Date(Date.now() - 24 * 60 * 60 * 1000)
+      const fmt = (d: Date) => {
+        const p = new Intl.DateTimeFormat('en-US', {
+          timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit', hour12: true,
+        }).formatToParts(d).reduce((a: any, x) => (a[x.type] = x.value, a), {})
+        return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute} ${p.dayPeriod}`
+      }
+      corpo = { bookingWindow: { minTimeToBook: fmt(ontem), maxTimeToBook: fmt(ontem) } }
+    } else {
+      return NextResponse.json({ error: 'acao deve ser inativa ou janela' }, { status: 400 })
+    }
+    const r = await atualizarOcorrencia(apiKey, filtroUuid, corpo)
+    return NextResponse.json({ teste: acao, enviado: corpo, ok: r.ok, status: r.status, resposta: r.body })
   }
 
   // Nossas ocorrências publicadas (mapa) com a capacidade que o pool calcula agora.
