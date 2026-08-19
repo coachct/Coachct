@@ -402,7 +402,9 @@ function AulasPageInner() {
   }
   async function abrirModalReserva(oc: any, soAvulso: boolean = false) {
     setModalReserva(oc); setPosicaoSel(''); setErroModal(''); setModalSoAvulso(soAvulso); setAvisoLotou(false)
-    setWellhubEmailInput(cliente?.email || '') // pré-preenche o email do Wellhub com o da conta
+    // NÃO pré-preencher com o email da conta: quase nunca é o email do Wellhub, e a
+    // pessoa confirmava o errado sem perceber. Vazio força digitar o email certo.
+    setWellhubEmailInput(cliente?.wellhub_email || '')
     // ClassPass usa crédito fixo 'classpass'; em modo só-avulso pré-seleciona o avulso disponível
     setTipoCredito(cliente?.is_classpass ? 'classpass' : (soAvulso ? (avulsoDisponiveis[0] || '') : ''))
     if (oc.club_aulas?.tipo === 'running_funcional') await carregarPosicoes(oc.id)
