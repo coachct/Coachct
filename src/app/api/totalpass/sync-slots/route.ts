@@ -106,6 +106,34 @@ async function moverParaFim(
 
 type Resultado = 'sync' | 'skip' | 'erro'
 
+// "YYYY-MM-DD HH:MM AM/PM" no fuso de São Paulo — formato que a Booking API espera
+// nos campos de janela/prazo (mesmo do maxTimeToCancel do publish).
+function horaTp(d: Date): string {
+  const p: any = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: true,
+  }).formatToParts(d).reduce((a: any, x) => (a[x.type] = x.value, a), {})
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute} ${p.dayPeriod}`
+}
+
+// Janela inteira no passado = ninguém consegue reservar. A API exige minTimeToBook
+// ESTRITAMENTE antes de maxTimeToBook (400 se forem iguais).
+function janelaFechada() {
+  return {
+    minTimeToBook: horaTp(new Date(Date.now() - 48 * 60 * 60 * 1000)),
+    maxTimeToBook: horaTp(new Date(Date.now() - 24 * 60 * 60 * 1000)),
+  }
+}
+
+// Janela normal: pode reservar desde bem antes até o início da aula.
+function janelaNormal(data: string, horario: string) {
+  const inicio = new Date(`${data}T${horario}-03:00`)
+  return {
+    minTimeToBook: horaTp(new Date(inicio.getTime() - 30 * 24 * 60 * 60 * 1000)),
+    maxTimeToBook: horaTp(inicio),
+  }
+}
+
 async function processarItem(
   supabase: SupabaseClient, ocId: string, enfileiradoEm: string, tentativas: number
 ): Promise<Resultado> {
@@ -135,7 +163,7 @@ async function processarItem(
   // Precisa do mapa pra saber qual ocorrência TotalPass atualizar E em qual place.
   const { data: map } = await supabase
     .from('totalpass_slot_map')
-    .select('occurrence_uuid, place_id')
+    .select('occurrence_uuid, place_id, fechada_em')
     .eq('ocorrencia_id', ocId)
     .maybeSingle()
 
@@ -176,14 +204,32 @@ async function processarItem(
     return 'skip'
   }
 
-  // Aula LOTADA (capacidade 0): a TotalPass recusa slots=0 com 422 "The number of
-  // slots cannot be zero", e o item ficava em retry pra sempre — pior, a aula seguia
-  // com vaga aparente no app deles, alguém reservava e o pull rejeitava depois
-  // (reserva fantasma: existe lá, não existe aqui). Pausamos a ocorrência; quando
-  // abre vaga o ACTIVE junto do slots a traz de volta. Nunca mandamos slots=0.
-  const resp = nums.total_capacity > 0
-    ? await atualizarOcorrencia(apiKey, uuid, { slots: nums.total_capacity, status: 'ACTIVE' })
-    : await atualizarOcorrencia(apiKey, uuid, { status: 'INACTIVE' })
+  // Aula LOTADA (capacidade 0): a TotalPass NÃO deixa zerar a vaga — `slots: 0` volta
+  // 422 "The number of slots cannot be zero" e `status: 'INACTIVE'` responde 200 mas é
+  // ignorado (a ocorrência continua ACTIVE, testado em 18/08). Sem fechar de verdade, a
+  // aula seguia reservável no app deles: o cliente reservava, o pull rejeitava e
+  // cancelava o slot — reserva fantasma, existe lá e não existe aqui. O que a API aceita
+  // é a JANELA DE RESERVA: com `bookingWindow` inteira no passado ninguém mais reserva.
+  // Ao abrir vaga, devolvemos a janela normal (até o início da aula) junto do slots.
+  const fechada = !!(map as any).fechada_em
+  let resp
+  if (nums.total_capacity > 0) {
+    const corpo: any = { slots: nums.total_capacity }
+    if (fechada) corpo.bookingWindow = janelaNormal((info as any).data, horaAula)
+    resp = await atualizarOcorrencia(apiKey, uuid, corpo)
+    if (resp.ok && fechada) {
+      await supabase.from('totalpass_slot_map').update({ fechada_em: null }).eq('ocorrencia_id', ocId)
+    }
+  } else if (fechada) {
+    await tirarDaFila(supabase, ocId, enfileiradoEm) // já fechada, nada a fazer
+    return 'skip'
+  } else {
+    resp = await atualizarOcorrencia(apiKey, uuid, { bookingWindow: janelaFechada() })
+    if (resp.ok) {
+      await supabase.from('totalpass_slot_map')
+        .update({ fechada_em: new Date().toISOString() }).eq('ocorrencia_id', ocId)
+    }
+  }
   if (resp.ok) {
     await tirarDaFila(supabase, ocId, enfileiradoEm)
     return 'sync'
