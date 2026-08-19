@@ -38,6 +38,25 @@ export async function POST(req: NextRequest) {
   const filtroUuid = url.searchParams.get('uuid')
   const filtroData = url.searchParams.get('data')
 
+  // ?raw=1: shape cru do GET /partner/events, pra descobrir sob quais chaves vêm
+  // as ocorrências (status/slots). Sem PII — evento é grade, não pessoa.
+  if (url.searchParams.get('raw')) {
+    const out: any[] = []
+    for (const place of await placesAtivos(supabase)) {
+      const r = await listarEventos(place.apiKey!)
+      const b: any = r.body
+      const arr: any[] = Array.isArray(b) ? b : (b?.data ?? b?.events ?? [])
+      out.push({
+        unidade: place.nome, ok: r.ok, status: r.status,
+        tipoBody: Array.isArray(b) ? 'array' : typeof b,
+        chavesBody: b && !Array.isArray(b) ? Object.keys(b) : null,
+        total: arr.length,
+        amostra: arr.slice(0, 2),
+      })
+    }
+    return NextResponse.json({ raw: true, out })
+  }
+
   // Nossas ocorrências publicadas (mapa) com a capacidade que o pool calcula agora.
   const { data: mapas } = await supabase
     .from('totalpass_slot_map')
