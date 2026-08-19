@@ -117,11 +117,14 @@ function horaTp(d: Date): string {
 }
 
 // Janela inteira no passado = ninguém consegue reservar. A API exige minTimeToBook
-// ESTRITAMENTE antes de maxTimeToBook (400 se forem iguais).
+// ESTRITAMENTE antes de maxTimeToBook (400 se forem iguais). O fim é AGORA, não uma
+// data qualquer: o app deles mostra ao cliente "aula encerrada às <maxTimeToBook>",
+// e o que faz sentido ali é o instante em que a aula lotou.
 function janelaFechada() {
+  const agora = Date.now()
   return {
-    minTimeToBook: horaTp(new Date(Date.now() - 48 * 60 * 60 * 1000)),
-    maxTimeToBook: horaTp(new Date(Date.now() - 24 * 60 * 60 * 1000)),
+    minTimeToBook: horaTp(new Date(agora - 2 * 60 * 60 * 1000)),
+    maxTimeToBook: horaTp(new Date(agora)),
   }
 }
 
@@ -224,7 +227,14 @@ async function processarItem(
     await tirarDaFila(supabase, ocId, enfileiradoEm) // já fechada, nada a fazer
     return 'skip'
   } else {
-    resp = await atualizarOcorrencia(apiKey, uuid, { bookingWindow: janelaFechada() })
+    // Além de fechar a janela, encolhe a capacidade até o que a TotalPass já tem
+    // reservado: aí o app deles mostra a aula ESGOTADA em vez de anunciar vagas que
+    // não existem. Nunca abaixo de 1 (a API recusa zero) — no caso extremo de a aula
+    // ter lotado só com gente nossa, sobra 1 vaga aparente, e é a janela que segura.
+    resp = await atualizarOcorrencia(apiKey, uuid, {
+      slots: Math.max(1, nums.total_booked ?? 0),
+      bookingWindow: janelaFechada(),
+    })
     if (resp.ok) {
       await supabase.from('totalpass_slot_map')
         .update({ fechada_em: new Date().toISOString() }).eq('ocorrencia_id', ocId)
