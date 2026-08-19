@@ -128,14 +128,10 @@ function janelaFechada() {
   }
 }
 
-// Janela normal: pode reservar desde bem antes até o início da aula.
-function janelaNormal(data: string, horario: string) {
-  const inicio = new Date(`${data}T${horario}-03:00`)
-  return {
-    minTimeToBook: horaTp(new Date(inicio.getTime() - 30 * 24 * 60 * 60 * 1000)),
-    maxTimeToBook: horaTp(inicio),
-  }
-}
+// Reabrir = LIMPAR a janela (é como a ocorrência nasce no publish: os dois campos
+// nulos). Mandar uma janela "normal" calculada não serve: com maxTimeToBook no início
+// da aula a API devolve 400 "dates align with slotDate and startTime" — testado.
+const JANELA_ABERTA = { minTimeToBook: null, maxTimeToBook: null }
 
 async function processarItem(
   supabase: SupabaseClient, ocId: string, enfileiradoEm: string, tentativas: number
@@ -218,7 +214,7 @@ async function processarItem(
   let resp
   if (nums.total_capacity > 0) {
     const corpo: any = { slots: nums.total_capacity }
-    if (fechada) corpo.bookingWindow = janelaNormal((info as any).data, horaAula)
+    if (fechada) corpo.bookingWindow = JANELA_ABERTA
     resp = await atualizarOcorrencia(apiKey, uuid, corpo)
     if (resp.ok && fechada) {
       await supabase.from('totalpass_slot_map').update({ fechada_em: null }).eq('ocorrencia_id', ocId)
