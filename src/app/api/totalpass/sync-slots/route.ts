@@ -176,7 +176,14 @@ async function processarItem(
     return 'skip'
   }
 
-  const resp = await atualizarOcorrencia(apiKey, uuid, { slots: nums.total_capacity })
+  // Aula LOTADA (capacidade 0): a TotalPass recusa slots=0 com 422 "The number of
+  // slots cannot be zero", e o item ficava em retry pra sempre — pior, a aula seguia
+  // com vaga aparente no app deles, alguém reservava e o pull rejeitava depois
+  // (reserva fantasma: existe lá, não existe aqui). Pausamos a ocorrência; quando
+  // abre vaga o ACTIVE junto do slots a traz de volta. Nunca mandamos slots=0.
+  const resp = nums.total_capacity > 0
+    ? await atualizarOcorrencia(apiKey, uuid, { slots: nums.total_capacity, status: 'ACTIVE' })
+    : await atualizarOcorrencia(apiKey, uuid, { status: 'INACTIVE' })
   if (resp.ok) {
     await tirarDaFila(supabase, ocId, enfileiradoEm)
     return 'sync'

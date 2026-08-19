@@ -123,10 +123,14 @@ export function criarOcorrencia(placeKey: string, dados: NovaOcorrencia): Promis
 }
 
 // ── Ocorrência: atualiza dados, INCLUINDO `slots` (capacidade) ────────────────
+// `status` pausa/reativa a ocorrência na grade deles: a API RECUSA slots=0
+// ("The number of slots cannot be zero", HTTP 422), então aula lotada do nosso lado
+// se tira do app deles com INACTIVE, e volta com ACTIVE quando abre vaga.
 export function atualizarOcorrencia(
   placeKey: string,
   occurrenceUuid: string,
   dados: Partial<Pick<NovaOcorrencia, 'title' | 'responsible' | 'duration' | 'slots' | 'description' | 'externalReference' | 'bookingWindow'>>
+    & { status?: 'ACTIVE' | 'INACTIVE' }
 ): Promise<TPResult> {
   return tpFetch(placeKey, `/partner/event-occurrence/${occurrenceUuid}`, 'PUT', dados);
 }
