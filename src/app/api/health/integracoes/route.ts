@@ -23,6 +23,7 @@ export const maxDuration = 60
 
 const CRON_SECRET = process.env.CRON_SECRET || ''
 const FILA_ATRASO_MIN = 30 // fila de sync acima disso = sync travado/erro
+const TENTATIVAS_LIMITE = 10 // item que errou 10x seguidas (~10 min de fila) está emperrado, não em retry normal
 
 export async function POST(req: NextRequest) {
   const auth = req.headers.get('authorization') || ''
@@ -73,6 +74,23 @@ export async function POST(req: NextRequest) {
     authWh.push({ unidade: '(falha geral)', ok: false, erro: String(e?.message ?? e) })
   }
   rel.auth_wellhub = authWh
+
+  // 2c) Fila TotalPass emperrada. A idade (`mais_antigo_min`) NÃO serve pra isso: o
+  // worker re-carimba `enfileirado_em` a cada erro, então uma fila travada há horas
+  // aparece sempre com idade 0 e passa batido (visto em 18/08: 15 de 16 itens errando
+  // em looping, sentinela dizendo que estava tudo bem). `tentativas` é a idade real.
+  try {
+    const { data: emperrados } = await supabase
+      .from('totalpass_slot_sync_queue')
+      .select('ocorrencia_id, tentativas, ultimo_erro')
+      .gte('tentativas', TENTATIVAS_LIMITE)
+      .order('tentativas', { ascending: false })
+      .limit(10)
+    rel.fila_totalpass_emperrada = emperrados || []
+  } catch (e: any) {
+    rel.fila_totalpass_emperrada = [{ erro: String(e?.message ?? e) }]
+  }
+
   rel.verificado_em = agora.toISOString()
 
   // 3) Semáforo geral.
@@ -83,6 +101,10 @@ export async function POST(req: NextRequest) {
   if (authTp.some(a => !a.ok)) problemas.push(`auth TotalPass falhando (${authTp.filter(a => !a.ok).map(a => a.unidade).join(', ')})`)
   if (authWh.some(a => !a.ok)) problemas.push(`auth Wellhub falhando (${authWh.filter(a => !a.ok).map(a => a.unidade).join(', ')})`)
   if ((rel.fila_totalpass?.mais_antigo_min ?? 0) > FILA_ATRASO_MIN) problemas.push('fila de sync TotalPass atrasada')
+  const emperrados = Array.isArray(rel.fila_totalpass_emperrada) ? rel.fila_totalpass_emperrada : []
+  if (emperrados.length) {
+    problemas.push(`${emperrados.length} item(ns) da fila TotalPass errando em looping (${emperrados[0]?.ultimo_erro ?? 'sem detalhe'})`)
+  }
   if ((rel.fila_wellhub?.mais_antigo_min ?? 0) > FILA_ATRASO_MIN) problemas.push('fila de sync Wellhub atrasada')
   if (semPos.length) problemas.push(`${semPos.length} aula(s) com reserva sem posição`)
   const ok = problemas.length === 0
