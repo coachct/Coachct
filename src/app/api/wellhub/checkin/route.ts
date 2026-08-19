@@ -285,7 +285,7 @@ export async function POST(req: NextRequest) {
           console.warn(`[wellhub/checkin] NAO validado — Coach CT agendado + modo livre (gympassId=${gympassId})`);
           return;
         }
-        await validarCheckin({ entradaId: inserida.id, gympassId, produtoId, produtoDescricao });
+        await validarCheckin({ entradaId: inserida.id, gympassId, produtoId, produtoDescricao, coachCtAgendamentoId: agCoach });
       })());
     }
   }

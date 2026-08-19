@@ -20,6 +20,9 @@ type ValidarCheckinInput = {
   gympassId: string; // unique_token do usuário
   produtoId: string | null; // event_data.gym.product.id (como string)
   produtoDescricao: string | null; // event_data.gym.product.description
+  // Coach CT COM reserva casada (personal + agendamento). Null = walk-in (inclui
+  // Personal sem reserva) => o feed do totem mostra pra o cliente confirmar.
+  coachCtAgendamentoId?: string | null;
 };
 
 // Retry curto só pro caso "check-in ainda não propagou" (404 not found).
@@ -33,7 +36,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 export async function validarCheckin(input: ValidarCheckinInput): Promise<void> {
-  const { entradaId, gympassId, produtoId, produtoDescricao } = input;
+  const { entradaId, gympassId, produtoId, produtoDescricao, coachCtAgendamentoId } = input;
 
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
@@ -73,6 +76,7 @@ export async function validarCheckin(input: ValidarCheckinInput): Promise<void> 
         status: 'validado',
         validado_em: resultado.validatedAt ?? new Date().toISOString(),
         valor,
+        coach_ct_agendamento_id: coachCtAgendamentoId ?? null,
       })
       .eq('id', entradaId);
     if (error) console.error('[wellhub/validar] erro ao gravar validado:', error);

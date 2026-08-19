@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
       .eq('unidade_id', unidade.id)
       .in('status', ['validado', 'recebido'])
       .is('confirmado_totem_em', null)
-      .not('produto', 'ilike', '%personal%')     // musculação livre (Personal = Coach CT, fluxo próprio)
+      .is('coach_ct_agendamento_id', null)        // esconde só Coach CT COM reserva (fluxo de coach próprio); walk-in Personal aparece
       .gte('recebido_em', desde)
       .order('recebido_em', { ascending: false })
       .limit(8)

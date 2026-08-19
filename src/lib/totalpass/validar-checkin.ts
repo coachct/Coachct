@@ -69,6 +69,10 @@ export async function validarCheckinTotalpass(input: ValidarInput): Promise<void
     status: 'validado',
     validado_em: startedAt ?? new Date().toISOString(),
     valor,
+    // Coach CT COM reserva (personal + agendamento casado): marca o vínculo pro
+    // feed do totem esconder (tem fluxo de coach próprio). Personal SEM reserva e
+    // musculação livre ficam null => aparecem no feed pra o cliente confirmar.
+    coach_ct_agendamento_id: agCoach ?? null,
   };
   if (descricao) patch.produto = descricao;
   const { error } = await supabase.from('entradas_walkin').update(patch).eq('id', entradaId);
