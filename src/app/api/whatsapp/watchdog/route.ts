@@ -6,8 +6,8 @@
 // Termômetro: whatsapp_processadas.criado_em (registrado em TODO inbound, antes de
 // qualquer processamento). Cooldown em wa_watchdog_alertas pra não spammar.
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
+import { createServiceSupabase } from '@/lib/whatsapp/consultas'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -30,10 +30,9 @@ function horaEmSaoPaulo(): number {
 }
 
 async function checar() {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL as string,
-    process.env.SUPABASE_SERVICE_ROLE_KEY as string,
-  )
+  // createServiceSupabase() usa fetch cache:'no-store' — SEM isso o Next.js cacheava
+  // a leitura e o vigia lia um "último inbound" velho (falso "parado" + spam).
+  const supabase = createServiceSupabase()
 
   const hora = horaEmSaoPaulo()
   if (hora < HORA_INICIO || hora >= HORA_FIM) {
