@@ -1801,15 +1801,17 @@ function RecepcaoClientesPageInner() {
                 ) : (
                   saldosUnidadeAtiva.map(([key, info]: [string, any]) => {
                     const restante = info.disponivel; const semSaldo = restante <= 0
+                    // Grava a CHAVE do saldo ('avulso_just_ct'), nunca o tipo_plano ('avulso'):
+                    // a trigger que baixa o crédito e a contagem do saldo casam por tipo+unidade.
                     return (
-                      <div key={key} onClick={() => !semSaldo && setTipoCredito(info.tipo_plano)}
+                      <div key={key} onClick={() => !semSaldo && setTipoCredito(key)}
                         className={`border rounded-xl p-3 flex items-center gap-3 transition-all ${
                           semSaldo ? 'opacity-40 cursor-not-allowed border-gray-100 bg-gray-50'
-                            : tipoCredito===info.tipo_plano ? 'bg-primary-50 border-primary-400 cursor-pointer'
+                            : tipoCredito===key ? 'bg-primary-50 border-primary-400 cursor-pointer'
                             : 'border-gray-200 hover:border-primary-200 cursor-pointer bg-white'
                         }`}>
-                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${tipoCredito===info.tipo_plano?'border-primary-600 bg-primary-600':'border-gray-300'}`}>
-                          {tipoCredito===info.tipo_plano && <div className="w-2 h-2 rounded-full bg-white"/>}
+                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${tipoCredito===key?'border-primary-600 bg-primary-600':'border-gray-300'}`}>
+                          {tipoCredito===key && <div className="w-2 h-2 rounded-full bg-white"/>}
                         </div>
                         <div className="flex-1">
                           <div className="text-sm font-semibold text-gray-900 capitalize">{info.tipo_plano}</div>
