@@ -55,16 +55,16 @@ async function checar() {
     return { ok: true, detalhe: `ok — última mensagem recebida há ${minutos} min` }
   }
 
-  // Está parado. Já avisei há pouco? (cooldown, pra não spammar)
-  const { data: st } = await supabase
+  // Está parado. Já avisei há pouco? (cooldown, pra não spammar) — checagem robusta:
+  // pergunta ao banco "existe alerta nas últimas COOLDOWN_MIN?" (comparação no
+  // servidor, sem depender de parsear data no cliente nem de maybeSingle).
+  const desde = new Date(Date.now() - COOLDOWN_MIN * 60000).toISOString()
+  const { count } = await supabase
     .from('wa_watchdog_alertas')
-    .select('alertado_em')
-    .order('alertado_em', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  const ultAlertaMs = (st as any)?.alertado_em ? new Date((st as any).alertado_em).getTime() : 0
-  if (ultAlertaMs && (Date.now() - ultAlertaMs) / 60000 < COOLDOWN_MIN) {
-    return { ok: false, detalhe: `parado há ${minutos} min — já alertado (cooldown)` }
+    .select('id', { count: 'exact', head: true })
+    .gt('alertado_em', desde)
+  if ((count ?? 0) > 0) {
+    return { ok: false, detalhe: `parado há ${minutos} min — já alertado (cooldown ${COOLDOWN_MIN}min)` }
   }
 
   // Dispara o alerta por e-mail.
