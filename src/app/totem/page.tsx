@@ -406,7 +406,7 @@ export default function TotemPage() {
                     </div>
                   ))}
                 </div>
-                <div className="ex-sub2">Se você possui Coach CT, escolha a opção abaixo</div>
+                <div className="ex-sub2">Reservas Coach CT , escolha a opção abaixo:</div>
                 <div className="tiles">
                   <button className="tile primary" onClick={() => { setFaceMsg('Olhe para a câmera'); setScreen('face') }}>
                     <span className="tico">📷</span>
@@ -875,7 +875,7 @@ const CSS = `
 #tt .feedcard .fc-org{font-size:12px;color:var(--mut);margin-top:2px}
 #tt .fc-btn{background:linear-gradient(135deg,var(--pink),#e01f7c);color:#fff;border:none;border-radius:12px;padding:12px 18px;font-size:15px;font-weight:800;cursor:pointer;flex:0 0 auto}
 #tt .fc-btn:active{transform:scale(.96)}
-#tt .ex-sub2{font-size:14px;font-weight:700;color:#fcd34d;text-align:center;margin:2px 0 12px}
+#tt .ex-sub2{font-size:18px;font-weight:700;color:#fcd34d;text-align:center;margin:2px 0 12px}
 #tt .modoerro{font-size:16px;font-weight:700;line-height:1.5;color:#fca5a5;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.45);border-radius:16px;padding:14px 18px;max-width:360px;margin:0 0 16px}
 #tt .modoerro b{color:#fecaca}
 #tt .help{flex:0 0 auto;padding:8px 22px 14px;text-align:center;color:var(--mut);font-size:12px}
