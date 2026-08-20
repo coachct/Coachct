@@ -7,6 +7,7 @@ import { useUnidade } from '@/hooks/useUnidade'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap, Gift, CalendarClock, Edit2, KeyRound, Copy, Dumbbell, CheckCircle2 } from 'lucide-react'
 import UnidadeSelector from '@/components/UnidadeSelector'
+import { numerarTreinosDoMes, PLANOS_SEM_TETO } from '@/lib/treinos-numero'
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
@@ -56,6 +57,44 @@ function parsePlanoKey(key: string) {
   return { label: key, icon:'🎟️' }
 }
 
+// ─── Exibição do uso (espelha a tela do admin) ────────────────────────────────
+// A recepção precisa explicar pro cliente COM QUE plano cada treino foi pago,
+// de onde veio a reserva e quando foi feita — por isso os mesmos rótulos daqui.
+function creditoLabel(key?: string | null): { label: string; icon: string } {
+  const k = key || ''
+  const lower = k.toLowerCase()
+  if (!k) return { label: '', icon: '' }
+  if (lower === 'avulso_importado') return { label: 'Crédito Avulso · todos os Clubs', icon: '🎟️' }
+  let tipo = '', icon = '🏋️', slug = ''
+  if (lower.startsWith('coach_ct_pro'))      { tipo = 'Coach CT Pro'; icon = '🏆'; slug = k.substring('coach_ct_pro_'.length) }
+  else if (lower.startsWith('wellhub'))      { tipo = 'Wellhub';   icon = '💜'; slug = k.split('_').slice(1).join('_') }
+  else if (lower.startsWith('totalpass'))    { tipo = 'TotalPass'; icon = '🔵'; slug = k.split('_').slice(1).join('_') }
+  else if (lower.startsWith('avulso') || lower.startsWith('credito')) { tipo = 'Crédito Avulso'; icon = '🎟️'; slug = k.split('_').slice(1).join('_') }
+  else return { label: k, icon: '🏋️' }
+  const nomeUnidade: Record<string, string> = { just_ct: 'Just CT', just_club_vila_olimpia: 'Vila Olímpia', just_club_pinheiros: 'Pinheiros' }
+  const u = nomeUnidade[slug] || slug.replace(/_/g, ' ')
+  return { label: u ? `${tipo} — ${u}` : tipo, icon }
+}
+
+function origemReserva(via?: string | null): { label: string; cls: string } | null {
+  if (!via) return null
+  const map: Record<string, { label: string; cls: string }> = {
+    cliente:   { label: 'Cliente',   cls: 'bg-gray-100 text-gray-600' },
+    recepcao:  { label: 'Recepção',  cls: 'bg-blue-100 text-blue-700' },
+    admin:     { label: 'Admin',     cls: 'bg-primary-100 text-primary-700' },
+    whatsapp:  { label: 'WhatsApp',  cls: 'bg-green-100 text-green-700' },
+    wellhub:   { label: 'Wellhub',   cls: 'bg-purple-100 text-purple-700' },
+    totalpass: { label: 'TotalPass', cls: 'bg-orange-100 text-orange-700' },
+  }
+  return map[via] || { label: via, cls: 'bg-gray-100 text-gray-600' }
+}
+
+function reservadoEm(ts?: string | null): string | null {
+  if (!ts) return null
+  const d = new Date(ts)
+  return `${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+}
+
 function RecepcaoClientesPageInner() {
   const { perfil, loading } = useAuth()
   const { unidadeAtiva, unidadesPermitidas, loading: loadingUnidade } = useUnidade()
@@ -75,6 +114,8 @@ function RecepcaoClientesPageInner() {
   const [erroEdicao, setErroEdicao] = useState('')
 
   const [historico, setHistorico] = useState<any[]>([])
+  const [clubReservas, setClubReservas] = useState<any[]>([])
+  const [acessosWalkin, setAcessosWalkin] = useState<any[]>([])
   const [saldoMes, setSaldoMes] = useState<Record<string, any>>({})
   const [vendas, setVendas] = useState<any[]>([])
   const [planosCliente, setPlanosCliente] = useState<any[]>([])
@@ -213,6 +254,8 @@ function RecepcaoClientesPageInner() {
     setEditando(false)
     setAba('dados')
     setHistorico([])
+    setClubReservas([])
+    setAcessosWalkin([])
     setVendas([])
     setModalSlot(null)
     setTipoCredito('')
@@ -221,6 +264,8 @@ function RecepcaoClientesPageInner() {
     await Promise.all([
       carregarSaldo(cliente.id),
       carregarHistorico(cliente.id),
+      carregarClubReservas(cliente.id),
+      carregarAcessosWalkin(cliente.id),
       carregarVendas(cliente.id),
       carregarPlanosCliente(cliente.id),
       carregarAvulsos(cliente.id),
@@ -239,36 +284,34 @@ function RecepcaoClientesPageInner() {
   }
 
   async function carregarHistorico(clienteId: string) {
-    // CT (agendamentos) — já vem de todas as unidades — + Club (club_reservas), mescla
-    const [{ data: ags }, { data: reservasClub }] = await Promise.all([
-      supabase.from('agendamentos').select('*, unidades(nome)')
-        .eq('cliente_id', clienteId).order('data', { ascending: false }).limit(50),
-      supabase.from('club_reservas')
-        .select('id, status, posicao, tipo_credito, club_ocorrencias(data, club_aulas(tipo, horario, unidade_id))')
-        .eq('cliente_id', clienteId).limit(100),
-    ])
+    // Só Coach CT aqui. O Club vem de carregarClubReservas (com o crédito usado
+    // e a origem da reserva) e o walk-in de carregarAcessosWalkin — as três
+    // listas se juntam em itensFuturos/itensPassados, igual à tela do admin.
+    const { data } = await supabase.from('agendamentos').select('*, unidades(nome)')
+      .eq('cliente_id', clienteId).order('data', { ascending: false }).limit(50)
+    setHistorico(data || [])
+  }
 
-    const ctItens = (ags || []).map((a: any) => ({ ...a, origem: 'ct' }))
+  async function carregarClubReservas(clienteId: string) {
+    const { data } = await supabase.from('club_reservas')
+      .select('*, creditos_avulsos(observacao), club_ocorrencias(id, data, club_aulas(tipo, horario, unidade_id, unidades(nome)))')
+      .eq('cliente_id', clienteId)
+      .neq('status', 'cancelado')
+      .order('created_at', { ascending: false })
+      .limit(50)
+    setClubReservas(data || [])
+  }
 
-    const clubItens = (reservasClub || [])
-      .filter((r: any) => r.club_ocorrencias?.data)
-      .map((r: any) => {
-        const oc = r.club_ocorrencias
-        const aula = oc?.club_aulas
-        const uniNome = todasUnidades.find((u: any) => u.id === aula?.unidade_id)?.nome || null
-        return {
-          id: r.id,
-          origem: 'club',
-          data: oc?.data,
-          horario: aula?.horario || null,
-          status: r.status,
-          unidades: uniNome ? { nome: uniNome } : null,
-          tipo_credito: tipoLabelClub(aula?.tipo),
-          posicao: r.posicao || null,
-        }
-      })
-
-    setHistorico([...ctItens, ...clubItens])
+  async function carregarAcessosWalkin(clienteId: string) {
+    // Walk-ins de musculação livre no CT. Não geram agendamento nem reserva de
+    // Club — vivem só aqui — então precisam ser lidos à parte pro histórico.
+    const { data } = await supabase.from('acessos_livres_ct')
+      .select('id, data, unidade_id, criado_em, creditos_avulsos(observacao)')
+      .eq('cliente_id', clienteId)
+      .is('cancelado_em', null)
+      .order('data', { ascending: false })
+      .limit(50)
+    setAcessosWalkin(data || [])
   }
 
   async function carregarVendas(clienteId: string) {
@@ -292,6 +335,24 @@ function RecepcaoClientesPageInner() {
       .select('id, tipo, unidade_id, usado, validade, observacao, unidades(nome, tipo)')
       .eq('cliente_id', clienteId)
     const linhas = data || []
+
+    // Reservas ativas que consumiram esses créditos (vínculo display-only credito_avulso_id).
+    // O abatimento do saldo continua sendo o do RPC; aqui só refletimos o consumo por pacote.
+    const ids = linhas.map((c: any) => c.id)
+    const reservasPorCredito: Record<string, any[]> = {}
+    if (ids.length > 0) {
+      const { data: rs } = await supabase.from('club_reservas')
+        .select('id, credito_avulso_id, status, club_ocorrencias(data, club_aulas(tipo, horario, unidades(nome)))')
+        .in('credito_avulso_id', ids)
+        .neq('status', 'cancelado')
+      for (const r of (rs || [])) {
+        const cid = (r as any).credito_avulso_id
+        if (!cid) continue
+        ;(reservasPorCredito[cid] ||= []).push(r)
+      }
+    }
+
+    const hojeStr = dataLocalStr(new Date())
     const grupos: Record<string, any> = {}
     for (const c of linhas) {
       const chave = `${c.observacao || ''}|${c.validade || ''}|${c.unidade_id || 'global'}|${c.tipo || ''}`
@@ -304,12 +365,22 @@ function RecepcaoClientesPageInner() {
           tipo: c.tipo ?? null,
           unidade_nome: (c.unidades as any)?.nome ?? null,
           unidade_tipo: (c.unidades as any)?.tipo ?? null,
-          total: 0, usados: 0, disponiveis: 0,
+          total: 0, usados: 0, disponiveis: 0, reservas: [] as any[],
         }
       }
       grupos[chave].total++
-      if (c.usado) grupos[chave].usados++
-      else grupos[chave].disponiveis++
+      // A fonte de verdade do débito é a coluna `usado` — setada por qualquer
+      // consumo (reserva de Club OU walk-in do CT em acessos_livres_ct). O vínculo
+      // de club_reservas é só para exibir QUAL reserva consumiu; se contarmos
+      // usados por ele, walk-ins do CT somem e o pacote aparece cheio (bug).
+      const links = reservasPorCredito[c.id]
+      if (links && links.length > 0) grupos[chave].reservas.push(...links)
+      if (c.usado) {
+        grupos[chave].usados++
+      } else if ((c.validade || '') >= hojeStr) {
+        grupos[chave].disponiveis++
+      }
+      // crédito vencido e não consumido: não conta como disponível nem usado
     }
     const lista = Object.values(grupos).sort((a: any, b: any) => (a.validade || '').localeCompare(b.validade || ''))
     setAvulsosPacotes(lista)
@@ -514,6 +585,7 @@ function RecepcaoClientesPageInner() {
     setTipoCreditoClub('')
     await carregarAulasClub()
     await carregarSaldo(clienteSel.id)
+    await carregarClubReservas(clienteSel.id)
     setAba('agendamentos')
   }
 
@@ -831,11 +903,50 @@ function RecepcaoClientesPageInner() {
     .filter(a => a.data < hoje || ['realizado','falta','cancelado','presente'].includes(a.status))
     .sort((a,b) => b.data.localeCompare(a.data))
 
+  // Numeração "X/N" dos treinos de Coach CT no mês (só planos com teto — avulso/
+  // pacote não recebem). Só temos saldo do mês atual, então só os treinos deste
+  // mês ganham rótulo. N = total do pool; X = ordem cronológica no mês.
+  const anoMesAtual = hoje.slice(0, 7)
+  const numeroTreino = numerarTreinosDoMes(
+    historico.map((a:any) => ({ id: a.id, data: a.data, horario: a.horario, status: a.status, tipo_credito: a.tipo_credito })),
+    (tipo, ym) => {
+      if (ym !== anoMesAtual) return null
+      const info = saldoMes?.[tipo]
+      if (!info || PLANOS_SEM_TETO.has(info.tipo_plano)) return null
+      return typeof info.total === 'number' ? info.total : null
+    },
+  )
+
+  const clubReservasFuturas = clubReservas.filter(cr => {
+    const data = cr.club_ocorrencias?.data
+    return data && data >= hoje && ['reservado','confirmado'].includes(cr.status)
+  }).sort((a, b) => (a.club_ocorrencias?.data || '').localeCompare(b.club_ocorrencias?.data || ''))
+
+  const clubReservasPassadas = clubReservas.filter(cr => {
+    const data = cr.club_ocorrencias?.data
+    return (data && data < hoje) || ['presente','falta','realizado'].includes(cr.status)
+  }).sort((a, b) => (b.club_ocorrencias?.data || '').localeCompare(a.club_ocorrencias?.data || ''))
+
+  // Coach CT, Club e walk-in numa lista só, ordenada por dia (chave = data+horário)
+  const chaveCt = (a: any) => `${a.data || ''}T${(a.horario || '').slice(0,5)}`
+  const chaveClub = (cr: any) => `${cr.club_ocorrencias?.data || ''}T${(cr.club_ocorrencias?.club_aulas?.horario || '').slice(0,5)}`
+  const itensFuturos = [
+    ...agendamentosFuturos.map(a => ({ kind: 'ct' as const, chave: chaveCt(a), item: a })),
+    ...clubReservasFuturas.map(cr => ({ kind: 'club' as const, chave: chaveClub(cr), item: cr })),
+  ].sort((a, b) => a.chave.localeCompare(b.chave))
+  const itensPassados = [
+    ...agendamentosPassados.map(a => ({ kind: 'ct' as const, chave: chaveCt(a), item: a })),
+    ...clubReservasPassadas.map(cr => ({ kind: 'club' as const, chave: chaveClub(cr), item: cr })),
+    ...acessosWalkin.map(w => ({ kind: 'walkin' as const, chave: `${w.data || ''}T00:00`, item: w })),
+  ].sort((a, b) => b.chave.localeCompare(a.chave))
+
+  const totalFuturos = agendamentosFuturos.length + clubReservasFuturas.length
+
   const abas = [
     { key: 'dados', label: 'Dados' },
     { key: 'planos', label: 'Planos' },
     { key: 'vendas', label: `Vendas${vendas.length > 0 ? ` (${vendas.length})` : ''}` },
-    { key: 'agendamentos', label: `Agenda${agendamentosFuturos.length > 0 ? ` (${agendamentosFuturos.length})` : ''}` },
+    { key: 'agendamentos', label: `Agenda${totalFuturos > 0 ? ` (${totalFuturos})` : ''}` },
     { key: 'historico', label: 'Histórico' },
     { key: 'agendar', label: '+ Agendar' },
   ]
@@ -1270,6 +1381,21 @@ function RecepcaoClientesPageInner() {
                                 <div className="text-xs text-gray-500 mt-1 space-y-0.5">
                                   <div>Validade: <strong className={vigente ? 'text-blue-700' : 'text-red-600'}>{pac.validade ? formatarBR(pac.validade) : '—'}</strong></div>
                                   <div><span className="font-bold text-blue-600">{pac.disponiveis}</span> disponíveis<span className="text-gray-400"> · {pac.usados} usados · {pac.total} no total</span></div>
+                                  {pac.reservas && pac.reservas.length > 0 && (
+                                    <div className="mt-1 pl-2 border-l-2 border-blue-100 space-y-0.5">
+                                      {pac.reservas
+                                        .slice()
+                                        .sort((a: any, b: any) => (a.club_ocorrencias?.data || '').localeCompare(b.club_ocorrencias?.data || ''))
+                                        .map((r: any) => (
+                                          <div key={r.id} className="text-[11px] text-gray-500">
+                                            {r.club_ocorrencias?.data ? formatarBR(r.club_ocorrencias.data) : '—'}
+                                            {r.club_ocorrencias?.club_aulas?.horario ? ` · ${r.club_ocorrencias.club_aulas.horario}` : ''}
+                                            {r.club_ocorrencias?.club_aulas?.tipo ? ` · ${r.club_ocorrencias.club_aulas.tipo}` : ''}
+                                            {r.club_ocorrencias?.club_aulas?.unidades?.nome ? ` · ${r.club_ocorrencias.club_aulas.unidades.nome}` : ''}
+                                          </div>
+                                        ))}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -1344,29 +1470,82 @@ function RecepcaoClientesPageInner() {
                     <Plus size={12} /> Agendar
                   </button>
                 </div>
-                {agendamentosFuturos.length === 0 ? (
+                {totalFuturos === 0 ? (
                   <div className="card text-center py-12 text-gray-400 text-sm">Nenhum agendamento futuro.</div>
                 ) : (
                   <div className="space-y-2">
-                    {agendamentosFuturos.map(ag => (
-                      <div key={ag.id} className="card border-l-4 border-l-blue-400">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-blue-50 flex flex-col items-center justify-center flex-shrink-0">
-                            <div className="text-sm font-bold text-blue-700 leading-none">{new Date(ag.data+'T12:00:00').getDate()}</div>
-                            <div className="text-xs text-blue-500 uppercase">{new Date(ag.data+'T12:00:00').toLocaleDateString('pt-BR',{month:'short'})}</div>
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-sm font-semibold text-gray-900 capitalize">{new Date(ag.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long'})}</span>
-                              <span className="font-mono text-xs text-gray-500">{(ag.horario||'').slice(0,5)}</span>
-                              <span className={`text-xs px-2 py-0.5 rounded-full ${statusConfig[ag.status]?.color}`}>{statusConfig[ag.status]?.label}</span>
-                              {ag.unidades?.nome && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{ag.unidades.nome}</span>}
+                    {itensFuturos.map(it => {
+                      if (it.kind === 'ct') {
+                        const ag = it.item
+                        const cred = creditoLabel(ag.tipo_credito)
+                        return (
+                          <div key={ag.id} className="card border-l-4 border-l-blue-400">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-xl bg-blue-50 flex flex-col items-center justify-center flex-shrink-0">
+                                <div className="text-sm font-bold text-blue-700 leading-none">{new Date(ag.data+'T12:00:00').getDate()}</div>
+                                <div className="text-xs text-blue-500 uppercase">{new Date(ag.data+'T12:00:00').toLocaleDateString('pt-BR',{month:'short'})}</div>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-base font-bold text-gray-900">Coach CT</span>
+                                  <span className="text-xs px-2 py-0.5 rounded-full bg-primary-100 text-primary-700 font-medium">Coach CT</span>
+                                  <span className={`text-xs px-2 py-0.5 rounded-full ${statusConfig[ag.status]?.color}`}>{statusConfig[ag.status]?.label}</span>
+                                  {numeroTreino.get(ag.id) && <span title="treino do mês" className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold font-mono">{numeroTreino.get(ag.id)}</span>}
+                                </div>
+                                <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-500 mt-0.5">
+                                  <span className="capitalize">{new Date(ag.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long'})}</span>
+                                  <span className="text-gray-300">·</span>
+                                  <span className="font-mono">{(ag.horario||'').slice(0,5)}</span>
+                                  {ag.unidades?.nome && <><span className="text-gray-300">·</span><span>{ag.unidades.nome}</span></>}
+                                </div>
+                                {cred.label && <div className="text-xs text-gray-500 mt-1">{cred.icon} {cred.label}</div>}
+                                {(() => { const o = origemReserva((ag as any).criado_via); const q = reservadoEm((ag as any).created_at); if (!o && !q) return null; return (
+                                  <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-400 mt-0.5">
+                                    {o && <span className={`px-1.5 py-0.5 rounded-full ${o.cls}`}>{o.label}</span>}
+                                    {q && <span>agendado em {q}</span>}
+                                  </div>
+                                )})()}
+                              </div>
                             </div>
-                            <div className="text-xs text-gray-400 mt-0.5">{ag.tipo_credito}</div>
+                          </div>
+                        )
+                      }
+                      const cr = it.item
+                      const oc = cr.club_ocorrencias
+                      const aula = oc?.club_aulas
+                      const data = oc?.data || ''
+                      const cred = creditoLabel(cr.tipo_credito)
+                      return (
+                        <div key={cr.id} className="card border-l-4 border-l-purple-400">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-purple-50 flex flex-col items-center justify-center flex-shrink-0">
+                              <div className="text-sm font-bold text-purple-700 leading-none">{data ? new Date(data+'T12:00:00').getDate() : '—'}</div>
+                              <div className="text-xs text-purple-500 uppercase">{data ? new Date(data+'T12:00:00').toLocaleDateString('pt-BR',{month:'short'}) : ''}</div>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-base font-bold text-gray-900">{tipoLabelClub(aula?.tipo) || 'Club'}</span>
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">Club</span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${statusConfig[cr.status]?.color || 'bg-gray-100 text-gray-600'}`}>{statusConfig[cr.status]?.label || cr.status}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-500 mt-0.5">
+                                <span className="capitalize">{data ? new Date(data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long'}) : '—'}</span>
+                                <span className="text-gray-300">·</span>
+                                <span className="font-mono">{(aula?.horario||'').slice(0,5)}</span>
+                                {aula?.unidades?.nome && <><span className="text-gray-300">·</span><span>{aula.unidades.nome}</span></>}
+                              </div>
+                              {cred.label && <div className="text-xs text-gray-500 mt-1">{cred.icon} {(cr as any).creditos_avulsos?.observacao || cred.label}</div>}
+                              {(() => { const o = origemReserva((cr as any).criado_via); const q = reservadoEm((cr as any).created_at); if (!o && !q) return null; return (
+                                <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-400 mt-0.5">
+                                  {o && <span className={`px-1.5 py-0.5 rounded-full ${o.cls}`}>{o.label}</span>}
+                                  {q && <span>reservado em {q}</span>}
+                                </div>
+                              )})()}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </div>
@@ -1376,35 +1555,118 @@ function RecepcaoClientesPageInner() {
             {aba === 'historico' && (
               <div>
                 <div className="text-sm font-semibold text-gray-900 mb-4">Histórico de treinos</div>
-                {agendamentosPassados.length === 0 ? (
+                {itensPassados.length === 0 ? (
                   <div className="card text-center py-12 text-gray-400 text-sm">Nenhum histórico encontrado.</div>
                 ) : (
                   <div className="space-y-2">
-                    {agendamentosPassados.map(ag => (
-                      <div key={ag.id} className={`card flex items-center gap-3 border-l-4 ${
-                        ag.status==='realizado'?'border-l-green-400':ag.status==='falta'?'border-l-orange-400':'border-l-gray-200'
-                      }`}>
-                        <div className={`w-10 h-10 rounded-xl flex flex-col items-center justify-center flex-shrink-0 ${
-                          ag.status==='realizado'?'bg-green-50':ag.status==='falta'?'bg-orange-50':'bg-gray-50'
+                    {itensPassados.map(it => {
+                      if (it.kind === 'walkin') {
+                        const w = it.item
+                        const uNome = todasUnidades.find((u: any) => u.id === w.unidade_id)?.nome
+                        const pacote = (w as any).creditos_avulsos?.observacao
+                        return (
+                          <div key={w.id} className="card flex items-center gap-3 border-l-4 border-l-green-400">
+                            <div className="w-10 h-10 rounded-xl flex flex-col items-center justify-center flex-shrink-0 bg-green-50">
+                              <div className="text-sm font-bold leading-none text-green-700">{w.data ? new Date(w.data+'T12:00:00').getDate() : '—'}</div>
+                              <div className="text-xs uppercase text-green-500">{w.data ? new Date(w.data+'T12:00:00').toLocaleDateString('pt-BR',{month:'short'}) : ''}</div>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-base font-bold text-gray-900">Musculação Livre</span>
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 font-medium">Walk-in CT</span>
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">Realizado</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-500 mt-0.5">
+                                <span className="capitalize">{w.data ? new Date(w.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long'}) : '—'}</span>
+                                {uNome && <><span className="text-gray-300">·</span><span>{uNome}</span></>}
+                              </div>
+                              {pacote && <div className="text-xs text-gray-500 mt-1">📦 {pacote}</div>}
+                            </div>
+                          </div>
+                        )
+                      }
+                      if (it.kind === 'ct') {
+                        const ag = it.item
+                        const cred = creditoLabel(ag.tipo_credito)
+                        return (
+                          <div key={ag.id} className={`card flex items-center gap-3 border-l-4 ${
+                            ag.status==='realizado'?'border-l-green-400':ag.status==='falta'?'border-l-orange-400':'border-l-gray-200'
+                          }`}>
+                            <div className={`w-10 h-10 rounded-xl flex flex-col items-center justify-center flex-shrink-0 ${
+                              ag.status==='realizado'?'bg-green-50':ag.status==='falta'?'bg-orange-50':'bg-gray-50'
+                            }`}>
+                              <div className={`text-sm font-bold leading-none ${ag.status==='realizado'?'text-green-700':ag.status==='falta'?'text-orange-700':'text-gray-500'}`}>
+                                {new Date(ag.data+'T12:00:00').getDate()}
+                              </div>
+                              <div className={`text-xs uppercase ${ag.status==='realizado'?'text-green-500':ag.status==='falta'?'text-orange-500':'text-gray-400'}`}>
+                                {new Date(ag.data+'T12:00:00').toLocaleDateString('pt-BR',{month:'short'})}
+                              </div>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-base font-bold text-gray-900">Coach CT</span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${statusConfig[ag.status]?.color}`}>{statusConfig[ag.status]?.label}</span>
+                                {numeroTreino.get(ag.id) && <span title="treino do mês" className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold font-mono">{numeroTreino.get(ag.id)}</span>}
+                              </div>
+                              <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-500 mt-0.5">
+                                <span className="capitalize">{new Date(ag.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long'})}</span>
+                                <span className="text-gray-300">·</span>
+                                <span className="font-mono">{(ag.horario||'').slice(0,5)}</span>
+                                {ag.unidades?.nome && <><span className="text-gray-300">·</span><span>{ag.unidades.nome}</span></>}
+                              </div>
+                              {cred.label && <div className="text-xs text-gray-500 mt-1">{cred.icon} {cred.label}</div>}
+                              {(() => { const o = origemReserva((ag as any).criado_via); const q = reservadoEm((ag as any).created_at); if (!o && !q) return null; return (
+                                <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-400 mt-0.5">
+                                  {o && <span className={`px-1.5 py-0.5 rounded-full ${o.cls}`}>{o.label}</span>}
+                                  {q && <span>agendado em {q}</span>}
+                                </div>
+                              )})()}
+                            </div>
+                          </div>
+                        )
+                      }
+                      const cr = it.item
+                      const oc = cr.club_ocorrencias
+                      const aula = oc?.club_aulas
+                      const data = oc?.data || ''
+                      const cred = creditoLabel(cr.tipo_credito)
+                      return (
+                        <div key={cr.id} className={`card flex items-center gap-3 border-l-4 ${
+                          cr.status==='presente'?'border-l-green-400':cr.status==='falta'?'border-l-orange-400':'border-l-purple-200'
                         }`}>
-                          <div className={`text-sm font-bold leading-none ${ag.status==='realizado'?'text-green-700':ag.status==='falta'?'text-orange-700':'text-gray-500'}`}>
-                            {new Date(ag.data+'T12:00:00').getDate()}
+                          <div className={`w-10 h-10 rounded-xl flex flex-col items-center justify-center flex-shrink-0 ${
+                            cr.status==='presente'?'bg-green-50':cr.status==='falta'?'bg-orange-50':'bg-purple-50'
+                          }`}>
+                            <div className={`text-sm font-bold leading-none ${cr.status==='presente'?'text-green-700':cr.status==='falta'?'text-orange-700':'text-purple-700'}`}>
+                              {data ? new Date(data+'T12:00:00').getDate() : '—'}
+                            </div>
+                            <div className={`text-xs uppercase ${cr.status==='presente'?'text-green-500':cr.status==='falta'?'text-orange-500':'text-purple-500'}`}>
+                              {data ? new Date(data+'T12:00:00').toLocaleDateString('pt-BR',{month:'short'}) : ''}
+                            </div>
                           </div>
-                          <div className={`text-xs uppercase ${ag.status==='realizado'?'text-green-500':ag.status==='falta'?'text-orange-500':'text-gray-400'}`}>
-                            {new Date(ag.data+'T12:00:00').toLocaleDateString('pt-BR',{month:'short'})}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-base font-bold text-gray-900">{tipoLabelClub(aula?.tipo) || 'Club'}</span>
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">Club</span>
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${statusConfig[cr.status]?.color || 'bg-gray-100 text-gray-600'}`}>{statusConfig[cr.status]?.label || cr.status}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-500 mt-0.5">
+                              <span className="capitalize">{data ? new Date(data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long'}) : '—'}</span>
+                              <span className="text-gray-300">·</span>
+                              <span className="font-mono">{(aula?.horario||'').slice(0,5)}</span>
+                              {aula?.unidades?.nome && <><span className="text-gray-300">·</span><span>{aula.unidades.nome}</span></>}
+                            </div>
+                            {cred.label && <div className="text-xs text-gray-500 mt-1">{cred.icon} {(cr as any).creditos_avulsos?.observacao || cred.label}</div>}
+                            {(() => { const o = origemReserva((cr as any).criado_via); const q = reservadoEm((cr as any).created_at); if (!o && !q) return null; return (
+                              <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-400 mt-0.5">
+                                {o && <span className={`px-1.5 py-0.5 rounded-full ${o.cls}`}>{o.label}</span>}
+                                {q && <span>reservado em {q}</span>}
+                              </div>
+                            )})()}
                           </div>
                         </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-medium text-gray-700 capitalize">{new Date(ag.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long'})}</span>
-                            <span className="font-mono text-xs text-gray-400">{(ag.horario||'').slice(0,5)}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${statusConfig[ag.status]?.color}`}>{statusConfig[ag.status]?.label}</span>
-                            {ag.unidades?.nome && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{ag.unidades.nome}</span>}
-                          </div>
-                          <div className="text-xs text-gray-400 mt-0.5">{ag.tipo_credito}</div>
-                        </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </div>
