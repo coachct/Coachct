@@ -243,23 +243,25 @@ export default function RecepcaoClubDetalhe() {
       const idsCli = Array.from(new Set(sorted.map((r: any) => r.clientes?.id).filter(Boolean)))
       const tipoAtual = oc?.club_aulas?.tipo || null
       if (idsCli.length && oc?.data) {
-        const { data: hist } = await supabase
-          .from('club_reservas')
-          .select('cliente_id, club_ocorrencias!inner(data, club_aulas!inner(tipo))')
-          .in('cliente_id', idsCli)
-          .eq('status', 'presente')
-          .lt('club_ocorrencias.data', oc.data)
-        const tiposPorCliente: Record<string, Set<string>> = {}
-        for (const h of (hist || []) as any[]) {
-          const t = h.club_ocorrencias?.club_aulas?.tipo
-          if (!tiposPorCliente[h.cliente_id]) tiposPorCliente[h.cliente_id] = new Set()
-          if (t) tiposPorCliente[h.cliente_id].add(t)
+        // A contagem vem AGREGADA do servidor (1 linha por cliente). O jeito antigo baixava
+        // uma linha por presença e estourava o teto de 1000 linhas do PostgREST: aluno antigo
+        // aparecia como "1ª vez" quando uma conta de histórico enorme comia a cota.
+        const { data: agg, error: errAgg } = await supabase.rpc('club_flags_primeira_vez', {
+          p_cliente_ids: idsCli, p_data: oc.data, p_tipo: tipoAtual,
+        })
+        if (errAgg) throw errAgg
+        const porCliente: Record<string, { presencas: number; presencasTipo: number }> = {}
+        for (const a of (agg || []) as any[]) {
+          porCliente[a.cliente_id] = {
+            presencas: Number(a.presencas || 0),
+            presencasTipo: Number(a.presencas_tipo || 0),
+          }
         }
         const flags: Record<string, 'absoluta' | 'modalidade' | null> = {}
         for (const id of idsCli) {
-          const tipos = tiposPorCliente[id as string]
-          if (!tipos || tipos.size === 0) flags[id as string] = 'absoluta'
-          else if (tipoAtual && !tipos.has(tipoAtual)) flags[id as string] = 'modalidade'
+          const c = porCliente[id as string]
+          if (!c || c.presencas === 0) flags[id as string] = 'absoluta'
+          else if (tipoAtual && c.presencasTipo === 0) flags[id as string] = 'modalidade'
           else flags[id as string] = null
         }
         setFlagsPrimeira(flags)
