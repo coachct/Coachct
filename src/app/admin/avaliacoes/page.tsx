@@ -52,6 +52,11 @@ export default function AvaliacoesPage() {
   const [fFim, setFFim] = useState('')
   const [fOrdem, setFOrdem] = useState<'recente' | 'aula'>('recente')
 
+  // Quantas linhas a tabela desenha (os KPIs continuam sobre o filtro inteiro)
+  const LOTE = 200
+  const [verMax, setVerMax] = useState(LOTE)
+  useEffect(() => { setVerMax(LOTE) }, [fUnidade, fCoach, fInicio, fFim, fOrdem])
+
   // Drawer de histórico por aluno
   const [drawerCliente, setDrawerCliente] = useState<{ id: string; nome: string } | null>(null)
   const [drawerAvals, setDrawerAvals] = useState<any[]>([])
@@ -112,17 +117,32 @@ export default function AvaliacoesPage() {
   }
 
   useEffect(() => {
-    async function load() {
-      const [{ data: avals }, { data: unis }] = await Promise.all([
-        supabase.from('avaliacoes_aula')
+    // Busca TODAS as avaliações em páginas (o Supabase devolve no máx. 1000 por request).
+    // Sem isso os KPIs, a média por coach e os filtros de data ficavam presos às últimas 500.
+    async function carregarTodas() {
+      const PAGINA = 1000
+      const TETO = 50000 // trava de segurança
+      const todas: any[] = []
+      for (let de = 0; de < TETO; de += PAGINA) {
+        const { data, error } = await supabase.from('avaliacoes_aula')
           .select('*, clientes(nome)')
           .eq('dispensado', false)
           .order('criado_em', { ascending: false })
           .order('data_aula', { ascending: false })
-          .limit(500),
+          .range(de, de + PAGINA - 1)
+        if (error) break
+        todas.push(...(data || []))
+        if (!data || data.length < PAGINA) break
+      }
+      return todas
+    }
+
+    async function load() {
+      const [avals, { data: unis }] = await Promise.all([
+        carregarTodas(),
         supabase.from('unidades').select('id, nome').order('nome'),
       ])
-      setAvaliacoes(avals || [])
+      setAvaliacoes(avals)
       setUnidades(unis || [])
       setLoading(false)
     }
@@ -326,7 +346,7 @@ export default function AvaliacoesPage() {
                   <th className="text-left pb-3">Aluno</th>
                 </tr>
               </thead>
-              {filtradas.map((a) => (
+              {filtradas.slice(0, verMax).map((a) => (
                 <tbody key={a.id} className="border-b border-gray-100 last:border-0">
                   <tr>
                     <td className="pt-3 pb-1 pr-3 text-gray-500 whitespace-nowrap align-top">
@@ -369,6 +389,19 @@ export default function AvaliacoesPage() {
                 </tbody>
               ))}
             </table>
+            {filtradas.length > verMax && (
+              <div className="pt-4 text-center">
+                <div className="text-xs text-gray-400 mb-2">
+                  Mostrando {verMax} de {filtradas.length} avaliações
+                </div>
+                <button
+                  onClick={() => setVerMax(v => v + LOTE)}
+                  className="text-sm font-medium text-[#ff2d9b] border border-[#ff2d9b]/30 rounded-lg px-4 py-2 hover:bg-[#ff2d9b]/5 transition-colors"
+                >
+                  Ver mais {Math.min(LOTE, filtradas.length - verMax)}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
