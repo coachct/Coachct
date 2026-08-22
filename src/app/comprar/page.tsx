@@ -321,7 +321,7 @@ export default function ComprarPage() {
                           {ehCoach ? 'just ct · coach' : ehPacote ? `pacote ${creditos} treinos` : 'todas as unidades'}
                         </div>
 
-                        <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', marginBottom: '0.75rem' }}>{p.nome}</div>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', marginBottom: '0.75rem' }}>{ehCoach ? 'Coach CT' : p.nome}</div>
 
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.3rem', marginBottom: 2 }}>
                           <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 38, color: '#fff', lineHeight: 1 }}>{vPC.reais}<span style={{ fontSize: 19 }}>{vPC.cents}</span></div>
@@ -336,7 +336,7 @@ export default function ComprarPage() {
 
                         <div style={{ fontSize: 12, color: '#555', flex: 1, marginBottom: '1.25rem', lineHeight: 1.6 }}>
                           {ehCoach
-                            ? `Crédito para sessão com coach. Válido ${p.dias_validade} dias. Necessário ter acesso ao CT.`
+                            ? `Produto exclusivo da unidade CT, para acompanhamento 1x1 dos nossos Coaches. Não válido para unidades Clubs.`
                             : ehPacote
                             ? `${creditos} créditos válidos por ${p.dias_validade} dias. Just CT (musculação livre) + JustClubs.`
                             : `Crédito avulso válido ${p.dias_validade} dias. Just CT (musculação livre) + JustClubs.`

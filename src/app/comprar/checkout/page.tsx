@@ -318,7 +318,18 @@ function CheckoutContent() {
   }
 
   // Descrição do produto no resumo do pedido
+  function ehCoachAvulso(p: any): boolean {
+    return p?.subtipo === 'credito' && p?.tipo === 'credito_coach'
+  }
+
+  function nomeProduto(p: any): string {
+    return ehCoachAvulso(p) ? 'Coach CT' : p.nome
+  }
+
   function descricaoProduto(p: any): string {
+    if (ehCoachAvulso(p)) {
+      return 'Produto exclusivo da unidade CT, para acompanhamento 1x1 dos nossos Coaches. Não válido para unidades Clubs.'
+    }
     switch (p.subtipo) {
       case 'acesso':
         return `Acesso ilimitado ao Just CT por ${p.dias_validade} dias`
@@ -403,7 +414,7 @@ function CheckoutContent() {
           <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#555', marginBottom: '0.75rem', fontFamily: "'DM Mono', monospace" }}>Seu pedido</div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 16, fontWeight: 600, color: '#fff', marginBottom: 4 }}>{produto.nome}</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: '#fff', marginBottom: 4 }}>{nomeProduto(produto)}</div>
               <div style={{ fontSize: 13, color: '#888', lineHeight: 1.5 }}>
                 {descricaoProduto(produto)}
               </div>
