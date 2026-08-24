@@ -107,6 +107,8 @@ export default function JustClubAdminPage() {
   const [filtroTipo,  setFiltroTipo]  = useState('todos')
   const [filtroCoach, setFiltroCoach] = useState('todos')
   const [diasCalendario, setDiasCalendario] = useState<7|15|30>(7)
+  // Dia específico no calendário: quando preenchido ('AAAA-MM-DD'), manda no lugar da janela de 7/15/30 dias.
+  const [dataCalendario, setDataCalendario] = useState('')
   const [diasExpandidos, setDiasExpandidos] = useState<Set<number>>(new Set([1,2,3,4,5]))
 
   const [modalAberto, setModalAberto] = useState(false)
@@ -162,7 +164,7 @@ export default function JustClubAdminPage() {
   }, [unidadeAtiva?.id])
   useEffect(() => {
     if (unidadeAtiva && abaAtiva === 'calendario') carregarOcorrencias(diasCalendario)
-  }, [unidadeAtiva?.id, diasCalendario, abaAtiva])
+  }, [unidadeAtiva?.id, diasCalendario, dataCalendario, abaAtiva])
   useEffect(() => {
     if (unidadeAtiva && abaAtiva === 'feriados') carregarFeriados()
   }, [unidadeAtiva?.id, abaAtiva])
@@ -221,8 +223,9 @@ export default function JustClubAdminPage() {
   async function carregarOcorrencias(dias: 7|15|30) {
     if (!unidadeAtiva) return
     setLoadingOcs(true)
-    const hoje = dataLocalStr(new Date())
-    const fim  = dataLocalStr(new Date(Date.now() + dias * 86400000))
+    // Dia específico escolhido: janela de um dia só. Senão, próximos N dias a partir de hoje.
+    const hoje = dataCalendario || dataLocalStr(new Date())
+    const fim  = dataCalendario || dataLocalStr(new Date(Date.now() + dias * 86400000))
     const { data: ids_data } = await supabase.from('club_aulas').select('id').eq('unidade_id', unidadeAtiva.id).eq('ativo', true)
     const ids = (ids_data || []).map((a: any) => a.id)
     if (!ids.length) { setOcorrencias([]); setLoadingOcs(false); return }
@@ -963,11 +966,25 @@ export default function JustClubAdminPage() {
                 <div>
                   <div className="flex items-center gap-2 mb-4 flex-wrap">
                     {([7,15,30] as const).map(d => (
-                      <button key={d} onClick={()=>setDiasCalendario(d)}
-                        className={`px-4 py-2 rounded-xl text-sm font-medium transition-all border ${diasCalendario===d?'bg-primary-600 text-white border-primary-600':'bg-white text-gray-600 border-gray-200 hover:border-primary-300'}`}>
+                      <button key={d} onClick={()=>{ setDataCalendario(''); setDiasCalendario(d) }}
+                        className={`px-4 py-2 rounded-xl text-sm font-medium transition-all border ${(!dataCalendario && diasCalendario===d)?'bg-primary-600 text-white border-primary-600':'bg-white text-gray-600 border-gray-200 hover:border-primary-300'}`}>
                         Próximos {d} dias
                       </button>
                     ))}
+                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all ${dataCalendario?'bg-primary-600 border-primary-600':'bg-white border-gray-200'}`}>
+                      <CalendarDays size={14} className={dataCalendario?'text-white':'text-gray-400'}/>
+                      <input
+                        type="date"
+                        value={dataCalendario}
+                        onChange={e=>setDataCalendario(e.target.value)}
+                        className={`text-sm font-medium bg-transparent outline-none ${dataCalendario?'text-white':'text-gray-600'}`}
+                      />
+                      {dataCalendario && (
+                        <button onClick={()=>setDataCalendario('')} className="text-white/80 hover:text-white" title="Voltar para a janela de dias">
+                          <X size={14}/>
+                        </button>
+                      )}
+                    </div>
                     {!loadingOcs && <span className="text-xs text-gray-400 ml-auto">{ocsFiltered.length} ocorrência{ocsFiltered.length!==1?'s':''}{temFiltros?' (filtrado)':''}</span>}
                   </div>
                   {loadingOcs ? (
@@ -975,7 +992,7 @@ export default function JustClubAdminPage() {
                   ) : ocsFiltered.length===0 ? (
                     <div className="card text-center py-14">
                       <CalendarDays size={32} className="text-gray-300 mx-auto mb-3"/>
-                      <p className="text-gray-400 text-sm">{temFiltros?'Nenhuma aula com os filtros.':'Nenhuma aula nos próximos '+diasCalendario+' dias.'}</p>
+                      <p className="text-gray-400 text-sm">{temFiltros?'Nenhuma aula com os filtros.':dataCalendario?'Nenhuma aula em '+new Date(dataCalendario+'T12:00:00').toLocaleDateString('pt-BR')+'.':'Nenhuma aula nos próximos '+diasCalendario+' dias.'}</p>
                     </div>
                   ) : (
                     <div className="space-y-4">
