@@ -112,6 +112,7 @@ export default function AdminEscalaClubPage() {
   const [feriasMontar,  setFeriasMontar]  = useState<Record<string, { ini: string; fim: string }[]>>({})
   const [loadingMontar, setLoadingMontar] = useState(false)
   const [montando,      setMontando]      = useState(false)
+  const [aceitando,     setAceitando]     = useState<string | null>(null) // ocId do slot sendo escalado pelo atalho
 
   // NOVO: Resumo do mês (copiável p/ WhatsApp) — só FDS de escala (sáb/dom), nunca a grade da semana.
   // Três grupos, cada bloco com cópia individual: por unidade, por fim de semana e por coach.
@@ -575,6 +576,21 @@ export default function AdminEscalaClubPage() {
   async function limparSlot(ocId: string) {
     await supabase.from('club_ocorrencias').update({ coach_id: null }).eq('id', ocId)
     await carregarMontar()
+  }
+
+  // Acata a sugestão do próprio card, sem abrir o modal.
+  // Atualiza o estado local em vez de recarregar tudo: as sugestões dos outros
+  // slots do dia recalculam na hora (elas dependem das atribuições já feitas).
+  async function aceitarSugestao(ocId: string, coachId: string) {
+    setAceitando(ocId)
+    const { error } = await supabase.from('club_ocorrencias').update({ coach_id: coachId }).eq('id', ocId)
+    if (!error && diaMontar) {
+      setOcsMontarMap(prev => ({
+        ...prev,
+        [diaMontar]: (prev[diaMontar] || []).map((o: any) => o.id === ocId ? { ...o, coach_id: coachId } : o),
+      }))
+    }
+    setAceitando(null)
   }
 
   // ─── Resumo do mês (copiável p/ WhatsApp): só FDS de escala (sáb/dom) ───
@@ -1130,10 +1146,24 @@ export default function AdminEscalaClubPage() {
                                     </div>
 
                                     {ef.origem === 'indefinido' ? (
-                                      <span style={{ fontSize:10, fontWeight:700, flexShrink:0,
-                                        color: escassezCor || '#bbb', background: escassezCor ? `${escassezCor}18` : '#f0f0f0', padding:'2px 8px', borderRadius:10 }}>
-                                        {livres.length} livre{livres.length === 1 ? '' : 's'}
-                                      </span>
+                                      <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
+                                        {/* Atalho: acata a sugestão do card sem abrir o modal */}
+                                        {ghost && (
+                                          <button onClick={(e) => { e.stopPropagation(); aceitarSugestao(oc.id, ghost.c.id) }}
+                                            disabled={aceitando === oc.id}
+                                            title={`Escalar ${ghost.c.nome} nesta aula`}
+                                            style={{ padding:'3px 9px', borderRadius:9, border:`1.5px solid ${VERDE}`, background:`${VERDE}15`,
+                                              color:'#0f766e', fontSize:11, fontWeight:700, whiteSpace:'nowrap',
+                                              cursor: aceitando === oc.id ? 'default' : 'pointer', opacity: aceitando === oc.id ? 0.5 : 1,
+                                              fontFamily:"'DM Sans', sans-serif" }}>
+                                            {aceitando === oc.id ? '…' : '✓ Escalar'}
+                                          </button>
+                                        )}
+                                        <span style={{ fontSize:10, fontWeight:700,
+                                          color: escassezCor || '#bbb', background: escassezCor ? `${escassezCor}18` : '#f0f0f0', padding:'2px 8px', borderRadius:10 }}>
+                                          {livres.length} livre{livres.length === 1 ? '' : 's'}
+                                        </span>
+                                      </div>
                                     ) : ef.origem === 'escalado' ? (
                                       <button onClick={(e) => { e.stopPropagation(); limparSlot(oc.id) }}
                                         title="Voltar à grade"
