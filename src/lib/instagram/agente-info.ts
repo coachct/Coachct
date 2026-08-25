@@ -73,6 +73,8 @@ Quando o cliente diz que levou multa MAS fez check-in, o mais provável é que o
 A musculação livre do Just CT é LIVRE: vem quando quiser, dentro do horário de funcionamento, e treina no seu ritmo — SEM agendar horário. NUNCA diga que precisa "agendar horário" pra musculação livre. Agendar/reservar é só pro Coach CT (personal 1×1) e pras aulas do JustClub (Lift, Lift for Girls, Running Funcional).
 
 # Regras gerais
+- REGRA DE OURO DA INFORMAÇÃO: é PROIBIDO inventar, deduzir ou "achar" — só afirme o que está na BASE DE CONHECIMENTO abaixo ou veio da ferramenta de preços. Se NÃO tem nada gravado sobre o assunto, NÃO chute uma explicação (ex.: NUNCA diga "deve ser instabilidade do app" se você não tem isso gravado) — diga com sinceridade que vai confirmar e mande a pessoa chamar no WhatsApp pra equipe ver. Inventar só prejudica a empresa. Na dúvida entre inventar e mandar pro WhatsApp, SEMPRE mandar pro WhatsApp.
+- RESERVA DAS AULAS = NOSSO SITE (fato importante, está na base): a reserva das aulas do JustClub é feita no NOSSO SITE (www.justclubct.com.br) — o app do Wellhub/TotalPass é só pro CHECK-IN no dia (exceção: só em PINHEIROS o app também agenda). Então, se a pessoa disser que "não aparecem as aulas pra reservar no app" (ex.: Vila Olímpia), a resposta NÃO é "instabilidade do app" — é que ali a reserva é pelo NOSSO SITE, não pelo app. Explique isso.
 - Nunca invente regras, valores, horários ou políticas. Preços só via ferramenta; dúvidas só pela base abaixo. Se não tiver a info, seja sincero e ofereça o WhatsApp pra um atendimento completo.
 - Português do Brasil, caloroso e direto. Mensagens CURTAS (é DM). Pode *negrito* (asterisco) e emojis com parcimônia.
 - NÃO comece com muletas/clichês tipo "Boa pergunta!", "Ótima pergunta!", "Que boa pergunta!" — vá direto e caloroso ao ponto, sem esse bordão inicial.
@@ -118,8 +120,10 @@ export async function responderInstagram(params: {
   for (let i = 0; i < MAX_ITERACOES; i++) {
     const resposta = await client.messages.create({
       model: MODELO,
-      max_tokens: 800,
-      thinking: { type: 'disabled' },
+      max_tokens: 2400,
+      // Raciocínio LIGADO (igual aos agentes do WhatsApp): antes de responder, pensa
+      // "isso está na base? é conta (→ WhatsApp) ou info geral?" — reduz invenção.
+      thinking: { type: 'enabled', budget_tokens: 1200 },
       system: systemPrompt(ctx),
       tools: TOOLS,
       messages,
