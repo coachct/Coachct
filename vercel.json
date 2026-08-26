@@ -4,6 +4,7 @@
     { "path": "/api/totalpass/publish-slots", "schedule": "0 5 * * *" },
     { "path": "/api/totalpass/sync-slots", "schedule": "*/2 * * * *" },
     { "path": "/api/totalpass/pull-bookings", "schedule": "*/2 * * * *" },
-    { "path": "/api/whatsapp/watchdog", "schedule": "*/15 * * * *" }
+    { "path": "/api/whatsapp/watchdog", "schedule": "*/15 * * * *" },
+    { "path": "/api/fila/reconciliar", "schedule": "*/10 * * * *" }
   ]
 }
