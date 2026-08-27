@@ -53,17 +53,20 @@ export async function registrarCheckinCoachCt(
   }
 }
 
-// Marca a entrada como NÃO validada por modo errado (Coach CT agendado + check-in
-// em Musculação Livre). Status 'observado' = fora do faturamento; erro_motivo
-// deixa claro o porquê pra recepção/financeiro. NÃO confirma no parceiro.
+// Marca a entrada como NÃO validada. Status 'observado' = fora do faturamento;
+// erro_motivo deixa claro o porquê pra recepção/financeiro. NÃO confirma no
+// parceiro. Motivo padrão: modo errado (Coach CT agendado + Musculação Livre);
+// quem trava por outro motivo (ex.: horário restrito) passa o seu.
 export async function marcarEntradaSemValidar(
   supabase: SupabaseClient,
   entradaId: string,
-  descricao: string | null
+  descricao: string | null,
+  motivo?: string
 ): Promise<void> {
   const patch: Record<string, unknown> = {
     status: 'observado',
-    erro_motivo: 'Coach CT agendado + check-in em Musculação Livre — não validado (modo errado)',
+    erro_motivo:
+      motivo ?? 'Coach CT agendado + check-in em Musculação Livre — não validado (modo errado)',
   };
   if (descricao) patch.produto = descricao;
   const { error } = await supabase.from('entradas_walkin').update(patch).eq('id', entradaId);

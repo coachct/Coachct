@@ -21,6 +21,12 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { validarCheckin, buscarValor } from '@/lib/wellhub/validar-checkin';
 import { validarTicket } from '@/lib/wellhub/validate';
 import { ehModoPersonal, registrarCheckinCoachCt, marcarEntradaSemValidar } from '@/lib/coach-ct/presenca-checkin';
+import {
+  ehHorarioRestrito,
+  momentoDoCheckin,
+  foraDaJanelaRestrita,
+  travaHorarioRestritoAtiva,
+} from '@/lib/wellhub/horario-restrito';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -181,7 +187,7 @@ function extrair(payload: any) {
   const nome: string | null =
     [d?.user?.first_name, d?.user?.last_name].filter(Boolean).join(' ').trim() || null;
 
-  return { gympassId, eventoId, gymId, produto, produtoId, produtoDescricao, email, nome };
+  return { gympassId, eventoId, gymId, produto, produtoId, produtoDescricao, email, nome, timestamp };
 }
 
 // ---------------------------------------------------------------------------
@@ -211,7 +217,7 @@ export async function POST(req: NextRequest) {
     return new NextResponse(null, { status: 200 });
   }
 
-  const { gympassId, eventoId, gymId, produto, produtoId, produtoDescricao, email, nome } =
+  const { gympassId, eventoId, gymId, produto, produtoId, produtoDescricao, email, nome, timestamp } =
     extrair(payload);
 
   if (!gympassId) {
@@ -283,6 +289,26 @@ export async function POST(req: NextRequest) {
         if (modo === 'walkin' && agCoach) {
           await marcarEntradaSemValidar(supabase, inserida.id, produtoDescricao);
           console.warn(`[wellhub/checkin] NAO validado — Coach CT agendado + modo livre (gympassId=${gympassId})`);
+          return;
+        }
+        // TRAVA: plano "Musculação Horário Restrito" fora da janela permitida
+        // (seg-sex 09:00–16:59; fds sem trava) => NÃO valida. A pessoa não é
+        // confirmada no Wellhub e a entrada fica 'observado' pra recepção.
+        const quando = momentoDoCheckin(timestamp);
+        if (
+          travaHorarioRestritoAtiva() &&
+          ehHorarioRestrito(produtoId, produtoDescricao, produto) &&
+          foraDaJanelaRestrita(quando)
+        ) {
+          await marcarEntradaSemValidar(
+            supabase,
+            inserida.id,
+            produtoDescricao,
+            'Horário Restrito fora da janela (seg-sex 09:00–16:59) — não validado'
+          );
+          console.warn(
+            `[wellhub/checkin] NAO validado — Horario Restrito fora da janela (gympassId=${gympassId}, quando=${quando.toISOString()})`
+          );
           return;
         }
         await validarCheckin({ entradaId: inserida.id, gympassId, produtoId, produtoDescricao, coachCtAgendamentoId: agCoach });
