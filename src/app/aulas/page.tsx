@@ -168,6 +168,10 @@ function AulasPageInner() {
   const [cardCheckin,    setCardCheckin]    = useState(false)
   const [wellhubEmailInput, setWellhubEmailInput] = useState('')
   const [pendingReserva, setPendingReserva] = useState<(() => void) | null>(null)
+  // Certificação de plano parceiro (Wellhub Gold+ / TotalPass TP3+) na 1ª reserva do Club com crédito de parceiro
+  const [jaUsouParceiroClub, setJaUsouParceiroClub] = useState(false)
+  const [modalCertParceiro,  setModalCertParceiro]  = useState(false)
+  const [aceiteCertParceiro, setAceiteCertParceiro] = useState(false)
 
   // Toda a grade parte do "hoje" em São Paulo, não do relógio do dispositivo: cliente
   // em outro fuso (ClassPass fora do Brasil) via o dia errado e as aulas de hoje
@@ -276,6 +280,12 @@ function AulasPageInner() {
     if (data) {
       const { data: cobs } = await supabase.from('cobrancas_pendentes').select('*').eq('cliente_id', data.id).eq('status', 'pendente')
       setCobrancasPend(cobs || [])
+      // 1ª reserva do Club com crédito de parceiro → exige a certificação de tier mínimo
+      const { count: countParceiro } = await supabase.from('club_reservas')
+        .select('*', { count: 'exact', head: true })
+        .eq('cliente_id', data.id)
+        .or('tipo_credito.ilike.wellhub*,tipo_credito.ilike.totalpass*')
+      setJaUsouParceiroClub((countParceiro || 0) > 0)
     }
   }
   async function carregarSaldo() {
@@ -423,6 +433,17 @@ function AulasPageInner() {
         body: JSON.stringify({ tipo: 'club', reservaId }),
       }).catch(() => {})
     } catch {}
+  }
+  // Gate da 1ª reserva com crédito de parceiro: certifica o tier mínimo (Wellhub Gold+ / TotalPass TP3+)
+  // antes de gravar. Se ainda falta o email do Wellhub, deixa o confirmarReserva cobrar isso primeiro.
+  function handleConfirmarReserva() {
+    const ehParceiro = /^wellhub/i.test(tipoCredito) || /^totalpass/i.test(tipoCredito)
+    const faltaEmailWellhub = /^wellhub/i.test(tipoCredito) && !cliente?.wellhub_id && !cliente?.wellhub_email
+      && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(wellhubEmailInput.trim())
+    if (ehParceiro && !jaUsouParceiroClub && !faltaEmailWellhub) {
+      setAceiteCertParceiro(false); setModalCertParceiro(true); return
+    }
+    confirmarReserva()
   }
   async function confirmarReserva() {
     if (!tipoCredito) { setErroModal('Selecione o plano para usar.'); return }
@@ -1082,11 +1103,38 @@ function AulasPageInner() {
               {erroModal && <div style={{ background:'#ff2d9b15', border:'1px solid #ff2d9b44', borderRadius:8, padding:'0.6rem 1rem', fontSize:13, color:ACCENT, marginBottom:'1rem' }}>{erroModal}</div>}
               <div style={{ display:'flex', gap:8 }}>
                 <button onClick={fecharModalReserva} style={{ flex:1, background:'transparent', border:'1px solid #2a2a2a', borderRadius:10, padding:'0.85rem', color:'#555', fontSize:14, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>Cancelar</button>
-                <button onClick={confirmarReserva} disabled={confirmando||planosNoModal.length===0}
+                <button onClick={handleConfirmarReserva} disabled={confirmando||planosNoModal.length===0}
                   style={{ flex:2, background:planosNoModal.length===0?'#1a1a1a':ACCENT, color:planosNoModal.length===0?'#444':'#fff', border:'none', borderRadius:10, padding:'0.85rem', fontWeight:600, fontSize:15, cursor:confirmando||planosNoModal.length===0?'default':'pointer', fontFamily:"'DM Sans', sans-serif", opacity:confirmando?0.7:1 }}>
                   {confirmando?'Confirmando...':'Confirmar reserva ✓'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalCertParceiro && (
+        <div style={{ position:'fixed', inset:0, background:'#000000e0', zIndex:110, display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}>
+          <div style={{ background:'#111', border:`1px solid ${AMARELO}55`, borderRadius:20, width:'100%', maxWidth:460, padding:'1.5rem', maxHeight:'90vh', overflowY:'auto' }}>
+            <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:24, color:AMARELO, letterSpacing:1, marginBottom:4 }}>⚠️ CONFIRME SEU PLANO {/^wellhub/i.test(tipoCredito) ? 'WELLHUB' : 'TOTALPASS'}</div>
+            <div style={{ fontSize:13, color:'#888', marginBottom:'1.25rem', lineHeight:1.5 }}>Leia com atenção antes de confirmar sua primeira reserva com crédito de parceiro.</div>
+            <div style={{ background:'#1a1000', border:`1px solid ${AMARELO}44`, borderRadius:12, padding:'1rem 1.1rem', marginBottom:'1.25rem', fontSize:14, color:'#ddd', lineHeight:1.7 }}>
+              Para treinar nas aulas do <strong style={{ color:'#fff' }}>JustClub</strong> pelo seu plano parceiro:
+              <div style={{ marginTop:10, marginBottom:10, padding:'0.6rem 0.9rem', background:'#0a0a0a', borderRadius:8, border:'1px solid #2a2a2a', color:'#fff', fontWeight:700, textAlign:'center' }}>
+                {/^wellhub/i.test(tipoCredito) ? 'CERTIFIQUE-SE QUE O SEU PLANO É GOLD OU SUPERIOR' : 'CERTIFIQUE-SE QUE O SEU PLANO É TP3 OU SUPERIOR'}
+              </div>
+              Se o seu plano for <strong style={{ color:VERMELHO }}>inferior</strong>, seu check-in <strong style={{ color:VERMELHO }}>não será validado</strong> pelo app na chegada. É sua responsabilidade conferir o seu plano direto no aplicativo.
+            </div>
+            <label style={{ display:'flex', alignItems:'flex-start', gap:'0.75rem', cursor:'pointer', marginBottom:'1.25rem' }}>
+              <input type="checkbox" checked={aceiteCertParceiro} onChange={e => setAceiteCertParceiro(e.target.checked)} style={{ marginTop:2, accentColor:AMARELO, width:18, height:18, flexShrink:0 }} />
+              <span style={{ fontSize:13, color:'#bbb', lineHeight:1.5 }}>Confirmo que possuo <strong style={{ color:'#fff' }}>{/^wellhub/i.test(tipoCredito) ? 'Wellhub Gold ou superior' : 'TotalPass TP3 ou superior'}</strong> e estou ciente de que, se meu plano for inferior, meu check-in não será validado.</span>
+            </label>
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={() => setModalCertParceiro(false)} style={{ flex:1, background:'transparent', border:'1px solid #333', borderRadius:10, padding:'0.85rem', color:'#888', fontSize:14, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>Voltar</button>
+              <button onClick={() => { if (aceiteCertParceiro && !confirmando) { setModalCertParceiro(false); confirmarReserva() } }} disabled={!aceiteCertParceiro||confirmando}
+                style={{ flex:2, background:aceiteCertParceiro?AMARELO:'#333', color:aceiteCertParceiro?'#000':'#666', border:'none', borderRadius:10, padding:'0.85rem', fontWeight:700, fontSize:15, cursor:aceiteCertParceiro&&!confirmando?'pointer':'default', fontFamily:"'DM Sans', sans-serif" }}>
+                {confirmando?'Confirmando...':'Confirmar e reservar ✓'}
+              </button>
             </div>
           </div>
         </div>
