@@ -150,19 +150,19 @@ export default function CardAcompanhados() {
         })
       }
 
-      const resultado: Acompanhado[] = marcados.map((c: any) => {
-        const lista = (porCliente.get(c.id) || [])
-          .sort((x, y) => (x.data + x.horario).localeCompare(y.data + y.horario))
-        return { id: c.id, nome: c.nome, nota: c.acompanhar_nota || null, proxima: lista[0] || null }
-      })
+      // Só entra quem TEM aula marcada — cliente marcado sem reserva não vira
+      // linha no dashboard (seria ruído); ele volta a aparecer quando agendar.
+      const resultado: Acompanhado[] = marcados
+        .map((c: any) => {
+          const lista = (porCliente.get(c.id) || [])
+            .sort((x, y) => (x.data + x.horario).localeCompare(y.data + y.horario))
+          return { id: c.id, nome: c.nome, nota: c.acompanhar_nota || null, proxima: lista[0] || null }
+        })
+        .filter((l): l is Acompanhado & { proxima: Proxima } => l.proxima !== null)
 
-      // Quem tem aula marcada primeiro; sem aula vai pro fim
-      resultado.sort((a, b) => {
-        if (!a.proxima && !b.proxima) return a.nome.localeCompare(b.nome)
-        if (!a.proxima) return 1
-        if (!b.proxima) return -1
-        return (a.proxima.data + a.proxima.horario).localeCompare(b.proxima.data + b.proxima.horario)
-      })
+      // Aula mais próxima no topo
+      resultado.sort((a, b) =>
+        (a.proxima!.data + a.proxima!.horario).localeCompare(b.proxima!.data + b.proxima!.horario))
 
       if (!ativo) return
       setLinhas(resultado)
@@ -185,7 +185,7 @@ export default function CardAcompanhados() {
         <div>
           <h2 className="text-sm font-semibold text-gray-900">Clientes em acompanhamento</h2>
           <p className="text-xs text-gray-400 mt-0.5">
-            {linhas.length} cliente{linhas.length !== 1 ? 's' : ''} marcado{linhas.length !== 1 ? 's' : ''} · próxima aula de cada um
+            {linhas.length} cliente{linhas.length !== 1 ? 's' : ''} com aula marcada
           </p>
         </div>
       </div>
@@ -210,18 +210,12 @@ export default function CardAcompanhados() {
               </div>
 
               <div className="flex-shrink-0 text-right">
-                {l.proxima ? (
-                  <>
-                    <div className={`text-sm font-semibold ${urgente ? 'text-amber-800' : 'text-gray-700'}`}>
-                      <span className="capitalize">{rotuloData(l.proxima.data, hoje, amanha)}</span> · {l.proxima.horario}
-                    </div>
-                    <div className="text-xs text-gray-400 mt-0.5 truncate">
-                      {l.proxima.label} · {l.proxima.unidade}
-                    </div>
-                  </>
-                ) : (
-                  <div className="text-xs text-gray-400 italic">Sem aula marcada</div>
-                )}
+                <div className={`text-sm font-semibold ${urgente ? 'text-amber-800' : 'text-gray-700'}`}>
+                  <span className="capitalize">{rotuloData(l.proxima!.data, hoje, amanha)}</span> · {l.proxima!.horario}
+                </div>
+                <div className="text-xs text-gray-400 mt-0.5 truncate">
+                  {l.proxima!.label} · {l.proxima!.unidade}
+                </div>
               </div>
 
               <ChevronRight size={16} className="text-gray-300 flex-shrink-0" />
