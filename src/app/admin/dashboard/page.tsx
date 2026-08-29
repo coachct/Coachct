@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { fmt } from '@/lib/utils'
 import { KpiCard, PageHeader, Spinner } from '@/components/ui'
+import CardAcompanhados from '@/components/CardAcompanhados'
 import Link from 'next/link'
 
 type Unidade = {
@@ -134,6 +135,9 @@ export default function AdminDashboard() {
           </div>
         )}
       </div>
+
+      {/* Clientes marcados pra acompanhar — some sozinho se não tiver ninguém */}
+      <CardAcompanhados />
 
       {!unidadeSelecionada ? (
         <Spinner />

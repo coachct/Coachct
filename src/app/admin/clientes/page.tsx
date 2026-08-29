@@ -5,7 +5,7 @@ import { gradeExtraDoDia } from '@/lib/grade'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Search, Plus, ChevronRight, X, Check, Calendar, Lock, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap, Gift, CalendarClock, Edit2, Mail, Copy, Clock, Link as LinkIcon, UserPlus, KeyRound, Camera, Upload, Trash, Wifi, WifiOff, Dumbbell, CheckCircle2, Users, GitMerge } from 'lucide-react'
+import { Search, Plus, ChevronRight, X, Check, Calendar, Lock, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap, Gift, CalendarClock, Edit2, Mail, Copy, Clock, Link as LinkIcon, UserPlus, KeyRound, Camera, Upload, Trash, Wifi, WifiOff, Dumbbell, CheckCircle2, Users, GitMerge, Eye, EyeOff } from 'lucide-react'
 import UnidadeSelector from '@/components/UnidadeSelector'
 import { numerarTreinosDoMes, PLANOS_SEM_TETO } from '@/lib/treinos-numero'
 
@@ -267,6 +267,7 @@ function AdminClientesPageInner() {
 
   const [acessoBloqueado, setAcessoBloqueado] = useState(false)
   const [salvandoBloqueio, setSalvandoBloqueio] = useState(false)
+  const [salvandoAcompanhar, setSalvandoAcompanhar] = useState(false)
   const [modalFoto, setModalFoto] = useState(false)
   const [streamCam, setStreamCam] = useState<MediaStream | null>(null)
   const [fotoCapturada, setFotoCapturada] = useState<string | null>(null)
@@ -575,6 +576,27 @@ function AdminClientesPageInner() {
     // Desbloqueia o cliente
     await supabase.from('clientes').update({ bloqueado: false, motivo_bloqueio: null }).eq('id', clienteSel.id)
     setClienteSel({ ...clienteSel, bloqueado: false, motivo_bloqueio: null })
+  }
+
+  // Liga/desliga o acompanhamento do cliente. Só marca uma flag — o card
+  // "Clientes em acompanhamento" do dashboard lê isso e mostra a próxima aula.
+  async function toggleAcompanhar() {
+    if (!clienteSel) return
+    const ligar = !clienteSel.acompanhar
+    let nota = clienteSel.acompanhar_nota || null
+    if (ligar) {
+      const digitada = prompt('Motivo do acompanhamento (opcional):', nota || '')
+      if (digitada === null) return // cancelou
+      nota = digitada.trim() || null
+    }
+    setSalvandoAcompanhar(true)
+    const patch = ligar
+      ? { acompanhar: true, acompanhar_nota: nota, acompanhar_desde: new Date().toISOString() }
+      : { acompanhar: false, acompanhar_nota: null, acompanhar_desde: null }
+    const { error } = await supabase.from('clientes').update(patch).eq('id', clienteSel.id)
+    setSalvandoAcompanhar(false)
+    if (error) { alert('Erro ao salvar: ' + error.message); return }
+    setClienteSel({ ...clienteSel, ...patch })
   }
 
   async function abrirModalFoto() {
@@ -1421,6 +1443,30 @@ function AdminClientesPageInner() {
                       )}
                     </div>
                   )}
+                </div>
+
+                {/* Acompanhamento — coloca o cliente no card do dashboard com a próxima aula dele */}
+                <div className={`card border-l-4 flex items-center gap-3 flex-wrap ${clienteSel.acompanhar ? 'border-l-amber-400 bg-amber-50' : 'border-l-gray-200'}`}>
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${clienteSel.acompanhar ? 'bg-amber-200 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>
+                    {clienteSel.acompanhar ? <Eye size={16} /> : <EyeOff size={16} />}
+                  </div>
+                  <div className="flex-1 min-w-[180px]">
+                    <div className={`text-sm font-semibold leading-tight ${clienteSel.acompanhar ? 'text-amber-900' : 'text-gray-800'}`}>
+                      {clienteSel.acompanhar ? 'Em acompanhamento' : 'Acompanhar cliente'}
+                    </div>
+                    <div className={`text-xs mt-0.5 ${clienteSel.acompanhar ? 'text-amber-700' : 'text-gray-500'}`}>
+                      {clienteSel.acompanhar
+                        ? (clienteSel.acompanhar_nota || 'Aparece no dashboard com a próxima aula dele.')
+                        : 'Mostra este cliente no dashboard com a data da próxima aula.'}
+                    </div>
+                  </div>
+                  <button
+                    onClick={toggleAcompanhar}
+                    disabled={salvandoAcompanhar}
+                    className={`btn btn-sm gap-1 disabled:opacity-50 ${clienteSel.acompanhar ? 'text-amber-700 border border-amber-300 hover:bg-amber-100' : 'bg-amber-500 text-white hover:bg-amber-600'}`}
+                  >
+                    {clienteSel.acompanhar ? <><EyeOff size={14} /> Parar</> : <><Eye size={14} /> Acompanhar</>}
+                  </button>
                 </div>
 
                 {planosJustCT.filter(isPlanoVigente).length > 0 && (
