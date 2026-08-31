@@ -48,6 +48,108 @@ export const MSG_ESCALAR =
   'Vou transferir seu atendimento para alguém da nossa equipe. 🙏 O atendimento para assuntos personalizados é de *segunda a sexta, das 09h às 18h* — dentro desse horário eles te respondem por aqui, tá? 😊'
 
 // ---------------------------------------------------------------------------
+// REVISOR — dupla checagem ANTES de enviar (pedido do Ricardo: parar de "enxugar
+// gelo" corrigindo os mesmos erros que se repetem). Depois que o agente monta a
+// resposta, uma SEGUNDA passada relê as regras COM CALMA e confere: inventou algo
+// fora da base? transferiu algo que a base já responde? furou uma regra dura
+// (cancelamento / multa / cartão / canal)? Se furou, CORRIGE antes de enviar.
+// Roda só nas saídas de TEXTO e de TRANSFERÊNCIA (não mexe em ação/confirmação).
+// Fail-open: qualquer erro técnico ou dúvida → mantém a resposta original.
+// Kill switch: WHATSAPP_REVISOR_ATIVO=0 desliga.
+// ---------------------------------------------------------------------------
+
+const REVISOR_ATIVO = process.env.WHATSAPP_REVISOR_ATIVO !== '0'
+
+function revisorSystem(faqTxt: string): string {
+  return `Você é o REVISOR de qualidade do atendimento da Just Club & CT. Releia, COM CALMA, a resposta que o atendente está prestes a enviar ao cliente e confira, item por item, se ela respeita TODAS as regras. Você NÃO fala com o cliente — só APROVA ou CORRIGE a resposta.
+
+Você recebe: a CONVERSA (cliente/atendente), o RASCUNHO que vai ser enviado, e se o rascunho está TRANSFERINDO pra equipe.
+
+# Confira, um por um (com calma):
+1) INVENÇÃO — o rascunho afirma algum FATO que NÃO está na BASE DE CONHECIMENTO abaixo? (horário/grade de aula, significado de ícone/símbolo da tela, pacote/promoção de grupo/aniversário/evento, política, prazo, valor). Se é algo "achado"/deduzido e não está na base → é invenção. Corrija: tire o fato inventado; se não há NADA gravado sobre o assunto, o certo é TRANSFERIR.
+2) TRANSFERÊNCIA INDEVIDA (o erro MAIS comum) — o rascunho está TRANSFERINDO pra equipe algo que a BASE já responde ou que é SENSO COMUM com resposta óbvia e inofensiva? Transferir é o ÚLTIMO recurso. Ex.: "posso chegar atrasado e treinar?", "o que é o Lift?", "quais modalidades tem?", objeto esquecido, dúvida de modalidade/plano que está na base → NÃO transfira, escreva a resposta certa. Só transfira o que realmente não dá pra responder (ação na conta, ou fato específico que só a equipe sabe).
+3) REGRAS DURAS — violou? Corrija:
+   - CANCELAMENTO: a regra é "sem multa até 12h antes". NUNCA liderar com "3h" nem dizer que 3h é o prazo sem multa. NUNCA explicar fila/mecânica ("entre 3h e 12h", "se tem vaga é porque não tem fila", "o sistema verifica na hora"...).
+   - MULTA: NUNCA citar valor de multa (R$ 99 / R$ 49,90) de forma proativa — só se o cliente PERGUNTOU sobre cobrança/multa.
+   - SEM CARTÃO: NUNCA responder só "sem cartão não dá pra reservar" — tem que oferecer o caminho do app do parceiro (em Pinheiros o Wellhub/TotalPass agenda direto no app, sem o cartão do nosso site).
+   - CANAIS: NUNCA mandar "ligar", "ir/procurar a recepção", "usar o app", "falar no balcão" como se fosse outro canal de atendimento (exceção ÚNICA: OBJETO ESQUECIDO, que fica guardado na recepção).
+   - IDENTIDADE: nunca se apresentar como "bot", "IA", "assistente virtual" ou "atendimento automático".
+4) NÃO recalcule DADOS DO SISTEMA — saldo, reservas, agendamentos, horários e o prazo de UMA reserva específica vieram das ferramentas. CONFIE neles: não diga que "está errado" o que o atendente puxou do sistema, e não invente um dado que você não tem.
+
+# Saída (responda EXATAMENTE neste formato, nada além):
+- Se está tudo certo: a primeira linha é
+VEREDITO: OK
+- Se precisa corrigir o texto (sem transferir):
+VEREDITO: CORRIGIR
+RESPOSTA: <a resposta corrigida, pronta pra enviar ao cliente, mesmo tom caloroso e curto; pode ter várias linhas>
+- Se o certo é TRANSFERIR pra equipe (não havia nada gravado pra responder):
+VEREDITO: TRANSFERIR
+
+Na dúvida, prefira MENOS invenção e MENOS transferência do que o rascunho — mas NUNCA crie um fato que não esteja na base. Se não houver violação clara, aprove (VEREDITO: OK).
+
+# BASE DE CONHECIMENTO
+${faqTxt}`
+}
+
+async function revisarResposta(params: {
+  client: Anthropic
+  faqTxt: string
+  transcript: string
+  draft: string
+  escalou: boolean
+}): Promise<{ escalar: boolean; texto: string } | null> {
+  if (!REVISOR_ATIVO) return null
+  const { client, faqTxt, transcript, draft, escalou } = params
+  const userMsg = `CONVERSA (últimas mensagens):
+${transcript}
+
+RASCUNHO QUE VAI SER ENVIADO AO CLIENTE:
+"""
+${draft}
+"""
+
+Esse rascunho está TRANSFERINDO o atendimento pra equipe? ${escalou ? 'SIM' : 'NÃO'}`
+  try {
+    const r = await client.messages.create({
+      model: MODELO,
+      max_tokens: 2400,
+      thinking: { type: 'enabled', budget_tokens: 1200 },
+      system: revisorSystem(faqTxt),
+      messages: [{ role: 'user', content: userMsg }],
+    })
+    const txt = r.content
+      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n')
+    const ver = txt.match(/VEREDITO:\s*(OK|CORRIGIR|TRANSFERIR)/i)
+    if (!ver) return null // formato inesperado → fail-open (mantém original)
+    const veredito = ver[1].toUpperCase()
+    if (veredito === 'OK') return null
+    if (veredito === 'TRANSFERIR') return { escalar: true, texto: MSG_ESCALAR }
+    // CORRIGIR
+    const mResp = txt.match(/RESPOSTA:\s*([\s\S]+)$/i)
+    const corrigida = mResp ? mResp[1].trim() : ''
+    if (corrigida) return { escalar: false, texto: corrigida }
+    return null // disse corrigir mas não deu a resposta → mantém original
+  } catch {
+    return null // fail-open: qualquer erro mantém a resposta original
+  }
+}
+
+/** Monta o transcrito curto (cliente/atendente) que o revisor lê. */
+function montarTranscript(historico: TurnoConversa[], mensagem: string): string {
+  return [
+    ...historico.map((t) => `[${t.role === 'user' ? 'cliente' : 'atendente'}] ${t.content}`),
+    `[cliente] ${mensagem}`,
+  ].join('\n')
+}
+
+/** faqTxt a partir da base (mesmo formato usado no system prompt). */
+function faqParaTexto(faq: { pergunta: string; resposta: string }[]): string {
+  return faq.length ? faq.map((f) => `P: ${f.pergunta}\nR: ${f.resposta}`).join('\n\n') : '(nenhum item cadastrado)'
+}
+
+// ---------------------------------------------------------------------------
 // System prompt — identidade e regras da Just CT
 // ---------------------------------------------------------------------------
 
@@ -721,6 +823,10 @@ export async function responderMensagem(params: {
     { role: 'user', content: mensagem },
   ]
 
+  // Para o revisor (dupla checagem antes de enviar).
+  const faqTxt = faqParaTexto(ctx.faq)
+  const transcript = montarTranscript(historico, mensagem)
+
   for (let i = 0; i < MAX_ITERACOES; i++) {
     const resposta = await client.messages.create({
       model: MODELO,
@@ -772,6 +878,18 @@ export async function responderMensagem(params: {
         const inp: any = blocoEscalar.input
         const motivo = String(inp?.motivo ?? '').trim()
         registroTools?.push(`escalar_para_humano(${JSON.stringify(inp)})`)
+        // Dupla checagem: será que dava pra responder em vez de transferir?
+        const rev = await revisarResposta({
+          client,
+          faqTxt,
+          transcript: `${transcript}\n[nota interna: o atendente quis TRANSFERIR — motivo: ${motivo}]`,
+          draft: MSG_ESCALAR,
+          escalou: true,
+        })
+        if (rev && !rev.escalar) {
+          registroTools?.push(`revisor -> respondeu em vez de transferir: ${rev.texto}`)
+          return { texto: rev.texto }
+        }
         return { texto: MSG_ESCALAR, escalar: true, motivoEscalar: motivo }
       }
 
@@ -826,7 +944,14 @@ export async function responderMensagem(params: {
       .map((b) => b.text)
       .join('\n')
       .trim()
-    return { texto: texto || 'Desculpa, não consegui responder agora. Pode tentar de novo?' }
+    const draft = texto || 'Desculpa, não consegui responder agora. Pode tentar de novo?'
+    // Dupla checagem antes de enviar (inventou? furou regra? devia transferir?).
+    const rev = await revisarResposta({ client, faqTxt, transcript, draft, escalou: false })
+    if (rev) {
+      registroTools?.push(`revisor -> ${rev.escalar ? 'transferiu' : 'corrigiu'}: ${rev.texto}`)
+      return rev.escalar ? { texto: rev.texto, escalar: true, motivoEscalar: 'revisor' } : { texto: rev.texto }
+    }
+    return { texto: draft }
   }
 
   // Estourou o limite de iterações de tools.
@@ -961,6 +1086,9 @@ Português do Brasil, caloroso e DIRETO. Mensagens CURTAS (é WhatsApp, não é 
     { role: 'user', content: mensagem },
   ]
 
+  // Para o revisor (dupla checagem antes de enviar).
+  const transcript = montarTranscript(historico, mensagem)
+
   for (let i = 0; i < 4; i++) {
     const resposta = await client.messages.create({
       model: MODELO,
@@ -980,6 +1108,14 @@ Português do Brasil, caloroso e DIRETO. Mensagens CURTAS (é WhatsApp, não é 
       )
       if (blocoEscalar) {
         const motivo = String((blocoEscalar.input as any)?.motivo ?? '').trim()
+        const rev = await revisarResposta({
+          client,
+          faqTxt,
+          transcript: `${transcript}\n[nota interna: o atendente quis TRANSFERIR — motivo: ${motivo}]`,
+          draft: MSG_ESCALAR,
+          escalou: true,
+        })
+        if (rev && !rev.escalar) return { texto: rev.texto }
         return { texto: MSG_ESCALAR, escalar: true, motivoEscalar: motivo }
       }
 
@@ -1004,7 +1140,10 @@ Português do Brasil, caloroso e DIRETO. Mensagens CURTAS (é WhatsApp, não é 
       .map((b) => b.text)
       .join('\n')
       .trim()
-    return { texto: texto || 'Oi! 😊 Me conta como posso te ajudar — dúvidas de planos, modalidades, horários, ou se você já é aluno(a) e quer ver sua conta (aí me manda nome completo + CPF).' }
+    const draft = texto || 'Oi! 😊 Me conta como posso te ajudar — dúvidas de planos, modalidades, horários, ou se você já é aluno(a) e quer ver sua conta (aí me manda nome completo + CPF).'
+    const rev = await revisarResposta({ client, faqTxt, transcript, draft, escalou: false })
+    if (rev) return rev.escalar ? { texto: rev.texto, escalar: true, motivoEscalar: 'revisor' } : { texto: rev.texto }
+    return { texto: draft }
   }
   return { texto: 'Oi! 😊 Se sua dúvida é sobre planos/horários, manda que eu respondo. Se você já é aluno(a) e quer ver sua conta, me envia nome completo + CPF.' }
 }
