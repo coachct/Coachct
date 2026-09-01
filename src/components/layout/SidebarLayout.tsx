@@ -91,21 +91,27 @@ export default function SidebarLayout({ children, navItems, role, rolesPermitido
     )
   }
 
-  // Link "folha" — usado para itens sem submenu (e pelos perfis que mandam lista plana)
-  const NavLeaf = ({ item }: { item: NavItem }) => {
+  // Link "folha" — usado para itens sem submenu (e pelos perfis que mandam lista plana).
+  // topLevel = item de PRIMEIRO nível sem submenu (ex.: WhatsApp, Instagram): usa o
+  // mesmo peso visual do cabeçalho de grupo, pra não parecer "rebaixado" no meio deles.
+  const NavLeaf = ({ item, topLevel = false }: { item: NavItem; topLevel?: boolean }) => {
     const Icon = item.icon
+    const ativo = rotaAtiva(item.href)
     return (
       <Link
         href={item.href || '#'}
         onClick={() => setOpen(false)}
         className={cn(
-          'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors',
-          rotaAtiva(item.href)
+          'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors',
+          topLevel ? 'text-[15px] font-semibold' : 'text-sm',
+          ativo
             ? 'bg-primary-50 text-primary-800 font-medium border-l-2 border-primary-400 rounded-l-none'
-            : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+            : topLevel
+              ? 'text-gray-700 hover:bg-gray-50'
+              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
         )}
       >
-        {Icon && <Icon size={15} className="flex-shrink-0" />}
+        {Icon && <Icon size={topLevel ? 17 : 15} className="flex-shrink-0" />}
         {item.label}
       </Link>
     )
@@ -153,6 +159,9 @@ export default function SidebarLayout({ children, navItems, role, rolesPermitido
     )
   }
 
+  // Layout misto (tem grupos recolhíveis) x lista 100% plana — muda o peso dos itens folha de topo.
+  const temGrupos = navItems.some(i => i.children && i.children.length > 0)
+
   const NavLinks = () => (
     <nav className="px-2 py-4 space-y-0.5">
       <Link
@@ -171,7 +180,10 @@ export default function SidebarLayout({ children, navItems, role, rolesPermitido
       {navItems.filter(item => item.href !== home).map(item => (
         item.children && item.children.length > 0
           ? <NavGroup key={item.label} item={item} />
-          : <NavLeaf key={item.href || item.label} item={item} />
+          // Só usa o peso de cabeçalho quando o item de topo sem submenu convive com
+          // grupos (admin: WhatsApp/Instagram). Em listas 100% planas (coach/recepção)
+          // mantém o estilo leve de sempre.
+          : <NavLeaf key={item.href || item.label} item={item} topLevel={temGrupos} />
       ))}
     </nav>
   )
