@@ -21,6 +21,48 @@ function formatarData(d: string) {
   return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR')
 }
 
+// Horas do professor (unidade CT) — mesma regra usada no relatório individual e no consolidado:
+// dia útil = grade fixa + grade extra; feriado/FDS = 5h se escalado; férias = 0h;
+// antes de data_inicio_horas = 0h.
+const HORAS_FDS = 5 // jornada 08–13
+function calcularHorasProfessor(o: {
+  inicio: string
+  fim: string
+  gradePorDia: Record<number, number>
+  ferias: any[]
+  feriadoSet: Set<string>
+  escalaSet: Set<string>
+  extra: any[]
+  inicioHoras: string | null
+}) {
+  const emFerias = (ds: string) => (o.ferias || []).some((f: any) => f.data_inicio <= ds && f.data_fim >= ds)
+  const [yi, mi, di]  = o.inicio.split('-').map(Number)
+  const [yf, mf, dff] = o.fim.split('-').map(Number)
+  const cur = new Date(yi, mi - 1, di)
+  const end = new Date(yf, mf - 1, dff)
+  const linhas: any[] = []
+  while (cur <= end) {
+    const ds  = dataLocalStr(cur)
+    const dow = cur.getDay()
+    let h = 0, fonte = ''
+    if (o.inicioHoras && ds < o.inicioHoras) {
+      h = 0
+    } else if (emFerias(ds)) {
+      h = 0
+    } else if (o.feriadoSet.has(ds) || dow === 0 || dow === 6) {
+      if (o.escalaSet.has(ds)) { h = HORAS_FDS; fonte = o.feriadoSet.has(ds) ? 'feriado' : 'fds' }
+    } else {
+      const base = o.gradePorDia[dow] || 0
+      const ex = (o.extra || []).filter((e: any) => e.data_inicio <= ds && e.data_fim >= ds && e.dia_semana === dow).length
+      h = base + ex
+      fonte = ex > 0 ? 'grade + extra' : 'grade'
+    }
+    if (h > 0) linhas.push({ data: ds, horas: h, fonte })
+    cur.setDate(cur.getDate() + 1)
+  }
+  return linhas
+}
+
 export default function PagamentosCoachesPage() {
   const { perfil, loading } = useAuth()
   const router   = useRouter()
@@ -30,7 +72,7 @@ export default function PagamentosCoachesPage() {
   const [unidadeSel,   setUnidadeSel]   = useState<any>(null)
   const [coaches,      setCoaches]      = useState<any[]>([])
   const [coachSel,     setCoachSel]     = useState<any>(null)
-  const [filtro,       setFiltro]       = useState<'hoje'|'7dias'|'mes'|'custom'>('mes')
+  const [filtro,       setFiltro]       = useState<'hoje'|'7dias'|'mes'|'mes_ant'|'custom'>('mes')
   const [inicio,       setInicio]       = useState('')
   const [fim,          setFim]          = useState('')
   const [aulas,        setAulas]        = useState<any[]>([])
@@ -40,6 +82,10 @@ export default function PagamentosCoachesPage() {
   const [lancado,      setLancado]      = useState(false)
   const [msg,          setMsg]          = useState('')
   const [horas,        setHoras]        = useState<any[]>([])
+  // Visão consolidada: soma todas as unidades por coach (só visualização, não lança despesa)
+  const [modoTodas,    setModoTodas]    = useState(false)
+  const [consolidado,  setConsolidado]  = useState<any[]>([])
+  const [loadingCons,  setLoadingCons]  = useState(false)
 
   useEffect(() => {
     if (!loading && perfil && perfil.role !== 'admin' && perfil.role !== 'coordenadora') router.push('/')
@@ -49,6 +95,9 @@ export default function PagamentosCoachesPage() {
   useEffect(() => { if (unidadeSel) carregarCoaches() }, [unidadeSel?.id])
   useEffect(() => { aplicarFiltroRapido(filtro) }, [filtro])
   useEffect(() => { if (coachSel && inicio && fim) carregarAulas() }, [coachSel?.id, inicio, fim])
+  useEffect(() => {
+    if (modoTodas && unidades.length && inicio && fim) carregarConsolidado()
+  }, [modoTodas, unidades.length, inicio, fim])
 
   async function carregarUnidades() {
     const { data } = await supabase.from('unidades').select('id, nome, tipo').eq('ativo', true).order('nome')
@@ -79,6 +128,11 @@ export default function PagamentosCoachesPage() {
     } else if (f === 'mes') {
       const ini = new Date(hoje.getFullYear(), hoje.getMonth(), 1)
       const fim = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0)
+      setInicio(dataLocalStr(ini)); setFim(dataLocalStr(fim))
+    } else if (f === 'mes_ant') {
+      // Mês anterior fechado — para lançar a despesa depois da virada do mês
+      const ini = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1)
+      const fim = new Date(hoje.getFullYear(), hoje.getMonth(), 0)
       setInicio(dataLocalStr(ini)); setFim(dataLocalStr(fim))
     }
   }
@@ -163,7 +217,6 @@ export default function PagamentosCoachesPage() {
     // Regra: dia útil = grade fixa (coach_horarios) + grade extra (coach_horarios_extra);
     // feriado/FDS = ignora grade e usa escala_fds (5h fixas se escalado); férias = 0h.
     if (unidadeSel.tipo === 'ct' && coachSel.cargo === 'professor') {
-      const HFDS = ['08:00', '09:00', '10:00', '11:00', '12:00'] // jornada 08–13 = 5h
       const { data: grade } = await supabase.from('coach_horarios')
         .select('dia_semana, hora')
         .eq('coach_id', coachSel.id).eq('unidade_id', unidadeSel.id).eq('ativo', true)
@@ -185,36 +238,162 @@ export default function PagamentosCoachesPage() {
         .select('data_inicio, data_fim, dia_semana')
         .eq('coach_id', coachSel.id).eq('unidade_id', unidadeSel.id)
         .lte('data_inicio', fim).gte('data_fim', inicio)
-      const emFerias = (ds: string) => (fer || []).some((f: any) => f.data_inicio <= ds && f.data_fim >= ds)
       // Início do pagamento por hora: vazio = conta o mês todo; preenchido = só a partir dessa data.
-      const inicioHoras = coachSel.data_inicio_horas || null
-      const [yi, mi, di] = inicio.split('-').map(Number)
-      const [yf, mf, dff] = fim.split('-').map(Number)
-      const cur = new Date(yi, mi - 1, di)
-      const end = new Date(yf, mf - 1, dff)
-      const linhas: any[] = []
-      while (cur <= end) {
-        const ds = dataLocalStr(cur)
-        const dow = cur.getDay()
-        let h = 0, fonte = ''
-        if (inicioHoras && ds < inicioHoras) {
-          h = 0
-        } else if (emFerias(ds)) {
-          h = 0
-        } else if (feriadoSet.has(ds) || dow === 0 || dow === 6) {
-          if (escSet.has(ds)) { h = HFDS.length; fonte = feriadoSet.has(ds) ? 'feriado' : 'fds' }
-        } else {
-          const base = gradePorDia[dow] || 0
-          const ex = (extra || []).filter((e: any) => e.data_inicio <= ds && e.data_fim >= ds && e.dia_semana === dow).length
-          h = base + ex
-          fonte = ex > 0 ? 'grade + extra' : 'grade'
-        }
-        if (h > 0) linhas.push({ data: ds, horas: h, fonte })
-        cur.setDate(cur.getDate() + 1)
-      }
-      setHoras(linhas)
+      setHoras(calcularHorasProfessor({
+        inicio, fim,
+        gradePorDia,
+        ferias:      fer || [],
+        feriadoSet,
+        escalaSet:   escSet,
+        extra:       extra || [],
+        inicioHoras: coachSel.data_inicio_horas || null,
+      }))
     }
     setLoadingAulas(false)
+  }
+
+  // ===== CONSOLIDADO (todas as unidades) =====
+  // Só visualização: aplica as mesmas regras do relatório individual (CT = sessão de
+  // agendamento realizado; Club = ocorrência do coach efetivo; professor CT = horas)
+  // e soma por coach. NÃO inclui salário fixo — esse continua sendo decisão manual
+  // na tela por unidade, que é a única que lança despesa.
+  async function buscarAgendamentosCT(unidadeId: string) {
+    // Paginado: o PostgREST corta em 1000 linhas sem avisar
+    const PAGE = 1000
+    const linhas: any[] = []
+    for (let from = 0; ; from += PAGE) {
+      const { data } = await supabase.from('agendamentos')
+        .select('id, coach_id, data, horario')
+        .eq('unidade_id', unidadeId)
+        .eq('status', 'realizado')
+        .gte('data', inicio).lte('data', fim)
+        .order('id').range(from, from + PAGE - 1)
+      if (!data || data.length === 0) break
+      linhas.push(...data)
+      if (data.length < PAGE) break
+    }
+    return linhas
+  }
+
+  async function carregarConsolidado() {
+    setLoadingCons(true); setConsolidado([])
+
+    const { data: vinculos } = await supabase.from('coach_unidades')
+      .select('coach_id, unidade_id').eq('ativo', true)
+    const idsCoaches = Array.from(new Set((vinculos || []).map((v: any) => v.coach_id)))
+    if (!idsCoaches.length) { setLoadingCons(false); return }
+
+    const { data: listaCoaches } = await supabase.from('coaches')
+      .select('id, nome, cargo, valor_hora, user_id, data_inicio_horas')
+      .eq('ativo', true).in('id', idsCoaches).order('nome')
+    const coachAtivo: Record<string, any> = {}
+    for (const c of (listaCoaches || [])) coachAtivo[c.id] = c
+
+    const { data: valores } = await supabase.from('coach_valores')
+      .select('coach_id, unidade_id, tipo_aula, valor_por_aula').in('coach_id', idsCoaches)
+    const valorMap: Record<string, number> = {}
+    for (const v of (valores || [])) valorMap[`${v.coach_id}|${v.unidade_id}|${v.tipo_aula}`] = Number(v.valor_por_aula)
+    const valorDe = (coachId: string, unidadeId: string, tipo: string) =>
+      valorMap[`${coachId}|${unidadeId}|${tipo}`] || 0
+
+    // acc[coachId] = { aulas: {unidadeId: n}, horas: {unidadeId: h}, valor: {unidadeId: R$} }
+    const acc: Record<string, any> = {}
+    const linha = (coachId: string) => {
+      if (!acc[coachId]) acc[coachId] = { aulas: {}, horas: {}, valor: {} }
+      return acc[coachId]
+    }
+
+    for (const u of unidades) {
+      const idsUnidade = (vinculos || []).filter((v: any) => v.unidade_id === u.id).map((v: any) => v.coach_id)
+      if (!idsUnidade.length) continue
+
+      if (u.tipo === 'ct') {
+        const ags = await buscarAgendamentosCT(u.id)
+        const sessoes = new Set<string>()
+        for (const ag of ags) {
+          if (!ag.coach_id || !coachAtivo[ag.coach_id]) continue
+          const key = `${ag.coach_id}-${ag.data}-${ag.horario}`
+          if (sessoes.has(key)) continue
+          sessoes.add(key)
+          const l = linha(ag.coach_id)
+          l.aulas[u.id] = (l.aulas[u.id] || 0) + 1
+          l.valor[u.id] = (l.valor[u.id] || 0) + valorDe(ag.coach_id, u.id, 'ct')
+        }
+
+        // Horas dos professores desta unidade CT
+        const profs = (listaCoaches || []).filter((c: any) => c.cargo === 'professor' && idsUnidade.includes(c.id))
+        if (profs.length) {
+          const pids = profs.map((p: any) => p.id)
+          const { data: grade } = await supabase.from('coach_horarios')
+            .select('coach_id, dia_semana').eq('unidade_id', u.id).in('coach_id', pids).eq('ativo', true)
+          const { data: fer } = await supabase.from('coach_ferias')
+            .select('coach_id, data_inicio, data_fim').in('coach_id', pids)
+            .lte('data_inicio', fim).gte('data_fim', inicio)
+          const { data: feriados } = await supabase.from('feriados')
+            .select('data').eq('unidade_id', u.id).eq('ativo', true).gte('data', inicio).lte('data', fim)
+          const feriadoSet = new Set((feriados || []).map((f: any) => f.data))
+          // ATENÇÃO: escala_fds.coach_id guarda o user_id do coach
+          const { data: esc } = await supabase.from('escala_fds')
+            .select('coach_id, data').eq('unidade_id', u.id).gte('data', inicio).lte('data', fim)
+          const { data: extra } = await supabase.from('coach_horarios_extra')
+            .select('coach_id, data_inicio, data_fim, dia_semana')
+            .eq('unidade_id', u.id).in('coach_id', pids)
+            .lte('data_inicio', fim).gte('data_fim', inicio)
+
+          for (const p of profs) {
+            const gradePorDia: Record<number, number> = {}
+            for (const g of (grade || []).filter((g: any) => g.coach_id === p.id))
+              gradePorDia[g.dia_semana] = (gradePorDia[g.dia_semana] || 0) + 1
+            const hs = calcularHorasProfessor({
+              inicio, fim, gradePorDia,
+              ferias:      (fer || []).filter((f: any) => f.coach_id === p.id),
+              feriadoSet,
+              escalaSet:   new Set((esc || []).filter((e: any) => e.coach_id === p.user_id).map((e: any) => e.data)),
+              extra:       (extra || []).filter((e: any) => e.coach_id === p.id),
+              inicioHoras: p.data_inicio_horas || null,
+            })
+            const totalH = hs.reduce((s: number, x: any) => s + x.horas, 0)
+            if (totalH > 0) {
+              const l = linha(p.id)
+              l.horas[u.id] = (l.horas[u.id] || 0) + totalH
+              l.valor[u.id] = (l.valor[u.id] || 0) + totalH * Number(p.valor_hora || 0)
+            }
+          }
+        }
+      } else {
+        const { data: aulasUnidade } = await supabase.from('club_aulas')
+          .select('id, tipo, coach_id').eq('unidade_id', u.id).eq('ativo', true)
+        const ids = (aulasUnidade || []).map((a: any) => a.id)
+        if (!ids.length) continue
+        const aulaMap: Record<string, any> = {}
+        for (const a of (aulasUnidade || [])) aulaMap[a.id] = a
+
+        const { data: ocs } = await supabase.from('club_ocorrencias')
+          .select('data, aula_id, coach_id').in('aula_id', ids)
+          .gte('data', inicio).lte('data', fim).eq('status', 'ativa')
+
+        for (const oc of (ocs || [])) {
+          const coachEfetivo = oc.coach_id || aulaMap[oc.aula_id]?.coach_id || null
+          if (!coachEfetivo || !coachAtivo[coachEfetivo]) continue
+          const tipoKey = aulaMap[oc.aula_id]?.tipo || ''
+          const l = linha(coachEfetivo)
+          l.aulas[u.id] = (l.aulas[u.id] || 0) + 1
+          l.valor[u.id] = (l.valor[u.id] || 0) + valorDe(coachEfetivo, u.id, tipoKey)
+        }
+      }
+    }
+
+    const resultado = (listaCoaches || [])
+      .filter((c: any) => acc[c.id])
+      .map((c: any) => {
+        const l = acc[c.id]
+        const total = Object.values(l.valor).reduce((s: number, v: any) => s + Number(v || 0), 0)
+        return { id: c.id, nome: c.nome, aulas: l.aulas, horas: l.horas, valor: l.valor, total }
+      })
+      .sort((a: any, b: any) => b.total - a.total)
+
+    setConsolidado(resultado)
+    setLoadingCons(false)
   }
 
   const totalAulas   = aulas.length
@@ -312,16 +491,29 @@ export default function PagamentosCoachesPage() {
             <label className="label">Unidade</label>
             <div className="flex gap-2 flex-wrap">
               {unidades.map(u => (
-                <button key={u.id} onClick={() => setUnidadeSel(u)}
+                <button key={u.id} onClick={() => { setModoTodas(false); setUnidadeSel(u) }}
                   className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
-                    unidadeSel?.id === u.id
+                    !modoTodas && unidadeSel?.id === u.id
                       ? 'bg-primary-600 text-white border-primary-600'
                       : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'
                   }`}>
                   {u.nome}
                 </button>
               ))}
+              <button onClick={() => { setModoTodas(true); setCoachSel(null); setAulas([]); setHoras([]) }}
+                className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
+                  modoTodas
+                    ? 'bg-gray-800 text-white border-gray-800'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
+                }`}>
+                Todas (consolidado)
+              </button>
             </div>
+            {modoTodas && (
+              <div className="text-xs text-gray-400 mt-2">
+                Visualização apenas — soma bonificações e horas de todas as unidades. Não inclui salário fixo e não lança despesa.
+              </div>
+            )}
           </div>
 
           {/* Período */}
@@ -332,6 +524,7 @@ export default function PagamentosCoachesPage() {
                 { key: 'hoje',   label: 'Hoje' },
                 { key: '7dias',  label: 'Últimos 7 dias' },
                 { key: 'mes',    label: 'Mês atual' },
+                { key: 'mes_ant',label: 'Mês anterior' },
                 { key: 'custom', label: 'Personalizado' },
               ] as const).map(f => (
                 <button key={f.key}
@@ -363,7 +556,7 @@ export default function PagamentosCoachesPage() {
           </div>
 
           {/* Coach */}
-          <div>
+          <div className={modoTodas ? 'hidden' : ''}>
             <label className="label">Coach</label>
             {coaches.length === 0 ? (
               <div className="text-sm text-gray-400">Nenhum coach para esta unidade.</div>
@@ -384,8 +577,81 @@ export default function PagamentosCoachesPage() {
           </div>
         </div>
 
+        {/* Resultado consolidado (todas as unidades) */}
+        {modoTodas && (
+          <div className="card overflow-hidden p-0">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div className="text-sm font-semibold text-gray-900">Total por coach — todas as unidades</div>
+              <div className="text-xs text-gray-400">{formatarData(inicio)} a {formatarData(fim)}</div>
+            </div>
+
+            {loadingCons ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="w-7 h-7 border-4 border-primary-400 border-t-transparent rounded-full animate-spin"/>
+              </div>
+            ) : consolidado.length === 0 ? (
+              <div className="text-center py-12 text-gray-400 text-sm">
+                Nenhum lançamento encontrado para o período selecionado.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      <th className="text-left px-5 py-2.5">Coach</th>
+                      {unidades.map(u => (
+                        <th key={u.id} className="text-right px-4 py-2.5 whitespace-nowrap">{u.nome}</th>
+                      ))}
+                      <th className="text-right px-5 py-2.5">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {consolidado.map(c => (
+                      <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                        <td className="px-5 py-3 font-medium text-gray-900 whitespace-nowrap">{c.nome}</td>
+                        {unidades.map(u => (
+                          <td key={u.id} className="px-4 py-3 text-right whitespace-nowrap">
+                            {c.valor[u.id] ? (
+                              <>
+                                <div className="font-semibold text-gray-900">
+                                  R$ {Number(c.valor[u.id]).toFixed(2).replace('.', ',')}
+                                </div>
+                                <div className="text-[11px] text-gray-400">
+                                  {c.aulas[u.id] ? `${c.aulas[u.id]} aula${c.aulas[u.id] !== 1 ? 's' : ''}` : ''}
+                                  {c.aulas[u.id] && c.horas[u.id] ? ' · ' : ''}
+                                  {c.horas[u.id] ? `${c.horas[u.id]} h` : ''}
+                                </div>
+                              </>
+                            ) : (
+                              <span className="text-gray-300">—</span>
+                            )}
+                          </td>
+                        ))}
+                        <td className="px-5 py-3 text-right font-bold text-primary-700 whitespace-nowrap">
+                          R$ {Number(c.total).toFixed(2).replace('.', ',')}
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="bg-primary-50 border-t-2 border-primary-100">
+                      <td className="px-5 py-3 font-bold text-primary-800">Total geral</td>
+                      {unidades.map(u => (
+                        <td key={u.id} className="px-4 py-3 text-right font-bold text-primary-700 whitespace-nowrap">
+                          R$ {consolidado.reduce((s, c) => s + Number(c.valor[u.id] || 0), 0).toFixed(2).replace('.', ',')}
+                        </td>
+                      ))}
+                      <td className="px-5 py-3 text-right font-bold text-primary-700 whitespace-nowrap">
+                        R$ {consolidado.reduce((s, c) => s + Number(c.total || 0), 0).toFixed(2).replace('.', ',')}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Resultado */}
-        {coachSel && inicio && fim && (
+        {!modoTodas && coachSel && inicio && fim && (
           <>
             {/* Cards de resumo */}
             <div className="grid grid-cols-3 gap-4">
@@ -550,7 +816,7 @@ export default function PagamentosCoachesPage() {
           </>
         )}
 
-        {!coachSel && (
+        {!modoTodas && !coachSel && (
           <div className="card text-center py-12 text-gray-400">
             <DollarSign size={32} className="mx-auto mb-3 text-gray-300"/>
             <div className="text-sm">Selecione uma unidade, período e coach para ver o relatório.</div>
