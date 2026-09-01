@@ -69,8 +69,8 @@ export default function PagamentosCoachesPage() {
   const supabase = createClient()
 
   const [unidades,     setUnidades]     = useState<any[]>([])
-  // Seleção de unidades: 1 marcada = relatório normal (permite lançar despesa);
-  // 2 ou mais = consolidado das unidades escolhidas (só visualização).
+  // Seleção de unidades: 1 marcada = relatório detalhado (aulas, horas, salário fixo);
+  // 2 ou mais = consolidado das unidades escolhidas, que lança uma despesa por unidade.
   const [unidadesSel,  setUnidadesSel]  = useState<any[]>([])
   const [coaches,      setCoaches]      = useState<any[]>([])
   const [coachSel,     setCoachSel]     = useState<any>(null)
@@ -86,6 +86,8 @@ export default function PagamentosCoachesPage() {
   const [horas,        setHoras]        = useState<any[]>([])
   const [consolidado,  setConsolidado]  = useState<any[]>([])
   const [loadingCons,  setLoadingCons]  = useState(false)
+  const [lancandoCons, setLancandoCons] = useState(false)
+  const [lancadoCons,  setLancadoCons]  = useState(false)
 
   const modoMulti  = unidadesSel.length > 1
   const unidadeSel = unidadesSel.length === 1 ? unidadesSel[0] : null
@@ -96,7 +98,7 @@ export default function PagamentosCoachesPage() {
   }, [perfil, loading])
 
   useEffect(() => { if (perfil) carregarUnidades() }, [perfil])
-  useEffect(() => { if (unidadeSel) carregarCoaches() }, [unidadeSel?.id])
+  useEffect(() => { if (unidadesSel.length) carregarCoaches() }, [chaveUnidades])
   useEffect(() => { aplicarFiltroRapido(filtro) }, [filtro])
   useEffect(() => { if (coachSel && inicio && fim) carregarAulas() }, [coachSel?.id, inicio, fim])
   useEffect(() => {
@@ -112,7 +114,7 @@ export default function PagamentosCoachesPage() {
       const nova = marcada ? atual.filter(x => x.id !== u.id) : [...atual, u]
       return unidades.filter(x => nova.some(n => n.id === x.id))
     })
-    setCoachSel(null); setAulas([]); setHoras([])
+    setAulas([]); setHoras([])
   }
 
   async function carregarUnidades() {
@@ -122,16 +124,21 @@ export default function PagamentosCoachesPage() {
   }
 
   async function carregarCoaches() {
-    if (!unidadeSel) return
-    setCoachSel(null); setAulas([])
+    if (!unidadesSel.length) return
+    setAulas([])
+    // Coaches de todas as unidades marcadas (união, sem repetir)
     const { data: cu } = await supabase.from('coach_unidades').select('coach_id')
-      .eq('unidade_id', unidadeSel.id).eq('ativo', true)
-    const ids = (cu || []).map((c: any) => c.coach_id)
-    if (!ids.length) { setCoaches([]); return }
+      .in('unidade_id', unidadesSel.map(u => u.id)).eq('ativo', true)
+    const ids = Array.from(new Set((cu || []).map((c: any) => c.coach_id)))
+    if (!ids.length) { setCoaches([]); setCoachSel(null); return }
     const { data } = await supabase.from('coaches')
       .select('id, nome, salario_fixo, cargo, valor_hora, user_id, data_inicio_horas')
       .eq('ativo', true).in('id', ids).order('nome')
     setCoaches(data || [])
+    // Mantém o coach selecionado se ele continuar na lista
+    setCoachSel((prev: any) => (prev && (data || []).some((c: any) => c.id === prev.id)
+      ? (data || []).find((c: any) => c.id === prev.id)
+      : null))
   }
 
   function aplicarFiltroRapido(f: typeof filtro) {
@@ -269,10 +276,10 @@ export default function PagamentosCoachesPage() {
   }
 
   // ===== CONSOLIDADO (unidades marcadas) =====
-  // Só visualização: aplica as mesmas regras do relatório individual (CT = sessão de
-  // agendamento realizado; Club = ocorrência do coach efetivo; professor CT = horas)
-  // e soma por coach APENAS nas unidades marcadas. NÃO inclui salário fixo — esse
-  // continua sendo decisão manual na tela de uma unidade só, que é a única que lança despesa.
+  // Aplica as mesmas regras do relatório individual (CT = sessão de agendamento realizado;
+  // Club = ocorrência do coach efetivo; professor CT = horas) e soma por coach APENAS nas
+  // unidades marcadas. NÃO inclui salário fixo — esse continua sendo decisão manual na tela
+  // de uma unidade só, porque é do coach e não de uma unidade específica.
   async function buscarAgendamentosCT(unidadeId: string) {
     // Paginado: o PostgREST corta em 1000 linhas sem avisar
     const PAGE = 1000
@@ -292,7 +299,7 @@ export default function PagamentosCoachesPage() {
   }
 
   async function carregarConsolidado() {
-    setLoadingCons(true); setConsolidado([])
+    setLoadingCons(true); setConsolidado([]); setLancadoCons(false)
     const alvo = unidadesSel                       // só as unidades marcadas
     const idsAlvo = alvo.map((u: any) => u.id)
 
@@ -315,10 +322,11 @@ export default function PagamentosCoachesPage() {
     const valorDe = (coachId: string, unidadeId: string, tipo: string) =>
       valorMap[`${coachId}|${unidadeId}|${tipo}`] || 0
 
-    // acc[coachId] = { aulas: {unidadeId: n}, horas: {unidadeId: h}, valor: {unidadeId: R$} }
+    // acc[coachId] = por unidade: nº de aulas, horas, bonificação e valor das horas.
+    // bonus e vhoras ficam separados porque o lançamento por unidade precisa dos dois.
     const acc: Record<string, any> = {}
     const linha = (coachId: string) => {
-      if (!acc[coachId]) acc[coachId] = { aulas: {}, horas: {}, valor: {} }
+      if (!acc[coachId]) acc[coachId] = { aulas: {}, horas: {}, bonus: {}, vhoras: {} }
       return acc[coachId]
     }
 
@@ -336,7 +344,7 @@ export default function PagamentosCoachesPage() {
           sessoes.add(key)
           const l = linha(ag.coach_id)
           l.aulas[u.id] = (l.aulas[u.id] || 0) + 1
-          l.valor[u.id] = (l.valor[u.id] || 0) + valorDe(ag.coach_id, u.id, 'ct')
+          l.bonus[u.id] = (l.bonus[u.id] || 0) + valorDe(ag.coach_id, u.id, 'ct')
         }
 
         // Horas dos professores desta unidade CT
@@ -374,8 +382,8 @@ export default function PagamentosCoachesPage() {
             const totalH = hs.reduce((s: number, x: any) => s + x.horas, 0)
             if (totalH > 0) {
               const l = linha(p.id)
-              l.horas[u.id] = (l.horas[u.id] || 0) + totalH
-              l.valor[u.id] = (l.valor[u.id] || 0) + totalH * Number(p.valor_hora || 0)
+              l.horas[u.id]  = (l.horas[u.id] || 0) + totalH
+              l.vhoras[u.id] = (l.vhoras[u.id] || 0) + totalH * Number(p.valor_hora || 0)
             }
           }
         }
@@ -397,7 +405,7 @@ export default function PagamentosCoachesPage() {
           const tipoKey = aulaMap[oc.aula_id]?.tipo || ''
           const l = linha(coachEfetivo)
           l.aulas[u.id] = (l.aulas[u.id] || 0) + 1
-          l.valor[u.id] = (l.valor[u.id] || 0) + valorDe(coachEfetivo, u.id, tipoKey)
+          l.bonus[u.id] = (l.bonus[u.id] || 0) + valorDe(coachEfetivo, u.id, tipoKey)
         }
       }
     }
@@ -406,14 +414,24 @@ export default function PagamentosCoachesPage() {
       .filter((c: any) => acc[c.id])
       .map((c: any) => {
         const l = acc[c.id]
-        const total = Object.values(l.valor).reduce((s: number, v: any) => s + Number(v || 0), 0)
-        return { id: c.id, nome: c.nome, aulas: l.aulas, horas: l.horas, valor: l.valor, total }
+        const valor: Record<string, number> = {}
+        for (const u of alvo) {
+          const v = Number(l.bonus[u.id] || 0) + Number(l.vhoras[u.id] || 0)
+          if (v > 0) valor[u.id] = v
+        }
+        const total = Object.values(valor).reduce((s: number, v: any) => s + Number(v || 0), 0)
+        return { id: c.id, nome: c.nome, aulas: l.aulas, horas: l.horas, bonus: l.bonus, vhoras: l.vhoras, valor, total }
       })
+      .filter((c: any) => c.total > 0)
       .sort((a: any, b: any) => b.total - a.total)
 
     setConsolidado(resultado)
     setLoadingCons(false)
   }
+
+  // No consolidado, escolher um coach filtra a tabela e habilita o lançamento dele
+  const consolidadoView = coachSel ? consolidado.filter((c: any) => c.id === coachSel.id) : consolidado
+  const linhaCons       = consolidado.find((c: any) => c.id === coachSel?.id) || null
 
   const totalAulas   = aulas.length
   const totalBonus   = aulas.reduce((sum, a) => sum + (a.valor || 0), 0)
@@ -425,23 +443,30 @@ export default function PagamentosCoachesPage() {
   const valorHoras   = totalHoras * valorHora
   const totalFinal   = totalBonus + valorHoras + (!isProfessor && incluirFixo ? salarioFixo : 0)
 
-  async function lancarDespesa() {
-    if (!coachSel || !unidadeSel || totalFinal <= 0) return
-    setLancando(true)
+  // Lança 1 pagamento + 1 despesa de um coach em UMA unidade.
+  // Usada pela tela de unidade única e pelo consolidado (que chama uma vez por unidade,
+  // gerando uma despesa separada em cada uma — cada unidade paga o que é dela).
+  async function lancarPagamentoUnidade(p: {
+    coach: any, unidade: any,
+    totalAulas: number, bonus: number,
+    totalHoras: number, valorHoras: number,
+    fixo: number,
+  }): Promise<{ pagou: boolean, erro: string | null, total: number }> {
+    const total = p.bonus + p.valorHoras + p.fixo
 
     // 1) Registro do pagamento do coach (via RPC SECURITY DEFINER — valida admin e contorna RLS)
     const { data: pagId, error } = await supabase.rpc('registrar_pagamento_coach', {
-      p_coach_id:       coachSel.id,
-      p_unidade_id:     unidadeSel.id,
+      p_coach_id:       p.coach.id,
+      p_unidade_id:     p.unidade.id,
       p_periodo_inicio: inicio,
       p_periodo_fim:    fim,
-      p_total_aulas:    totalAulas,
-      p_valor_por_aula: totalAulas > 0 ? totalBonus / totalAulas : 0,
-      p_valor_total:    totalFinal,
-      p_observacao:     `${coachSel.nome} — ${totalAulas} aulas em ${unidadeSel.nome} (${formatarData(inicio)} a ${formatarData(fim)})${isProfCT && totalHoras > 0 ? ` + ${totalHoras}h R$ ${valorHoras.toFixed(2).replace('.', ',')}` : ''}${!isProfessor && incluirFixo ? ` + fixo R$ ${salarioFixo.toFixed(2).replace('.', ',')}` : ''}`,
+      p_total_aulas:    p.totalAulas,
+      p_valor_por_aula: p.totalAulas > 0 ? p.bonus / p.totalAulas : 0,
+      p_valor_total:    total,
+      p_observacao:     `${p.coach.nome} — ${p.totalAulas} aulas em ${p.unidade.nome} (${formatarData(inicio)} a ${formatarData(fim)})${p.totalHoras > 0 ? ` + ${p.totalHoras}h R$ ${p.valorHoras.toFixed(2).replace('.', ',')}` : ''}${p.fixo > 0 ? ` + fixo R$ ${p.fixo.toFixed(2).replace('.', ',')}` : ''}`,
     })
 
-    if (error) { setLancando(false); showMsg('Erro: ' + error.message); return }
+    if (error) return { pagou: false, erro: error.message, total }
 
     // 2) Reflete no financeiro como despesa (origem=coach)
     // competência = mês trabalhado (do início do período); vencimento = dia 01 do mês seguinte
@@ -455,10 +480,10 @@ export default function PagamentosCoachesPage() {
       .select('id').eq('nome', 'Coaches').maybeSingle()
 
     const { error: errDesp } = await supabase.from('despesas').insert({
-      unidade_id:         unidadeSel.id,
+      unidade_id:         p.unidade.id,
       categoria_id:       catCoach?.id || null,
-      descricao:          `Pagamento ${coachSel.nome} — ${isProfCT ? `${totalHoras}h` : `${totalAulas} aulas`} (${formatarData(inicio)} a ${formatarData(fim)})`,
-      valor:              totalFinal,
+      descricao:          `Pagamento ${p.coach.nome} — ${p.totalHoras > 0 ? `${p.totalHoras}h` : `${p.totalAulas} aulas`} (${formatarData(inicio)} a ${formatarData(fim)})`,
+      valor:              total,
       competencia,
       vencimento,
       pago:               false,
@@ -466,16 +491,67 @@ export default function PagamentosCoachesPage() {
       coach_pagamento_id: pagId || null,
     })
 
+    return { pagou: true, erro: errDesp ? errDesp.message : null, total }
+  }
+
+  async function lancarDespesa() {
+    if (!coachSel || !unidadeSel || totalFinal <= 0) return
+    setLancando(true)
+
+    const r = await lancarPagamentoUnidade({
+      coach:      coachSel,
+      unidade:    unidadeSel,
+      totalAulas, bonus: totalBonus,
+      totalHoras: isProfCT ? totalHoras : 0,
+      valorHoras: isProfCT ? valorHoras : 0,
+      fixo:       (!isProfessor && incluirFixo) ? salarioFixo : 0,
+    })
+
     setLancando(false)
 
-    if (errDesp) {
-      setLancado(true)
-      showMsg('⚠️ Pagamento registrado, mas falhou ao lançar no financeiro: ' + errDesp.message)
-      return
-    }
+    if (!r.pagou) { showMsg('Erro: ' + r.erro); return }
 
     setLancado(true)
+    if (r.erro) {
+      showMsg('⚠️ Pagamento registrado, mas falhou ao lançar no financeiro: ' + r.erro)
+      return
+    }
     showMsg(`✅ Despesa de R$ ${totalFinal.toFixed(2).replace('.', ',')} lançada com sucesso!`)
+  }
+
+  // Consolidado: lança de uma vez, mas SEPARADO — uma despesa por unidade marcada,
+  // cada uma com o valor daquela unidade.
+  async function lancarConsolidado() {
+    const l = consolidado.find((c: any) => c.id === coachSel?.id)
+    if (!coachSel || !l) return
+    setLancandoCons(true)
+
+    const ok: string[] = []
+    const falhas: string[] = []
+    for (const u of unidadesSel) {
+      const bonus = Number(l.bonus[u.id] || 0)
+      const vh    = Number(l.vhoras[u.id] || 0)
+      if (bonus + vh <= 0) continue
+      const r = await lancarPagamentoUnidade({
+        coach:      coachSel,
+        unidade:    u,
+        totalAulas: Number(l.aulas[u.id] || 0),
+        bonus,
+        totalHoras: Number(l.horas[u.id] || 0),
+        valorHoras: vh,
+        fixo:       0,   // salário fixo continua só na tela de uma unidade só
+      })
+      if (r.pagou && !r.erro) ok.push(u.nome)
+      else falhas.push(`${u.nome}: ${r.erro}`)
+    }
+
+    setLancandoCons(false)
+    if (falhas.length) {
+      showMsg(`⚠️ ${ok.length} despesa(s) lançada(s). Falhou em — ${falhas.join(' · ')}`)
+      return
+    }
+    setLancadoCons(true)
+    showMsg(`✅ ${ok.length} despesas lançadas para ${coachSel.nome} (uma em cada unidade).`)
   }
 
   function showMsg(texto: string) { setMsg(texto); setTimeout(() => setMsg(''), 5000) }
@@ -534,8 +610,8 @@ export default function PagamentosCoachesPage() {
             </div>
             <div className="text-xs text-gray-400 mt-2">
               {modoMulti
-                ? `Consolidado de ${unidadesSel.length} unidades — visualização apenas. Não inclui salário fixo e não lança despesa.`
-                : 'Marque mais de uma unidade para ver o total somado por coach.'}
+                ? `Consolidado de ${unidadesSel.length} unidades — o lançamento gera uma despesa separada em cada unidade.`
+                : 'Marque mais de uma unidade para somar o total do coach e lançar tudo de uma vez.'}
             </div>
           </div>
 
@@ -579,14 +655,24 @@ export default function PagamentosCoachesPage() {
           </div>
 
           {/* Coach */}
-          <div className={modoMulti ? 'hidden' : ''}>
+          <div>
             <label className="label">Coach</label>
             {coaches.length === 0 ? (
-              <div className="text-sm text-gray-400">Nenhum coach para esta unidade.</div>
+              <div className="text-sm text-gray-400">Nenhum coach para {modoMulti ? 'estas unidades' : 'esta unidade'}.</div>
             ) : (
               <div className="flex gap-2 flex-wrap">
+                {modoMulti && (
+                  <button onClick={() => setCoachSel(null)}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
+                      !coachSel
+                        ? 'bg-primary-600 text-white border-primary-600'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'
+                    }`}>
+                    Todos
+                  </button>
+                )}
                 {coaches.map(c => (
-                  <button key={c.id} onClick={() => setCoachSel(c)}
+                  <button key={c.id} onClick={() => { setCoachSel(c); setLancadoCons(false) }}
                     className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
                       coachSel?.id === c.id
                         ? 'bg-primary-600 text-white border-primary-600'
@@ -614,7 +700,7 @@ export default function PagamentosCoachesPage() {
               <div className="flex items-center justify-center py-12">
                 <div className="w-7 h-7 border-4 border-primary-400 border-t-transparent rounded-full animate-spin"/>
               </div>
-            ) : consolidado.length === 0 ? (
+            ) : consolidadoView.length === 0 ? (
               <div className="text-center py-12 text-gray-400 text-sm">
                 Nenhum lançamento encontrado para o período selecionado.
               </div>
@@ -631,7 +717,7 @@ export default function PagamentosCoachesPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {consolidado.map(c => (
+                    {consolidadoView.map(c => (
                       <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                         <td className="px-5 py-3 font-medium text-gray-900 whitespace-nowrap">{c.nome}</td>
                         {unidadesSel.map(u => (
@@ -661,11 +747,11 @@ export default function PagamentosCoachesPage() {
                       <td className="px-5 py-3 font-bold text-primary-800">Total geral</td>
                       {unidadesSel.map(u => (
                         <td key={u.id} className="px-4 py-3 text-right font-bold text-primary-700 whitespace-nowrap">
-                          R$ {consolidado.reduce((s, c) => s + Number(c.valor[u.id] || 0), 0).toFixed(2).replace('.', ',')}
+                          R$ {consolidadoView.reduce((s, c) => s + Number(c.valor[u.id] || 0), 0).toFixed(2).replace('.', ',')}
                         </td>
                       ))}
                       <td className="px-5 py-3 text-right font-bold text-primary-700 whitespace-nowrap">
-                        R$ {consolidado.reduce((s, c) => s + Number(c.total || 0), 0).toFixed(2).replace('.', ',')}
+                        R$ {consolidadoView.reduce((s, c) => s + Number(c.total || 0), 0).toFixed(2).replace('.', ',')}
                       </td>
                     </tr>
                   </tbody>
@@ -673,6 +759,70 @@ export default function PagamentosCoachesPage() {
               </div>
             )}
           </div>
+        )}
+
+        {/* Lançar despesas do consolidado — uma por unidade */}
+        {modoMulti && !loadingCons && (
+          !coachSel ? (
+            consolidado.length > 0 && (
+              <div className="card text-sm text-gray-500">
+                Selecione um coach acima para lançar as despesas dele — sai uma despesa em cada unidade, com o valor daquela unidade.
+              </div>
+            )
+          ) : !linhaCons ? null : lancadoCons ? (
+            <div className="card">
+              <div className="flex items-center gap-3 text-green-700">
+                <CheckCircle size={20} className="text-green-500 flex-shrink-0"/>
+                <div>
+                  <div className="font-semibold text-sm">Despesas lançadas com sucesso!</div>
+                  <div className="text-xs text-green-600 mt-0.5">
+                    {coachSel.nome} · {formatarData(inicio)} a {formatarData(fim)} · uma despesa por unidade
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="card space-y-3">
+              <div>
+                <div className="text-sm font-semibold text-gray-900">
+                  Lançar despesas de {coachSel.nome}
+                </div>
+                <div className="text-xs text-gray-400 mt-0.5">
+                  Uma despesa separada em cada unidade, cada uma com o valor dela.
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                {unidadesSel.filter(u => Number(linhaCons.valor[u.id] || 0) > 0).map(u => (
+                  <div key={u.id} className="flex items-center justify-between text-sm border-b border-gray-50 pb-1">
+                    <span className="text-gray-600">{u.nome}</span>
+                    <span className="font-semibold text-gray-900">
+                      R$ {Number(linhaCons.valor[u.id]).toFixed(2).replace('.', ',')}
+                    </span>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between text-sm pt-1">
+                  <span className="font-semibold text-primary-800">Total</span>
+                  <span className="font-bold text-primary-700">
+                    R$ {Number(linhaCons.total).toFixed(2).replace('.', ',')}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <div className="text-xs text-gray-400">
+                  Não inclui salário fixo — para incluir, lance por uma unidade só.
+                </div>
+                <button onClick={lancarConsolidado} disabled={lancandoCons}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary-600 text-white text-sm font-semibold hover:bg-primary-700 transition-all disabled:opacity-60 flex-shrink-0">
+                  <DollarSign size={15}/>
+                  {lancandoCons
+                    ? 'Lançando...'
+                    : `Lançar ${unidadesSel.filter(u => Number(linhaCons.valor[u.id] || 0) > 0).length} despesas`}
+                </button>
+              </div>
+            </div>
+          )
         )}
 
         {/* Resultado */}
