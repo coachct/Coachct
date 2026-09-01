@@ -55,12 +55,16 @@ const nav = [
   {
     label: 'WhatsApp',
     icon: MessageCircle,
-    href: '/admin/conversas',
+    children: [
+      { label: 'Conversas', href: '/admin/conversas' },
+    ],
   },
   {
     label: 'Instagram',
     icon: Instagram,
-    href: '/admin/conversas-instagram',
+    children: [
+      { label: 'Conversas', href: '/admin/conversas-instagram' },
+    ],
   },
   {
     label: 'Comercial',

@@ -177,14 +177,23 @@ export default function SidebarLayout({ children, navItems, role, rolesPermitido
         <Home size={14} className="flex-shrink-0" />
         Dashboard
       </Link>
-      {navItems.filter(item => item.href !== home).map(item => (
-        item.children && item.children.length > 0
-          ? <NavGroup key={item.label} item={item} />
-          // Só usa o peso de cabeçalho quando o item de topo sem submenu convive com
-          // grupos (admin: WhatsApp/Instagram). Em listas 100% planas (coach/recepção)
-          // mantém o estilo leve de sempre.
-          : <NavLeaf key={item.href || item.label} item={item} topLevel={temGrupos} />
-      ))}
+      {navItems.filter(item => item.href !== home).map(item => {
+        // Grupo recolhível SÓ quando tem 2+ subitens. Com 1 subitem (ou nenhum),
+        // vira link direto pro destino — 1 clique, sem abrir/fechar submenu à toa.
+        if (item.children && item.children.length > 1) {
+          return <NavGroup key={item.label} item={item} />
+        }
+        const href = item.href ?? item.children?.[0]?.href
+        // topLevel só quando convive com grupos (admin) — listas 100% planas
+        // (coach/recepção) mantêm o estilo leve de sempre.
+        return (
+          <NavLeaf
+            key={href || item.label}
+            item={{ label: item.label, icon: item.icon, href }}
+            topLevel={temGrupos}
+          />
+        )
+      })}
     </nav>
   )
 
