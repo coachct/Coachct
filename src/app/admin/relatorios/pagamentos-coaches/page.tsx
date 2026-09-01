@@ -69,7 +69,9 @@ export default function PagamentosCoachesPage() {
   const supabase = createClient()
 
   const [unidades,     setUnidades]     = useState<any[]>([])
-  const [unidadeSel,   setUnidadeSel]   = useState<any>(null)
+  // Seleção de unidades: 1 marcada = relatório normal (permite lançar despesa);
+  // 2 ou mais = consolidado das unidades escolhidas (só visualização).
+  const [unidadesSel,  setUnidadesSel]  = useState<any[]>([])
   const [coaches,      setCoaches]      = useState<any[]>([])
   const [coachSel,     setCoachSel]     = useState<any>(null)
   const [filtro,       setFiltro]       = useState<'hoje'|'7dias'|'mes'|'mes_ant'|'custom'>('mes')
@@ -82,10 +84,12 @@ export default function PagamentosCoachesPage() {
   const [lancado,      setLancado]      = useState(false)
   const [msg,          setMsg]          = useState('')
   const [horas,        setHoras]        = useState<any[]>([])
-  // Visão consolidada: soma todas as unidades por coach (só visualização, não lança despesa)
-  const [modoTodas,    setModoTodas]    = useState(false)
   const [consolidado,  setConsolidado]  = useState<any[]>([])
   const [loadingCons,  setLoadingCons]  = useState(false)
+
+  const modoMulti  = unidadesSel.length > 1
+  const unidadeSel = unidadesSel.length === 1 ? unidadesSel[0] : null
+  const chaveUnidades = unidadesSel.map(u => u.id).join(',')
 
   useEffect(() => {
     if (!loading && perfil && perfil.role !== 'admin' && perfil.role !== 'coordenadora') router.push('/')
@@ -96,13 +100,25 @@ export default function PagamentosCoachesPage() {
   useEffect(() => { aplicarFiltroRapido(filtro) }, [filtro])
   useEffect(() => { if (coachSel && inicio && fim) carregarAulas() }, [coachSel?.id, inicio, fim])
   useEffect(() => {
-    if (modoTodas && unidades.length && inicio && fim) carregarConsolidado()
-  }, [modoTodas, unidades.length, inicio, fim])
+    if (modoMulti && inicio && fim) carregarConsolidado()
+    if (!modoMulti) setConsolidado([])
+  }, [chaveUnidades, inicio, fim])
+
+  function alternarUnidade(u: any) {
+    setUnidadesSel(atual => {
+      const marcada = atual.some(x => x.id === u.id)
+      // Nunca deixa ficar sem nenhuma: desmarcar a última mantém ela selecionada
+      if (marcada && atual.length === 1) return atual
+      const nova = marcada ? atual.filter(x => x.id !== u.id) : [...atual, u]
+      return unidades.filter(x => nova.some(n => n.id === x.id))
+    })
+    setCoachSel(null); setAulas([]); setHoras([])
+  }
 
   async function carregarUnidades() {
     const { data } = await supabase.from('unidades').select('id, nome, tipo').eq('ativo', true).order('nome')
     setUnidades(data || [])
-    if (data && data.length > 0) setUnidadeSel(data[0])
+    if (data && data.length > 0) setUnidadesSel([data[0]])
   }
 
   async function carregarCoaches() {
@@ -252,11 +268,11 @@ export default function PagamentosCoachesPage() {
     setLoadingAulas(false)
   }
 
-  // ===== CONSOLIDADO (todas as unidades) =====
+  // ===== CONSOLIDADO (unidades marcadas) =====
   // Só visualização: aplica as mesmas regras do relatório individual (CT = sessão de
   // agendamento realizado; Club = ocorrência do coach efetivo; professor CT = horas)
-  // e soma por coach. NÃO inclui salário fixo — esse continua sendo decisão manual
-  // na tela por unidade, que é a única que lança despesa.
+  // e soma por coach APENAS nas unidades marcadas. NÃO inclui salário fixo — esse
+  // continua sendo decisão manual na tela de uma unidade só, que é a única que lança despesa.
   async function buscarAgendamentosCT(unidadeId: string) {
     // Paginado: o PostgREST corta em 1000 linhas sem avisar
     const PAGE = 1000
@@ -277,9 +293,11 @@ export default function PagamentosCoachesPage() {
 
   async function carregarConsolidado() {
     setLoadingCons(true); setConsolidado([])
+    const alvo = unidadesSel                       // só as unidades marcadas
+    const idsAlvo = alvo.map((u: any) => u.id)
 
     const { data: vinculos } = await supabase.from('coach_unidades')
-      .select('coach_id, unidade_id').eq('ativo', true)
+      .select('coach_id, unidade_id').eq('ativo', true).in('unidade_id', idsAlvo)
     const idsCoaches = Array.from(new Set((vinculos || []).map((v: any) => v.coach_id)))
     if (!idsCoaches.length) { setLoadingCons(false); return }
 
@@ -290,7 +308,8 @@ export default function PagamentosCoachesPage() {
     for (const c of (listaCoaches || [])) coachAtivo[c.id] = c
 
     const { data: valores } = await supabase.from('coach_valores')
-      .select('coach_id, unidade_id, tipo_aula, valor_por_aula').in('coach_id', idsCoaches)
+      .select('coach_id, unidade_id, tipo_aula, valor_por_aula')
+      .in('coach_id', idsCoaches).in('unidade_id', idsAlvo)
     const valorMap: Record<string, number> = {}
     for (const v of (valores || [])) valorMap[`${v.coach_id}|${v.unidade_id}|${v.tipo_aula}`] = Number(v.valor_por_aula)
     const valorDe = (coachId: string, unidadeId: string, tipo: string) =>
@@ -303,7 +322,7 @@ export default function PagamentosCoachesPage() {
       return acc[coachId]
     }
 
-    for (const u of unidades) {
+    for (const u of alvo) {
       const idsUnidade = (vinculos || []).filter((v: any) => v.unidade_id === u.id).map((v: any) => v.coach_id)
       if (!idsUnidade.length) continue
 
@@ -490,30 +509,34 @@ export default function PagamentosCoachesPage() {
           <div>
             <label className="label">Unidade</label>
             <div className="flex gap-2 flex-wrap">
-              {unidades.map(u => (
-                <button key={u.id} onClick={() => { setModoTodas(false); setUnidadeSel(u) }}
-                  className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
-                    !modoTodas && unidadeSel?.id === u.id
-                      ? 'bg-primary-600 text-white border-primary-600'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'
-                  }`}>
-                  {u.nome}
+              {unidades.map(u => {
+                const marcada = unidadesSel.some(x => x.id === u.id)
+                return (
+                  <button key={u.id} onClick={() => alternarUnidade(u)}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all flex items-center gap-2 ${
+                      marcada
+                        ? 'bg-primary-600 text-white border-primary-600'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'
+                    }`}>
+                    <span className={`w-4 h-4 rounded border flex items-center justify-center text-[10px] leading-none ${
+                      marcada ? 'bg-white/20 border-white/60' : 'border-gray-300'
+                    }`}>{marcada ? '✓' : ''}</span>
+                    {u.nome}
+                  </button>
+                )
+              })}
+              {modoMulti && (
+                <button onClick={() => { setUnidadesSel([unidadesSel[0]]); setCoachSel(null); setAulas([]); setHoras([]) }}
+                  className="px-3 py-2 rounded-xl text-xs font-medium border border-gray-200 text-gray-500 bg-white hover:border-gray-400 transition-all">
+                  Limpar
                 </button>
-              ))}
-              <button onClick={() => { setModoTodas(true); setCoachSel(null); setAulas([]); setHoras([]) }}
-                className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
-                  modoTodas
-                    ? 'bg-gray-800 text-white border-gray-800'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
-                }`}>
-                Todas (consolidado)
-              </button>
+              )}
             </div>
-            {modoTodas && (
-              <div className="text-xs text-gray-400 mt-2">
-                Visualização apenas — soma bonificações e horas de todas as unidades. Não inclui salário fixo e não lança despesa.
-              </div>
-            )}
+            <div className="text-xs text-gray-400 mt-2">
+              {modoMulti
+                ? `Consolidado de ${unidadesSel.length} unidades — visualização apenas. Não inclui salário fixo e não lança despesa.`
+                : 'Marque mais de uma unidade para ver o total somado por coach.'}
+            </div>
           </div>
 
           {/* Período */}
@@ -556,7 +579,7 @@ export default function PagamentosCoachesPage() {
           </div>
 
           {/* Coach */}
-          <div className={modoTodas ? 'hidden' : ''}>
+          <div className={modoMulti ? 'hidden' : ''}>
             <label className="label">Coach</label>
             {coaches.length === 0 ? (
               <div className="text-sm text-gray-400">Nenhum coach para esta unidade.</div>
@@ -578,10 +601,12 @@ export default function PagamentosCoachesPage() {
         </div>
 
         {/* Resultado consolidado (todas as unidades) */}
-        {modoTodas && (
+        {modoMulti && (
           <div className="card overflow-hidden p-0">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-              <div className="text-sm font-semibold text-gray-900">Total por coach — todas as unidades</div>
+              <div className="text-sm font-semibold text-gray-900">
+                Total por coach — {unidadesSel.map(u => u.nome).join(' + ')}
+              </div>
               <div className="text-xs text-gray-400">{formatarData(inicio)} a {formatarData(fim)}</div>
             </div>
 
@@ -599,7 +624,7 @@ export default function PagamentosCoachesPage() {
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                       <th className="text-left px-5 py-2.5">Coach</th>
-                      {unidades.map(u => (
+                      {unidadesSel.map(u => (
                         <th key={u.id} className="text-right px-4 py-2.5 whitespace-nowrap">{u.nome}</th>
                       ))}
                       <th className="text-right px-5 py-2.5">Total</th>
@@ -609,7 +634,7 @@ export default function PagamentosCoachesPage() {
                     {consolidado.map(c => (
                       <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                         <td className="px-5 py-3 font-medium text-gray-900 whitespace-nowrap">{c.nome}</td>
-                        {unidades.map(u => (
+                        {unidadesSel.map(u => (
                           <td key={u.id} className="px-4 py-3 text-right whitespace-nowrap">
                             {c.valor[u.id] ? (
                               <>
@@ -634,7 +659,7 @@ export default function PagamentosCoachesPage() {
                     ))}
                     <tr className="bg-primary-50 border-t-2 border-primary-100">
                       <td className="px-5 py-3 font-bold text-primary-800">Total geral</td>
-                      {unidades.map(u => (
+                      {unidadesSel.map(u => (
                         <td key={u.id} className="px-4 py-3 text-right font-bold text-primary-700 whitespace-nowrap">
                           R$ {consolidado.reduce((s, c) => s + Number(c.valor[u.id] || 0), 0).toFixed(2).replace('.', ',')}
                         </td>
@@ -651,7 +676,7 @@ export default function PagamentosCoachesPage() {
         )}
 
         {/* Resultado */}
-        {!modoTodas && coachSel && inicio && fim && (
+        {!modoMulti && coachSel && inicio && fim && (
           <>
             {/* Cards de resumo */}
             <div className="grid grid-cols-3 gap-4">
@@ -816,7 +841,7 @@ export default function PagamentosCoachesPage() {
           </>
         )}
 
-        {!modoTodas && !coachSel && (
+        {!modoMulti && !coachSel && (
           <div className="card text-center py-12 text-gray-400">
             <DollarSign size={32} className="mx-auto mb-3 text-gray-300"/>
             <div className="text-sm">Selecione uma unidade, período e coach para ver o relatório.</div>
