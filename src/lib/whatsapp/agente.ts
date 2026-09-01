@@ -88,6 +88,8 @@ VEREDITO: OK
 - Se precisa corrigir o texto (sem transferir):
 VEREDITO: CORRIGIR
 RESPOSTA: <a resposta corrigida, pronta pra enviar ao cliente, mesmo tom caloroso e curto; pode ter várias linhas>
+### FIM ###
+IMPORTANTíssimo: depois de "RESPOSTA:" escreva APENAS a mensagem final que vai pro cliente e termine com a linha "### FIM ###". NÃO escreva nenhuma análise, lista de erros, comentário, observação nem "---" depois — nada disso pode vazar pro cliente.
 - Se o certo é TRANSFERIR pra equipe (não havia nada gravado pra responder):
 VEREDITO: TRANSFERIR
 
@@ -134,7 +136,13 @@ Esse rascunho está TRANSFERINDO o atendimento pra equipe? ${escalou ? 'SIM' : '
     if (veredito === 'TRANSFERIR') return { escalar: true, texto: MSG_ESCALAR }
     // CORRIGIR
     const mResp = txt.match(/RESPOSTA:\s*([\s\S]+)$/i)
-    const corrigida = mResp ? mResp[1].trim() : ''
+    let corrigida = mResp ? mResp[1].trim() : ''
+    // Blindagem: o revisor às vezes anexa análise/lista de erros depois da resposta.
+    // Corta no marcador de fim OU em qualquer início de análise pra NUNCA vazar isso
+    // pro cliente.
+    corrigida = corrigida
+      .split(/\n\s*(?:###\s*FIM|---+|\*\*Erros|Erros encontrados|An[aá]lise|Observa[cç])/i)[0]
+      .trim()
     if (corrigida) return { escalar: false, texto: corrigida }
     return null // disse corrigir mas não deu a resposta → mantém original
   } catch {
