@@ -151,7 +151,7 @@ export default function AdminAgendaPage() {
     const diaSem = new Date(data + 'T12:00:00').getDay()
     const ehFds = diaSem === 0 || diaSem === 6
 
-    const [{ data: ags }, { data: bloqs }] = await Promise.all([
+    const [{ data: ags }, { data: bloqs }, { data: feriado }] = await Promise.all([
       supabase.from('agendamentos')
         .select('*, clientes(nome, cpf, telefone)')
         .eq('data', data)
@@ -162,7 +162,17 @@ export default function AdminAgendaPage() {
         .eq('data', data)
         .eq('unidade_id', unidadeAtiva.id)
         .eq('ativo', true),
+      supabase.from('feriados')
+        .select('id')
+        .eq('unidade_id', unidadeAtiva.id)
+        .eq('data', data)
+        .eq('ativo', true)
+        .maybeSingle(),
     ])
+
+    // No CT, feriado se comporta como fim de semana: escala vem de escala_fds
+    // (coach cobre o dia inteiro) e os horários são os de FDS, não os de coach_horarios.
+    const usaEscalaFds = ehFds || !!feriado
 
     // Coaches de férias/ausência nesta data — não sobem na grade CT (coach_ferias.coach_id = coaches.id).
     const { data: feriasRows } = await supabase.from('coach_ferias').select('coach_id').lte('data_inicio', data).gte('data_fim', data)
@@ -170,7 +180,7 @@ export default function AdminAgendaPage() {
 
     let coachsFinal: any[] = []
 
-    if (ehFds) {
+    if (usaEscalaFds) {
       // escala_fds.coach_id guarda user_id — usamos coachMap para resolver nome e coaches.id
       const { data: escala } = await supabase
         .from('escala_fds')

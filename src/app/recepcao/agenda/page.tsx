@@ -16,6 +16,9 @@ const HORARIOS = [
   '19:30','20:00'
 ]
 
+// Fim de semana e feriado no CT rodam com esta grade reduzida (mesma lista de /admin/agenda)
+const HORARIOS_FDS = ['08:00', '09:00', '10:00', '11:00', '12:00']
+
 // 🔧 Crédito legível a partir da chave (ex.: totalpass_just_ct → 🔵 TotalPass TP6 — Just CT)
 function parsePlanoKey(key: string): { label: string; icon: string } {
   const lower = (key || '').toLowerCase()
@@ -390,8 +393,11 @@ export default function RecepcaoAgendaPage() {
     falta:      { label: 'Falta',      color: 'bg-orange-100 text-orange-700' },
   }
 
-  const horariosAtivos = HORARIOS.filter(h =>
-    coachesPorHorario(h).length > 0 || agendamentosPorHorario(h).length > 0
+  // Em FDS/feriado a grade base é HORARIOS_FDS e os coaches vêm de escala_fds
+  // (cobrem o dia inteiro), então não se filtra por coachesPorHorario.
+  const horariosAtivos = (usaEscalaFds ? HORARIOS_FDS : HORARIOS).filter(h =>
+    (usaEscalaFds ? coachesFds.length > 0 : coachesPorHorario(h).length > 0)
+    || agendamentosPorHorario(h).length > 0
   )
 
   const agendamentosAtivos = agendamentos
