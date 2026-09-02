@@ -59,6 +59,23 @@ export const MSG_ESCALAR =
 // ---------------------------------------------------------------------------
 
 const REVISOR_ATIVO = process.env.WHATSAPP_REVISOR_ATIVO !== '0'
+// Revisor roda num modelo BARATO (Haiku) — testado: pega promessa/garantia de vaga,
+// falsa esperança de fila etc., e aprova respostas simples. Sem thinking (o checklist
+// já guia). Configurável por env. Economia grande vs. rodar Sonnet+thinking a cada resposta.
+const MODELO_REVISOR = process.env.WHATSAPP_REVISOR_MODELO || 'claude-haiku-4-5-20251001'
+
+// GATE do revisor: não gastar uma chamada revisando "Bom treino! 💪" / "De nada 😊".
+// Revisa SEMPRE quando: transferiu, a resposta é longa (substantiva), ou toca em
+// algum tema de risco (vaga, fila, multa, cancelamento, promessa, plano, prazo...).
+// Erra pro lado de REVISAR — só pula o que é claramente inofensivo e curto.
+const RISCO_REVISOR = /garant|vaga|fila|multa|cancel|remarc|reagend|delay|sincron|instabil|promet|segur|corre|[uú]ltim|s[óo] tem|de olho|repass|equipe|reserv|check|hor[áa]rio|prazo|\b3h\b|\b12h\b|ativ|plano|cr[eé]dito|desconto|cupom|estorn|reembols/i
+function precisaRevisar(draft: string, escalou: boolean): boolean {
+  if (!REVISOR_ATIVO) return false
+  if (escalou) return true
+  const d = String(draft || '').trim()
+  if (d.length > 160) return true
+  return RISCO_REVISOR.test(d)
+}
 
 function revisorSystem(faqTxt: string): string {
   return `Você é o REVISOR de qualidade do atendimento da Just Club & CT. Releia, COM CALMA, a resposta que o atendente está prestes a enviar ao cliente e confira, item por item, se ela respeita TODAS as regras. Você NÃO fala com o cliente — só APROVA ou CORRIGE a resposta.
@@ -107,8 +124,8 @@ async function revisarResposta(params: {
   draft: string
   escalou: boolean
 }): Promise<{ escalar: boolean; texto: string } | null> {
-  if (!REVISOR_ATIVO) return null
   const { client, faqTxt, transcript, draft, escalou } = params
+  if (!precisaRevisar(draft, escalou)) return null
   const userMsg = `CONVERSA (últimas mensagens):
 ${transcript}
 
@@ -120,10 +137,10 @@ ${draft}
 Esse rascunho está TRANSFERINDO o atendimento pra equipe? ${escalou ? 'SIM' : 'NÃO'}`
   try {
     const r = await client.messages.create({
-      model: MODELO,
-      max_tokens: 2400,
-      thinking: { type: 'enabled', budget_tokens: 1200 },
-      system: revisorSystem(faqTxt),
+      model: MODELO_REVISOR,
+      max_tokens: 1000,
+      // Sem thinking (o checklist já guia) + base cacheada = revisor barato.
+      system: [{ type: 'text', text: revisorSystem(faqTxt), cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: userMsg }],
     })
     const txt = r.content
