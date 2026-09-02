@@ -445,7 +445,24 @@ export async function posicaoNaFila(
       q = q.eq('data', f.data).eq('horario', f.horario).eq('unidade_id', f.unidade_id)
     }
     const { count } = await q
-    resultado.push({ ...f, posicao: (count ?? 0) + 1 })
+
+    // Veredito PRONTO do prazo da fila (não deixar a IA "lembrar" a regra):
+    // a fila só anda quando abre vaga por cancelamento, e cancelamento não ocorre
+    // dentro de 3h da aula — logo, faltando menos de 3h, a fila está CONGELADA
+    // (não abre vaga nem pro 1º lugar). SP é UTC-3 o ano todo (sem horário de verão).
+    const hhmm = String(f.horario ?? '').slice(0, 5) || '00:00'
+    const inicio = new Date(`${f.data}T${hhmm}:00-03:00`)
+    const horasAte = (inicio.getTime() - Date.now()) / 3_600_000
+    const filaCongelada = horasAte < 3
+    resultado.push({
+      ...f,
+      posicao: (count ?? 0) + 1,
+      horas_ate: Math.round(horasAte * 10) / 10,
+      fila_congelada: filaCongelada,
+      situacao_fila: filaCongelada
+        ? 'A fila NÃO anda mais (faltam menos de 3h pra aula, ou já passou): a vaga NÃO vai abrir hoje, nem pra quem está em 1º. NÃO dê esperança de que pode abrir nem mande "ficar de olho/esperar"; seja honesto e ofereça outro horário/dia.'
+        : 'A fila ainda pode andar (mais de 3h pra aula): se alguém cancelar, a vaga passa automaticamente pro 1º da fila.',
+    })
   }
   return resultado
 }
