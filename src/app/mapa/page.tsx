@@ -6,7 +6,6 @@ import { createClient } from '@/lib/supabase'
 import SiteHeader from '@/components/SiteHeader'
 import AvisoUnidade from '@/components/AvisoUnidade'
 import ModalTelefone from '@/components/ModalTelefone'
-import { nomeCoachPublico } from '@/lib/mascaraCoachPublico'
 import { aulaJaComecou } from '@/lib/tempo'
 
 const ACCENT   = '#ff2d9b'
@@ -271,7 +270,7 @@ function MapaPageInner() {
 
   const aula    = ocorrencia?.club_aulas
   const horario = (aula?.horario||'').slice(0,5)
-  const coach   = nomeCoachPublico(aula?.coaches?.id, aula?.coaches?.nome) || '—'
+  const coach   = aula?.coaches?.nome?.split(' ')[0] || '—'
   const grupo   = aula?.grupos_musculares?.nome || '—'
   const dataStr = ocorrencia?.data || ''
   const dataFmt = dataStr ? new Date(dataStr+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short'}) : ''

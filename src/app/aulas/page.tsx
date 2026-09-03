@@ -7,7 +7,6 @@ import SiteHeader from '@/components/SiteHeader'
 import AvisoUnidade, { AvisoPopupPinheiros } from '@/components/AvisoUnidade'
 import ModalTelefone from '@/components/ModalTelefone'
 import CardCheckinExpress from '@/components/CardCheckinExpress'
-import { nomeCoachPublico } from '@/lib/mascaraCoachPublico'
 import { aulaEncerrada, aulaJaComecou, dataHojeSP, hojeSP } from '@/lib/tempo'
 
 function useIsMobile() {
@@ -72,9 +71,9 @@ function tipoColor(t: string) {
 // Prioridade: coach escalado pontualmente na ocorrência > coach da grade > null
 function primeiroNomeCoachOc(oc: any): string | null {
   const escaladoNome = oc?.coach_escalado?.nome
-  if (escaladoNome) return nomeCoachPublico(oc?.coach_escalado?.id, escaladoNome)
+  if (escaladoNome) return String(escaladoNome).split(' ')[0]
   const gradeNome = oc?.club_aulas?.coaches?.nome
-  if (gradeNome) return nomeCoachPublico(oc?.club_aulas?.coaches?.id, gradeNome)
+  if (gradeNome) return String(gradeNome).split(' ')[0]
   return null
 }
 

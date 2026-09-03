@@ -1,7 +1,6 @@
 // Totem Self Check-in (Just Club) — helpers de servidor.
 // Isolado: só as rotas /api/totem usam. Nada aqui altera fluxo existente.
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
-import { nomeCoachPublico } from '@/lib/mascaraCoachPublico'
 import { hojeSP, aulaEncerrada } from '@/lib/tempo'
 import { agendamentoCoachCtHoje } from '@/lib/totem/coach-ct'
 
@@ -153,7 +152,7 @@ export async function respostaParaCliente(
   let coachNome = ''
   if (c.coachId) {
     const { data: coach } = await sb.from('coaches').select('id, nome').eq('id', c.coachId).maybeSingle()
-    coachNome = nomeCoachPublico(coach?.id, coach?.nome)
+    coachNome = String(coach?.nome || '').split(' ')[0]
   }
 
   const parceiro = ehParceiro(c.tipoCredito)
