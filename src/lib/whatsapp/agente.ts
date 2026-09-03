@@ -77,6 +77,21 @@ function precisaRevisar(draft: string, escalou: boolean): boolean {
   return RISCO_REVISOR.test(d)
 }
 
+// TRAVA DETERMINÍSTICA (código, não depende de modelo) — última linha de defesa.
+// Regra Nº1 do cancelamento: quando NÃO dá pra cancelar, só informe que não dá —
+// SEM explicar janela/fila/"consultei"/horas. Como o modelo (mesmo o caro) às vezes
+// desobedece, isto é enforçado aqui: se a resposta é uma RECUSA de cancelamento E
+// ainda vaza mecânica interna, troca pela linha curta. 100% garantido, custo zero.
+const RE_RECUSA_CANCEL = /n[ãa]o\s[^.!?]{0,25}cancel/i
+const RE_MECANICA_CANCEL = /entre\s*3\s*h?\s*e\s*12\s*h|consultei[^.!?]{0,20}fila|ningu[ée]m[^.!?]{0,12}fila|(n[ãa]o\s+h[áa]|sem)[^.!?]{0,15}fila|o\s+sistema[^.!?]{0,15}verifica|faltam?[^.!?]{0,15}\d+\s*h/i
+function limparMecanicaCancel(texto: string): string {
+  const t = String(texto || '')
+  if (RE_RECUSA_CANCEL.test(t) && RE_MECANICA_CANCEL.test(t)) {
+    return 'Poxa 🙏 a essa altura não dá mais pra cancelar essa reserva. Qualquer coisa, é só me chamar!'
+  }
+  return t
+}
+
 function revisorSystem(faqTxt: string): string {
   return `Você é o REVISOR de qualidade do atendimento da Just Club & CT. Releia, COM CALMA, a resposta que o atendente está prestes a enviar ao cliente e confira, item por item, se ela respeita TODAS as regras. Você NÃO fala com o cliente — só APROVA ou CORRIGE a resposta.
 
@@ -936,7 +951,7 @@ export async function responderMensagem(params: {
         })
         if (rev && !rev.escalar) {
           registroTools?.push(`revisor -> respondeu em vez de transferir: ${rev.texto}`)
-          return { texto: rev.texto }
+          return { texto: limparMecanicaCancel(rev.texto) }
         }
         return { texto: MSG_ESCALAR, escalar: true, motivoEscalar: motivo }
       }
@@ -997,9 +1012,9 @@ export async function responderMensagem(params: {
     const rev = await revisarResposta({ client, faqTxt, transcript, draft, escalou: false })
     if (rev) {
       registroTools?.push(`revisor -> ${rev.escalar ? 'transferiu' : 'corrigiu'}: ${rev.texto}`)
-      return rev.escalar ? { texto: rev.texto, escalar: true, motivoEscalar: 'revisor' } : { texto: rev.texto }
+      return rev.escalar ? { texto: rev.texto, escalar: true, motivoEscalar: 'revisor' } : { texto: limparMecanicaCancel(rev.texto) }
     }
-    return { texto: draft }
+    return { texto: limparMecanicaCancel(draft) }
   }
 
   // Estourou o limite de iterações de tools.
@@ -1166,7 +1181,7 @@ Português do Brasil, caloroso e DIRETO. Mensagens CURTAS (é WhatsApp, não é 
           draft: MSG_ESCALAR,
           escalou: true,
         })
-        if (rev && !rev.escalar) return { texto: rev.texto }
+        if (rev && !rev.escalar) return { texto: limparMecanicaCancel(rev.texto) }
         return { texto: MSG_ESCALAR, escalar: true, motivoEscalar: motivo }
       }
 
@@ -1193,8 +1208,8 @@ Português do Brasil, caloroso e DIRETO. Mensagens CURTAS (é WhatsApp, não é 
       .trim()
     const draft = texto || 'Oi! 😊 Me conta como posso te ajudar — dúvidas de planos, modalidades, horários, ou se você já é aluno(a) e quer ver sua conta (aí me manda nome completo + CPF).'
     const rev = await revisarResposta({ client, faqTxt, transcript, draft, escalou: false })
-    if (rev) return rev.escalar ? { texto: rev.texto, escalar: true, motivoEscalar: 'revisor' } : { texto: rev.texto }
-    return { texto: draft }
+    if (rev) return rev.escalar ? { texto: rev.texto, escalar: true, motivoEscalar: 'revisor' } : { texto: limparMecanicaCancel(rev.texto) }
+    return { texto: limparMecanicaCancel(draft) }
   }
   return { texto: 'Oi! 😊 Se sua dúvida é sobre planos/horários, manda que eu respondo. Se você já é aluno(a) e quer ver sua conta, me envia nome completo + CPF.' }
 }
