@@ -53,6 +53,8 @@ export default function AdminAgendaPage() {
   const [agendamentos, setAgendamentos] = useState<any[]>([])
   const [coaches, setCoaches] = useState<any[]>([])
   const [bloqueios, setBloqueios] = useState<any[]>([])
+  // 🔧 Dia roda com a grade de FDS (sábado, domingo ou feriado): só 08:00–12:00
+  const [usaEscalaFds, setUsaEscalaFds] = useState(false)
   const [loadingData, setLoadingData] = useState(true)
   const [alocandoId, setAlocandoId] = useState<string | null>(null)
   const [busca, setBusca] = useState('')
@@ -172,7 +174,8 @@ export default function AdminAgendaPage() {
 
     // No CT, feriado se comporta como fim de semana: escala vem de escala_fds
     // (coach cobre o dia inteiro) e os horários são os de FDS, não os de coach_horarios.
-    const usaEscalaFds = ehFds || !!feriado
+    const usaFds = ehFds || !!feriado
+    setUsaEscalaFds(usaFds)
 
     // Coaches de férias/ausência nesta data — não sobem na grade CT (coach_ferias.coach_id = coaches.id).
     const { data: feriasRows } = await supabase.from('coach_ferias').select('coach_id').lte('data_inicio', data).gte('data_fim', data)
@@ -180,7 +183,7 @@ export default function AdminAgendaPage() {
 
     let coachsFinal: any[] = []
 
-    if (usaEscalaFds) {
+    if (usaFds) {
       // escala_fds.coach_id guarda user_id — usamos coachMap para resolver nome e coaches.id
       const { data: escala } = await supabase
         .from('escala_fds')
@@ -376,7 +379,9 @@ export default function AdminAgendaPage() {
     falta:      { label: 'Falta',      color: 'bg-orange-100 text-orange-700' },
   }
 
-  const horariosAtivos = HORARIOS.filter(h =>
+  // Em FDS/feriado a grade do dia é só HORARIOS_FDS — a grade de dia útil não
+  // aparece nem quando sobrou agendamento fora dela (ele continua na aba Agendamentos).
+  const horariosAtivos = (usaEscalaFds ? HORARIOS_FDS : HORARIOS).filter(h =>
     coachesPorHorario(h).length > 0 || agendamentosPorHorario(h).length > 0
   )
   const agendamentosAtivos = agendamentos.filter(a => a.status !== 'cancelado').sort((a, b) => a.horario.localeCompare(b.horario))
