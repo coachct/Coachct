@@ -68,7 +68,7 @@ const MODELO_REVISOR = process.env.WHATSAPP_REVISOR_MODELO || 'claude-haiku-4-5-
 // Revisa SEMPRE quando: transferiu, a resposta é longa (substantiva), ou toca em
 // algum tema de risco (vaga, fila, multa, cancelamento, promessa, plano, prazo...).
 // Erra pro lado de REVISAR — só pula o que é claramente inofensivo e curto.
-const RISCO_REVISOR = /garant|vaga|fila|multa|cancel|remarc|reagend|delay|sincron|instabil|promet|segur|corre|[uú]ltim|s[óo] tem|de olho|repass|equipe|reserv|check|hor[áa]rio|prazo|\b3h\b|\b12h\b|ativ|plano|cr[eé]dito|desconto|cupom|estorn|reembols/i
+const RISCO_REVISOR = /garant|vaga|fila|multa|cancel|remarc|reagend|delay|sincron|instabil|promet|segur|corre|[uú]ltim|s[óo] tem|de olho|repass|equipe|reserv|check|hor[áa]rio|prazo|\b3h\b|\b12h\b|ativ|plano|cr[eé]dito|desconto|cupom|estorn|reembols|n[úu]mero|telefone|whats|contato|ligar|\d{4}[-.\s]\d{4}/i
 function precisaRevisar(draft: string, escalou: boolean): boolean {
   if (!REVISOR_ATIVO) return false
   if (escalou) return true
@@ -90,6 +90,27 @@ function limparMecanicaCancel(texto: string): string {
     return 'Poxa 🙏 a essa altura não dá mais pra cancelar essa reserva. Qualquer coisa, é só me chamar!'
   }
   return t
+}
+
+// TRAVA DETERMINÍSTICA: o bot NUNCA passa número de telefone (este WhatsApp é o
+// canal de atendimento; o resto é o site). Se vazar um telefone que NÃO seja o nosso
+// (invenção, tipo "o número de Pinheiros é (11)..."), a mensagem é trocada. Custo zero.
+const RE_TELEFONE = /\(?\d{2}\)?[\s.-]?9?\d{4}[\s.-]\d{4}/g
+function semTelefoneInventado(texto: string): string {
+  const t = String(texto || '')
+  const achados = t.match(RE_TELEFONE)
+  if (!achados) return t
+  for (const a of achados) {
+    const dig = a.replace(/\D/g, '')
+    if (dig.endsWith('917555878')) continue // nosso WhatsApp oficial — pode
+    return 'O atendimento e o autoatendimento são todos pelo nosso site 😊 https://www.justclubct.com.br — e aqui no WhatsApp eu te ajudo com informação. Me conta sua dúvida!'
+  }
+  return t
+}
+
+/** Passada determinística final aplicada a TODA resposta enviada ao cliente. */
+function finalizarTexto(texto: string): string {
+  return semTelefoneInventado(limparMecanicaCancel(texto))
 }
 
 function revisorSystem(faqTxt: string): string {
@@ -1220,4 +1241,134 @@ Português do Brasil, caloroso e DIRETO. Mensagens CURTAS (é WhatsApp, não é 
     return { texto: limparMecanicaCancel(draft) }
   }
   return { texto: 'Oi! 😊 Se sua dúvida é sobre planos/horários, manda que eu respondo. Se você já é aluno(a) e quer ver sua conta, me envia nome completo + CPF.' }
+}
+
+// ===========================================================================
+// Agente INFO — o ÚNICO cérebro ativo (reformulação 03/09/2026).
+// BALCÃO DE INFORMAÇÃO: responde dúvidas gerais com o que está GRAVADO e, pra
+// ações (reservar/cancelar/comprar...), INFORMA a regra e aponta o caminho do
+// site — o cliente resolve sozinho lá. NÃO tem ferramenta de conta/ação (só
+// preços): fisicamente não consegue "resolver" nem inventar resultado de conta.
+// NÃO transfere pra atendente (o Ricardo acompanha e assume o que precisar).
+// ===========================================================================
+
+const TOOLS_INFO: Anthropic.Tool[] = [
+  {
+    name: 'consultar_precos',
+    description: 'Catálogo de preços de planos e pacotes da Just Club & CT. Use sempre que perguntarem quanto custa algo, valores, planos ou pacotes. Nunca chute valores.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+]
+
+export async function responderInfo(params: {
+  supabase: SupabaseClient
+  mensagem: string
+  historico?: TurnoConversa[]
+}): Promise<{ texto: string }> {
+  const { supabase, mensagem, historico = [] } = params
+  const client = new Anthropic()
+  const hoje = calcularHoje()
+
+  const [enderecos, faq] = await Promise.all([listarEnderecos(supabase), listarConhecimento(supabase)])
+  const enderecosTxt = enderecos.length
+    ? enderecos.map((u) => `- ${u.nome}: ${u.endereco ?? 'endereço não cadastrado'}`).join('\n')
+    : '- (endereços não disponíveis no momento)'
+  const faqTxt = faqParaTexto(faq)
+
+  const estatico = `Você é a voz da **Just Club & CT** no WhatsApp — um BALCÃO DE INFORMAÇÃO. Fale como gente da equipe: caloroso, próximo e DIRETO ao ponto. NUNCA se apresente como "assistente virtual", "bot" ou "IA".
+
+Sua função é UMA só: entender a dúvida da pessoa e RESPONDER com a informação que a gente já tem gravada — sobre os treinos, como tudo funciona, planos/preços, endereços, horários e as regras. Você NÃO resolve nada de conta e NÃO faz ações: o site e o sistema já fazem tudo sozinhos (o próprio cliente reserva, cancela, troca de aula e compra lá). Quando a pergunta envolve uma ação, você INFORMA a regra e, quando fizer sentido, aponta o caminho no site — e ENCERRA.
+
+# REGRA MÃE — só o que está gravado (nunca invente)
+Você SÓ pode afirmar o que está na BASE DE CONHECIMENTO abaixo ou o que veio da ferramenta de preços. Se NÃO está gravado, você NÃO inventa, NÃO deduz, NÃO chuta — é PROIBIDO: nada de horário/grade de aula que você não tem, significado de ícone, número de telefone, promoção/pacote que não existe, motivo técnico ("delay", "instabilidade"). Não está na base? Você não sabe — diga com simpatia que essa você não tem aí certinho e, se couber, aponte o site (sem inventar). A mensagem é SÓ INFORMAÇÃO — NUNCA promessa, NUNCA prever resultado ("vai dar certo", "consegue", "garanto", "te seguro a vaga").
+
+# VOCÊ INFORMA, NÃO RESOLVE (o coração da coisa)
+Reservar, cancelar, trocar/remarcar aula, comprar, ativar plano, ver saldo, cadastrar cartão, recuperar senha — o CLIENTE faz tudo isso sozinho no site. Você NÃO faz nada disso, NÃO pede CPF, NÃO acessa conta, NÃO faz lógica de prazo/fila/vaga/multa. Você só INFORMA a regra e aponta o caminho. Exemplos do jeito certo (curto, e encerra):
+- "quero cancelar, tive um imprevisto" → "Sem problema! 😊 O prazo pra cancelar sem multa é até 12h antes do treino — dentro desse prazo você mesmo cancela pelo site." E PARA. (NÃO pergunte qual reserva, NÃO cheque nada, NÃO fale de fila; multa só se ele perguntar.)
+- "como faço pra reservar uma aula?" → explique curtinho que é pelo site e mande o link certo.
+- "quero comprar um plano" → aponte o /comprar.
+Nunca diga "deixa que eu resolvo", "vou verificar sua conta", "vou remarcar pra você". Não é o seu papel — é do cliente, no site.
+
+# MAPA DO SITE (aponte o link certo pro que a pessoa quer)
+- Reservar / cancelar / trocar AULA do JustClub (Lift, Lift for Girls, Running+Funcional): https://www.justclubct.com.br/aulas
+- Agendar / cancelar COACH CT (personal): https://www.justclubct.com.br/agendar
+- COMPRAR plano, pacote ou avulso: https://www.justclubct.com.br/comprar
+- Minha conta (ativar plano Wellhub/TotalPass, ver saldo, minhas reservas, dados): https://www.justclubct.com.br/minha-conta
+- Cadastrar / atualizar cartão: https://www.justclubct.com.br/cadastrar-cartao
+- Entrar / esqueci a senha: https://www.justclubct.com.br/login
+- Ainda não é aluno(a) / criar cadastro: https://www.justclubct.com.br/cadastro
+Reserva/cancelamento feito pelo APP do Wellhub/TotalPass é gerenciado por eles (a gente não controla) — isso é direto no app deles.
+
+# ENDEREÇO DO SITE — escreva EXATO
+https://www.justclubct.com.br — "club" colado em "ct" (j-u-s-t-c-l-u-b-c-t), SEM nenhum "e". NUNCA "justclubect".
+
+# NÃO transfira pra atendente (REGRA)
+Você NÃO passa a conversa pra equipe, NÃO diz "vou transferir/encaminhar pra equipe", NÃO promete que "a equipe vai te responder/resolver". Seu papel é informar. Se for realmente algo que precise de uma pessoa, a nossa equipe acompanha as conversas e assume quando for o caso — você não precisa (nem deve) anunciar isso. Só responda com a informação que tem e encerre.
+
+# Tom
+Português do Brasil, caloroso e DIRETO. Mensagens CURTAS: dê a informação e PARE — não repita o que a pessoa disse, não faça várias perguntas, não alongue. Sem muletas tipo "Boa pergunta!". Pode *negrito* e emojis com parcimônia.
+
+# Endereços das unidades
+${enderecosTxt}
+
+# Base de conhecimento (sua ÚNICA fonte de fatos, além dos preços)
+${faqTxt}`
+
+  const dinamico = `# Data de hoje (você SABE — nunca pergunte)
+- HOJE é ${hoje.extenso} — ${hoje.dataStr}. Quando disserem "hoje", é esse dia.`
+
+  const system: Anthropic.TextBlockParam[] = [
+    { type: 'text', text: estatico, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: dinamico },
+  ]
+
+  const messages: Anthropic.MessageParam[] = [
+    ...historico.map((t) => ({ role: t.role, content: t.content })),
+    { role: 'user', content: mensagem },
+  ]
+  const transcript = montarTranscript(historico, mensagem)
+
+  const FALLBACK_SEM_INFO =
+    'Essa eu não tenho aqui certinho 😊. Dá uma olhada no nosso site https://www.justclubct.com.br — e qualquer dúvida sobre planos, treinos, horários ou endereços é só me perguntar!'
+
+  for (let i = 0; i < 3; i++) {
+    const resposta = await client.messages.create({
+      model: MODELO,
+      max_tokens: 1500,
+      system,
+      tools: TOOLS_INFO,
+      messages,
+    })
+
+    if (resposta.stop_reason === 'tool_use') {
+      messages.push({ role: 'assistant', content: resposta.content })
+      const resultados: Anthropic.ToolResultBlockParam[] = []
+      for (const bloco of resposta.content) {
+        if (bloco.type === 'tool_use') {
+          let conteudo: string
+          try {
+            conteudo = bloco.name === 'consultar_precos'
+              ? JSON.stringify(await consultarPrecos(supabase))
+              : JSON.stringify({ erro: `ferramenta indisponível: ${bloco.name}` })
+          } catch (e: any) { conteudo = JSON.stringify({ erro: e.message }) }
+          resultados.push({ type: 'tool_result', tool_use_id: bloco.id, content: conteudo })
+        }
+      }
+      messages.push({ role: 'user', content: resultados })
+      continue
+    }
+
+    const texto = resposta.content
+      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n')
+      .trim()
+    const draft = texto || FALLBACK_SEM_INFO
+    // Revisor (barato) como rede: pega invenção/promessa. Aqui NÃO existe transferir —
+    // se o revisor achar que a resposta não tem base, cai no fallback de informação.
+    const rev = await revisarResposta({ client, faqTxt, transcript, draft, escalou: false })
+    if (rev) return { texto: rev.escalar ? FALLBACK_SEM_INFO : finalizarTexto(rev.texto) }
+    return { texto: finalizarTexto(draft) }
+  }
+  return { texto: FALLBACK_SEM_INFO }
 }

@@ -20,7 +20,7 @@ import {
   type ClienteIdentificado,
 } from '@/lib/whatsapp/consultas'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { responderMensagem, executarAcaoConfirmada, responderVisitante, MSG_ESCALAR } from '@/lib/whatsapp/agente'
+import { responderInfo, executarAcaoConfirmada, MSG_ESCALAR } from '@/lib/whatsapp/agente'
 import {
   enviarTexto,
   enviarBotoes,
@@ -313,37 +313,13 @@ async function processar(de: string, texto: string, wamid: string, botaoId: stri
     const historico = await carregarHistorico(supabase, telefone)
     await salvarMensagem(supabase, { telefone, clienteId: cliente.id, role: 'user', conteudo: texto })
 
-    const resposta = await responderMensagem({ supabase, cliente, mensagem: texto, historico })
+    // BALCÃO DE INFORMAÇÃO (reformulação): só informa/aponta o site. Não resolve
+    // conta/ação, não pede confirmação, não transfere. O Ricardo acompanha o painel
+    // e assume o que precisar. (pedeHumano acima já sinaliza quem pediu atendente.)
+    const resposta = await responderInfo({ supabase, mensagem: texto, historico })
     const corpo = prefixo + resposta.texto
-
     await salvarMensagem(supabase, { telefone, clienteId: cliente.id, role: 'assistant', conteudo: resposta.texto })
-
-    // Se o agente ESCALOU (não tinha certeza, chamou escalar_para_humano) OU disse
-    // que vai ENCAMINHAR pra EQUIPE, marca a conversa como aguardando atendimento
-    // (aparece no painel para um atendente resolver).
-    const tResp = resposta.texto.toLowerCase()
-    if (resposta.escalar || (tResp.includes('encaminh') && tResp.includes('equipe'))) {
-      await marcarAguardandoHumano(supabase, telefone)
-      if (resposta.motivoEscalar) console.log(`[whatsapp/webhook] escalado: ${resposta.motivoEscalar}`)
-    }
-
-    // Se o agente pediu confirmação de uma ação, guarda-a como pendente: a próxima
-    // mensagem do cliente ("Confirmar"/"sim") vai executá-la lá em cima.
-    if (resposta.acaoPendente) {
-      await salvarAcaoPendente(supabase, {
-        telefone,
-        clienteId: cliente.id,
-        acao: resposta.acaoPendente.acao,
-        params: resposta.acaoPendente.params,
-        resumo: resposta.acaoPendente.resumo,
-      })
-    }
-
-    if (resposta.botoes?.length) {
-      await enviarBotoes(de, corpo, resposta.botoes)
-    } else {
-      await enviarTexto(de, corpo)
-    }
+    await enviarTexto(de, corpo)
   } catch (e: any) {
     console.error('[whatsapp/webhook] erro no processamento:', e?.message)
     try { await enviarTexto(de, 'Tive um erro aqui. Pode tentar de novo em instantes?') } catch {}
@@ -602,15 +578,10 @@ async function resolverPorCadastro(
     return achadoEmail
   }
 
-  // 3. Nem CPF nem e-mail: visitante. Responde dúvidas gerais + ensina o passo a
-  //    passo do site, e pede nome + CPF OU e-mail quando for coisa da conta.
+  // 3. Nem CPF nem e-mail: BALCÃO DE INFORMAÇÃO. Responde dúvidas gerais com o que
+  //    está gravado e aponta o caminho do site. Não resolve conta/ação, não transfere.
   const hist = await carregarHistorico(supabase, telefone)
-  const resp = await responderVisitante({ supabase, mensagem: texto, historico: hist })
-  // Bot sem certeza → escala pra equipe (aparece no painel "aguardando atendimento").
-  if (resp.escalar) {
-    await marcarAguardandoHumano(supabase, telefone)
-    if (resp.motivoEscalar) console.log(`[whatsapp/webhook] escalado (visitante): ${resp.motivoEscalar}`)
-  }
+  const resp = await responderInfo({ supabase, mensagem: texto, historico: hist })
   return responder(resp.texto)
 }
 
