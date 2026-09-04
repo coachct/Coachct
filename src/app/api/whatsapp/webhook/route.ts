@@ -49,11 +49,10 @@ export const maxDuration = 60
 const DEBOUNCE_MS = parseInt(process.env.WHATSAPP_DEBOUNCE_MS || '15000', 10) || 0
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-// KILL SWITCH do bot. PAUSADO POR PADRÃO (precisa WHATSAPP_BOT_ATIVO=1 pra responder).
-// Enquanto pausado: o bot NÃO responde nada — só registra a mensagem e marca a
+// KILL SWITCH do bot. ATIVO POR PADRÃO. Pra PAUSAR: setar WHATSAPP_BOT_ATIVO=0 na
+// Vercel (e redeploy) — aí o bot NÃO responde nada, só registra a mensagem e marca a
 // conversa como "aguardando atendimento" pra equipe humana cuidar pelo painel.
-// Pra religar o bot: setar WHATSAPP_BOT_ATIVO=1 na Vercel (e redeploy).
-const BOT_ATIVO = process.env.WHATSAPP_BOT_ATIVO === '1'
+const BOT_ATIVO = process.env.WHATSAPP_BOT_ATIVO !== '0'
 
 const AVISO_LGPD =
   'E aí! 👊 Aqui é a Just Club & CT no seu WhatsApp. Pra te ajudar certinho, dou uma olhada no seu cadastro (nome, plano, treinos) — seguindo a conversa, você concorda com a nossa Política de Privacidade. Se um dia quiser parar de receber mensagens, é só mandar PARAR. Bora? Como posso te ajudar hoje? 💪'
