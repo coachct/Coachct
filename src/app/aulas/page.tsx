@@ -7,6 +7,8 @@ import SiteHeader from '@/components/SiteHeader'
 import AvisoUnidade, { AvisoPopupPinheiros } from '@/components/AvisoUnidade'
 import ModalTelefone from '@/components/ModalTelefone'
 import CardCheckinExpress from '@/components/CardCheckinExpress'
+import EnqueteHorario from '@/components/EnqueteHorario'
+import { enqueteDoHorario } from '@/lib/enquete-horario'
 import { aulaEncerrada, aulaJaComecou, dataHojeSP, hojeSP } from '@/lib/tempo'
 
 function useIsMobile() {
@@ -31,43 +33,6 @@ const ENDERECOS_UNIDADES: Record<string, string> = {
   'Just CT': 'Rua Fiandeiras, 392 — Itaim Bibi, São Paulo',
   'JustClub Vila Olímpia': 'Av. Dr. Cardoso de Melo, 1337 — Vila Olímpia, São Paulo',
   'JustClub Pinheiros': 'Rua Deputado Lacerda Franco, 342 — Pinheiros, São Paulo',
-}
-
-// --- Enquete de horário da noite (JustClub Vila Olímpia) ---------------------
-// Caixinha dentro da confirmação de reserva das aulas de 18:30 e 19:30.
-// Cada cliente responde uma única vez por horário (unique enquete+cliente no banco).
-// Responder é obrigatório pra confirmar a reserva (decisão do Ricardo: senão a
-// pesquisa não fecha). Sem opção neutra de propósito: ou a pessoa quer antecipar,
-// ou prefere manter — 'tanto faz' não ajuda na decisão.
-// O voto é gravado DEPOIS que a reserva já entrou, fire-and-forget: se a gravação
-// falhar, a reserva vale do mesmo jeito (e a pergunta volta na próxima reserva).
-// Para encerrar antes do prazo, é só mudar ENQUETE_HORARIO_ATE para uma data passada.
-const ENQUETE_HORARIO_UNIDADE = '05eeab3e-5eae-4140-bc3a-1c1d56ac95be' // JustClub Vila Olímpia
-const ENQUETE_HORARIO_ATE     = '2026-09-19' // último dia em que a caixinha aparece
-const ENQUETE_HORARIO: Record<string, { chave: string; pergunta: string; opcoes: { valor: string; label: string }[] }> = {
-  '18:30': {
-    chave: 'horario_noite_vo_1830',
-    pergunta: 'Esta aula das 18:30 seria melhor em outro horário?',
-    opcoes: [
-      { valor: '18:00',  label: 'Sim, às 18:00' },
-      { valor: '18:15',  label: 'Sim, às 18:15' },
-      { valor: 'manter', label: 'Prefiro manter às 18:30' },
-    ],
-  },
-  '19:30': {
-    chave: 'horario_noite_vo_1930',
-    pergunta: 'Esta aula das 19:30 seria melhor em outro horário?',
-    opcoes: [
-      { valor: '19:00',  label: 'Sim, às 19:00' },
-      { valor: '19:15',  label: 'Sim, às 19:15' },
-      { valor: 'manter', label: 'Prefiro manter às 19:30' },
-    ],
-  },
-}
-function enqueteDoHorario(unidadeId: string, horario: string) {
-  if (unidadeId !== ENQUETE_HORARIO_UNIDADE) return null
-  if (hojeSP() > ENQUETE_HORARIO_ATE) return null
-  return ENQUETE_HORARIO[(horario || '').slice(0, 5)] || null
 }
 
 const DIAS_ABREV  = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB']
@@ -1170,25 +1135,8 @@ function AulasPageInner() {
                 </div>
               )}
               {enqueteAtiva && (
-                <div style={{ background:'#0a1520', border:`1px solid ${CYAN}33`, borderRadius:12, padding:'1rem 1.1rem', marginBottom:'1.25rem' }}>
-                  <div style={{ fontSize:13, fontWeight:700, color:CYAN, marginBottom:4 }}>💬 Ajude-nos a melhorar ainda mais a Just</div>
-                  <div style={{ fontSize:13, color:'#bbb', lineHeight:1.5, marginBottom:12 }}>{enqueteAtiva.pergunta}</div>
-                  <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-                    {enqueteAtiva.opcoes.map(op => {
-                      const sel = enqueteOpcao === op.valor
-                      return (
-                        <div key={op.valor} onClick={() => { setEnqueteOpcao(op.valor); setErroModal('') }}
-                          style={{ border:`1.5px solid ${sel?CYAN:'#1f2a33'}`, background:sel?`${CYAN}15`:'transparent', borderRadius:9, padding:'0.6rem 0.85rem', cursor:'pointer', display:'flex', alignItems:'center', gap:'0.65rem', transition:'all .15s' }}>
-                          <div style={{ width:15, height:15, borderRadius:'50%', border:`2px solid ${sel?CYAN:'#39434d'}`, background:sel?CYAN:'transparent', flexShrink:0 }}/>
-                          <span style={{ fontSize:13, color:sel?'#fff':'#8b97a3' }}>{op.label}</span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                  <div style={{ fontSize:11, color:'#4a5761', marginTop:10, lineHeight:1.5 }}>
-                    Escolha uma opção para confirmar a reserva. Você responde uma única vez — depois disso não perguntamos mais.
-                  </div>
-                </div>
+                <EnqueteHorario enquete={enqueteAtiva} valor={enqueteOpcao}
+                  onChange={(v) => { setEnqueteOpcao(v); setErroModal('') }} />
               )}
               {erroModal && <div style={{ background:'#ff2d9b15', border:'1px solid #ff2d9b44', borderRadius:8, padding:'0.6rem 1rem', fontSize:13, color:ACCENT, marginBottom:'1rem' }}>{erroModal}</div>}
               <div style={{ display:'flex', gap:8 }}>

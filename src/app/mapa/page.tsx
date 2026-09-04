@@ -6,6 +6,8 @@ import { createClient } from '@/lib/supabase'
 import SiteHeader from '@/components/SiteHeader'
 import AvisoUnidade from '@/components/AvisoUnidade'
 import ModalTelefone from '@/components/ModalTelefone'
+import EnqueteHorario from '@/components/EnqueteHorario'
+import { enqueteDoHorario } from '@/lib/enquete-horario'
 import { aulaJaComecou } from '@/lib/tempo'
 
 const ACCENT   = '#ff2d9b'
@@ -88,6 +90,9 @@ function MapaPageInner() {
   const [modalCertParceiro,  setModalCertParceiro]  = useState(false)
   const [aceiteCertParceiro, setAceiteCertParceiro] = useState(false)
   const [certContinuar,      setCertContinuar]      = useState(false)
+  // Enquete de horário: chaves que este cliente já respondeu + opção marcada no modal aberto
+  const [enqueteFeitas, setEnqueteFeitas] = useState<string[]>([])
+  const [enqueteOpcao,  setEnqueteOpcao]  = useState('')
 
   // Gate de telefone: já tem cartão (customer no Pagar.me existe) mas está sem telefone válido. ClassPass nunca exige.
   const precisaTelefone = () => !cliente?.is_classpass && !!cliente?.pagarme_card_id && !telefoneValido(cliente?.telefone)
@@ -145,6 +150,9 @@ function MapaPageInner() {
         .eq('cliente_id', data.id)
         .or('tipo_credito.ilike.wellhub*,tipo_credito.ilike.totalpass*')
       setJaUsouParceiroClub((countParceiro || 0) > 0)
+      // Enquetes que este cliente já respondeu (não pergunta de novo)
+      const { data: enq } = await supabase.from('enquete_respostas').select('enquete').eq('cliente_id', data.id)
+      setEnqueteFeitas((enq || []).map((e: any) => e.enquete))
     }
   }
 
@@ -201,8 +209,28 @@ function MapaPageInner() {
       }).catch(() => {})
     } catch {}
   }
+  // Grava o voto da enquete DEPOIS que a reserva já entrou (fire-and-forget).
+  // Falha aqui não pode, em hipótese alguma, atrapalhar a reserva.
+  async function gravarEnquete(chave: string, opcao: string) {
+    if (!cliente || !opcao) return
+    try {
+      const { error } = await supabase.from('enquete_respostas').insert({
+        enquete: chave,
+        cliente_id: cliente.id,
+        opcao,
+        unidade_id: unidadeId,
+        horario: (ocorrencia?.club_aulas?.horario || '').slice(0, 5),
+        ocorrencia_id: ocId,
+      })
+      // 23505 = já respondeu (corrida entre abas): também conta como respondida
+      if (!error || (error as any).code === '23505') setEnqueteFeitas(prev => [...prev, chave])
+    } catch {}
+  }
   // Gate da 1ª reserva com crédito de parceiro: certifica o tier mínimo (Wellhub Gold+ / TotalPass TP3+) antes de gravar
   function handleConfirmarReserva(continuar: boolean = false) {
+    // Enquete é obrigatória (só aparece uma vez por cliente).
+    // Barra aqui também pra não abrir o modal de certificação e só depois reclamar.
+    if (enqueteAtiva && !enqueteOpcao) { setErroModal('Escolha uma opção na pergunta acima para continuar.'); return }
     const ehParceiro = /^wellhub/i.test(tipoCredito) || /^totalpass/i.test(tipoCredito)
     if (ehParceiro && !jaUsouParceiroClub) {
       setAceiteCertParceiro(false); setCertContinuar(continuar); setModalCertParceiro(true); return
@@ -211,6 +239,7 @@ function MapaPageInner() {
   }
   async function confirmarReserva(continuar: boolean = false) {
     if (!tipoCredito) { setErroModal('Selecione o plano.'); return }
+    if (enqueteAtiva && !enqueteOpcao) { setErroModal('Escolha uma opção na pergunta acima para continuar.'); return }
     if (!posicaoSel || !cliente) return
     setConfirmando(true); setErroModal('')
     // Trava anti-aba-velha: bloqueia reservar aula que já começou. A lista (/aulas) esconde
@@ -246,6 +275,7 @@ function MapaPageInner() {
     }
     // Confirmação por email — dispara nos dois caminhos (continuar e sair) logo após o insert.
     if (novaReserva?.id) dispararEmailReserva(novaReserva.id)
+    if (enqueteAtiva && enqueteOpcao) gravarEnquete(enqueteAtiva.chave, enqueteOpcao)
     if (continuar) {
       // Reserva feita, mas fica na mesma tela pra escolher outra posição
       setConfirmando(false)
@@ -259,6 +289,10 @@ function MapaPageInner() {
     }
     router.push('/minha-conta')
   }
+
+  // Enquete de horário desta aula (null quando não se aplica ou o cliente já respondeu)
+  const enqueteDaAula = enqueteDoHorario(unidadeId, ocorrencia?.club_aulas?.horario)
+  const enqueteAtiva  = enqueteDaAula && !enqueteFeitas.includes(enqueteDaAula.chave) ? enqueteDaAula : null
 
   const planosDisponiveis = Object.entries(saldo).filter(([,v]:any) => v?.disponivel > 0).map(([k]) => k)
   // Avulso disponível (crédito importado/legado)
@@ -483,6 +517,11 @@ function MapaPageInner() {
               marginBottom:'1rem', fontSize:12, color:'#444', lineHeight:1.6 }}>
               ⚠️ Cancelamento gratuito <strong style={{ color:'#666' }}>até 12h antes</strong>. Falta sem aviso gera multa de R$49,90.
             </div>
+
+            {enqueteAtiva && (
+              <EnqueteHorario enquete={enqueteAtiva} valor={enqueteOpcao}
+                onChange={(v) => { setEnqueteOpcao(v); setErroModal('') }} />
+            )}
 
             {erroModal && (
               <div style={{ background:'#ff2d9b15', border:'1px solid #ff2d9b44', borderRadius:8,
