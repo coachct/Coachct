@@ -33,6 +33,42 @@ const ENDERECOS_UNIDADES: Record<string, string> = {
   'JustClub Pinheiros': 'Rua Deputado Lacerda Franco, 342 — Pinheiros, São Paulo',
 }
 
+// --- Enquete de horário da noite (JustClub Vila Olímpia) ---------------------
+// Caixinha OPCIONAL dentro da confirmação de reserva das aulas de 18:30 e 19:30.
+// Cada cliente responde uma única vez por horário (unique enquete+cliente no banco).
+// Regra de ouro: não encosta no fluxo de reserva. O voto é gravado DEPOIS que a
+// reserva já entrou, fire-and-forget — se falhar, a reserva vale do mesmo jeito.
+// Para encerrar antes do prazo, é só mudar ENQUETE_HORARIO_ATE para uma data passada.
+const ENQUETE_HORARIO_UNIDADE = '05eeab3e-5eae-4140-bc3a-1c1d56ac95be' // JustClub Vila Olímpia
+const ENQUETE_HORARIO_ATE     = '2026-09-19' // último dia em que a caixinha aparece
+const ENQUETE_HORARIO: Record<string, { chave: string; pergunta: string; opcoes: { valor: string; label: string }[] }> = {
+  '18:30': {
+    chave: 'horario_noite_vo_1830',
+    pergunta: 'Esta aula das 18:30 seria melhor em outro horário?',
+    opcoes: [
+      { valor: '18:00',     label: 'Sim, às 18:00' },
+      { valor: '18:15',     label: 'Sim, às 18:15' },
+      { valor: 'manter',    label: 'Prefiro manter às 18:30' },
+      { valor: 'tanto_faz', label: 'Tanto faz' },
+    ],
+  },
+  '19:30': {
+    chave: 'horario_noite_vo_1930',
+    pergunta: 'Esta aula das 19:30 seria melhor em outro horário?',
+    opcoes: [
+      { valor: '19:00',     label: 'Sim, às 19:00' },
+      { valor: '19:15',     label: 'Sim, às 19:15' },
+      { valor: 'manter',    label: 'Prefiro manter às 19:30' },
+      { valor: 'tanto_faz', label: 'Tanto faz' },
+    ],
+  },
+}
+function enqueteDoHorario(unidadeId: string, horario: string) {
+  if (unidadeId !== ENQUETE_HORARIO_UNIDADE) return null
+  if (hojeSP() > ENQUETE_HORARIO_ATE) return null
+  return ENQUETE_HORARIO[(horario || '').slice(0, 5)] || null
+}
+
 const DIAS_ABREV  = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB']
 const MESES_ABREV = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ']
 
@@ -171,6 +207,9 @@ function AulasPageInner() {
   const [jaUsouParceiroClub, setJaUsouParceiroClub] = useState(false)
   const [modalCertParceiro,  setModalCertParceiro]  = useState(false)
   const [aceiteCertParceiro, setAceiteCertParceiro] = useState(false)
+  // Enquete de horário: chaves que este cliente já respondeu + opção marcada no modal aberto
+  const [enqueteFeitas, setEnqueteFeitas] = useState<string[]>([])
+  const [enqueteOpcao,  setEnqueteOpcao]  = useState('')
 
   // Toda a grade parte do "hoje" em São Paulo, não do relógio do dispositivo: cliente
   // em outro fuso (ClassPass fora do Brasil) via o dia errado e as aulas de hoje
@@ -285,6 +324,9 @@ function AulasPageInner() {
         .eq('cliente_id', data.id)
         .or('tipo_credito.ilike.wellhub*,tipo_credito.ilike.totalpass*')
       setJaUsouParceiroClub((countParceiro || 0) > 0)
+      // Enquetes que este cliente já respondeu (não pergunta de novo)
+      const { data: enq } = await supabase.from('enquete_respostas').select('enquete').eq('cliente_id', data.id)
+      setEnqueteFeitas((enq || []).map((e: any) => e.enquete))
     }
   }
   async function carregarSaldo() {
@@ -411,6 +453,7 @@ function AulasPageInner() {
   }
   async function abrirModalReserva(oc: any, soAvulso: boolean = false) {
     setModalReserva(oc); setPosicaoSel(''); setErroModal(''); setModalSoAvulso(soAvulso); setAvisoLotou(false)
+    setEnqueteOpcao('')
     // NÃO pré-preencher com o email da conta: quase nunca é o email do Wellhub, e a
     // pessoa confirmava o errado sem perceber. Vazio força digitar o email certo.
     setWellhubEmailInput(cliente?.wellhub_email || '')
@@ -431,6 +474,23 @@ function AulasPageInner() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ tipo: 'club', reservaId }),
       }).catch(() => {})
+    } catch {}
+  }
+  // Grava o voto da enquete DEPOIS que a reserva já entrou (fire-and-forget).
+  // Falha aqui não pode, em hipótese alguma, atrapalhar a reserva.
+  async function gravarEnquete(chave: string, opcao: string, oc: any) {
+    if (!cliente || !opcao) return
+    try {
+      const { error } = await supabase.from('enquete_respostas').insert({
+        enquete: chave,
+        cliente_id: cliente.id,
+        opcao,
+        unidade_id: unidadeId,
+        horario: (oc?.club_aulas?.horario || '').slice(0, 5),
+        ocorrencia_id: oc?.id || null,
+      })
+      // 23505 = já respondeu (corrida entre abas): também conta como respondida
+      if (!error || (error as any).code === '23505') setEnqueteFeitas(prev => [...prev, chave])
     } catch {}
   }
   // Gate da 1ª reserva com crédito de parceiro: certifica o tier mínimo (Wellhub Gold+ / TotalPass TP3+)
@@ -498,6 +558,7 @@ function AulasPageInner() {
       setErroModal(msg); setConfirmando(false); return
     }
     if (nova?.id) dispararEmailReserva(nova.id)
+    if (enqueteAtiva && enqueteOpcao) gravarEnquete(enqueteAtiva.chave, enqueteOpcao, modalReserva)
     setConfirmando(false); setModalReserva(null); setModalSoAvulso(false)
     // Reserva Wellhub (Club): oferece o Check-in Express (email Wellhub + foto) antes de sair
     if (/^wellhub/i.test(tipoCredito) && !cliente?.is_classpass) { setCardCheckin(true); return }
@@ -542,6 +603,10 @@ function AulasPageInner() {
   const temAvulsoDisponivel = avulsoDisponiveis.length > 0
   // Planos oferecidos no modal: só-avulso quando for reserva-extra; senão todos
   const planosNoModal = modalSoAvulso ? avulsoDisponiveis : planosDisponiveis
+
+  // Enquete de horário do modal aberto (null quando não se aplica ou já respondida)
+  const enqueteDoModal = modalReserva ? enqueteDoHorario(unidadeId, modalReserva.club_aulas?.horario) : null
+  const enqueteAtiva   = enqueteDoModal && !enqueteFeitas.includes(enqueteDoModal.chave) ? enqueteDoModal : null
   function vagasInfo(oc: any) {
     const cap=oc.club_aulas?.capacidade||0; const usadas=reservasCont[oc.id]||0
     const isRunning=oc.club_aulas?.tipo==='running_funcional'
@@ -1097,6 +1162,27 @@ function AulasPageInner() {
                       Uso este: {cliente.email}
                     </button>
                   )}
+                </div>
+              )}
+              {enqueteAtiva && (
+                <div style={{ background:'#0a1520', border:`1px solid ${CYAN}33`, borderRadius:12, padding:'1rem 1.1rem', marginBottom:'1.25rem' }}>
+                  <div style={{ fontSize:13, fontWeight:700, color:CYAN, marginBottom:4 }}>💬 Ajude-nos a melhorar ainda mais a Just</div>
+                  <div style={{ fontSize:13, color:'#bbb', lineHeight:1.5, marginBottom:12 }}>{enqueteAtiva.pergunta}</div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                    {enqueteAtiva.opcoes.map(op => {
+                      const sel = enqueteOpcao === op.valor
+                      return (
+                        <div key={op.valor} onClick={() => setEnqueteOpcao(sel ? '' : op.valor)}
+                          style={{ border:`1.5px solid ${sel?CYAN:'#1f2a33'}`, background:sel?`${CYAN}15`:'transparent', borderRadius:9, padding:'0.6rem 0.85rem', cursor:'pointer', display:'flex', alignItems:'center', gap:'0.65rem', transition:'all .15s' }}>
+                          <div style={{ width:15, height:15, borderRadius:'50%', border:`2px solid ${sel?CYAN:'#39434d'}`, background:sel?CYAN:'transparent', flexShrink:0 }}/>
+                          <span style={{ fontSize:13, color:sel?'#fff':'#8b97a3' }}>{op.label}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <div style={{ fontSize:11, color:'#4a5761', marginTop:10, lineHeight:1.5 }}>
+                    Opcional — pode confirmar a reserva sem responder. Você responde uma única vez.
+                  </div>
                 </div>
               )}
               {erroModal && <div style={{ background:'#ff2d9b15', border:'1px solid #ff2d9b44', borderRadius:8, padding:'0.6rem 1rem', fontSize:13, color:ACCENT, marginBottom:'1rem' }}>{erroModal}</div>}
