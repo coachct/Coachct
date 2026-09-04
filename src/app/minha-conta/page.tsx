@@ -175,6 +175,13 @@ export default function MinhaContaPage() {
   // ── Alterar telefone ──
   const [modalTelefone, setModalTelefone] = useState(false)
 
+  // ── Check-in Express (rosto) ─────────────────────────────────────────────
+  // null = ainda não sabemos. O convite de cadastro só ocupa o topo da página
+  // enquanto NÃO há rosto salvo; depois vira uma linha em "Minha conta", com
+  // o refazer num modal. O topo é espaço de aviso, não de tarefa já cumprida.
+  const [rostoCadastrado, setRostoCadastrado] = useState<boolean | null>(null)
+  const [modalRosto, setModalRosto] = useState(false)
+
   // ── Crédito extra por aula (apps parceiros) ──────────────────────────────
   // Bloco à parte, NUNCA dentro do saldoAtual: aquele mapa é a lista de planos
   // agendáveis e uma chave a mais viraria um plano fantasma. Uma entrada por
@@ -200,6 +207,20 @@ export default function MinhaContaPage() {
   }, [user, perfil, loading])
 
   useEffect(() => { if (perfil) loadDados() }, [perfil])
+  useEffect(() => { if (perfil) carregarStatusRosto() }, [perfil])
+
+  // Se a consulta falhar, fica em `false` — a tela volta a oferecer o cadastro,
+  // que é o comportamento antigo. Nunca esconde por causa de erro de rede.
+  async function carregarStatusRosto() {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) { setRostoCadastrado(false); return }
+      const r = await fetch('/api/conta/status-rosto', {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      }).then(x => x.json()).catch(() => null)
+      setRostoCadastrado(!!r?.cadastrado)
+    } catch { setRostoCadastrado(false) }
+  }
 
   async function loadDados() {
     const { data: cli } = await supabase.from('clientes').select('*').eq('user_id', perfil!.id).maybeSingle()
@@ -662,9 +683,6 @@ export default function MinhaContaPage() {
           <div style={{fontSize:13,color:'#555',marginTop:3}}>Área do aluno</div>
         </div>
 
-        {/* ── CADASTRO FACIAL (Check-in Express) ── */}
-        <CadastroRosto />
-
         {/* ── BANNER BLOQUEIO ── */}
         {estaBloqueado && (
           temCobrancaPendente ? (
@@ -700,6 +718,31 @@ export default function MinhaContaPage() {
               </div>
             </div>
           )
+        )}
+
+        {/* ══════════════════════════════════════════
+            AVISOS IMPORTANTES
+            O topo da página é reservado a comunicado — o que a pessoa precisa
+            saber AGORA. Tarefa já cumprida (rosto cadastrado) não mora aqui.
+        ══════════════════════════════════════════ */}
+        {creditosExtras.filter(ce => ce.status.mostra_aviso && ce.status.aviso).map(ce => (
+          <div key={`aviso-${ce.unidadeId}`} style={{background:'#120d00',border:`1.5px solid ${AMARELO}55`,borderRadius:14,padding:'1.25rem',marginBottom:'1.5rem',animation:'fadeIn .2s ease'}}>
+            <div style={{display:'flex',gap:12,alignItems:'flex-start'}}>
+              <span style={{fontSize:22,flexShrink:0}}>📣</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:18,color:AMARELO,letterSpacing:1,marginBottom:6}}>
+                  AVISO IMPORTANTE · {ce.unidadeNome}
+                </div>
+                <div style={{fontSize:13.5,color:'#ffddaa',lineHeight:1.7}}>{ce.status.aviso}</div>
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {/* Convite do Check-in Express — só enquanto NÃO há rosto cadastrado.
+            Depois de cadastrado ele vira uma linha em "Minha conta". */}
+        {rostoCadastrado === false && (
+          <CadastroRosto onCadastrado={()=>setRostoCadastrado(true)} />
         )}
 
         {/* ── BOTÕES DE AÇÃO ── */}
@@ -911,12 +954,8 @@ export default function MinhaContaPage() {
                     </div>
                   </div>
 
-                  {ce.status.mostra_aviso && ce.status.aviso && (
-                    <div style={{marginTop:10,background:'#1a1000',border:`1px solid ${AMARELO}33`,borderRadius:10,padding:'0.7rem 0.9rem',fontSize:12,color:'#ccc',lineHeight:1.7}}>
-                      <span style={{color:AMARELO,fontWeight:700}}>⚠️ </span>{ce.status.aviso}
-                    </div>
-                  )}
-
+                  {/* O texto do aviso não se repete aqui — ele abre a página,
+                      no bloco de AVISOS IMPORTANTES. */}
                   {(ce.status.produtos||[]).length > 0 && (
                     <button onClick={()=>setCompraExtra(ce)}
                       style={{marginTop:10,width:'100%',background:'transparent',color:ACCENT,border:`1px solid ${ACCENT}44`,borderRadius:10,padding:'0.6rem',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
@@ -1132,6 +1171,25 @@ export default function MinhaContaPage() {
             <div style={{fontSize:11,color:'#555',marginTop:6,lineHeight:1.5}}>Necessário para aulas exclusivas, como a Lift for Girls.</div>
           </div>
 
+          {/* Check-in Express — mora aqui depois de cadastrado. Fica acessível
+              para trocar a foto, sem ocupar o topo da página. */}
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,padding:'0.75rem 0',borderBottom:'1px solid #181818'}}>
+            <div style={{minWidth:0}}>
+              <div style={{fontSize:13,color:'#444'}}>Check-in Express</div>
+              <div style={{fontSize:11,color:'#555',marginTop:3,lineHeight:1.5}}>
+                {rostoCadastrado
+                  ? 'Foto cadastrada — é só chegar ao totem.'
+                  : 'Sem foto. Cadastre para entrar sem digitar CPF.'}
+              </div>
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
+              {rostoCadastrado && <span style={{fontSize:12,color:VERDE,fontWeight:600,whiteSpace:'nowrap'}}>✓ Ativo</span>}
+              <button onClick={()=>setModalRosto(true)} style={{background:'transparent',border:`1px solid ${ACCENT}44`,borderRadius:8,padding:'0.2rem 0.6rem',fontSize:11,color:ACCENT,fontWeight:600,cursor:'pointer',fontFamily:"'DM Sans', sans-serif",whiteSpace:'nowrap'}}>
+                {rostoCadastrado ? 'Trocar foto' : 'Cadastrar'}
+              </button>
+            </div>
+          </div>
+
           <button onClick={abrirModalSenha} style={{width:'100%',marginTop:'1rem',background:'transparent',border:`1px solid ${ACCENT}44`,borderRadius:10,padding:'0.7rem',fontSize:13,color:ACCENT,fontWeight:600,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
             🔑 Alterar senha
           </button>
@@ -1145,6 +1203,29 @@ export default function MinhaContaPage() {
           </span>
         </div>
       </div>
+
+      {/* ══════════════════════════════════════════
+          MODAL — CHECK-IN EXPRESS (cadastrar/trocar foto)
+      ══════════════════════════════════════════ */}
+      {modalRosto && (
+        <div style={{position:'fixed',inset:0,background:'#000000dd',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
+          <div style={{background:'#111',border:'1px solid #333',borderRadius:20,width:'100%',maxWidth:420,padding:'1.5rem',maxHeight:'92vh',overflowY:'auto'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10,marginBottom:'1rem'}}>
+              <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:20,color:'#fff',letterSpacing:1}}>
+                {rostoCadastrado ? '📸 TROCAR FOTO DO CHECK-IN' : '📸 CHECK-IN EXPRESS'}
+              </div>
+              <button onClick={()=>setModalRosto(false)} style={{background:'transparent',border:'none',color:'#555',fontSize:20,cursor:'pointer',lineHeight:1}}>✕</button>
+            </div>
+            <CadastroRosto
+              semMoldura
+              textoIdle={rostoCadastrado
+                ? 'Sua foto atual será substituída pela nova. O check-in continua funcionando normalmente.'
+                : 'Cadastre seu rosto uma vez e faça o check-in nas unidades só chegando ao totem — sem digitar CPF.'}
+              onCadastrado={()=>setRostoCadastrado(true)}
+            />
+          </div>
+        </div>
+      )}
 
       {/* ══════════════════════════════════════════
           MODAL — COMPRAR CRÉDITO DE AULA

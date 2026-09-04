@@ -9,7 +9,17 @@ type Fase = 'idle' | 'consent' | 'capture' | 'saving' | 'done' | 'erro'
 
 const PINK = '#ff2d8e'
 
-export default function CadastroRosto() {
+export default function CadastroRosto({
+  onCadastrado,
+  semMoldura = false,
+  textoIdle,
+}: {
+  // Avisa a tela que o rosto foi salvo (ela some com o convite e atualiza o status).
+  onCadastrado?: () => void
+  // Dentro de um modal a moldura de card sobra — o modal já é a moldura.
+  semMoldura?: boolean
+  textoIdle?: string
+} = {}) {
   const [fase, setFase] = useState<Fase>('idle')
   const [consentOk, setConsentOk] = useState(false)
   const [msg, setMsg] = useState('Posicione seu rosto, boa luz, sem boné')
@@ -69,15 +79,17 @@ export default function CadastroRosto() {
       }).then(x => x.json()).catch(() => ({}))
 
       stopCam()
-      if (r?.ok) setFase('done')
+      if (r?.ok) { setFase('done'); onCadastrado?.() }
       else { setErro('Não deu para salvar agora. Tente novamente.'); setFase('erro') }
     } catch { setErro('Falha ao processar o rosto. Tente novamente.'); setFase('erro') }
   }
 
-  const card: React.CSSProperties = {
-    background: '#0d0d0d', border: '1px solid #222', borderRadius: 14,
-    padding: '1.25rem', marginBottom: '1.5rem', fontFamily: "'DM Sans', sans-serif",
-  }
+  const card: React.CSSProperties = semMoldura
+    ? { fontFamily: "'DM Sans', sans-serif" }
+    : {
+        background: '#0d0d0d', border: '1px solid #222', borderRadius: 14,
+        padding: '1.25rem', marginBottom: '1.5rem', fontFamily: "'DM Sans', sans-serif",
+      }
   const titulo: React.CSSProperties = { fontFamily: "'Bebas Neue', sans-serif", fontSize: 18, color: '#fff', letterSpacing: 1, marginBottom: 4 }
   const btn: React.CSSProperties = {
     width: '100%', background: PINK, color: '#fff', border: 'none', borderRadius: 10,
@@ -87,12 +99,12 @@ export default function CadastroRosto() {
 
   return (
     <div style={card}>
-      <div style={titulo}>📸 CADASTRO PARA FOTO DO CHECK-IN EXPRESS</div>
+      {!semMoldura && <div style={titulo}>📸 CADASTRO PARA FOTO DO CHECK-IN EXPRESS</div>}
 
       {fase === 'idle' && (
         <>
           <div style={{ fontSize: 13, color: '#999', lineHeight: 1.6, marginBottom: '1rem' }}>
-            Cadastre seu rosto uma vez e faça o check-in nas unidades só chegando ao totem — <b style={{ color: '#ccc' }}>sem digitar CPF</b>.
+            {textoIdle || <>Cadastre seu rosto uma vez e faça o check-in nas unidades só chegando ao totem — <b style={{ color: '#ccc' }}>sem digitar CPF</b>.</>}
           </div>
           <button style={btn} onClick={() => { setConsentOk(false); setFase('consent') }}>Cadastrar meu rosto</button>
         </>
