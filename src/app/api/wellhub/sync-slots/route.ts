@@ -2,11 +2,17 @@
 //
 // Worker de sincronização da capacidade Wellhub (rede de segurança + tempo real).
 //
-// Lê a fila wellhub_slot_sync_queue (alimentada pelo trigger trg_sync_wellhub a
-// cada escrita em club_reservas), recomputa o pool com wellhub_slot_numbers e
+// Lê a fila wellhub_slot_sync_queue (alimentada pelos triggers trg_sync_wellhub,
+// a cada escrita em club_reservas, e trg_sync_wellhub_ocorrencia, a cada mudança
+// de status/vagas da ocorrência), recomputa o pool com wellhub_slot_numbers e
 // empurra o valor ABSOLUTO pro slot do Wellhub via patchSlotNumbers. Idempotente:
 // nunca manda delta. Roda por cron (a cada 1-2 min) e conserta qualquer PATCH
 // perdido.
+//
+// Ocorrência CANCELADA (feriado, por exemplo) fecha o slot: a Booking API do
+// Wellhub não deleta slot nem classe (só dá pra mexer em total_capacity/
+// total_booked, e classe some via visible=false), então "cancelar" ali é zerar a
+// capacidade. Ver fecharSlot().
 //
 // Protegido pelo segredo do cron (Authorization: Bearer CRON_SECRET), igual à
 // rota processar-notificacoes.
@@ -72,11 +78,28 @@ async function tirarDaFila(supabase: SupabaseClient, ocId: string, enfileiradoEm
 
 type Resultado = 'sync' | 'skip' | 'erro'
 
+// Fecha o slot no Wellhub: sem DELETE na API, capacidade zero é o que tira a
+// aula de circulação. Se a API recusar o zero (nem toda conta aceita), cai pro
+// "esgotado": capacidade igual ao que já está reservado.
+//
+// ⚠️ Reserva Wellhub JÁ FEITA numa aula cancelada não é desfeita por aqui — o
+// PATCH de booking só aceita REJECTED na janela de 15 min do pedido. Fechar o
+// slot impede reserva NOVA; quem já reservou precisa ser avisado pela equipe.
+async function fecharSlot(
+  gymId: string, classId: string, slotId: string, jaReservados: number
+) {
+  const zerado = await patchSlotNumbers(gymId, classId, slotId, { total_capacity: 0, total_booked: 0 })
+  if (zerado.ok) return zerado
+  console.warn('[wellhub/sync] zerar capacidade falhou, tentando esgotado:', slotId, zerado.status, zerado.erro)
+  const cheio = Math.max(1, jaReservados)
+  return patchSlotNumbers(gymId, classId, slotId, { total_capacity: cheio, total_booked: cheio })
+}
+
 async function processarItem(supabase: SupabaseClient, ocId: string, enfileiradoEm: string): Promise<Resultado> {
   // Resolve unidade + estado + gym a partir da ocorrência.
   const { data: info } = await supabase
     .from('club_ocorrencias')
-    .select('id, club_aulas(unidade_id, unidades(wellhub_estado, wellhub_gym_id))')
+    .select('id, status, club_aulas(unidade_id, unidades(wellhub_estado, wellhub_gym_id))')
     .eq('id', ocId)
     .maybeSingle()
 
@@ -110,10 +133,15 @@ async function processarItem(supabase: SupabaseClient, ocId: string, enfileirado
     return 'skip'
   }
 
-  const resp = await patchSlotNumbers(gymId, (map as any).wellhub_class_id, (map as any).wellhub_slot_id, {
-    total_capacity: nums.total_capacity,
-    total_booked: nums.total_booked,
-  })
+  // Ocorrência cancelada → fecha o slot. O wellhub_slot_numbers não olha o status
+  // (ele calcula o pool da aula), então quem decide é aqui. O mapa FICA: se a
+  // ocorrência voltar a ativa, a rodada seguinte reabre a capacidade sozinha.
+  const resp = (info as any).status === 'cancelada'
+    ? await fecharSlot(gymId, (map as any).wellhub_class_id, (map as any).wellhub_slot_id, nums.total_booked ?? 0)
+    : await patchSlotNumbers(gymId, (map as any).wellhub_class_id, (map as any).wellhub_slot_id, {
+        total_capacity: nums.total_capacity,
+        total_booked: nums.total_booked,
+      })
 
   if (resp.ok) {
     await tirarDaFila(supabase, ocId, enfileiradoEm)
