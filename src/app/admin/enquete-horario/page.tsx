@@ -10,20 +10,18 @@ const ENQUETES = [
     chave: 'horario_noite_vo_1830',
     titulo: 'Aula das 18:30 · JustClub Vila Olímpia',
     opcoes: [
-      { valor: '18:00',     label: 'Antecipar para 18:00' },
-      { valor: '18:15',     label: 'Antecipar para 18:15' },
-      { valor: 'manter',    label: 'Manter às 18:30' },
-      { valor: 'tanto_faz', label: 'Tanto faz' },
+      { valor: '18:00',  label: 'Antecipar para 18:00' },
+      { valor: '18:15',  label: 'Antecipar para 18:15' },
+      { valor: 'manter', label: 'Manter às 18:30' },
     ],
   },
   {
     chave: 'horario_noite_vo_1930',
     titulo: 'Aula das 19:30 · JustClub Vila Olímpia',
     opcoes: [
-      { valor: '19:00',     label: 'Antecipar para 19:00' },
-      { valor: '19:15',     label: 'Antecipar para 19:15' },
-      { valor: 'manter',    label: 'Manter às 19:30' },
-      { valor: 'tanto_faz', label: 'Tanto faz' },
+      { valor: '19:00',  label: 'Antecipar para 19:00' },
+      { valor: '19:15',  label: 'Antecipar para 19:15' },
+      { valor: 'manter', label: 'Manter às 19:30' },
     ],
   },
 ]
