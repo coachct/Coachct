@@ -34,10 +34,13 @@ const ENDERECOS_UNIDADES: Record<string, string> = {
 }
 
 // --- Enquete de horário da noite (JustClub Vila Olímpia) ---------------------
-// Caixinha OPCIONAL dentro da confirmação de reserva das aulas de 18:30 e 19:30.
+// Caixinha dentro da confirmação de reserva das aulas de 18:30 e 19:30.
 // Cada cliente responde uma única vez por horário (unique enquete+cliente no banco).
-// Regra de ouro: não encosta no fluxo de reserva. O voto é gravado DEPOIS que a
-// reserva já entrou, fire-and-forget — se falhar, a reserva vale do mesmo jeito.
+// Responder é obrigatório pra confirmar a reserva (decisão do Ricardo: senão a
+// pesquisa não fecha) — 'Tanto faz' é a saída pra quem não tem preferência, e a
+// pergunta só aparece uma vez na vida do cliente.
+// O voto é gravado DEPOIS que a reserva já entrou, fire-and-forget: se a gravação
+// falhar, a reserva vale do mesmo jeito (e a pergunta volta na próxima reserva).
 // Para encerrar antes do prazo, é só mudar ENQUETE_HORARIO_ATE para uma data passada.
 const ENQUETE_HORARIO_UNIDADE = '05eeab3e-5eae-4140-bc3a-1c1d56ac95be' // JustClub Vila Olímpia
 const ENQUETE_HORARIO_ATE     = '2026-09-19' // último dia em que a caixinha aparece
@@ -496,6 +499,9 @@ function AulasPageInner() {
   // Gate da 1ª reserva com crédito de parceiro: certifica o tier mínimo (Wellhub Gold+ / TotalPass TP3+)
   // antes de gravar. Se ainda falta o email do Wellhub, deixa o confirmarReserva cobrar isso primeiro.
   function handleConfirmarReserva() {
+    // Enquete é obrigatória (só aparece uma vez por cliente, e "Tanto faz" é saída válida).
+    // Barra aqui também pra não abrir o modal de certificação e só depois reclamar.
+    if (enqueteAtiva && !enqueteOpcao) { setErroModal('Escolha uma opção na pergunta acima para continuar.'); return }
     const ehParceiro = /^wellhub/i.test(tipoCredito) || /^totalpass/i.test(tipoCredito)
     const faltaEmailWellhub = /^wellhub/i.test(tipoCredito) && !cliente?.wellhub_id && !cliente?.wellhub_email
       && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(wellhubEmailInput.trim())
@@ -507,6 +513,7 @@ function AulasPageInner() {
   async function confirmarReserva() {
     if (!tipoCredito) { setErroModal('Selecione o plano para usar.'); return }
     if (modalReserva?.club_aulas?.tipo === 'running_funcional' && !posicaoSel) { setErroModal('Selecione sua posição no mapa.'); return }
+    if (enqueteAtiva && !enqueteOpcao) { setErroModal('Escolha uma opção na pergunta acima para continuar.'); return }
     if (!cliente || !modalReserva) return
     setConfirmando(true); setErroModal('')
     // Wellhub sem vínculo: EXIGE o email do Wellhub (bloqueia a reserva até informar).
@@ -1172,7 +1179,7 @@ function AulasPageInner() {
                     {enqueteAtiva.opcoes.map(op => {
                       const sel = enqueteOpcao === op.valor
                       return (
-                        <div key={op.valor} onClick={() => setEnqueteOpcao(sel ? '' : op.valor)}
+                        <div key={op.valor} onClick={() => { setEnqueteOpcao(op.valor); setErroModal('') }}
                           style={{ border:`1.5px solid ${sel?CYAN:'#1f2a33'}`, background:sel?`${CYAN}15`:'transparent', borderRadius:9, padding:'0.6rem 0.85rem', cursor:'pointer', display:'flex', alignItems:'center', gap:'0.65rem', transition:'all .15s' }}>
                           <div style={{ width:15, height:15, borderRadius:'50%', border:`2px solid ${sel?CYAN:'#39434d'}`, background:sel?CYAN:'transparent', flexShrink:0 }}/>
                           <span style={{ fontSize:13, color:sel?'#fff':'#8b97a3' }}>{op.label}</span>
@@ -1181,7 +1188,7 @@ function AulasPageInner() {
                     })}
                   </div>
                   <div style={{ fontSize:11, color:'#4a5761', marginTop:10, lineHeight:1.5 }}>
-                    Opcional — pode confirmar a reserva sem responder. Você responde uma única vez.
+                    Escolha uma opção para confirmar a reserva. Você responde uma única vez — depois disso não perguntamos mais.
                   </div>
                 </div>
               )}

@@ -89,7 +89,7 @@ export default function EnqueteHorarioPage() {
     <div>
       <PageHeader
         title="Enquete de horário · aulas da noite"
-        subtitle="Respondida na confirmação de reserva pelo site (Vila Olímpia). Uma resposta por cliente por horário — quem reserva pelo app do Wellhub/TotalPass não é perguntado."
+        subtitle="Obrigatória na confirmação de reserva pelo site (Vila Olímpia), uma única vez por cliente por horário. Quem reserva pelo app do Wellhub/TotalPass não passa por essa tela e não é perguntado."
       />
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
