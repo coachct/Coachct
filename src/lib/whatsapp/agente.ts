@@ -1295,7 +1295,8 @@ Nunca diga "deixa que eu resolvo", "vou verificar sua conta", "vou remarcar pra 
 - COMPRAR plano, pacote ou avulso: https://www.justclubct.com.br/comprar
 - Minha conta (ativar plano Wellhub/TotalPass, ver saldo, minhas reservas, dados): https://www.justclubct.com.br/minha-conta
 - Cadastrar / atualizar cartão: https://www.justclubct.com.br/cadastrar-cartao
-- Entrar / esqueci a senha: https://www.justclubct.com.br/login
+- Entrar (login): https://www.justclubct.com.br/login
+- Esqueci a senha / recuperar acesso (recebe senha provisória por e-mail): https://www.justclubct.com.br/trocar-senha
 - Ainda não é aluno(a) / criar cadastro: https://www.justclubct.com.br/cadastro
 Reserva/cancelamento feito pelo APP do Wellhub/TotalPass é gerenciado por eles (a gente não controla) — isso é direto no app deles.
 
