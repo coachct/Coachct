@@ -35,6 +35,7 @@ function CheckoutContent() {
   const [etapa, setEtapa] = useState<Etapa>('auth')
   const [metodo, setMetodo] = useState<MetodoPagamento>('cartao')
   const [parcelas, setParcelas] = useState(1)
+  const [quantidade, setQuantidade] = useState(1)
   const [erro, setErro] = useState('')
 
   // Cupom de desconto (só cartão)
@@ -222,6 +223,7 @@ function CheckoutContent() {
         cliente_id: cliente.id,
         metodo: metodo === 'cartao' ? 'cartao_credito' : 'pix',
         parcelas,
+        quantidade: qtdCompra,
       }
 
       // Cadastro sem CPF: manda o CPF informado aqui pra API validar e gravar.
@@ -337,6 +339,10 @@ function CheckoutContent() {
         return `${p.creditos_por_venda} créditos · válidos por ${p.dias_validade} dias a partir da compra · Todas as unidades`
       case 'ilimitado_club':
         return `30 créditos/mês por 6 meses · Renovação mensal na data da compra · JustClub + Just CT`
+      case 'credito_extra':
+        return p.creditos_por_venda > 1
+          ? `${p.creditos_por_venda} créditos de aula · sem validade · Just CT`
+          : `1 crédito de aula · sem validade · Just CT`
       case 'credito':
       default:
         return `1 crédito · válido por ${p.dias_validade || 30} dias`
@@ -377,7 +383,12 @@ function CheckoutContent() {
   const valor = Number(produto.valor)
   const maxParcelas = produto.max_parcelas || 1
   const descontoPct = (cupomAplicado && metodo === 'cartao') ? Number(cupomAplicado.desconto_percentual) : 0
-  const valorFinal = descontoPct > 0 ? Math.round(valor * (1 - descontoPct / 100) * 100) / 100 : valor
+  // Crédito extra de aula (unitário) é o único produto com quantidade livre no
+  // site — os demais seguem em 1 por compra, como sempre foi.
+  const permiteQuantidade = produto.subtipo === 'credito_extra' && Number(produto.creditos_por_venda) === 1
+  const qtdCompra = permiteQuantidade ? quantidade : 1
+  const valorUnitFinal = descontoPct > 0 ? Math.round(valor * (1 - descontoPct / 100) * 100) / 100 : valor
+  const valorFinal = Math.round(valorUnitFinal * qtdCompra * 100) / 100
 
   return (
     <div style={{ background: '#080808', minHeight: '100vh', color: '#f0f0f0', fontFamily: "'DM Sans', sans-serif" }}>
@@ -419,10 +430,28 @@ function CheckoutContent() {
                 {descricaoProduto(produto)}
               </div>
             </div>
-            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: '#fff', lineHeight: 1, whiteSpace: 'nowrap' as const }}>
-              {formatarValor(valor)}
+            <div style={{ textAlign: 'right' as const }}>
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: '#fff', lineHeight: 1, whiteSpace: 'nowrap' as const }}>
+                {formatarValor(valor * qtdCompra)}
+              </div>
+              {qtdCompra > 1 && (
+                <div style={{ fontSize: 12, color: '#666', marginTop: 4, whiteSpace: 'nowrap' as const }}>{qtdCompra} × {formatarValor(valor)}</div>
+              )}
             </div>
           </div>
+
+          {permiteQuantidade && !pixQrCode && (
+            <div style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid #222' }}>
+              <label style={labelStyle}>Quantidade</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <button type="button" onClick={() => setQuantidade(q => Math.max(1, q - 1))} disabled={quantidade <= 1}
+                  style={{ width: 40, height: 40, borderRadius: 10, border: '1.5px solid #333', background: 'transparent', color: quantidade <= 1 ? '#333' : '#fff', fontSize: 20, cursor: quantidade <= 1 ? 'default' : 'pointer', flexShrink: 0 }}>−</button>
+                <div style={{ flex: 1, textAlign: 'center' as const, fontFamily: "'Bebas Neue', sans-serif", fontSize: 30, color: '#fff', lineHeight: 1 }}>{quantidade}</div>
+                <button type="button" onClick={() => setQuantidade(q => Math.min(20, q + 1))} disabled={quantidade >= 20}
+                  style={{ width: 40, height: 40, borderRadius: 10, border: '1.5px solid #333', background: 'transparent', color: quantidade >= 20 ? '#333' : '#fff', fontSize: 20, cursor: quantidade >= 20 ? 'default' : 'pointer', flexShrink: 0 }}>+</button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ETAPA: AUTH */}
@@ -639,7 +668,7 @@ function CheckoutContent() {
                 {cupomAplicado && (
                   <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#888' }}>
                     <span>Desconto ({Number(cupomAplicado.desconto_percentual)}%)</span>
-                    <span style={{ color: ACCENT }}>- {formatarValor(valor - valorFinal)}</span>
+                    <span style={{ color: ACCENT }}>- {formatarValor(valor * qtdCompra - valorFinal)}</span>
                   </div>
                 )}
 

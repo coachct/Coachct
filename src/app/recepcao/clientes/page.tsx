@@ -156,6 +156,8 @@ function RecepcaoClientesPageInner() {
 
   const [modalVenda, setModalVenda] = useState(false)
   const [produtosDisp, setProdutosDisp] = useState<any[]>([])
+  // Saldo de crédito extra por aula do cliente na unidade atual (null = fora do escopo)
+  const [saldoCreditoExtra, setSaldoCreditoExtra] = useState<number | null>(null)
   const [formVenda, setFormVenda] = useState({
     produto_id: '',
     quantidade: 1,
@@ -679,13 +681,50 @@ function RecepcaoClientesPageInner() {
   }
 
   async function abrirVenda() {
-    if (!unidadeAtiva) return
-    const { data } = await supabase.from('produtos').select('*').eq('ativo', true)
-      .or(`unidade_id.eq.${unidadeAtiva.id},unidade_id.is.null`).order('nome')
-    setProdutosDisp(data || [])
+    if (!unidadeAtiva || !clienteSel) return
+    // Produtos exclusivos de app (crédito extra por aula) só podem ser vendidos
+    // a quem tem Wellhub/TotalPass ativo NESTA unidade — e, quando o produto é
+    // amarrado a um app (exclusivo_plano_tipo), só a quem tem justamente aquele.
+    // Sem esse filtro os créditos extras apareceriam pra qualquer cliente.
+    // Lemos os planos aqui em vez de usar o estado: o atalho ?venda=1 abre este
+    // modal antes de carregarPlanosCliente() terminar.
+    const [{ data }, { data: planosDoCliente }] = await Promise.all([
+      supabase.from('produtos').select('*').eq('ativo', true)
+        .or(`unidade_id.eq.${unidadeAtiva.id},unidade_id.is.null`).order('nome'),
+      supabase.from('cliente_planos')
+        .select('ativo, planos_disponiveis!inner(tipo, unidade_id)')
+        .eq('cliente_id', clienteSel.id).eq('ativo', true),
+    ])
+
+    const tiposApp = new Set(
+      (planosDoCliente || [])
+        .map((cp: any) => cp.planos_disponiveis)
+        .filter((pd: any) => pd && pd.unidade_id === unidadeAtiva.id && ['wellhub', 'totalpass'].includes(pd.tipo))
+        .map((pd: any) => pd.tipo)
+    )
+
+    const lista = (data || []).filter((p: any) => {
+      if (!p.exclusivo_apps) return true
+      if (tiposApp.size === 0) return false
+      if (!p.exclusivo_plano_tipo) return true
+      return tiposApp.has(p.exclusivo_plano_tipo)
+    })
+
+    // Saldo de crédito extra do cliente nesta unidade (RPC SECURITY DEFINER —
+    // a recepção não lê a tabela direto). Só pra exibir no modal.
+    let saldoCE: number | null = null
+    if (tiposApp.size > 0) {
+      const { data: st } = await supabase.rpc('credito_extra_status', {
+        p_cliente_id: clienteSel.id, p_unidade_id: unidadeAtiva.id,
+      })
+      if (st) saldoCE = Number((st as any).saldo) || 0
+    }
+    setSaldoCreditoExtra(saldoCE)
+
+    setProdutosDisp(lista)
     setFormVenda({
-      produto_id: data && data[0] ? data[0].id : '',
-      quantidade: 1, valor_unitario: data && data[0] ? Number(data[0].valor) : 0,
+      produto_id: lista[0] ? lista[0].id : '',
+      quantidade: 1, valor_unitario: lista[0] ? Number(lista[0].valor) : 0,
       desconto_percentual: 0, forma_pagamento: 'pix', observacao: '',
     })
     setCodigoLiberacao(''); setLiberacao(null); setErroCodigo('')
@@ -818,6 +857,8 @@ function RecepcaoClientesPageInner() {
     }
     const prod = produtosDisp.find(p => p.id === formVenda.produto_id)
     await Promise.all([carregarSaldo(clienteSel.id), carregarVendas(clienteSel.id), carregarPlanosCliente(clienteSel.id)])
+    // registrar_venda devolve o saldo novo quando o produto é crédito extra
+    if (data?.subtipo === 'credito_extra') setSaldoCreditoExtra(Number(data.saldo) || 0)
     // Atalho só para crédito de treino: no CT vira walk-in (musculação livre),
     // no Club vira reserva numa aula do dia. Nas demais unidades, sem atalho.
     const contexto: 'ct' | 'club' | null = prod?.tipo === 'credito_treino'
@@ -2014,6 +2055,12 @@ function RecepcaoClientesPageInner() {
               <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 text-sm text-orange-700">Nenhum produto ativo disponível para esta unidade.</div>
             ) : (
               <div className="space-y-4">
+                {saldoCreditoExtra !== null && produtosDisp.some(p => p.subtipo === 'credito_extra') && (
+                  <div className="bg-fuchsia-50 border border-fuchsia-200 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
+                    <span className="text-xs text-fuchsia-800">🎫 Crédito de aula (Coach CT via app)</span>
+                    <span className="text-sm font-bold text-fuchsia-700 font-mono">{saldoCreditoExtra} em saldo</span>
+                  </div>
+                )}
                 <div>
                   <label className="text-xs text-gray-500 mb-2 block font-medium uppercase tracking-wide">Produto</label>
                   <div className="space-y-2">
@@ -2024,10 +2071,13 @@ function RecepcaoClientesPageInner() {
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-sm font-medium text-gray-900">{p.nome}</span>
                             {p.subtipo==='acesso' && <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">Acesso</span>}
+                            {p.subtipo==='credito_extra' && <span className="text-xs px-1.5 py-0.5 rounded-full bg-fuchsia-100 text-fuchsia-700 font-medium">Crédito de aula</span>}
                           </div>
                           <div className="text-xs text-gray-500 mt-0.5">
                             R$ {Number(p.valor).toFixed(2).replace('.',',')}
-                            {p.subtipo==='acesso' ? ` · ${p.dias_validade} dias` : (p.creditos_por_venda>1?` · ${p.creditos_por_venda} créditos`:'')}
+                            {p.subtipo==='acesso' ? ` · ${p.dias_validade} dias`
+                              : p.subtipo==='credito_extra' ? ` · ${p.creditos_por_venda} crédito${p.creditos_por_venda>1?'s':''} · sem validade`
+                              : (p.creditos_por_venda>1?` · ${p.creditos_por_venda} créditos`:'')}
                           </div>
                         </div>
                       </label>
@@ -2039,6 +2089,11 @@ function RecepcaoClientesPageInner() {
                     <label className="text-xs text-gray-500 mb-1 block font-medium">Quantidade</label>
                     <input type="number" min={1} max={20} className="input w-full" value={formVenda.quantidade}
                       onChange={e => setFormVenda({...formVenda, quantidade: parseInt(e.target.value)||1})}/>
+                    {produtoSelecionado?.subtipo === 'credito_extra' && (
+                      <div className="text-[11px] text-fuchsia-700 mt-1">
+                        = {formVenda.quantidade * (produtoSelecionado.creditos_por_venda || 1)} crédito(s) de aula
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="text-xs text-gray-500 mb-1 block font-medium">Valor unitário (R$)</label>

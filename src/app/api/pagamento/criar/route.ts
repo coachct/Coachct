@@ -54,6 +54,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Dados incompletos' }, { status: 400 })
     }
 
+    // Quantidade: o crédito extra por aula pode ser comprado em lote (2, 3, 5...).
+    // Teto de 20 é o mesmo que o registrar_venda aceita — validar aqui evita
+    // criar order na Pagar.me pra uma venda que o banco vai recusar depois.
+    const quantidade = body.quantidade === undefined ? 1 : Number(body.quantidade)
+    if (!Number.isInteger(quantidade) || quantidade < 1 || quantidade > 20) {
+      return NextResponse.json({ error: 'Quantidade deve ser um número inteiro entre 1 e 20.' }, { status: 400 })
+    }
+
     if (!['pix', 'cartao_credito'].includes(metodo)) {
       return NextResponse.json({ error: 'Método de pagamento inválido' }, { status: 400 })
     }
@@ -172,8 +180,13 @@ export async function POST(req: NextRequest) {
       descontoPercentual = Number(val.desconto_percentual)
     }
 
-    const valorCentavos = Math.round(valorOriginal * 100 * (1 - descontoPercentual / 100))
+    // Preço UNITÁRIO com desconto (em centavos) — o total é ele × quantidade.
+    // Arredondar no unitário mantém a conta do Pagar.me (amount × quantity)
+    // idêntica ao valor_total que gravamos, sem centavo sobrando.
+    const unitarioCentavos = Math.round(valorOriginal * 100 * (1 - descontoPercentual / 100))
+    const valorCentavos = unitarioCentavos * quantidade
     const valorComDesconto = valorCentavos / 100
+    const valorTotalSemDesconto = Math.round(valorOriginal * quantidade * 100) / 100
 
     const { data: pagamento, error: errPag } = await supabase
       .from('pagamentos_pendentes')
@@ -181,7 +194,7 @@ export async function POST(req: NextRequest) {
         cliente_id: cliente.id,
         produto_id: produto.id,
         unidade_id: produto.unidade_id,
-        quantidade: 1,
+        quantidade,
         valor_unitario: valorOriginal,
         valor_total: valorComDesconto,
         metodo_pagamento: metodo,
@@ -217,9 +230,9 @@ export async function POST(req: NextRequest) {
     }
 
     const items = [{
-      amount: valorCentavos,
+      amount: unitarioCentavos,
       description: produto.nome,
-      quantity: 1,
+      quantity: quantidade,
       code: produto.id,
     }]
 
@@ -352,7 +365,7 @@ export async function POST(req: NextRequest) {
           pagamento_id: pagamento.id,
           produto_id: pagamento.produto_id,
           desconto_percentual: descontoPercentual,
-          valor_desconto: Math.round((valorOriginal - valorComDesconto) * 100) / 100,
+          valor_desconto: Math.round((valorTotalSemDesconto - valorComDesconto) * 100) / 100,
         })
         if (errUso) console.error('Erro ao registrar uso do cupom:', errUso)
       }

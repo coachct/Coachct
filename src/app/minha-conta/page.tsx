@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase'
 import { dashboardDoRole } from '@/lib/auth-redirect'
 import SiteHeader from '@/components/SiteHeader'
 import ModalTelefone from '@/components/ModalTelefone'
+import CompraCreditoExtra, { type CreditoExtraStatus } from '@/components/CompraCreditoExtra'
 import { numerarTreinosDoMes, PLANOS_SEM_TETO } from '@/lib/treinos-numero'
 
 const ACCENT  = '#ff2d9b'
@@ -174,6 +175,14 @@ export default function MinhaContaPage() {
   // ── Alterar telefone ──
   const [modalTelefone, setModalTelefone] = useState(false)
 
+  // ── Crédito extra por aula (apps parceiros) ──────────────────────────────
+  // Bloco à parte, NUNCA dentro do saldoAtual: aquele mapa é a lista de planos
+  // agendáveis e uma chave a mais viraria um plano fantasma. Uma entrada por
+  // unidade onde a pessoa tem app parceiro ativo.
+  const [creditosExtras, setCreditosExtras] = useState<{ unidadeId: string; unidadeNome: string; status: CreditoExtraStatus }[]>([])
+  const [extratoExtra,   setExtratoExtra]   = useState<any[]>([])
+  const [compraExtra,    setCompraExtra]    = useState<{ unidadeId: string; unidadeNome: string; status: CreditoExtraStatus } | null>(null)
+
   const contratoRef = useRef<HTMLDivElement>(null)
 
   const agora          = new Date()
@@ -262,8 +271,48 @@ export default function MinhaContaPage() {
     const crPass = (crPassadasData||[]).filter((cr:any) => (cr.club_ocorrencias?.data||'') < hoje)
     setClubReservasPassadas(crPass)
 
-    await carregarTodosSaldos(cli.id, cliPlanos||[])
+    await Promise.all([
+      carregarTodosSaldos(cli.id, cliPlanos||[]),
+      carregarCreditosExtras(cli.id, cliPlanos||[], planosData||[]),
+    ])
     setLoadingData(false)
+  }
+
+  // Crédito extra por aula — uma consulta por unidade onde há app parceiro ativo.
+  // Com a chave em 'off' o RPC devolve {exige:false, produtos:[]} e o bloco não
+  // renderiza; nada muda pra quem não está no escopo da regra.
+  async function carregarCreditosExtras(clienteId: string, cliPlanos: any[], planosApp: any[]) {
+    const nomePorUnidade: Record<string,string> = {}
+    for (const p of planosApp) if (p.unidade_id) nomePorUnidade[p.unidade_id] = p.unidades?.nome || 'Just CT'
+
+    const uids = [...new Set(
+      cliPlanos
+        .filter((cp:any) => cp.ativo && ['wellhub','totalpass'].includes(cp.planos_disponiveis?.tipo))
+        .map((cp:any) => cp.planos_disponiveis?.unidade_id)
+        .filter(Boolean)
+    )] as string[]
+
+    if (!uids.length) { setCreditosExtras([]); setExtratoExtra([]); return }
+
+    const [statusRes, { data: extrato }] = await Promise.all([
+      Promise.all(uids.map(async uid => {
+        try {
+          const { data } = await supabase.rpc('credito_extra_status', { p_cliente_id: clienteId, p_unidade_id: uid })
+          return data ? { unidadeId: uid, unidadeNome: nomePorUnidade[uid] || 'Just CT', status: data as CreditoExtraStatus } : null
+        } catch { return null }
+      })),
+      // A RLS já garante que o cliente só enxerga as próprias linhas.
+      supabase.from('creditos_extras').select('*')
+        .eq('cliente_id', clienteId).order('criado_em', { ascending: false }).limit(10),
+    ])
+
+    setCreditosExtras(statusRes.filter(Boolean) as any[])
+    setExtratoExtra(extrato || [])
+  }
+
+  async function recarregarCreditosExtras() {
+    if (!cliente) return
+    await carregarCreditosExtras(cliente.id, clientePlanos, planosDisponiveis)
   }
 
   async function carregarTodosSaldos(clienteId: string, cliPlanos: any[]) {
@@ -832,6 +881,84 @@ export default function MinhaContaPage() {
         </div>
 
         {/* ══════════════════════════════════════════
+            SEÇÃO 2A — CRÉDITOS DE AULA (apps parceiros)
+            Bloco separado do saldo dos planos de propósito — ver
+            carregarCreditosExtras(). Só aparece pra quem está no escopo.
+        ══════════════════════════════════════════ */}
+        {/* Só renderiza quando a regra vale pra pessoa (exige/aviso) ou quando
+            ela ainda tem saldo. Os produtos existem no catálogo mesmo com a
+            chave em 'off' — usar só produtos.length faria o bloco aparecer pra
+            todo cliente de app antes da ativação. */}
+        {creditosExtras.some(ce => ce.status.exige || ce.status.mostra_aviso || ce.status.saldo > 0) && (
+          <div style={{marginBottom:'2rem'}}>
+            <div style={{fontSize:11,color:'#aaa',fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginBottom:'0.85rem'}}>🎫 Créditos de aula</div>
+
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              {creditosExtras
+                .filter(ce => ce.status.exige || ce.status.mostra_aviso || ce.status.saldo > 0)
+                .map(ce => (
+                <div key={ce.unidadeId} style={{background:'#111',border:`1px solid ${ce.status.saldo>0?VERDE+'22':'#1e1e1e'}`,borderRadius:12,padding:'1rem'}}>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}>
+                    <div style={{minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:600,color:'#ddd'}}>{ce.unidadeNome}</div>
+                      <div style={{fontSize:11.5,color:'#666',marginTop:3,lineHeight:1.5}}>
+                        1 crédito por treino com o Coach CT, somado ao check-in do app · não expira
+                      </div>
+                    </div>
+                    <div style={{textAlign:'right',flexShrink:0}}>
+                      <span style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:26,color:ce.status.saldo>0?VERDE:'#444',lineHeight:1}}>{ce.status.saldo}</span>
+                      <span style={{fontSize:12,color:'#444'}}> crédito{ce.status.saldo===1?'':'s'}</span>
+                    </div>
+                  </div>
+
+                  {ce.status.mostra_aviso && ce.status.aviso && (
+                    <div style={{marginTop:10,background:'#1a1000',border:`1px solid ${AMARELO}33`,borderRadius:10,padding:'0.7rem 0.9rem',fontSize:12,color:'#ccc',lineHeight:1.7}}>
+                      <span style={{color:AMARELO,fontWeight:700}}>⚠️ </span>{ce.status.aviso}
+                    </div>
+                  )}
+
+                  {(ce.status.produtos||[]).length > 0 && (
+                    <button onClick={()=>setCompraExtra(ce)}
+                      style={{marginTop:10,width:'100%',background:'transparent',color:ACCENT,border:`1px solid ${ACCENT}44`,borderRadius:10,padding:'0.6rem',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
+                      🎫 Comprar créditos de aula
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {extratoExtra.length > 0 && (
+              <div style={{marginTop:10,background:'#0d0d0d',border:'1px solid #1a1a1a',borderRadius:12,padding:'0.9rem 1rem'}}>
+                <div style={{fontSize:10,color:'#555',fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:8}}>Últimas movimentações</div>
+                <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                  {extratoExtra.map((m:any) => {
+                    const entrou = Number(m.quantidade) > 0
+                    const rotulo: Record<string,string> = {
+                      compra:'Compra', consumo:'Treino agendado', estorno:'Devolvido',
+                      cortesia:'Cortesia', ajuste:'Ajuste',
+                    }
+                    return (
+                      <div key={m.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,paddingBottom:6,borderBottom:'1px solid #151515'}}>
+                        <div style={{minWidth:0}}>
+                          <div style={{fontSize:12.5,color:'#bbb'}}>{rotulo[m.movimento] || m.movimento}</div>
+                          <div style={{fontSize:10.5,color:'#555',marginTop:2}}>
+                            {new Date(m.criado_em).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit'})}
+                            {m.observacao ? ` · ${m.observacao}` : ''}
+                          </div>
+                        </div>
+                        <div style={{fontFamily:"'DM Mono', monospace",fontSize:13,fontWeight:700,color:entrou?VERDE:'#ff8c00',flexShrink:0}}>
+                          {entrou ? '+' : ''}{m.quantidade}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ══════════════════════════════════════════
             SEÇÃO 2B — ATIVAR PLANO DE APP PARCEIRO (visível)
         ══════════════════════════════════════════ */}
         <div style={{marginBottom:'2rem'}}>
@@ -1018,6 +1145,22 @@ export default function MinhaContaPage() {
           </span>
         </div>
       </div>
+
+      {/* ══════════════════════════════════════════
+          MODAL — COMPRAR CRÉDITO DE AULA
+      ══════════════════════════════════════════ */}
+      <CompraCreditoExtra
+        aberto={!!compraExtra}
+        status={compraExtra?.status || null}
+        cliente={cliente}
+        subtitulo={compraExtra ? `Créditos de aula do ${compraExtra.unidadeNome}. Cada treino com o Coach CT usa 1 crédito, somado ao check-in do seu app.` : undefined}
+        onFechar={()=>setCompraExtra(null)}
+        onComprado={async ()=>{
+          const { data: cli } = await supabase.from('clientes').select('*').eq('id', cliente.id).maybeSingle()
+          if (cli) setCliente(cli)
+          await recarregarCreditosExtras()
+        }}
+      />
 
       {/* ══════════════════════════════════════════
           MODAL — ALTERAR TELEFONE

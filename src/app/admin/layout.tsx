@@ -11,6 +11,7 @@ const nav = [
       { label: 'Horários populares',  href: '/admin/horarios' },
       { label: 'Musculação Livre',    href: '/admin/musculacao-livre' },
       { label: 'Relatório Coach CT',  href: '/admin/relatorios/coach-ct' },
+      { label: 'Crédito extra por aula', href: '/admin/relatorios/credito-extra' },
     ],
   },
   {

@@ -8,6 +8,7 @@ import { gradeExtraDoDia } from '@/lib/grade'
 import { dashboardDoRole } from '@/lib/auth-redirect'
 import SiteHeader from '@/components/SiteHeader'
 import ModalTelefone from '@/components/ModalTelefone'
+import CompraCreditoExtra, { type CreditoExtraStatus } from '@/components/CompraCreditoExtra'
 
 const ACCENT  = '#ff2d9b'
 const CYAN    = '#00e5ff'
@@ -217,6 +218,12 @@ export default function AgendarPage() {
   const [jaUsouParceiro, setJaUsouParceiro] = useState(false)
   const [modalCertParceiro, setModalCertParceiro] = useState(false)
   const [aceiteCertParceiro, setAceiteCertParceiro] = useState(false)
+  // ── Crédito extra por aula (apps parceiros) ────────────────────────────────
+  // Vive FORA do saldo_creditos_cliente de propósito: aquele RPC é iterado como
+  // "lista de planos agendáveis" aqui e no /minha-conta, e uma chave a mais
+  // viraria um plano fantasma selecionável. Ver credito_extra_status no banco.
+  const [creditoExtra, setCreditoExtra] = useState<CreditoExtraStatus | null>(null)
+  const [modalCompraCE, setModalCompraCE] = useState(false)
 
   const janelaProximoMesAberta = dentroDaJanelaProximoMes()
   const tipoVisualizacao: 'visitante' | 'coach_ct_pro' | 'padrao' = !user ? 'visitante' : temBeneficiosPro ? 'coach_ct_pro' : 'padrao'
@@ -306,9 +313,28 @@ export default function AgendarPage() {
       .eq('planos_disponiveis.unidade_id', unidadeId)
     setTemBeneficiosPro((planosPro || []).some((p: any) => !p.fim || p.fim >= hojeStr))
     // ──────────────────────────────────────────────────────────────────────
+    // Crédito extra por aula: estado próprio, nunca misturado ao saldo acima.
+    // Com a chave em 'off' e sem cliente em teste, volta {exige:false} e nada
+    // aparece na tela — o fluxo fica idêntico ao de hoje.
+    try {
+      const { data: ce } = await supabase.rpc('credito_extra_status', { p_cliente_id: clienteId, p_unidade_id: unidadeId })
+      setCreditoExtra((ce as CreditoExtraStatus) || null)
+    } catch { setCreditoExtra(null) }
     // ── FIX: sinaliza fim do carregamento de saldos ───────────────────────
     setLoadingSaldos(false)
     // ──────────────────────────────────────────────────────────────────────
+  }
+
+  // Releitura isolada do crédito extra (usada depois de comprar e antes de gravar
+  // o agendamento). Devolve o status novo pra quem chamou decidir na hora.
+  async function recarregarCreditoExtra(): Promise<CreditoExtraStatus | null> {
+    if (!cliente || !unidadeAtiva) return null
+    try {
+      const { data } = await supabase.rpc('credito_extra_status', { p_cliente_id: cliente.id, p_unidade_id: unidadeAtiva.id })
+      const st = (data as CreditoExtraStatus) || null
+      setCreditoExtra(st)
+      return st
+    } catch { return creditoExtra }
   }
 
   async function loadHorarios() {
@@ -541,6 +567,13 @@ export default function AgendarPage() {
     if (!saldoAtualizado || !saldoAtualizado[tipoCredito] || saldoAtualizado[tipoCredito].disponivel <= 0) {
       setErroModal('Saldo insuficiente.'); await carregarSaldos(cliente.id, unidadeAtiva.id); return
     }
+    // Crédito extra por aula: se a regra vale pra este cliente e o saldo é zero,
+    // abrimos a compra ANTES de tentar gravar. O modal da reserva continua aberto
+    // atrás, então o horário escolhido não se perde.
+    const ceAtual = await recarregarCreditoExtra()
+    if (ceAtual?.exige && (ceAtual.saldo || 0) <= 0) {
+      setErroModal(''); setModalCompraCE(true); return
+    }
     setConfirmando(true); setErroModal('')
     // Guarda: não agendar se já está na fila do mesmo dia/tipo (evita fila + agendamento simultâneos).
     const { data: naFilaDiaAg } = await supabase
@@ -556,7 +589,18 @@ export default function AgendarPage() {
     const payload: any = { cliente_id: cliente.id, data: modalSlot.data, horario: modalSlot.hora + ':00', status: 'agendado', tipo_credito: tipoCredito, unidade_id: unidadeAtiva.id, criado_via: 'cliente' }
     if (temBeneficiosPro && coachEscolhido) { payload.coach_id = coachEscolhido; payload.alocado_por = perfil?.id || null; payload.alocado_em = new Date().toISOString() }
     const { data: novo, error } = await supabase.from('agendamentos').insert(payload).select('id').single()
-    if (error) { setErroModal('Erro ao agendar. Tente novamente.'); setConfirmando(false); return }
+    if (error) {
+      // Rede de segurança pra corrida entre abas: o trigger do banco recusa o
+      // insert quando o saldo zerou no meio do caminho. O aluno nunca vê o
+      // código cru — abre a mesma tela de compra.
+      if (String(error.message || '').includes('CREDITO_EXTRA_INSUFICIENTE')) {
+        setConfirmando(false)
+        await recarregarCreditoExtra()
+        setModalCompraCE(true)
+        return
+      }
+      setErroModal('Erro ao agendar. Tente novamente.'); setConfirmando(false); return
+    }
     if (novo?.id) dispararEmailAgendamento(novo.id)
     await Promise.all([carregarSaldos(cliente.id, unidadeAtiva.id), loadHorarios()])
     setContratoAssinado(true); setModalSlot(null); setConfirmando(false)
@@ -855,6 +899,35 @@ export default function AgendarPage() {
               </div>
             )}
 
+            {/* ── Crédito extra por aula ─────────────────────────────────────
+                Soft launch (modo 'aviso', ou 'obrigatorio' com data futura):
+                só informa, não bloqueia nada. Quando já vale, mostra o saldo e
+                o atalho de compra. Com a chave em 'off' nada disso aparece. */}
+            {!clienteBloqueado && cliente && creditoExtra?.mostra_aviso && creditoExtra.aviso && (
+              <div style={{ background: '#1a1000', border: `1px solid ${AMARELO}44`, borderRadius: 12, padding: '0.9rem 1.25rem', marginBottom: '1.5rem', fontSize: 13, color: '#ddd', lineHeight: 1.7 }}>
+                <span style={{ color: AMARELO, fontWeight: 700 }}>⚠️ Aviso · </span>{creditoExtra.aviso}
+              </div>
+            )}
+
+            {!clienteBloqueado && cliente && creditoExtra?.exige && (
+              <div style={{ background: creditoExtra.saldo > 0 ? '#0a0014' : '#1a1000', border: `1.5px solid ${creditoExtra.saldo > 0 ? ACCENT + '44' : AMARELO + '55'}`, borderRadius: 16, padding: '1rem 1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: creditoExtra.saldo > 0 ? ACCENT : AMARELO, marginBottom: 4 }}>
+                    🎫 Crédito de aula · saldo {creditoExtra.saldo}
+                  </div>
+                  <div style={{ fontSize: 13, color: '#888', lineHeight: 1.5 }}>
+                    {creditoExtra.saldo > 0
+                      ? 'Cada treino com o Coach CT usa 1 crédito de aula além do check-in no app. Cancelou ou faltou, o crédito volta.'
+                      : 'Você precisa de 1 crédito de aula, além do check-in no app, para reservar um treino com o Coach CT.'}
+                  </div>
+                </div>
+                <button onClick={() => setModalCompraCE(true)}
+                  style={{ background: creditoExtra.saldo > 0 ? 'transparent' : AMARELO, color: creditoExtra.saldo > 0 ? ACCENT : '#000', border: creditoExtra.saldo > 0 ? `1px solid ${ACCENT}66` : 'none', borderRadius: 10, padding: '0.65rem 1.25rem', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' }}>
+                  {creditoExtra.saldo > 0 ? 'Comprar mais' : 'Comprar crédito →'}
+                </button>
+              </div>
+            )}
+
             {!clienteBloqueado && isDiaExclusivoPro && !dataSelAposLimite && (
               <div style={{ background: `linear-gradient(90deg, ${ACCENT}22 0%, #08080800 100%)`, border: `1px solid ${ACCENT}55`, borderRadius: 10, padding: '0.75rem 1rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 12, color: ACCENT, fontWeight: 700, fontFamily: "'DM Mono', monospace", letterSpacing: 0.5 }}>🏆 AGENDAMENTOS EXCLUSIVOS COACH CT PRO</div>
@@ -1063,7 +1136,33 @@ export default function AgendarPage() {
                   </div>
                 )
               })}
+              {/* Segunda linha: o crédito de aula. Não entra na lista acima de
+                  propósito — não é um plano escolhível, é um custo somado. */}
+              {creditoExtra?.exige && (
+                <div style={{ marginTop: 10, border: `1px solid ${creditoExtra.saldo > 0 ? '#2a2a2a' : AMARELO + '55'}`, background: creditoExtra.saldo > 0 ? '#0a0a0a' : '#1a1000', borderRadius: 10, padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <span style={{ fontSize: 18 }}>🎫</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: creditoExtra.saldo > 0 ? '#ddd' : AMARELO }}>
+                      Crédito de aula — saldo {creditoExtra.saldo}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>
+                      {creditoExtra.saldo > 0 ? 'Este treino usa 1 crédito' : 'Necessário para confirmar este treino'}
+                    </div>
+                  </div>
+                  {creditoExtra.saldo <= 0 && (
+                    <button onClick={() => setModalCompraCE(true)}
+                      style={{ background: AMARELO, color: '#000', border: 'none', borderRadius: 8, padding: '0.4rem 0.85rem', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", flexShrink: 0 }}>
+                      Comprar
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
+            {creditoExtra?.mostra_aviso && creditoExtra.aviso && (
+              <div style={{ background: '#1a1000', border: `1px solid ${AMARELO}44`, borderRadius: 10, padding: '0.75rem 1rem', marginBottom: '1.5rem', fontSize: 12, color: '#ccc', lineHeight: 1.7 }}>
+                <span style={{ color: AMARELO, fontWeight: 700 }}>⚠️ </span>{creditoExtra.aviso}
+              </div>
+            )}
             {mostrarEscolhaCoach && (
               <div style={{ marginBottom: '1.5rem' }}>
                 <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Deseja escolher seu coach?</div>
@@ -1178,6 +1277,22 @@ export default function AgendarPage() {
           </div>
         </div>
       )}
+
+      {/* Compra do crédito extra. Abre por cima do modal de reserva — o horário
+          escolhido continua na tela e a pessoa volta pra confirmar. */}
+      <CompraCreditoExtra
+        aberto={modalCompraCE}
+        status={creditoExtra}
+        cliente={cliente}
+        onFechar={() => setModalCompraCE(false)}
+        onComprado={async () => {
+          // loadCliente() releva o CPF que a API pode ter gravado na compra.
+          await Promise.all([recarregarCreditoExtra(), loadCliente()])
+        }}
+        subtitulo={modalSlot
+          ? `Seu treino de ${dataFormatada(modalSlot.data)} às ${modalSlot.hora} fica guardado — compre e volte para confirmar.`
+          : undefined}
+      />
 
       <ModalTelefone
         aberto={modalTelefone}
