@@ -49,6 +49,12 @@ export const maxDuration = 60
 const DEBOUNCE_MS = parseInt(process.env.WHATSAPP_DEBOUNCE_MS || '15000', 10) || 0
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+// KILL SWITCH do bot. PAUSADO POR PADRÃO (precisa WHATSAPP_BOT_ATIVO=1 pra responder).
+// Enquanto pausado: o bot NÃO responde nada — só registra a mensagem e marca a
+// conversa como "aguardando atendimento" pra equipe humana cuidar pelo painel.
+// Pra religar o bot: setar WHATSAPP_BOT_ATIVO=1 na Vercel (e redeploy).
+const BOT_ATIVO = process.env.WHATSAPP_BOT_ATIVO === '1'
+
 const AVISO_LGPD =
   'E aí! 👊 Aqui é a Just Club & CT no seu WhatsApp. Pra te ajudar certinho, dou uma olhada no seu cadastro (nome, plano, treinos) — seguindo a conversa, você concorda com a nossa Política de Privacidade. Se um dia quiser parar de receber mensagens, é só mandar PARAR. Bora? Como posso te ajudar hoje? 💪'
 
@@ -162,6 +168,14 @@ async function processar(de: string, texto: string, wamid: string, botaoId: stri
     // telefone+texto (buffer do debounce).
     const novo = await registrarProcessada(supabase, wamid, { telefone, texto })
     if (!novo) return
+
+    // BOT PAUSADO (kill switch): não responde nada. Só guarda a mensagem e marca a
+    // conversa pra equipe atender no painel. Nada de agente, nada de invenção.
+    if (!BOT_ATIVO) {
+      await salvarMensagem(supabase, { telefone, clienteId: null, role: 'user', conteudo: texto })
+      await marcarAguardandoHumano(supabase, telefone)
+      return
+    }
 
     // DEBOUNCE (só quando ligado): a pessoa costuma quebrar UMA frase em 2-3
     // mensagens. Espera um pouco; se vier outra, o ÚLTIMO da rajada responde SÓ UMA
@@ -392,9 +406,11 @@ async function processarMidia(
     // já em atendimento humano, pra não atropelar o atendente).
     if (!(await emModoHumano(supabase, telefone))) {
       await marcarAguardandoHumano(supabase, telefone)
-      try {
-        await enviarTexto(de, 'Recebi seu arquivo aqui! 👍 Já passei pra nossa equipe dar uma olhada — o atendimento é de segunda a sexta, das 09h às 18h, e dentro desse horário eles te retornam por aqui, tá? 🙏')
-      } catch {}
+      if (BOT_ATIVO) {
+        try {
+          await enviarTexto(de, 'Recebi seu arquivo aqui! 👍 Já passei pra nossa equipe dar uma olhada — o atendimento é de segunda a sexta, das 09h às 18h, e dentro desse horário eles te retornam por aqui, tá? 🙏')
+        } catch {}
+      }
     }
   } catch (e: any) {
     console.error('[whatsapp/webhook] erro ao processar mídia:', e?.message)
