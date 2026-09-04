@@ -900,15 +900,10 @@ export default function AgendarPage() {
             )}
 
             {/* ── Crédito extra por aula ─────────────────────────────────────
-                Soft launch (modo 'aviso', ou 'obrigatorio' com data futura):
-                só informa, não bloqueia nada. Quando já vale, mostra o saldo e
-                o atalho de compra. Com a chave em 'off' nada disso aparece. */}
-            {!clienteBloqueado && cliente && creditoExtra?.mostra_aviso && creditoExtra.aviso && (
-              <div style={{ background: '#1a1000', border: `1px solid ${AMARELO}44`, borderRadius: 12, padding: '0.9rem 1.25rem', marginBottom: '1.5rem', fontSize: 13, color: '#ddd', lineHeight: 1.7 }}>
-                <span style={{ color: AMARELO, fontWeight: 700 }}>⚠️ Aviso · </span>{creditoExtra.aviso}
-              </div>
-            )}
-
+                O TEXTO do aviso mora só na tela principal da conta
+                (/minha-conta) — aqui não se repete. O que aparece nesta tela é
+                o operacional: saldo e atalho de compra, e só quando a regra já
+                vale. Com a chave em 'off' nada disso aparece. */}
             {!clienteBloqueado && cliente && creditoExtra?.exige && (
               <div style={{ background: creditoExtra.saldo > 0 ? '#0a0014' : '#1a1000', border: `1.5px solid ${creditoExtra.saldo > 0 ? ACCENT + '44' : AMARELO + '55'}`, borderRadius: 16, padding: '1rem 1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
                 <div>
@@ -1158,11 +1153,6 @@ export default function AgendarPage() {
                 </div>
               )}
             </div>
-            {creditoExtra?.mostra_aviso && creditoExtra.aviso && (
-              <div style={{ background: '#1a1000', border: `1px solid ${AMARELO}44`, borderRadius: 10, padding: '0.75rem 1rem', marginBottom: '1.5rem', fontSize: 12, color: '#ccc', lineHeight: 1.7 }}>
-                <span style={{ color: AMARELO, fontWeight: 700 }}>⚠️ </span>{creditoExtra.aviso}
-              </div>
-            )}
             {mostrarEscolhaCoach && (
               <div style={{ marginBottom: '1.5rem' }}>
                 <div style={{ fontSize: 12, color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Deseja escolher seu coach?</div>

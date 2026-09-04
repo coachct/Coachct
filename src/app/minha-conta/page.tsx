@@ -733,7 +733,8 @@ export default function MinhaContaPage() {
                 <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:18,color:AMARELO,letterSpacing:1,marginBottom:6}}>
                   AVISO IMPORTANTE · {ce.unidadeNome}
                 </div>
-                <div style={{fontSize:13.5,color:'#ffddaa',lineHeight:1.7}}>{ce.status.aviso}</div>
+                {/* pre-line preserva os parágrafos do texto escrito no admin */}
+                <div style={{fontSize:13.5,color:'#ffddaa',lineHeight:1.7,whiteSpace:'pre-line'}}>{ce.status.aviso}</div>
               </div>
             </div>
           </div>
@@ -932,13 +933,13 @@ export default function MinhaContaPage() {
             ela ainda tem saldo. Os produtos existem no catálogo mesmo com a
             chave em 'off' — usar só produtos.length faria o bloco aparecer pra
             todo cliente de app antes da ativação. */}
-        {creditosExtras.some(ce => ce.status.exige || ce.status.mostra_aviso || ce.status.saldo > 0) && (
+        {creditosExtras.some(ce => ce.status.exige || ce.status.saldo > 0) && (
           <div style={{marginBottom:'2rem'}}>
             <div style={{fontSize:11,color:'#aaa',fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginBottom:'0.85rem'}}>🎫 Créditos de aula</div>
 
             <div style={{display:'flex',flexDirection:'column',gap:8}}>
               {creditosExtras
-                .filter(ce => ce.status.exige || ce.status.mostra_aviso || ce.status.saldo > 0)
+                .filter(ce => ce.status.exige || ce.status.saldo > 0)
                 .map(ce => (
                 <div key={ce.unidadeId} style={{background:'#111',border:`1px solid ${ce.status.saldo>0?VERDE+'22':'#1e1e1e'}`,borderRadius:12,padding:'1rem'}}>
                   <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}>
