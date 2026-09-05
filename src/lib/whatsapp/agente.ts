@@ -82,14 +82,25 @@ function precisaRevisar(draft: string, escalou: boolean): boolean {
 // SEM explicar janela/fila/"consultei"/horas. Como o modelo (mesmo o caro) às vezes
 // desobedece, isto é enforçado aqui: se a resposta é uma RECUSA de cancelamento E
 // ainda vaza mecânica interna, troca pela linha curta. 100% garantido, custo zero.
+const RE_CANCEL_CTX = /cancel/i
 const RE_RECUSA_CANCEL = /n[ãa]o\s[^.!?]{0,25}cancel/i
-const RE_MECANICA_CANCEL = /entre\s*3\s*h?\s*e\s*12\s*h|consultei[^.!?]{0,20}fila|ningu[ée]m[^.!?]{0,12}fila|(n[ãa]o\s+h[áa]|sem)[^.!?]{0,15}fila|o\s+sistema[^.!?]{0,15}verifica|faltam?[^.!?]{0,15}\d+\s*h/i
+// Mecânica interna vazando (fila/janela/consultei) — proibido pro cliente.
+const RE_MECANICA_CANCEL = /entre\s*3\s*h?\s*e\s*12\s*h|consultei[^.!?]{0,20}fila|ningu[ée]m[^.!?]{0,12}fila|(n[ãa]o\s+h[áa]|sem)[^.!?]{0,15}fila|o\s+sistema[^.!?]{0,15}verifica/i
+// Bot fazendo CONTA de horário/prazo (proibido — ele erra): "pode cancelar até 21h",
+// "ainda tem tempo", "faltam X h", "até hoje/amanhã às ...", "contado a partir do horário".
+const RE_CALCULO_CANCEL = /ainda tem tempo|pode cancelar at[ée]|cancelar at[ée]\s*(hoje|amanh|[àa]s|\d)|at[ée]\s*(hoje|amanh)[^.!?]{0,12}\d|\bat[ée]\s*\d{1,2}\s*h\b|faltam?[^.!?]{0,15}\d+\s*h|contad[oa]\s+a\s+partir/i
+const POLICY_CANCEL = 'Sobre cancelamento: com 12h de antecedência você cancela direto na sua conta, no site 👉 https://www.justclubct.com.br . Fora desse prazo, não tem mais cancelamento.'
 function limparMecanicaCancel(texto: string): string {
   const t = String(texto || '')
-  if (RE_RECUSA_CANCEL.test(t) && RE_MECANICA_CANCEL.test(t)) {
+  if (!RE_CANCEL_CTX.test(t)) return t
+  const vazou = RE_MECANICA_CANCEL.test(t) || RE_CALCULO_CANCEL.test(t)
+  if (!vazou) return t
+  // Recusa clara (sem cálculo) → linha curta gentil; qualquer outro vazamento
+  // (cálculo de prazo, afirmação de "ainda dá", mecânica) → política genérica.
+  if (RE_RECUSA_CANCEL.test(t) && !RE_CALCULO_CANCEL.test(t)) {
     return 'Poxa 🙏 a essa altura não dá mais pra cancelar essa reserva. Qualquer coisa, é só me chamar!'
   }
-  return t
+  return POLICY_CANCEL
 }
 
 // TRAVA DETERMINÍSTICA: o bot NUNCA passa número de telefone (este WhatsApp é o
@@ -128,6 +139,7 @@ Os itens abaixo são só EXEMPLOS comuns da regra mãe — não uma lista fechad
 2) TRANSFERÊNCIA INDEVIDA (o erro MAIS comum) — o rascunho está TRANSFERINDO pra equipe algo que a BASE já responde ou que é SENSO COMUM com resposta óbvia e inofensiva? Transferir é o ÚLTIMO recurso. Ex.: "posso chegar atrasado e treinar?", "o que é o Lift?", "quais modalidades tem?", objeto esquecido, dúvida de modalidade/plano que está na base → NÃO transfira, escreva a resposta certa. Só transfira o que realmente não dá pra responder (ação na conta, ou fato específico que só a equipe sabe).
 3) REGRAS DURAS — violou? Corrija:
    - CANCELAMENTO: a regra é "sem multa até 12h antes". NUNCA liderar com "3h" nem dizer que 3h é o prazo sem multa.
+   - CÁLCULO DE HORÁRIO/PRAZO no cancelamento (corte SEMPRE): o bot NÃO calcula horas e sempre erra. Se o rascunho faz conta e afirma um prazo específico — "você pode cancelar até 21h", "ainda tem tempo", "faltam X horas", "até hoje/amanhã às ...", "o prazo conta a partir do horário da aula" — CORTE e troque pela política genérica: "Sobre cancelamento: com 12h de antecedência você cancela direto na sua conta, no site 👉 https://www.justclubct.com.br . Fora desse prazo, não tem mais cancelamento." Quem decide o prazo é o site, não o bot.
    - CANCELAMENTO NÃO POSSÍVEL = curto, SEM explicar mecânica (corte SEMPRE): quando o rascunho diz que NÃO dá pra cancelar, é PROIBIDO explicar o porquê técnico. Se o rascunho contiver QUALQUER destes: "janela entre 3h e 12h" / "entre 3h e 12h" / "faltam X horas" / "fila de espera nessa aula" / "só funciona se houver fila" / "consultei a fila" / "não há ninguém na fila" / "o sistema verifica" → CORTE toda essa explicação e substitua por UMA linha curta e gentil, tipo: "Poxa 🙏 a essa altura não dá mais pra cancelar essa reserva. Se cuida e melhoras!" (mantenha só a empatia que fizer sentido no contexto). O cliente NÃO pode ver janela, horas restantes nem fila — ele só quer saber se dá ou não.
    - MULTA: NUNCA citar valor de multa (R$ 99 / R$ 49,90) de forma proativa — só se o cliente PERGUNTOU sobre cobrança/multa.
    - SEM CARTÃO: NUNCA responder só "sem cartão não dá pra reservar" — tem que oferecer o caminho do app do parceiro (em Pinheiros o Wellhub/TotalPass agenda direto no app, sem o cartão do nosso site).
@@ -1286,6 +1298,7 @@ Você SÓ pode afirmar o que está na BASE DE CONHECIMENTO abaixo ou o que veio 
 # VOCÊ INFORMA, NÃO RESOLVE (o coração da coisa)
 Reservar, cancelar, trocar/remarcar aula, comprar, ativar plano, ver saldo, cadastrar cartão, recuperar senha — o CLIENTE faz tudo isso sozinho no site. Você NÃO faz nada disso, NÃO pede CPF, NÃO acessa conta, NÃO faz lógica de prazo/fila/vaga/multa. Você só INFORMA a regra e aponta o caminho. Exemplos do jeito certo (curto, e encerra):
 - "quero cancelar" (qualquer motivo/imprevisto) → resposta CURTA e direta, e PARA: "Para cancelar: se o seu treino estiver com 12h de antecedência, é só cancelar direto na sua conta, no site. Se já estiver fora desse prazo, infelizmente não tem mais cancelamento. 🙏" (NÃO pergunte qual reserva, NÃO cheque nada, NÃO fale de FILA nem de MULTA. Quem manda mensagem já sabe que tá tentando a última — seja curto e honesto.)
+  NUNCA CALCULE HORÁRIO/PRAZO (você é RUIM nisso e JÁ ERROU): mesmo que a pessoa diga a hora da aula, é PROIBIDO calcular e afirmar "você pode cancelar até 21h", "ainda tem tempo", "faltam X horas", "o prazo conta a partir do horário da aula". A resposta de cancelamento é SEMPRE a mesma frase genérica acima (12h ou nada, no site) — quem decide se ainda está no prazo é o SITE quando o cliente tentar. Não faça a conta, não confirme se dá ou não dá pra um caso específico.
 - "como faço pra reservar uma aula?" → explique curtinho que é pelo site e mande o link certo.
 - "quero comprar um plano" → aponte o /comprar.
 Nunca diga "deixa que eu resolvo", "vou verificar sua conta", "vou remarcar pra você". Não é o seu papel — é do cliente, no site.
