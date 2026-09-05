@@ -6,6 +6,7 @@ import { useUnidade } from '@/hooks/useUnidade'
 import { createClient } from '@/lib/supabase'
 import { gradeExtraDoDia } from '@/lib/grade'
 import { dashboardDoRole } from '@/lib/auth-redirect'
+import { filaEncerrada } from '@/lib/tempo'
 import SiteHeader from '@/components/SiteHeader'
 import ModalTelefone from '@/components/ModalTelefone'
 import CompraCreditoExtra, { type CreditoExtraStatus } from '@/components/CompraCreditoExtra'
@@ -505,6 +506,9 @@ export default function AgendarPage() {
   function tentarFila(hora: string, skipTel: boolean = false) {
     if (!user) { router.push('/login'); return }
     if (clienteBloqueado) return
+    // A menos de 3h do treino o cancelamento é bloqueado — nenhuma vaga abre,
+    // então a fila fecha e o horário mostra só LOTADO.
+    if (filaEncerrada(dataLocalStr(diasSemana[diaSel]), hora)) return
     if (semPlanoAtivo) { setModalSemPlano(true); return }
     if (precisaCartao) { setModalSemCartao(true); return }
     if (!skipTel && precisaTelefone()) { setPendingReserva(() => () => tentarFila(hora, true)); setModalTelefone(true); return }
@@ -997,6 +1001,7 @@ export default function AgendarPage() {
                       const clienteNaFila = naFila(h.hora)
                       const jaAgendado = agendamentosNoDia.some(a => (a.horario || '').slice(0, 5) === h.hora && ['agendado', 'confirmado'].includes(a.status))
                       const temFilaEsperaAqui = temFilaNoHorario(h.hora)
+                      const semFila = filaEncerrada(dataLocalStr(diasSemana[diaSel]), h.hora)
                       return (
                         <div key={i} className="slot-row-h"
                           style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', padding: '1rem 1.25rem', borderRadius: 12, border: `1px solid ${jaAgendado ? CYAN + '44' : clienteNaFila ? AMARELO + '44' : '#222'}`, background: jaAgendado ? '#00e5ff08' : clienteNaFila ? '#ffaa0008' : '#111' }}>
@@ -1029,7 +1034,7 @@ export default function AgendarPage() {
                                 </div>
                                 {temFilaEsperaAqui && !lotado && <div style={{ fontSize: 9, color: AMARELO, marginBottom: 4 }}>⏳ há fila</div>}
                                 {!lotado && <button onClick={() => tentarAgendar(h.hora, h.livres)} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Reservar</button>}
-                                {lotado && <button onClick={() => tentarFila(h.hora)} style={{ background: 'transparent', color: AMARELO, border: `1px solid ${AMARELO}`, borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Entrar na fila</button>}
+                                {lotado && !semFila && <button onClick={() => tentarFila(h.hora)} style={{ background: 'transparent', color: AMARELO, border: `1px solid ${AMARELO}`, borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Entrar na fila</button>}
                               </>
                             )}
                           </div>

@@ -67,6 +67,47 @@ export function aulaJaComecou(data?: string | null, horario?: string | null): bo
 }
 
 /**
+ * Minutos entre agora (SP) e o início da aula. Negativo = já começou.
+ * Sem data/horário → null (quem chama decide o fail-safe).
+ */
+export function minutosAteAula(data?: string | null, horario?: string | null): number | null {
+  if (!data || !horario) return null
+  const hhmm = String(horario).slice(0, 5)
+  const [h, m] = hhmm.split(':').map(Number)
+  if (Number.isNaN(h) || Number.isNaN(m)) return null
+  const d = String(data).slice(0, 10)
+
+  const agora = partesSP()
+  if (!agora) {
+    const inicio = new Date(`${d}T${hhmm}`)
+    if (isNaN(inicio.getTime())) return null
+    return Math.round((inicio.getTime() - Date.now()) / 60000)
+  }
+  const [ay, amo, ad] = agora.data.split('-').map(Number)
+  const [y, mo, dd]   = d.split('-').map(Number)
+  if ([ay, amo, ad, y, mo, dd].some(Number.isNaN)) return null
+  const diasDif = Math.round((Date.UTC(y, mo - 1, dd) - Date.UTC(ay, amo - 1, ad)) / 86400000)
+  const [ah, am] = agora.hora.split(':').map(Number)
+  return diasDif * 1440 + (h * 60 + m) - (ah * 60 + am)
+}
+
+/**
+ * A fila de espera já fechou para esta aula?
+ *
+ * Regra de negócio: com menos de 3h para o treino o cancelamento é bloqueado
+ * (nem com fila é liberado). Logo, nenhuma vaga pode abrir nessa janela e
+ * oferecer "entrar na fila" só cria expectativa que não se cumpre — a aula
+ * lotada passa a exibir apenas LOTADA.
+ *
+ * Fail-safe: sem data/horário → false (não bloqueia).
+ */
+export function filaEncerrada(data?: string | null, horario?: string | null, horasAntes = 3): boolean {
+  const mins = minutosAteAula(data, horario)
+  if (mins === null) return false
+  return mins < horasAntes * 60
+}
+
+/**
  * A aula já encerrou para fins de EXIBIÇÃO (escurecer/desativar o card)?
  * Considera encerrada quando já se passaram `toleranciaMin` minutos do início
  * (padrão 1 min) no horário de SP. Diferente de aulaJaComecou (que barra a

@@ -9,7 +9,7 @@ import ModalTelefone from '@/components/ModalTelefone'
 import CardCheckinExpress from '@/components/CardCheckinExpress'
 import EnqueteHorario from '@/components/EnqueteHorario'
 import { enqueteDoHorario } from '@/lib/enquete-horario'
-import { aulaEncerrada, aulaJaComecou, dataHojeSP, hojeSP } from '@/lib/tempo'
+import { aulaEncerrada, aulaJaComecou, dataHojeSP, hojeSP, filaEncerrada } from '@/lib/tempo'
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(true)
@@ -413,6 +413,9 @@ function AulasPageInner() {
   function tentarFila(oc: any, skipTel: boolean = false) {
     if (!user) { router.push(`/login?redirect=${encodeURIComponent('/aulas?unidade='+unidadeId)}`); return }
     if (cliente?.bloqueado) return
+    // A menos de 3h da aula ninguém consegue cancelar, então nenhuma vaga abre:
+    // a fila fica fechada e o card mostra só LOTADA.
+    if (filaEncerrada(oc.data, oc.club_aulas?.horario)) return
     if (precisaCartao) { setModalSemCartao(true); return }
     if (!skipTel && precisaTelefone()) { setPendingReserva(() => () => tentarFila(oc, true)); setModalTelefone(true); return }
     setModalFila(oc); setTipoCredito(''); setFilaAceite(false); setErroModal(''); setAvisoLotou(false)
@@ -516,6 +519,12 @@ function AulasPageInner() {
       if (error.message?.includes('AULA_LOTADA')) {
         const oc = modalReserva
         setConfirmando(false)
+        // Dentro das 3h a fila está fechada: só avisa que lotou, sem oferecer fila.
+        if (filaEncerrada(oc.data, oc.club_aulas?.horario)) {
+          setErroModal('Reservaram a última vaga enquanto você decidia. Esta aula está lotada e a fila de espera já encerrou (menos de 3h para o início).')
+          await carregarOcorrencias(dataSelStr)
+          return
+        }
         setModalReserva(null); setModalSoAvulso(false)
         setFilaAceite(false); setErroModal('')
         setAvisoLotou(true); setModalFila(oc)
@@ -780,6 +789,7 @@ function AulasPageInner() {
                     const duracao    = aula?.duracao_min||50
                     const poucasVagas = livres > 0 && livres <= 3
                     const encerrada  = aulaEncerrada(oc.data, aula?.horario)
+                    const semFila    = filaEncerrada(oc.data, aula?.horario)
                     const borderColor = minhaRes ? CYAN+'55' : naFila ? AMARELO+'55' : cores.border
                     return (
                       <div key={oc.id} style={{ background:cores.bg, border:`1px solid ${borderColor}`, borderRadius:12, padding:'10px', marginBottom:8, overflow:'hidden', opacity: encerrada ? 0.4 : 1, filter: encerrada ? 'grayscale(0.7)' : 'none' }}>
@@ -832,11 +842,15 @@ function AulasPageInner() {
                                 {livres===1?'ÚLTIMA VAGA':`${livres} VAGAS`}
                               </div>
                             )}
-                            {lotado ? (
+                            {lotado ? (semFila ? (
+                              <div style={{ width:'100%', textAlign:'center', color:'#ff4444', fontSize:10, fontWeight:700, fontFamily:"'DM Mono', monospace", letterSpacing:0.5, border:'1px solid #2a2a2a', borderRadius:8, padding:'5px' }}>
+                                LOTADA
+                              </div>
+                            ) : (
                               <button onClick={() => tentarFila(oc)} style={{ width:'100%', background:`${AMARELO}15`, color:AMARELO, border:`1px solid ${AMARELO}55`, borderRadius:8, padding:'5px', fontSize:10, fontWeight:700, cursor:'pointer' }}>
                                 ⏳ Fila
                               </button>
-                            ) : (
+                            )) : (
                               <button onClick={() => tentarReservar(oc)} style={{ width:'100%', background:ACCENT, color:'#fff', border:'none', borderRadius:8, padding:'6px', fontSize:11, fontWeight:700, cursor:'pointer' }}>
                                 Reservar
                               </button>
@@ -873,6 +887,7 @@ function AulasPageInner() {
               const duracao=aula?.duracao_min||50
               const poucasVagas=livres>0&&livres<=3
               const encerrada=aulaEncerrada(oc.data, aula?.horario)
+              const semFila=filaEncerrada(oc.data, aula?.horario)
               const borderColor=minhaRes?CYAN+'55':naFila?AMARELO+'55':cores.border
               return (
                 <div key={oc.id} style={{ background:cores.bg, border:`1.5px solid ${borderColor}`, borderRadius:18, overflow:'hidden', opacity: encerrada ? 0.4 : 1, filter: encerrada ? 'grayscale(0.7)' : 'none' }}>
@@ -926,7 +941,16 @@ function AulasPageInner() {
                   {/* Botão de ação — full-width, só aparece se não tiver reservado/fila */}
                   {!encerrada && (!minhaRes || cliente?.is_classpass) && !naFila && (
                     <div style={{ padding: isMobile ? '0 1.25rem 1.25rem' : '0 1rem 1rem' }}>
-                      {lotado ? (
+                      {lotado ? (semFila ? (
+                        <div style={{
+                          width:'100%', textAlign:'center', color:'#ff4444',
+                          border:'1px solid #222', borderRadius:12,
+                          padding: isMobile ? '0.8rem' : '0.6rem', fontSize: isMobile ? 13 : 12, fontWeight:700,
+                          fontFamily:"'DM Mono', monospace", letterSpacing:1
+                        }}>
+                          LOTADA
+                        </div>
+                      ) : (
                         <button onClick={() => tentarFila(oc)} style={{
                           width:'100%', background:`${AMARELO}15`, color:AMARELO,
                           border:`1.5px solid ${AMARELO}55`, borderRadius:12,
@@ -935,7 +959,7 @@ function AulasPageInner() {
                         }}>
                           ⏳ Entrar na fila de espera
                         </button>
-                      ) : (
+                      )) : (
                         <button onClick={() => tentarReservar(oc)} style={{
                           width:'100%', background:'#cc2580', color:'#fff',
                           border:'none', borderRadius:12,
