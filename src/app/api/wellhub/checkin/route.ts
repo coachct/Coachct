@@ -87,6 +87,59 @@ async function marcarPresencaImediata(
   }
 }
 
+// Club: o check-in só é VALIDADO de volta pro Wellhub se a pessoa tiver reserva
+// na unidade hoje. Antes validava automático — quem chegava sem reserva já saía
+// com o check-in queimado e só descobria na recepção que não havia vaga na aula
+// (05/09/2026). No CT (musculação) nada muda: lá o check-in é livre.
+//
+// Vale QUALQUER reserva ativa do dia naquela unidade, feita no app ou no site,
+// com o plano que for — quem reservou com a TotalPass e bateu o Wellhub tem vaga
+// do mesmo jeito, e não é ele que a gente quer barrar.
+//
+// FAIL-OPEN: se a checagem falhar, valida como antes — erro nosso não pune
+// cliente. Desliga com CLUB_CHECKIN_EXIGE_RESERVA=0 na Vercel.
+async function clubTemReservaHoje(
+  supabase: SupabaseClient,
+  gympassId: string | null,
+  gymId: string | null,
+  email: string | null,
+  nome: string | null,
+  quando: Date
+): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.rpc('wellhub_club_tem_reserva', {
+      p_gympass_id: gympassId,
+      p_gym_id: gymId,
+      p_email: email,
+      p_nome: nome,
+      p_checkin_em: quando.toISOString(),
+    });
+    if (error) {
+      console.error('[wellhub/checkin] checagem de reserva falhou (validando assim mesmo):', error);
+      return true;
+    }
+    return !!data;
+  } catch (e) {
+    console.error('[wellhub/checkin] checagem de reserva excecao (validando assim mesmo):', e);
+    return true;
+  }
+}
+
+// Registra que o check-in chegou sem reserva. MANTÉM status 'aula' (senão a
+// entrada vaza pro painel de check-ins do CT, que filtra por status <> 'aula')
+// e deixa validado_em nulo — é isso que separa o validado do recusado.
+async function marcarClubSemReserva(
+  supabase: SupabaseClient,
+  entradaId: string,
+  motivo: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('entradas_walkin')
+    .update({ erro_motivo: motivo })
+    .eq('id', entradaId);
+  if (error) console.error('[wellhub/checkin] erro ao marcar sem reserva:', error);
+}
+
 // Valida o check-in de aula (Club) DE VOLTA no Wellhub (confirma no portal +
 // repasse), usando o gym do CLUB (não o do CT). Mantém status 'aula' — só grava
 // validado_em + valor. Fail-safe: nunca afeta o check-in nem a presença.
@@ -274,11 +327,31 @@ export async function POST(req: NextRequest) {
   // 6. Próximo passo conforme a unidade:
   if (inserida?.id) {
     if (ehClub) {
-      // Aulas (Club): marca presença NA HORA (se reservou pelo app). NÃO valida
-      // como musculação — some do painel de check-ins do CT.
-      waitUntil(marcarPresencaImediata(supabase, gympassId, gymId, email, nome));
-      // Completa o loop: valida o check-in de volta no Wellhub (portal + repasse).
-      waitUntil(validarCheckinClub(supabase, inserida.id, gympassId, gymId, produtoId, produtoDescricao));
+      // Aulas (Club): presença na hora + validação de volta SÓ com reserva. NÃO
+      // valida como musculação — some do painel de check-ins do CT. Sequencial
+      // (não dois waitUntil soltos) pra a checagem de reserva rodar antes de a
+      // presença mexer no status da reserva.
+      waitUntil((async () => {
+        const exigeReserva = process.env.CLUB_CHECKIN_EXIGE_RESERVA !== '0';
+        const temReserva = exigeReserva
+          ? await clubTemReservaHoje(supabase, gympassId, gymId, email, nome, momentoDoCheckin(timestamp))
+          : true;
+
+        await marcarPresencaImediata(supabase, gympassId, gymId, email, nome);
+
+        if (!temReserva) {
+          await marcarClubSemReserva(
+            supabase,
+            inserida.id,
+            'Sem reserva nesta unidade hoje — check-in NÃO validado'
+          );
+          console.warn(`[wellhub/checkin] NAO validado — sem reserva no Club (gympassId=${gympassId})`);
+          return;
+        }
+
+        // Completa o loop: valida o check-in de volta no Wellhub (portal + repasse).
+        await validarCheckinClub(supabase, inserida.id, gympassId, gymId, produtoId, produtoDescricao);
+      })());
     } else {
       // CT (musculação): Coach CT primeiro (marca presença / sinaliza modo errado),
       // e SÓ valida se não for o caso "tem Coach CT agendado + bateu Musculação
