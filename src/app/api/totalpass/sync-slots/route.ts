@@ -13,6 +13,14 @@
 // booking tiver volume real na mesma unidade (hoje não tem). vagas_totalpass por
 // ocorrência serve de teto de segurança nesse meio tempo.
 //
+// MODO ?oc=<ocorrencia_id>: sincroniza UMA ocorrência na hora, sem varrer a fila.
+// É o que o trigger do banco chama por pg_net a cada escrita que muda a conta de
+// vagas (ver supabase/totalpass-sync-instantaneo.sql). O cron de 2 min sozinho
+// deixava uma janela de até 2 minutos em que a aula já estava lotada aqui e ainda
+// aparecia com vaga no app da TotalPass — o cliente reservava e levava
+// cancelamento no poll seguinte (incidente 05/09 na Vila Olímpia). O cron
+// continua rodando como rede de segurança pra tudo que o push perder.
+//
 // Protegido pelo CRON_SECRET (Authorization: Bearer). Atrás do kill switch.
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -44,6 +52,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Variáveis de ambiente não configuradas' }, { status: 500 })
   }
   const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+
+  // Push imediato de UMA ocorrência (chamado pelo trigger). Se ela estiver na
+  // fila, processa aquele item (e o tira dela em caso de sucesso); se não estiver
+  // — a escrita foi enfileirada e já processada por outro ciclo —, sincroniza
+  // mesmo assim: o PUT é idempotente e custa menos que uma vaga fantasma.
+  const ocParam = new URL(req.url).searchParams.get('oc')
+  if (ocParam) {
+    const { data: item } = await supabase
+      .from('totalpass_slot_sync_queue')
+      .select('enfileirado_em, tentativas')
+      .eq('ocorrencia_id', ocParam)
+      .maybeSingle()
+    const r = await processarItem(
+      supabase, ocParam,
+      (item as any)?.enfileirado_em ?? new Date().toISOString(),
+      (item as any)?.tentativas ?? 0
+    )
+    return NextResponse.json({ ok: true, modo: 'ocorrencia', ocorrencia: ocParam, resultado: r })
+  }
 
   const { data: fila, error } = await supabase
     .from('totalpass_slot_sync_queue')
