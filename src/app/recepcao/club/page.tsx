@@ -25,6 +25,21 @@ function tipoColor(t: string) {
   return VERDE
 }
 
+// Nome de quem bateu o check-in, do jeito que cada parceiro manda no payload.
+function nomeDoCheckin(e: any): string {
+  const raw = e?.raw ?? {}
+  const tp = raw?.user?.name
+  if (tp) return String(tp)
+  const u = raw?.event_data?.user ?? {}
+  const wh = [u?.first_name, u?.last_name].filter(Boolean).join(' ').trim()
+  return wh || 'Sem nome no check-in'
+}
+
+function horaDoCheckin(e: any): string {
+  if (!e?.recebido_em) return '--:--'
+  return new Date(e.recebido_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+}
+
 // Prioridade: coach escalado pontualmente na ocorrência > coach da grade > null
 function primeiroNomeCoachOc(oc: any): string | null {
   const escalado = oc?.coach_escalado?.nome
@@ -43,6 +58,7 @@ export default function RecepcaoClubPage() {
   const [unidadeSel,     setUnidadeSel]     = useState<any>(null)
   const [ocorrencias,    setOcorrencias]    = useState<any[]>([])
   const [contagens,      setContagens]      = useState<Record<string, any>>({})
+  const [semReserva,     setSemReserva]     = useState<any[]>([])
   const [loadingOcs,     setLoadingOcs]     = useState(false)
   const [loadingUnidades,setLoadingUnidades]= useState(true)
   const [dataSel,        setDataSel]        = useState(dataLocalStr(new Date()))
@@ -105,7 +121,12 @@ export default function RecepcaoClubPage() {
       .from('club_aulas').select('id').eq('unidade_id', unidadeSel.id).eq('ativo', true)
     const ids = (aulasIds || []).map((a: any) => a.id)
 
-    if (!ids.length) { setOcorrencias([]); if (!silent) setLoadingOcs(false); return }
+    if (!ids.length) {
+      setOcorrencias([])
+      await carregarSemReserva() // sem aulas na grade, mas o check-in sem reserva ainda importa
+      if (!silent) setLoadingOcs(false)
+      return
+    }
 
     // Inclui coach_escalado (FK coach_id da ocorrência) — sobrescreve o coach da grade quando definido
     const { data: ocs } = await supabase
@@ -134,7 +155,32 @@ export default function RecepcaoClubPage() {
       }
       setContagens(cont)
     }
+
+    await carregarSemReserva()
     if (!silent) setLoadingOcs(false)
+  }
+
+  // Check-in de Wellhub/TotalPass que chegou SEM reserva: não foi validado de
+  // volta pro parceiro (por isso validado_em fica nulo e o motivo é gravado em
+  // erro_motivo). A recepção precisa ver quem é pra, havendo vaga, lançar a
+  // pessoa na aula e pedir que ela refaça o check-in no app.
+  async function carregarSemReserva() {
+    if (!unidadeSel) { setSemReserva([]); return }
+    const inicio = new Date(`${dataSel}T00:00:00`).toISOString()
+    const fim    = new Date(`${dataSel}T23:59:59.999`).toISOString()
+
+    const { data } = await supabase
+      .from('entradas_walkin')
+      .select('id, origem, recebido_em, raw')
+      .eq('unidade_id', unidadeSel.id)
+      .in('origem', ['wellhub', 'totalpass'])
+      .not('erro_motivo', 'is', null)
+      .is('validado_em', null)
+      .gte('recebido_em', inicio)
+      .lte('recebido_em', fim)
+      .order('recebido_em', { ascending: false })
+
+    setSemReserva(data || [])
   }
 
   const hoje   = dataLocalStr(new Date())
@@ -206,6 +252,42 @@ export default function RecepcaoClubPage() {
                 fontSize:12, color:'#555', background:'#fff', cursor:'pointer',
                 fontFamily:"'DM Sans', sans-serif" }}/>
           </div>
+
+          {semReserva.length > 0 && (
+            <div style={{ background:'#fff8f0', border:'1px solid #fed7aa', borderRadius:16,
+              padding:'1.25rem 1.5rem', marginBottom:'1.5rem' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                <span style={{ fontSize:16 }}>⚠️</span>
+                <div style={{ fontSize:14, fontWeight:700, color:'#92400e' }}>
+                  Chegaram sem reserva ({semReserva.length})
+                </div>
+              </div>
+              <div style={{ fontSize:12, color:'#b45309', marginBottom:12 }}>
+                O check-in destas pessoas <strong>não foi validado</strong> no app do parceiro.
+                Se houver vaga, lance na aula e peça pra refazer o check-in no app.
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                {semReserva.map((e: any) => (
+                  <div key={e.id} style={{ display:'flex', alignItems:'center', gap:12,
+                    background:'#fff', border:'1px solid #fde3c4', borderRadius:10,
+                    padding:'0.6rem 0.9rem' }}>
+                    <div style={{ fontFamily:"'DM Mono', monospace", fontSize:14, fontWeight:600,
+                      color:'#92400e', width:48, flexShrink:0 }}>
+                      {horaDoCheckin(e)}
+                    </div>
+                    <div style={{ flex:1, fontSize:13, fontWeight:600, color:'#111' }}>
+                      {nomeDoCheckin(e)}
+                    </div>
+                    <span style={{ fontSize:10, fontWeight:700, textTransform:'uppercase',
+                      letterSpacing:0.5, color:'#92400e', background:'#fef3c7',
+                      padding:'3px 10px', borderRadius:20, flexShrink:0 }}>
+                      {e.origem === 'wellhub' ? 'Wellhub' : 'TotalPass'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {loadingOcs ? (
             <div style={{ textAlign:'center', padding:'3rem', color:'#aaa' }}>Carregando aulas...</div>
