@@ -14,6 +14,13 @@
 // total_booked, e classe some via visible=false), então "cancelar" ali é zerar a
 // capacidade. Ver fecharSlot().
 //
+// MODO ?oc=<ocorrencia_id>: sincroniza UMA ocorrência na hora, sem varrer a fila
+// — é o que o trigger do banco chama por pg_net a cada escrita que muda a conta
+// de vagas (ver supabase/totalpass-sync-instantaneo.sql, mesma solução aplicada
+// aqui). Só com o cron de 2 min, a aula lotava aqui e seguia com vaga no app do
+// parceiro por até 2 minutos: o cliente reservava lá e levava cancelamento
+// depois. O cron continua como rede de segurança.
+//
 // Protegido pelo segredo do cron (Authorization: Bearer CRON_SECRET), igual à
 // rota processar-notificacoes.
 
@@ -40,6 +47,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Variáveis de ambiente não configuradas' }, { status: 500 })
   }
   const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+
+  // Push imediato de UMA ocorrência (chamado pelo trigger). Se ela estiver na
+  // fila, processa aquele item; se não estiver, sincroniza mesmo assim — o PATCH
+  // é absoluto e idempotente, e custa menos que uma vaga fantasma no app deles.
+  const ocParam = new URL(req.url).searchParams.get('oc')
+  if (ocParam) {
+    const { data: item } = await supabase
+      .from('wellhub_slot_sync_queue')
+      .select('enfileirado_em')
+      .eq('ocorrencia_id', ocParam)
+      .maybeSingle()
+    const r = await processarItem(
+      supabase, ocParam, (item as any)?.enfileirado_em ?? new Date().toISOString()
+    )
+    return NextResponse.json({ ok: true, modo: 'ocorrencia', ocorrencia: ocParam, resultado: r })
+  }
 
   const { data: fila, error } = await supabase
     .from('wellhub_slot_sync_queue')
