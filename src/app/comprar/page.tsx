@@ -4,6 +4,9 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import SiteHeader from '@/components/SiteHeader'
+import SummerToggle from '@/components/SummerToggle'
+import SummerModeCards from '@/components/SummerModeCards'
+import { CAMPANHA_SUMMER, dentroDaJanela, dataBR } from '@/lib/summer'
 
 const ACCENT   = '#ff2d9b'
 const VERDE    = '#2ddd8b'
@@ -83,13 +86,19 @@ export default function ComprarPage() {
     ]
   }
 
+  // Campanha Summer Mode: ganha seção própria e SAI do agrupamento genérico
+  // de pacotes — senão apareceria duas vezes na mesma página.
+  const ehSummer = (p: any) => p.campanha === CAMPANHA_SUMMER
+  const produtosSummer = produtos.filter(p => ehSummer(p) && dentroDaJanela(p))
+  const summerFim = produtosSummer[0]?.venda_fim
+
   const produtosCoachPro       = produtos.filter(p => p.subtipo === 'coach_ct_pro')
   const produtosAcessoCT       = produtos.filter(p => p.subtipo === 'acesso')
   const produtosIlimitado      = produtos.filter(p => p.subtipo === 'ilimitado_club')
   const produtosPacotesAvulsos = [
     ...produtos.filter(p => p.subtipo === 'credito' && p.tipo === 'credito_coach'),
     ...produtos.filter(p => p.subtipo === 'credito' && p.tipo === 'credito_treino'),
-    ...produtos.filter(p => p.subtipo === 'pacote').sort((a, b) => Number(a.valor) - Number(b.valor)),
+    ...produtos.filter(p => p.subtipo === 'pacote' && !ehSummer(p)).sort((a, b) => Number(a.valor) - Number(b.valor)),
   ]
 
   const card = { background: '#111', border: '1px solid #222', borderRadius: 16, padding: '2rem' }
@@ -140,6 +149,31 @@ export default function ComprarPage() {
           </div>
         ) : (
           <>
+            {/* ══ 0. SUMMER MODE (campanha — só dentro da janela de venda) ══ */}
+            {produtosSummer.length > 0 && (
+              <div style={{ marginBottom: '5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 2, color: ACCENT, marginBottom: '0.5rem', fontFamily: "'DM Mono', monospace" }}>
+                      // summer mode: on{summerFim ? ` · até ${dataBR(summerFim).slice(0, 5)}` : ''}
+                    </div>
+                    <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: '#fff', letterSpacing: 6 }}>100 DAYS TO GO</div>
+                    <div style={{ fontSize: 14, color: '#555', marginTop: '0.5rem', fontStyle: 'italic' }}>
+                      O verão não começa no verão. Começa no dia em que você liga o modo.
+                    </div>
+                  </div>
+                  <SummerToggle on height={26} />
+                </div>
+
+                <SummerModeCards
+                  produtos={produtosSummer}
+                  variante="curto"
+                  onComprar={irParaCheckout}
+                  linkRegras="/summer-mode#regras"
+                />
+              </div>
+            )}
+
             {/* ══ 1. COACH CT PRO ══ */}
             {produtosCoachPro.length > 0 && (
               <div style={{ marginBottom: '5rem' }}>

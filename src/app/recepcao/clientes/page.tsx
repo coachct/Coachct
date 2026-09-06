@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap, Gift, CalendarClock, Edit2, KeyRound, Copy, Dumbbell, CheckCircle2 } from 'lucide-react'
 import UnidadeSelector from '@/components/UnidadeSelector'
 import { numerarTreinosDoMes, PLANOS_SEM_TETO } from '@/lib/treinos-numero'
+import { CAMPANHA_SUMMER, ERRO_LIMITE_POR_CLIENTE } from '@/lib/summer'
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
@@ -836,6 +837,25 @@ function RecepcaoClientesPageInner() {
       }
     }
     setVendendo(true); setErroVenda('')
+
+    // Produto de campanha com limite por CPF (Summer Mode: um de cada por pessoa).
+    // O registrar_venda também barra — aqui é só pra mensagem clara no balcão.
+    const prodLimite = produtosDisp.find(p => p.id === formVenda.produto_id)
+    const limitePorCliente = Number(prodLimite?.limite_por_cliente) || 0
+    if (limitePorCliente > 0) {
+      const { count } = await supabase.from('vendas')
+        .select('id', { count: 'exact', head: true })
+        .eq('cliente_id', clienteSel.id).eq('produto_id', formVenda.produto_id)
+        .is('excluido_em', null)
+      if ((count || 0) >= limitePorCliente) {
+        setVendendo(false)
+        setErroVenda(prodLimite?.campanha === CAMPANHA_SUMMER
+          ? ERRO_LIMITE_POR_CLIENTE
+          : `Este cliente já comprou este produto. O limite é de ${limitePorCliente} por pessoa.`)
+        return
+      }
+    }
+
     const { data, error } = await supabase.rpc('registrar_venda', {
       p_produto_id: formVenda.produto_id, p_cliente_id: clienteSel.id,
       p_quantidade: formVenda.quantidade, p_valor_unitario: formVenda.valor_unitario,
@@ -852,6 +872,8 @@ function RecepcaoClientesPageInner() {
         desconto_sem_liberacao: 'Desconto exige um código de liberação do admin.',
         codigo_invalido_ou_expirado: 'Código de liberação inválido ou expirado.',
         desconto_acima_do_teto: `Desconto acima do liberado por esse código${data.teto?` (até ${data.teto}%)`:''}.`,
+        limite_por_cliente: ERRO_LIMITE_POR_CLIENTE,
+        produto_sem_validade: 'Produto sem validade configurada. Avise o admin antes de vender.',
       }
       setErroVenda(MOTIVOS[data.motivo] || ('Erro: ' + (data.motivo||'desconhecido'))); return
     }

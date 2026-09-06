@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Search, Plus, ChevronRight, X, Check, Calendar, Lock, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap, Gift, CalendarClock, Edit2, Mail, Copy, Clock, Link as LinkIcon, UserPlus, KeyRound, Camera, Upload, Trash, Wifi, WifiOff, Dumbbell, CheckCircle2, Users, GitMerge, Eye, EyeOff } from 'lucide-react'
 import UnidadeSelector from '@/components/UnidadeSelector'
 import { numerarTreinosDoMes, PLANOS_SEM_TETO } from '@/lib/treinos-numero'
+import { CAMPANHA_SUMMER, ERRO_LIMITE_POR_CLIENTE } from '@/lib/summer'
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const HORARIOS_FDS = ['08:00', '09:00', '10:00', '11:00', '12:00']
@@ -821,6 +822,25 @@ function AdminClientesPageInner() {
     if (formVenda.valor_unitario <= 0) { setErroVenda('Informe um valor válido.'); return }
     if (formVenda.desconto_percentual < 0 || formVenda.desconto_percentual > 100) { setErroVenda('Desconto inválido (0 a 100%).'); return }
     setVendendo(true); setErroVenda('')
+
+    // Produto de campanha com limite por CPF (Summer Mode: um de cada por pessoa).
+    // O registrar_venda também barra — aqui é só pra mensagem clara na tela.
+    const prodLimite = produtosDisp.find(p => p.id === formVenda.produto_id)
+    const limitePorCliente = Number(prodLimite?.limite_por_cliente) || 0
+    if (limitePorCliente > 0) {
+      const { count } = await supabase.from('vendas')
+        .select('id', { count: 'exact', head: true })
+        .eq('cliente_id', clienteSel.id).eq('produto_id', formVenda.produto_id)
+        .is('excluido_em', null)
+      if ((count || 0) >= limitePorCliente) {
+        setVendendo(false)
+        setErroVenda(prodLimite?.campanha === CAMPANHA_SUMMER
+          ? ERRO_LIMITE_POR_CLIENTE
+          : `Este cliente já comprou este produto. O limite é de ${limitePorCliente} por pessoa.`)
+        return
+      }
+    }
+
     const { data, error } = await supabase.rpc('registrar_venda', {
       p_produto_id: formVenda.produto_id, p_cliente_id: clienteSel.id, p_quantidade: formVenda.quantidade,
       p_valor_unitario: formVenda.valor_unitario, p_forma_pagamento: formVenda.forma_pagamento,
@@ -829,7 +849,13 @@ function AdminClientesPageInner() {
     })
     setVendendo(false)
     if (error) { setErroVenda('Erro ao registrar venda: ' + error.message); return }
-    if (data && !data.sucesso) { setErroVenda('Erro: ' + (data.motivo || 'desconhecido')); return }
+    if (data && !data.sucesso) {
+      const MOTIVOS: Record<string, string> = {
+        limite_por_cliente: ERRO_LIMITE_POR_CLIENTE,
+        produto_sem_validade: 'Produto sem validade configurada (nem validade fixa, nem dias). Ajuste o cadastro do produto.',
+      }
+      setErroVenda(MOTIVOS[data.motivo] || ('Erro: ' + (data.motivo || 'desconhecido'))); return
+    }
     const prod = produtosDisp.find(p => p.id === formVenda.produto_id)
     await Promise.all([carregarSaldo(clienteSel.id), carregarVendas(clienteSel.id), carregarPlanosCliente(clienteSel.id)])
     setVendaSucesso({

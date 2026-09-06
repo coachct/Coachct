@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { CAMPANHA_SUMMER, ERRO_LIMITE_POR_CLIENTE } from '@/lib/summer'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -93,6 +94,35 @@ export async function POST(req: NextRequest) {
 
     if (cliente.bloqueado) {
       return NextResponse.json({ error: 'Cliente bloqueado' }, { status: 403 })
+    }
+
+    // Produto de campanha: janela de venda + limite por CPF. As duas checagens
+    // são inertes para o catálogo de sempre (venda_inicio/venda_fim/limite nulos).
+    // O registrar_venda tem a mesma trava no banco; aqui é antes pra não criar
+    // order na Pagar.me de uma venda que o banco vai recusar.
+    const hojeSP = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
+    const inicioVenda = produto.venda_inicio ? String(produto.venda_inicio).slice(0, 10) : null
+    const fimVenda    = produto.venda_fim ? String(produto.venda_fim).slice(0, 10) : null
+    if ((inicioVenda && hojeSP < inicioVenda) || (fimVenda && hojeSP > fimVenda)) {
+      return NextResponse.json({ error: 'Este produto está fora do período de venda.' }, { status: 400 })
+    }
+
+    const limitePorCliente = Number(produto.limite_por_cliente) || 0
+    if (limitePorCliente > 0) {
+      const { count } = await supabase
+        .from('vendas')
+        .select('id', { count: 'exact', head: true })
+        .eq('cliente_id', cliente.id)
+        .eq('produto_id', produto.id)
+        .is('excluido_em', null)
+
+      if ((count || 0) >= limitePorCliente) {
+        return NextResponse.json({
+          error: produto.campanha === CAMPANHA_SUMMER
+            ? ERRO_LIMITE_POR_CLIENTE
+            : `Você já comprou este produto. O limite é de ${limitePorCliente} por pessoa.`,
+        }, { status: 409 })
+      }
     }
 
     // Pré-voo: o Pagar.me valida o CPF (customer.document) e devolve 422 "The request

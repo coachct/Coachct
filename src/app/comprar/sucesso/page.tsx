@@ -3,6 +3,7 @@ import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { CAMPANHA_SUMMER, dataBR } from '@/lib/summer'
 
 const ACCENT = '#ff2d9b'
 const SUCCESS = '#22c55e'
@@ -57,6 +58,7 @@ function SucessoContent() {
   }
 
   const ehAcesso = produto?.subtipo === 'acesso'
+  const ehSummer = produto?.campanha === CAMPANHA_SUMMER
   const ehPix = metodo === 'pix'
   const metodoLabel = ehPix ? 'PIX' : 'Cartão de crédito'
 
@@ -70,10 +72,22 @@ function SucessoContent() {
     : 'Seu crédito foi liberado e já está disponível para agendamento.'
 
   function dataValidade(): string {
+    // Produto de campanha vence numa data fixa (não conta dias a partir da compra).
+    if (produto?.validade_fixa) return dataBR(produto.validade_fixa)
     if (!produto?.dias_validade) return ''
     const fim = new Date()
     fim.setDate(fim.getDate() + produto.dias_validade)
     return fim.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  }
+
+  // Descrição do que foi comprado no comprovante.
+  function linhaProduto(): string {
+    if (ehAcesso) return `Acesso ilimitado por ${produto.dias_validade} dias`
+    const creditos = Number(produto?.creditos_por_venda) || 1
+    const quando = produto?.validade_fixa
+      ? `válidos até ${dataBR(produto.validade_fixa)}`
+      : `válido${creditos > 1 ? 's' : ''} por ${produto?.dias_validade || 30} dias`
+    return `${creditos} crédito${creditos > 1 ? 's' : ''} · ${quando}`
   }
 
   if (loading) return (
@@ -148,9 +162,7 @@ function SucessoContent() {
                   {produto.nome}
                 </div>
                 <div style={{ fontSize: 13, color: '#999', lineHeight: 1.5 }}>
-                  {ehAcesso
-                    ? `Acesso ilimitado por ${produto.dias_validade} dias`
-                    : `1 crédito · válido por ${produto.dias_validade || 30} dias`}
+                  {linhaProduto()}
                 </div>
               </div>
               <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: '#fff', lineHeight: 1, whiteSpace: 'nowrap' as const }}>
@@ -187,13 +199,53 @@ function SucessoContent() {
           </div>
         )}
 
+        {/* REGULAMENTO RESUMIDO — só para produto de campanha (Summer Mode) */}
+        {produto?.campanha === CAMPANHA_SUMMER && (
+          <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem 2rem', marginBottom: '1rem', animation: 'fadeUp 0.5s ease-out 0.6s both' }}>
+            <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: '#999', marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>
+              O combinado do Summer Mode
+            </div>
+            <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.6rem', fontSize: 13, color: '#999', lineHeight: 1.6 }}>
+              <li>
+                • Seus {produto.creditos_por_venda} treinos valem em qualquer JustClub e na musculação livre do Just CT,
+                até <strong style={{ color: '#fff' }}>{dataBR(produto.validade_fixa)}</strong>.
+              </li>
+              {produto.bonus_creditos > 0 && (
+                <li>
+                  • Usou todos até <strong style={{ color: '#fff' }}>{dataBR(produto.bonus_data_corte)}</strong>?
+                  Você ganha <strong style={{ color: ACCENT }}>+{produto.bonus_creditos} treinos</strong>, creditados em 02/01/2027
+                  e válidos até {dataBR(produto.validade_fixa)}. Falta não conta pro bônus.
+                </li>
+              )}
+              <li>• Só o titular usa: uma reserva por treino, sem acompanhante.</li>
+              <li>• Não vale para Coach CT (personal) nem para o Coach CT Pro.</li>
+              <li>• Um pacote de cada por CPF.</li>
+            </ul>
+            <div style={{ marginTop: '1rem', fontSize: 12 }}>
+              <a href="/summer-mode#regras" style={{ color: ACCENT, textDecoration: 'none', fontWeight: 600 }}>Ver o regulamento completo →</a>
+            </div>
+          </div>
+        )}
+
         {/* PRÓXIMOS PASSOS REAIS */}
         <div style={{ background: '#111', border: `1px solid ${ACCENT}40`, borderRadius: 16, padding: '1.5rem 2rem', marginBottom: '2rem', animation: 'fadeUp 0.5s ease-out 0.7s both' }}>
           <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 2, color: ACCENT, marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>
             Próximos passos
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {ehAcesso ? (
+            {ehSummer ? (
+              <>
+                <PassoItem num="1"
+                  title="Seus treinos já estão na conta"
+                  desc="Os créditos entraram todos de uma vez. Use em qualquer JustClub ou na musculação livre do Just CT." />
+                <PassoItem num="2"
+                  title="Reserve sua primeira aula"
+                  desc="Escolha a unidade e o horário no calendário de aulas. No Just CT, é só passar na recepção e fazer o check-in." />
+                <PassoItem num="3"
+                  title="De olho no bônus"
+                  desc={`Zerou os ${produto?.creditos_por_venda} treinos até ${dataBR(produto?.bonus_data_corte)}? A gente credita +${produto?.bonus_creditos} em 02/01/2027.`} />
+              </>
+            ) : ehAcesso ? (
               <>
                 <PassoItem num="1"
                   title="Seu plano está ativo"
@@ -225,10 +277,10 @@ function SucessoContent() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, animation: 'fadeUp 0.5s ease-out 0.9s both' }}>
           {perfil?.role === 'cliente' ? (
             <>
-              <button onClick={() => router.push(ehAcesso ? '/minha-conta' : '/agendar')}
+              <button onClick={() => router.push(ehSummer ? '/aulas' : ehAcesso ? '/minha-conta' : '/agendar')}
                 className="btn-primary-h"
                 style={{ width: '100%', background: ACCENT, color: '#fff', border: 'none', borderRadius: 12, padding: '1rem', fontWeight: 700, fontSize: 16, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                {ehAcesso ? 'Ir para minha conta →' : 'Agendar Coach CT →'}
+                {ehSummer ? 'Ver calendário de aulas →' : ehAcesso ? 'Ir para minha conta →' : 'Agendar Coach CT →'}
               </button>
               <button onClick={() => router.push('/minha-conta')}
                 className="btn-ghost-h"

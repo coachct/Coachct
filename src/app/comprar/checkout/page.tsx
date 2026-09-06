@@ -3,6 +3,7 @@ import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { dentroDaJanela, dataBR } from '@/lib/summer'
 
 const ACCENT = '#ff2d9b'
 
@@ -336,7 +337,10 @@ function CheckoutContent() {
       case 'acesso':
         return `Acesso ilimitado ao Just CT por ${p.dias_validade} dias`
       case 'pacote':
-        return `${p.creditos_por_venda} créditos · válidos por ${p.dias_validade} dias a partir da compra · Todas as unidades`
+        // Produto de campanha tem data de vencimento fixa (não conta dias a partir da compra).
+        return p.validade_fixa
+          ? `${p.creditos_por_venda} créditos · válidos até ${dataBR(p.validade_fixa)} · Todas as unidades`
+          : `${p.creditos_por_venda} créditos · válidos por ${p.dias_validade} dias a partir da compra · Todas as unidades`
       case 'ilimitado_club':
         return `30 créditos/mês por 6 meses · Renovação mensal na data da compra · JustClub + Just CT`
       case 'credito_extra':
@@ -381,6 +385,9 @@ function CheckoutContent() {
   )
 
   const valor = Number(produto.valor)
+  // Produto de campanha com janela de venda: link antigo não compra mais depois
+  // do fim. Sem venda_inicio/venda_fim (todo o resto do catálogo) isso é sempre false.
+  const foraDaJanela = !dentroDaJanela(produto)
   const maxParcelas = produto.max_parcelas || 1
   const descontoPct = (cupomAplicado && metodo === 'cartao') ? Number(cupomAplicado.desconto_percentual) : 0
   // Crédito extra de aula (unitário) é o único produto com quantidade livre no
@@ -453,6 +460,14 @@ function CheckoutContent() {
             </div>
           )}
         </div>
+
+        {/* Produto de campanha fora da janela: avisa antes de o cliente entrar/cadastrar */}
+        {foraDaJanela && (
+          <div style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1.5rem', fontSize: 14, color: '#999', lineHeight: 1.6 }}>
+            Este produto saiu de venda.{' '}
+            <span onClick={() => router.push('/comprar')} style={{ color: ACCENT, cursor: 'pointer', fontWeight: 600 }}>Ver o que está disponível →</span>
+          </div>
+        )}
 
         {/* ETAPA: AUTH */}
         {etapa === 'auth' && !perfil && (
@@ -687,10 +702,16 @@ function CheckoutContent() {
             {erro && <div style={{ background: `${ACCENT}15`, border: `1px solid ${ACCENT}44`, borderRadius: 8, padding: '0.8rem 1rem', fontSize: 13, color: ACCENT, marginBottom: '1rem' }}>{erro}</div>}
 
             {!pixQrCode && (
-              <button onClick={confirmarPagamento} className="btn-primary-h"
-                style={{ width: '100%', background: ACCENT, color: '#fff', border: 'none', borderRadius: 12, padding: '1rem', fontWeight: 700, fontSize: 16, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                {metodo === 'pix' ? 'Gerar PIX →' : `Pagar ${formatarValor(valorFinal)} →`}
-              </button>
+              foraDaJanela ? (
+                <div style={{ width: '100%', background: '#1a1a1a', color: '#666', border: '1px solid #2a2a2a', borderRadius: 12, padding: '1rem', fontWeight: 600, fontSize: 15, textAlign: 'center' as const }}>
+                  Este produto saiu de venda. <span onClick={() => router.push('/comprar')} style={{ color: ACCENT, cursor: 'pointer' }}>Ver o que está disponível →</span>
+                </div>
+              ) : (
+                <button onClick={confirmarPagamento} className="btn-primary-h"
+                  style={{ width: '100%', background: ACCENT, color: '#fff', border: 'none', borderRadius: 12, padding: '1rem', fontWeight: 700, fontSize: 16, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                  {metodo === 'pix' ? 'Gerar PIX →' : `Pagar ${formatarValor(valorFinal)} →`}
+                </button>
+              )
             )}
 
             <div style={{ fontSize: 11, color: '#444', textAlign: 'center' as const, marginTop: '1rem', lineHeight: 1.6 }}>
