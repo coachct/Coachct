@@ -73,9 +73,6 @@ export const LANDING_SUB_ON      = 'PACOTES DE 15 E 30 TREINOS'
 export const LANDING_TEXTO_ON =
   'Treinos a partir de R$ 33,30 pra dar início ao seu projeto verão. ' +
   'Clubs e musculação livre do CT, até 31/03/2027.'
-export const LANDING_TEXTO_OFF =
-  'Desligado tudo bem, sem julgamento. Mas o verão vem de qualquer jeito. ' +
-  'Toca no botão e a gente conversa.'
 
 // // a ideia  (o ponto final do título sai em rosa)
 export const IDEIA_TITULO =

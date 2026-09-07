@@ -370,8 +370,9 @@ $function$;
 -- e São Paulo é UTC-3 o ano inteiro — então 08/09 00:00 UTC é exatamente
 -- 07/09 21:00 em SP.
 --
--- O job faz as duas coisas de uma vez: liga a visibilidade e adianta a abertura
--- da venda para o dia 07, que é o que faz a campanha aparecer na hora.
+-- O job liga SÓ a visibilidade. venda_inicio continua 08/09 (decisão do
+-- Ricardo): subir na noite do dia 07 é para dar tempo de testar antes de
+-- amanhecer, e a campanha abre sozinha à meia-noite, na data anunciada.
 -- É idempotente e se desagenda sozinho; a trava de data ainda impede que ele
 -- reabra a campanha se sobreviver até setembro de 2027.
 --
@@ -380,17 +381,17 @@ $function$;
 --   '0 0 8 9 *',
 --   $job$
 --     update produtos
---        set visivel_site = true,
---            venda_inicio = date '2026-09-07'
+--        set visivel_site = true
 --      where campanha = 'summer_mode'
 --        and now() < timestamptz '2026-10-01 00:00:00+00';
 --     select cron.unschedule('summer-mode-go-live');
 --   $job$
 -- );
 --
--- ATENÇÃO: a arte anuncia "08.09 → 30.09" e a regra 1 do regulamento diz
--- "Venda de 08/09 a 30/09/2026". Por isso a data ANUNCIADA nas tags vem de
--- JANELA_LABEL_INICIO (src/lib/summer.ts) e não de venda_inicio.
+-- As datas ANUNCIADAS nas tags do banner e da landing são texto fixo em
+-- JANELA_LABEL_INICIO / JANELA_LABEL_FIM (src/lib/summer.ts), como no canvas.
+-- Não derivar de venda_inicio/venda_fim: quando o produto não carrega, o texto
+-- some e a tela sai diferente da arte.
 --
 -- Para adiantar/atrasar: cron.unschedule('summer-mode-go-live') e reagendar.
 -- Para subir na mão, agora: as duas linhas do update acima.

@@ -7,7 +7,7 @@ import SummerToggle from '@/components/SummerToggle'
 import SummerModeCards from '@/components/SummerModeCards'
 import {
   CAMPANHA_SUMMER, dentroDaJanela, dataCurta, JANELA_LABEL_INICIO, JANELA_LABEL_FIM,
-  LANDING_TAG_PREFIXO, LANDING_SUB_ON, LANDING_TEXTO_ON, LANDING_TEXTO_OFF,
+  LANDING_TAG_PREFIXO, LANDING_SUB_ON, LANDING_TEXTO_ON,
   IDEIA_TITULO, IDEIA_TEXTO, PACOTES_TITULO,
   BONUS_TITULO, BONUS_SUB, BONUS_PASSOS,
   REGRAS_TAG, REGRAS_TITULO, REGRAS,
@@ -18,16 +18,16 @@ const ACCENT = '#ff2d9b'
 // Landing da campanha Summer Mode. Pública: visitante vê tudo sem login — quem
 // trata login/cadastro é o checkout, como no resto do site.
 //
-// O hero é FIXO, sempre em ON, com o texto do canvas — inclusive fora da janela
-// de venda. Quem liga e desliga é o visitante, no toggle. Fora da janela muda só
-// o botão de compra, que vira "Summer Mode encerrado".
+// A página é FIXA, com o texto do canvas — inclusive fora da janela de venda.
+// O toggle é arte, em alusão a "ligar o modo": não é controle e não muda nada.
+// A única coisa que muda fora da janela é o botão de compra, que vira
+// "Summer Mode encerrado".
 export default function SummerModePage() {
   const router = useRouter()
   const supabase = createClient()
 
   const [produtos, setProdutos] = useState<any[]>([])
   const [loading, setLoading]   = useState(true)
-  const [on, setOn]             = useState(true)
 
   useEffect(() => { carregar() }, [])
 
@@ -103,28 +103,21 @@ export default function SummerModePage() {
 
           <div className="sm-hero-titulo">
             SUMMER MODE:{' '}
-            <span style={{ color: on ? ACCENT : '#666', textShadow: on ? `0 0 40px ${ACCENT}88` : 'none', transition: 'all .3s' }}>
-              {on ? 'ON' : 'OFF'}
-            </span>
+            <span style={{ color: ACCENT, textShadow: `0 0 40px ${ACCENT}88` }}>ON</span>
           </div>
 
           <div className="sm-switch">
-            <span className="sm-switch-label" style={{ color: on ? '#555' : '#aaa' }}>OFF</span>
-            <SummerToggle
-              on={on}
-              height={44}
-              onToggle={() => setOn(v => !v)}
-              ariaLabel="Ligar ou desligar o Summer Mode"
-            />
-            <span className="sm-switch-label" style={{ color: on ? ACCENT : '#555' }}>ON</span>
+            <span className="sm-switch-label" style={{ color: '#555' }}>OFF</span>
+            <SummerToggle height={44} />
+            <span className="sm-switch-label" style={{ color: ACCENT }}>ON</span>
           </div>
 
-          <div className="sm-days">{on ? '100 DAYS TO GO' : 'ARE YOU IN?'}</div>
+          <div className="sm-days">100 DAYS TO GO</div>
 
-          {on && <div className="sm-hero-sub">{LANDING_SUB_ON}</div>}
+          <div className="sm-hero-sub">{LANDING_SUB_ON}</div>
 
           <div style={{ fontSize: 16, color: '#888', lineHeight: 1.8, maxWidth: 560, margin: '0 auto 2rem' }}>
-            {on ? LANDING_TEXTO_ON : LANDING_TEXTO_OFF}
+            {LANDING_TEXTO_ON}
           </div>
 
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>

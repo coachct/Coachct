@@ -115,7 +115,7 @@ export default function SummerBanner() {
 
         <div className="smb-switch">
           <span className="smb-off">OFF</span>
-          <SummerToggle on height={44} />
+          <SummerToggle height={44} />
           <span className="smb-on">ON</span>
         </div>
 

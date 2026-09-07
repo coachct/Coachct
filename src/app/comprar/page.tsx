@@ -162,7 +162,7 @@ export default function ComprarPage() {
                       {COMPRAR_SUB}
                     </div>
                   </div>
-                  <SummerToggle on height={26} />
+                  <SummerToggle height={26} />
                 </div>
 
                 <SummerModeCards
