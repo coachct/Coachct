@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase'
 import { gradeExtraDoDia } from '@/lib/grade'
 import { dashboardDoRole } from '@/lib/auth-redirect'
 import { filaEncerrada } from '@/lib/tempo'
+import { mensagemTravaApp } from '@/lib/utils'
 import SiteHeader from '@/components/SiteHeader'
 import ModalTelefone from '@/components/ModalTelefone'
 import CompraCreditoExtra, { type CreditoExtraStatus } from '@/components/CompraCreditoExtra'
@@ -603,7 +604,7 @@ export default function AgendarPage() {
         setModalCompraCE(true)
         return
       }
-      setErroModal('Erro ao agendar. Tente novamente.'); setConfirmando(false); return
+      setErroModal(mensagemTravaApp(error) || 'Erro ao agendar. Tente novamente.'); setConfirmando(false); return
     }
     if (novo?.id) dispararEmailAgendamento(novo.id)
     await Promise.all([carregarSaldos(cliente.id, unidadeAtiva.id), loadHorarios()])
@@ -639,7 +640,7 @@ export default function AgendarPage() {
       setCliente({ ...cliente, notificacao_preferida: notifFila })
     }
     const { error } = await supabase.from('fila_espera').insert({ cliente_id: cliente.id, data: modalFila.data, horario: modalFila.hora + ':00', tipo_credito: tipoFilaCredito, status: 'aguardando', unidade_id: unidadeAtiva.id })
-    if (error) { setErroFila('Erro ao entrar na fila.'); setEntrandoFila(false); return }
+    if (error) { setErroFila(mensagemTravaApp(error) || 'Erro ao entrar na fila.'); setEntrandoFila(false); return }
     await Promise.all([carregarSaldos(cliente.id, unidadeAtiva.id), loadHorarios()])
     setContratoAssinado(true); setModalFila(null); setEntrandoFila(false)
     router.push('/minha-conta')

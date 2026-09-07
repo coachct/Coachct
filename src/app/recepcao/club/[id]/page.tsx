@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
+import { mensagemTravaApp } from '@/lib/utils'
 
 const ACCENT   = '#ff2d9b'
 const VERDE    = '#2ddd8b'
@@ -594,7 +595,7 @@ export default function RecepcaoClubDetalhe() {
       })
       error = e
     }
-    if (error) { setErroAgendar('Erro: ' + error.message); setAgendando(false); return }
+    if (error) { setErroAgendar(mensagemTravaApp(error) || 'Erro: ' + error.message); setAgendando(false); return }
     setAgendando(false); resetWalkin(); await carregarDados()
     showMsg(isFuturo ? '✅ Reserva criada!' : '✅ Cliente adicionado como presente!')
   }

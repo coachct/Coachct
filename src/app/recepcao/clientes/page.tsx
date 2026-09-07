@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, Suspense } from 'react'
 import { createClient } from '@/lib/supabase'
 import { gradeExtraDoDia } from '@/lib/grade'
+import { mensagemTravaApp } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -486,7 +487,7 @@ function RecepcaoClientesPageInner() {
       tipo_credito: tipoCredito, unidade_id: unidadeAtiva.id,
       criado_via: 'recepcao', criado_por: perfil?.id || null,
     })
-    if (error) { setErroModal('Erro ao agendar. Tente novamente.'); setAgendando(false); return }
+    if (error) { setErroModal(mensagemTravaApp(error) || 'Erro ao agendar. Tente novamente.'); setAgendando(false); return }
     setModalSlot(null); setAgendando(false)
     await Promise.all([carregarSaldo(clienteSel.id), carregarHistorico(clienteSel.id)])
     setAba('agendamentos')
@@ -594,7 +595,7 @@ function RecepcaoClientesPageInner() {
       tipo_credito: tipoCreditoClub,
       status: statusInicial,
     })
-    if (error) { setErroModalClub('Erro: ' + error.message); setAgendandoClub(false); return }
+    if (error) { setErroModalClub(mensagemTravaApp(error) || 'Erro: ' + error.message); setAgendandoClub(false); return }
 
     setAgendandoClub(false)
     setModalAulaClub(null)

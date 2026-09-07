@@ -70,6 +70,17 @@ export function perfLabel(ocupacaoPct: number): { txt: string; color: string } {
   return { txt: 'Baixo', color: 'red' }
 }
 
+// Trava "um treino por dia por app" (Wellhub/TotalPass) — triggers do banco
+// levantam a exceção com o prefixo APP_1_POR_DIA e o texto já pronto em
+// português. Aqui só tiramos o prefixo técnico pra mostrar pro aluno.
+export function mensagemTravaApp(error: any): string | null {
+  const m = String(error?.message || '')
+  if (!m.includes('APP_1_POR_DIA')) return null
+  const t = (m.split('APP_1_POR_DIA:')[1] || '').trim()
+  if (!t) return 'Você já tem um treino nesse dia com esse app. Cada app permite apenas um treino por dia, em qualquer unidade.'
+  return t.charAt(0).toUpperCase() + t.slice(1)
+}
+
 export const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
 export const HORARIOS = [

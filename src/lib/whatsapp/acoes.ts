@@ -9,6 +9,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { gradeExtraDoDia } from '@/lib/grade'
+import { mensagemTravaApp } from '@/lib/utils'
 import { registrarAcessoLgpd, agoraEmSaoPaulo, consultarSaldo } from './consultas'
 
 export interface ResultadoAcao {
@@ -360,9 +361,8 @@ export async function reservarClub(
     ...(posicaoFinal ? { posicao: posicaoFinal } : {}),
   })
   if (error) {
-    if (error.message?.includes('já tem uma reserva')) {
-      return { ok: false, mensagem: 'Você já tem uma reserva nessa unidade nesse dia com esse plano (cada plano permite uma reserva por dia por unidade).' }
-    }
+    const travaApp = mensagemTravaApp(error)
+    if (travaApp) return { ok: false, mensagem: travaApp }
     return { ok: false, mensagem: 'Tive um erro ao reservar. Pode tentar de novo?', erroTecnico: true }
   }
 
@@ -502,11 +502,10 @@ export async function entrarFilaClub(
     status: 'aguardando', data: dataStr, horario: horarioFull, unidade_id: aula.unidade_id,
   })
   if (error) {
-    // Trava do banco: Wellhub/TotalPass já tem reserva no dia → entrar na fila é
-    // inútil (nunca seria promovido). Mensagem amigável em vez de "erro técnico".
-    if (error.message?.includes('já tem uma reserva')) {
-      return { ok: false, mensagem: 'Você já tem uma reserva nessa unidade nesse dia com esse plano 😊. Como Wellhub/TotalPass permite só uma por dia por unidade, não dá pra entrar na fila de outra aula no mesmo dia.' }
-    }
+    // Trava do banco: já tem treino desse app no dia (qualquer unidade) → entrar
+    // na fila é inútil (nunca seria promovido). Mensagem amigável, não "erro técnico".
+    const travaApp = mensagemTravaApp(error)
+    if (travaApp) return { ok: false, mensagem: travaApp }
     return { ok: false, mensagem: 'Tive um erro ao entrar na fila. Pode tentar de novo?', erroTecnico: true }
   }
 
@@ -614,7 +613,11 @@ export async function agendarCt(
     unidade_id: JUST_CT_UNIDADE_ID,
     criado_via: 'whatsapp',
   })
-  if (error) return { ok: false, mensagem: 'Tive um erro ao agendar. Pode tentar de novo em instantes?', erroTecnico: true }
+  if (error) {
+    const travaApp = mensagemTravaApp(error)
+    if (travaApp) return { ok: false, mensagem: travaApp }
+    return { ok: false, mensagem: 'Tive um erro ao agendar. Pode tentar de novo em instantes?', erroTecnico: true }
+  }
 
   await registrarAcessoLgpd(supabase, {
     clienteId, acao: 'agendar_ct', detalhe: { data, hora, tipo_credito: tipoCredito },
@@ -696,7 +699,11 @@ export async function entrarFilaCt(
     cliente_id: clienteId, data, horario: hora + ':00', tipo_credito: tipoCredito,
     status: 'aguardando', unidade_id: JUST_CT_UNIDADE_ID,
   })
-  if (error) return { ok: false, mensagem: 'Tive um erro ao entrar na fila. Pode tentar de novo?', erroTecnico: true }
+  if (error) {
+    const travaApp = mensagemTravaApp(error)
+    if (travaApp) return { ok: false, mensagem: travaApp }
+    return { ok: false, mensagem: 'Tive um erro ao entrar na fila. Pode tentar de novo?', erroTecnico: true }
+  }
 
   await registrarAcessoLgpd(supabase, {
     clienteId, acao: 'entrar_fila_ct', detalhe: { data, hora, tipo_credito: tipoCredito },

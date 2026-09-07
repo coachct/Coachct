@@ -9,6 +9,7 @@ import ModalTelefone from '@/components/ModalTelefone'
 import EnqueteHorario from '@/components/EnqueteHorario'
 import { enqueteDoHorario } from '@/lib/enquete-horario'
 import { aulaJaComecou } from '@/lib/tempo'
+import { mensagemTravaApp } from '@/lib/utils'
 
 const ACCENT   = '#ff2d9b'
 const VERDE    = '#2ddd8b'
@@ -268,9 +269,7 @@ function MapaPageInner() {
       posicao: posicaoSel, status: 'reservado', criado_via: 'cliente',
     }).select('id').single()
     if (error) {
-      const msg = error.message?.includes('já tem uma reserva')
-        ? 'Você já tem uma reserva nesta unidade neste dia com este plano. Cada plano permite apenas uma reserva por dia por unidade.'
-        : 'Erro ao reservar: '+error.message
+      const msg = mensagemTravaApp(error) || 'Erro ao reservar: '+error.message
       setErroModal(msg); setConfirmando(false); return
     }
     // Confirmação por email — dispara nos dois caminhos (continuar e sair) logo após o insert.

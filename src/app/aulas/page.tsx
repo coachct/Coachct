@@ -10,6 +10,7 @@ import CardCheckinExpress from '@/components/CardCheckinExpress'
 import EnqueteHorario from '@/components/EnqueteHorario'
 import { enqueteDoHorario } from '@/lib/enquete-horario'
 import { aulaEncerrada, aulaJaComecou, dataHojeSP, hojeSP, filaEncerrada } from '@/lib/tempo'
+import { mensagemTravaApp } from '@/lib/utils'
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(true)
@@ -531,9 +532,7 @@ function AulasPageInner() {
         await carregarOcorrencias(dataSelStr)
         return
       }
-      const msg = error.message?.includes('já tem uma reserva')
-        ? 'Você já tem uma reserva nesta unidade neste dia com este plano. Cada plano permite apenas uma reserva por dia por unidade.'
-        : 'Erro ao reservar: ' + error.message
+      const msg = mensagemTravaApp(error) || 'Erro ao reservar: ' + error.message
       setErroModal(msg); setConfirmando(false); return
     }
     if (nova?.id) dispararEmailReserva(nova.id)
@@ -560,7 +559,7 @@ function AulasPageInner() {
       ocorrencia_id: modalFila.id, cliente_id: cliente.id, tipo_credito: tipoCredito,
       status: 'aguardando', data: dataSelStr, horario: modalFila.club_aulas?.horario, unidade_id: unidadeId,
     })
-    if (error) { setErroModal('Erro ao entrar na fila: '+error.message); setEntrandoFila(false); return }
+    if (error) { setErroModal(mensagemTravaApp(error) || 'Erro ao entrar na fila: '+error.message); setEntrandoFila(false); return }
     const { count } = await supabase.from('fila_espera').select('*', { count: 'exact', head: true }).eq('ocorrencia_id', modalFila.id).eq('status', 'aguardando')
     setEntrandoFila(false)
     setFilaConfirmada({ posicao: count || 1, oc: modalFila, data: dataSelStr })
