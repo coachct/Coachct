@@ -111,7 +111,7 @@ export const REGRAS_TITULO = 'COMBINADO NÃO SAI CARO.'
 export const REGRAS: { forte: string; resto: string }[] = [
   { forte: 'Venda de 08/09 a 30/09/2026.',
     resto: 'Depois disso o modo desliga e volta só no ano que vem.' },
-  { forte: 'Vale em qualquer JustClub e no musculação livre do Just CT.',
+  { forte: 'Vale em qualquer JustClub e na musculação livre do Just CT.',
     resto: 'Não vale para Coach CT (personal) nem Coach CT Pro.' },
   { forte: 'Validade até 31/03/2027,',
     resto: 'pacote e bônus, independente da data da compra.' },
