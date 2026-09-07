@@ -6,7 +6,7 @@ import { useAuth } from '@/hooks/useAuth'
 import SiteHeader from '@/components/SiteHeader'
 import SummerToggle from '@/components/SummerToggle'
 import SummerModeCards from '@/components/SummerModeCards'
-import { CAMPANHA_SUMMER, dentroDaJanela, dataBR } from '@/lib/summer'
+import { CAMPANHA_SUMMER, dentroDaJanela, dataBR, COMPRAR_TITULO, COMPRAR_SUB } from '@/lib/summer'
 
 const ACCENT   = '#ff2d9b'
 const VERDE    = '#2ddd8b'
@@ -157,9 +157,9 @@ export default function ComprarPage() {
                     <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 2, color: ACCENT, marginBottom: '0.5rem', fontFamily: "'DM Mono', monospace" }}>
                       // summer mode: on{summerFim ? ` · até ${dataBR(summerFim).slice(0, 5)}` : ''}
                     </div>
-                    <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: '#fff', letterSpacing: 6 }}>100 DAYS TO GO</div>
+                    <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: '#fff', letterSpacing: 6 }}>{COMPRAR_TITULO}</div>
                     <div style={{ fontSize: 14, color: '#555', marginTop: '0.5rem', fontStyle: 'italic' }}>
-                      O verão não começa no verão. Começa no dia em que você liga o modo.
+                      {COMPRAR_SUB}
                     </div>
                   </div>
                   <SummerToggle on height={26} />

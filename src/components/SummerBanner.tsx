@@ -3,7 +3,10 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import SummerToggle from './SummerToggle'
-import { CAMPANHA_SUMMER, dentroDaJanela, dataCurta, reais } from '@/lib/summer'
+import {
+  CAMPANHA_SUMMER, dentroDaJanela, dataCurta, reais,
+  BANNER_TAG_PREFIXO, BANNER_TITULO, BANNER_DAYS, BANNER_PRECO_2, BANNER_CTA,
+} from '@/lib/summer'
 
 const ACCENT = '#ff2d9b'
 
@@ -44,40 +47,50 @@ export default function SummerBanner() {
   const inicio = lista[0]?.venda_inicio
   const fim    = lista[0]?.venda_fim
 
-  const resumo = lista
-    .map(p => `${p.creditos_por_venda} treinos · ${reais(Number(p.valor))}${p.bonus_creditos ? ` · +${p.bonus_creditos} bônus` : ''}`)
-    .join('  |  ') + (maxParcelas > 1 ? ` · em até ${maxParcelas}x` : '')
+  // Uma linha por pacote; a menção às parcelas fecha a última.
+  const linhas = lista.map((p, i) => {
+    const base = `${p.creditos_por_venda} treinos · ${reais(Number(p.valor))}${p.bonus_creditos ? ` · +${p.bonus_creditos} bônus` : ''}`
+    const ultima = i === lista.length - 1
+    return ultima && maxParcelas > 1 ? `${base} · em até ${maxParcelas}x` : base
+  })
 
   return (
     <div className="smb-wrap" onClick={() => router.push('/summer-mode')}>
       <style>{`
-        .smb-wrap {
-          max-width: 1100px; margin: 0 auto; padding: 2.5rem 2.5rem 0;
-          cursor: pointer;
-        }
+        .smb-wrap { max-width: 1100px; margin: 0 auto; padding: 2.5rem 2.5rem 0; cursor: pointer; }
         .smb-card {
           background: linear-gradient(135deg, #111 0%, #1a0a14 100%);
           border: 1.5px solid ${ACCENT}55; border-radius: 20px;
-          padding: 2rem 2.25rem; transition: all .25s;
+          padding: 2.5rem 2.25rem; transition: all .25s; text-align: center;
         }
         .smb-wrap:hover .smb-card { border-color: ${ACCENT}; box-shadow: 0 12px 40px -12px ${ACCENT}55; }
         .smb-tag {
           font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 2px;
-          text-transform: uppercase; color: ${ACCENT}; margin-bottom: 1.25rem;
+          text-transform: uppercase; color: ${ACCENT}; margin-bottom: 1.5rem;
         }
-        .smb-modo {
-          display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+        .smb-titulo {
           font-family: 'Bebas Neue', sans-serif; letter-spacing: 2px; line-height: 1;
-          font-size: clamp(34px, 5vw, 52px); color: #fff; margin-bottom: 0.35rem;
+          font-size: clamp(38px, 6vw, 60px); color: #fff; margin-bottom: 0.75rem;
         }
-        .smb-on { color: ${ACCENT}; text-shadow: 0 0 30px ${ACCENT}88; }
+        .smb-switch {
+          display: flex; align-items: center; justify-content: center; gap: 14px;
+          margin-bottom: 1rem;
+        }
+        .smb-off {
+          font-family: 'DM Mono', monospace; font-size: 12px; letter-spacing: 2px;
+          color: #555; text-transform: uppercase;
+        }
+        .smb-on {
+          font-family: 'Bebas Neue', sans-serif; font-size: clamp(38px, 6vw, 60px);
+          letter-spacing: 2px; line-height: 1; color: ${ACCENT}; text-shadow: 0 0 30px ${ACCENT}88;
+        }
         .smb-days {
           font-family: 'Bebas Neue', sans-serif; font-size: clamp(18px, 2.4vw, 26px);
-          color: #fff; letter-spacing: 6px; margin-bottom: 1.5rem;
+          color: #fff; letter-spacing: 6px; margin-bottom: 1.75rem;
         }
         .smb-preco {
           font-family: 'Bebas Neue', sans-serif; font-size: clamp(26px, 3.4vw, 38px);
-          line-height: 1.1; letter-spacing: 1px; margin-bottom: 1.75rem;
+          line-height: 1.15; letter-spacing: 1px; margin-bottom: 1.75rem;
         }
         .smb-cta {
           background: ${ACCENT}; color: #fff; border: none; border-radius: 10px;
@@ -87,40 +100,44 @@ export default function SummerBanner() {
         .smb-cta:hover { opacity: .85; }
         .smb-resumo {
           font-family: 'DM Mono', monospace; font-size: 11px; color: #666;
-          margin-top: 1.25rem; line-height: 1.8;
+          margin-top: 1.5rem; line-height: 1.9;
         }
         @media (max-width: 768px) {
           .smb-wrap { padding: 2rem 1.25rem 0; }
-          .smb-card { padding: 1.5rem 1.25rem; border-radius: 16px; }
+          .smb-card { padding: 2rem 1.25rem; border-radius: 16px; }
           .smb-cta  { width: 100%; }
           .smb-days { letter-spacing: 4px; }
         }
       `}</style>
 
       <div className="smb-card">
-        <div className="smb-tag">// dia do cliente · {dataCurta(inicio)} → {dataCurta(fim)}</div>
+        <div className="smb-tag">{BANNER_TAG_PREFIXO} · {dataCurta(inicio)} → {dataCurta(fim)}</div>
 
-        <div className="smb-modo">
-          <span>SUMMER MODE:</span>
-          <SummerToggle on height={34} />
+        <div className="smb-titulo">{BANNER_TITULO}</div>
+
+        <div className="smb-switch">
+          <span className="smb-off">OFF</span>
+          <SummerToggle on height={44} />
           <span className="smb-on">ON</span>
         </div>
 
-        <div className="smb-days">100 DAYS TO GO</div>
+        <div className="smb-days">{BANNER_DAYS}</div>
 
         <div className="smb-preco">
           <span style={{ color: ACCENT }}>TREINOS A PARTIR DE {reais(menorPorTreino)}</span><br />
-          <span style={{ color: '#fff' }}>PRA DAR INÍCIO AO SEU PROJETO VERÃO.</span>
+          <span style={{ color: '#fff' }}>{BANNER_PRECO_2}</span>
         </div>
 
         <button
           className="smb-cta"
           onClick={e => { e.stopPropagation(); router.push('/summer-mode') }}
         >
-          SABER MAIS →
+          {BANNER_CTA}
         </button>
 
-        <div className="smb-resumo">{resumo}</div>
+        <div className="smb-resumo">
+          {linhas.map((l, i) => <div key={i}>{l}</div>)}
+        </div>
       </div>
     </div>
   )

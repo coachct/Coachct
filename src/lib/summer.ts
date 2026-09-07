@@ -45,52 +45,86 @@ export function reais(v: number): string {
 }
 
 // ── Textos da campanha ──────────────────────────────────────────────────────
-// TEXTO PROVISÓRIO: o canvas aprovado não veio no repositório. Os títulos e as
-// frases citados no brief estão literais; os parágrafos e as descrições dos
-// passos foram escritos a partir das regras de negócio. Substituir por copiar
-// e colar do canvas quando ele estiver à mão — este arquivo é o único lugar.
+// Copiados do canvas aprovado "Summer Mode: ON" (Ricardo, 06/09/2026).
+// Qualquer ajuste de copy é aqui — as telas não têm texto solto.
 
+// Banner da home
+export const BANNER_TAG_PREFIXO = '// dia do cliente'
+export const BANNER_TITULO      = 'SUMMER MODE:'
+export const BANNER_DAYS        = '100 DAYS TO GO'
+export const BANNER_PRECO_2     = 'PRA DAR INÍCIO AO SEU PROJETO VERÃO.'
+export const BANNER_CTA         = 'SABER MAIS →'
+
+// Cabeçalho da seção em /comprar
+export const COMPRAR_TITULO = '100 DAYS TO GO'
+export const COMPRAR_SUB    = 'Pacotes de 15 e 30 treinos pro seu projeto verão.'
+
+// Hero da landing
+export const LANDING_TAG_PREFIXO = '// 100 dias pro verão'
+export const LANDING_SUB_ON      = 'PACOTES DE 15 E 30 TREINOS'
+export const LANDING_TEXTO_ON =
+  'Treinos a partir de R$ 33,30 pra dar início ao seu projeto verão. ' +
+  'Clubs e musculação livre do CT, até 31/03/2027.'
+export const LANDING_TEXTO_OFF =
+  'Desligado tudo bem, sem julgamento. Mas o verão vem de qualquer jeito. ' +
+  'Toca no botão e a gente conversa.'
+
+// // a ideia  (o ponto final do título sai em rosa)
 export const IDEIA_TITULO =
-  'O VERÃO NÃO COMEÇA NO VERÃO. COMEÇA NO DIA EM QUE VOCÊ LIGA O MODO.'
-
+  'O VERÃO NÃO COMEÇA NO VERÃO. COMEÇA NO DIA EM QUE VOCÊ LIGA O MODO'
 export const IDEIA_TEXTO =
-  'Setembro não parece verão. Mas é setembro que decide como dezembro vai ser. ' +
-  'São cem dias: tempo de sobra pra fazer diferença e pouco o bastante pra não dar ' +
-  'pra deixar pra depois. O Summer Mode é isso — um pacote de treinos, uma data pra ' +
-  'zerar e um bônus se você chegar lá. Acredite: você não vai se arrepender de ter ' +
-  'começado agora.'
+  'Setembro é o mês em que as desculpas acabam. Faltam 100 dias, e 100 dias é tempo ' +
+  'de sobra pra treinar 15 ou 30 vezes, do jeito que couber na sua rotina. ' +
+  'Acredite: você não vai se arrepender de ter começado agora.'
 
+// // os pacotes  (o "ON." sai em rosa)
+export const PACOTES_TITULO = 'DOIS PACOTES. UMA DECISÃO: SUMMER '
+
+// // o bônus
 export const BONUS_TITULO = 'USOU TUDO ATÉ 31/12? A JUST PAGA A PRÓXIMA RODADA.'
+export const BONUS_SUB =
+  'Não é sorteio, não é cupom. Quem usa o pacote inteiro dentro dos 100 dias ganha ' +
+  'treinos extras pra começar o ano. Quanto antes ligar, mais folga tem.'
 
 export const BONUS_PASSOS = [
   {
     num: '01',
     titulo: 'LIGA O MODO',
-    texto: 'Escolha o pacote de 15 ou o de 30 e feche a compra. Os créditos entram na hora, todos de uma vez.',
+    texto: 'Compra o de 15 ou o de 30 até 30/09. Os créditos caem na hora e valem até 31/03/2027.',
   },
   {
     num: '02',
     titulo: 'TREINA ATÉ 31/12',
-    texto: 'Use os treinos em qualquer JustClub e na musculação livre do Just CT, no ritmo que couber na sua rotina.',
+    texto: 'Usa todos os créditos até o último dia do ano, no ritmo que quiser. Falta não conta.',
   },
   {
     num: '03',
     titulo: 'GANHA +3 OU +5',
-    texto: 'Zerou o pacote até 31/12? Em 02/01/2027 a gente credita o bônus, válido até 31/03/2027.',
+    texto: 'No dia 02/01 os treinos bônus entram na sua conta, válidos até 31/03. Janeiro começa com saldo.',
   },
 ]
 
+// #regras — cada item é "forte" (início em negrito) + o resto da frase
+export const REGRAS_TAG    = '// as regras, sem letra miúda'
 export const REGRAS_TITULO = 'COMBINADO NÃO SAI CARO.'
 
-export const REGRAS = [
-  'Vale nas unidades JustClub e na musculação livre do Just CT. Não vale para Coach CT (personal) nem para o Coach CT Pro.',
-  'Só o titular usa. Uma reserva por treino — o pacote não reserva acompanhante.',
-  'Os créditos valem até 31 de março de 2027. O que sobrar depois dessa data expira.',
-  'Zerou os treinos até 31 de dezembro de 2026? Ganha +3 no pacote de 15 ou +5 no pacote de 30.',
-  'O bônus entra na conta em 02 de janeiro de 2027 e também vale até 31 de março de 2027.',
-  'Falta não conta pro bônus. Só entra na conta o treino em que você apareceu.',
-  'Um pacote de cada por CPF, dentro da janela de 08 a 30 de setembro de 2026.',
-  'Pagamento único, em até 3x no cartão. Os créditos entram na hora, todos de uma vez.',
+export const REGRAS: { forte: string; resto: string }[] = [
+  { forte: 'Venda de 08/09 a 30/09/2026.',
+    resto: 'Depois disso o modo desliga e volta só no ano que vem.' },
+  { forte: 'Vale em qualquer JustClub e no musculação livre do Just CT.',
+    resto: 'Não vale para Coach CT (personal) nem Coach CT Pro.' },
+  { forte: 'Validade até 31/03/2027,',
+    resto: 'pacote e bônus, independente da data da compra.' },
+  { forte: 'Um pacote de cada por CPF.',
+    resto: 'Pode levar o 15 e o 30; não pode levar dois iguais.' },
+  { forte: 'Só o titular usa.',
+    resto: 'Uma reserva por treino, no seu nome. Não reserva vaga de acompanhante.' },
+  { forte: 'Falta não conta pro bônus.',
+    resto: 'Só treino com presença registrada. Cancelou no prazo, o crédito volta.' },
+  { forte: 'Bônus creditado em 02/01/2027',
+    resto: 'pra quem zerou o pacote até 31/12, válido até 31/03/2027.' },
+  { forte: 'Pagamento único, em até 3x no cartão.',
+    resto: 'Os créditos entram na hora, todos de uma vez.' },
 ]
 
 export const RODAPE_REGRAS =
