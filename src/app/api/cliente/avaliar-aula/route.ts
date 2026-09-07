@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { dataHojeSP } from '@/lib/tempo'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -63,6 +64,17 @@ async function derivarSessao(origem: string, referenciaId: string, clienteId: st
   return null
 }
 
+// Só pedimos avaliação de aula recente. Sem essa janela, quem passa um tempo
+// sem entrar no site volta e leva uma fila de aulas velhas pra avaliar, uma
+// por visita. Aula fora da janela simplesmente nunca é oferecida.
+const JANELA_AVALIACAO_DIAS = 7
+
+function dataLimiteAvaliacao(): string {
+  const d = dataHojeSP()
+  d.setDate(d.getDate() - JANELA_AVALIACAO_DIAS)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 function notaValida(n: any): number | null {
   if (n === null || n === undefined || n === '') return null
   const v = Number(n)
@@ -79,14 +91,17 @@ export async function GET(req: NextRequest) {
 
     if (cliente.avaliacoes_optout) return NextResponse.json({ pendente: null })
 
+    const limite = dataLimiteAvaliacao()
+
     const [{ data: ct }, { data: club }] = await Promise.all([
       supabase.from('agendamentos')
         .select('id, data, horario, coach_id, unidade_id, unidades(nome)')
-        .eq('cliente_id', cliente.id).eq('status', 'realizado')
+        .eq('cliente_id', cliente.id).eq('status', 'realizado').gte('data', limite)
         .order('data', { ascending: false }).order('horario', { ascending: false }).limit(20),
       supabase.from('club_reservas')
         .select('id, status, club_ocorrencias!inner(id, data, coach_escalado:coaches!coach_id(id, nome), club_aulas(tipo, horario, unidade_id, unidades(nome), coaches(id, nome)))')
         .eq('cliente_id', cliente.id).in('status', ['presente', 'realizado'])
+        .gte('club_ocorrencias.data', limite)
         .order('club_ocorrencias(data)', { ascending: false }).limit(20),
     ])
 
