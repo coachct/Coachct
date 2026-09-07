@@ -86,7 +86,11 @@ export async function coachesDisponiveis(
 ): Promise<{ id: string; nome: string }[]> {
   const horarioN = norm(horario)
   const diaSem = new Date(dataStr + 'T12:00:00').getDay()
-  const ehFds = diaSem === 0 || diaSem === 6
+  // No CT, feriado roda como fim de semana: escala vem de escala_fds e a grade é HORARIOS_FDS.
+  const { data: feriado } = await sb
+    .from('feriados').select('id')
+    .eq('unidade_id', unidadeId).eq('data', dataStr).eq('ativo', true).maybeSingle()
+  const ehFds = diaSem === 0 || diaSem === 6 || !!feriado
 
   const { data: feriasRows } = await sb
     .from('coach_ferias').select('coach_id')

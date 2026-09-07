@@ -1036,7 +1036,10 @@ function AdminClientesPageInner() {
     const dataSel = diasSemana[diaSel]
     const diaSemNum = dataSel.getDay()
     const dataStr = dataLocalStr(dataSel)
-    const ehFds = diaSemNum === 0 || diaSemNum === 6
+    // No CT, feriado roda como fim de semana: escala vem de escala_fds e a grade é HORARIOS_FDS.
+    const { data: feriado } = await supabase.from('feriados')
+      .select('id').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr).eq('ativo', true).maybeSingle()
+    const ehFds = diaSemNum === 0 || diaSemNum === 6 || !!feriado
     const porHora: Record<string, number> = {}
     if (ehFds) {
       const { data: escala } = await supabase.from('escala_fds').select('coach_id').eq('data', dataStr).eq('unidade_id', unidadeAtiva.id)

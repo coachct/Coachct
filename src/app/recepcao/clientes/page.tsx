@@ -12,6 +12,9 @@ import { CAMPANHA_SUMMER, ERRO_LIMITE_POR_CLIENTE } from '@/lib/summer'
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
+// Fim de semana e feriado no CT rodam com esta grade reduzida (mesma lista de /admin/agenda)
+const HORARIOS_FDS = ['08:00', '09:00', '10:00', '11:00', '12:00']
+
 const statusConfig: Record<string, { label: string; color: string }> = {
   agendado:   { label: 'Agendado',   color: 'bg-blue-100 text-blue-700' },
   confirmado: { label: 'Confirmado', color: 'bg-green-100 text-green-700' },
@@ -404,11 +407,14 @@ function RecepcaoClientesPageInner() {
     if (!unidadeAtiva) return
     const dataSel = diasSemana[diaSel]
     const diaSemNum = dataSel.getDay()
-    const dataStr = dataSel.toISOString().split('T')[0]
+    const dataStr = dataLocalStr(dataSel)
 
-    const [{ data: hors }, { data: ags }, { data: bloqueadas }] = await Promise.all([
-      supabase.from('coach_horarios').select('hora, coach_id').eq('dia_semana', diaSemNum)
-        .eq('unidade_id', unidadeAtiva.id).eq('ativo', true),
+    // No CT, feriado roda como fim de semana: escala vem de escala_fds e a grade é HORARIOS_FDS.
+    const { data: feriado } = await supabase.from('feriados')
+      .select('id').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr).eq('ativo', true).maybeSingle()
+    const ehFds = diaSemNum === 0 || diaSemNum === 6 || !!feriado
+
+    const [{ data: ags }, { data: bloqueadas }] = await Promise.all([
       supabase.from('agendamentos').select('horario').eq('data', dataStr)
         .eq('unidade_id', unidadeAtiva.id).neq('status', 'cancelado'),
       supabase.from('vagas_bloqueadas').select('horario, quantidade').eq('data', dataStr)
@@ -416,15 +422,22 @@ function RecepcaoClientesPageInner() {
     ])
 
     const porHora: Record<string, number> = {}
-    const coachPorHora: Record<string, Set<string>> = {}
-    for (const h of (hors || [])) {
-      const hora = (h.hora||'').slice(0,5)
-      porHora[hora] = (porHora[hora]||0)+1
-      if (!coachPorHora[hora]) coachPorHora[hora] = new Set()
-      coachPorHora[hora].add((h as any).coach_id)
-    }
-    // Grade extra do período — só em dia útil (FDS/feriado seguem escala_fds).
-    if (diaSemNum !== 0 && diaSemNum !== 6) {
+    if (ehFds) {
+      const { data: escala } = await supabase.from('escala_fds').select('coach_id')
+        .eq('data', dataStr).eq('unidade_id', unidadeAtiva.id)
+      const qtd = (escala || []).length
+      if (qtd > 0) { for (const hora of HORARIOS_FDS) porHora[hora] = qtd }
+    } else {
+      const { data: hors } = await supabase.from('coach_horarios').select('hora, coach_id')
+        .eq('dia_semana', diaSemNum).eq('unidade_id', unidadeAtiva.id).eq('ativo', true)
+      const coachPorHora: Record<string, Set<string>> = {}
+      for (const h of (hors || [])) {
+        const hora = (h.hora||'').slice(0,5)
+        porHora[hora] = (porHora[hora]||0)+1
+        if (!coachPorHora[hora]) coachPorHora[hora] = new Set()
+        coachPorHora[hora].add((h as any).coach_id)
+      }
+      // Grade extra do período — só em dia útil (FDS/feriado seguem escala_fds).
       const extra = await gradeExtraDoDia(supabase, { unidadeId: unidadeAtiva.id, dataStr, diaSemana: diaSemNum })
       for (const s of extra) {
         if (!coachPorHora[s.hora]) coachPorHora[s.hora] = new Set()
