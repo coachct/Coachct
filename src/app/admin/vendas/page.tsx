@@ -34,6 +34,7 @@ export default function AdminVendasPage() {
   const [filtroPeriodo, setFiltroPeriodo] = useState<string>('mes_atual')
   const [filtroUnidade, setFiltroUnidade] = useState<string>('todas')
   const [filtroOrigem, setFiltroOrigem] = useState<string>('todas')
+  const [filtroProduto, setFiltroProduto] = useState<string>('todos')
   const [dataInicio, setDataInicio] = useState('')
   const [dataFim, setDataFim] = useState('')
 
@@ -89,6 +90,12 @@ export default function AdminVendasPage() {
   useEffect(() => {
     if (perfil) carregar()
   }, [perfil, filtroPeriodo, filtroUnidade, dataInicio, dataFim])
+
+  // se o produto escolhido não existe mais no recorte atual, volta pra "todos"
+  useEffect(() => {
+    if (filtroProduto === 'todos') return
+    if (!vendas.some(v => v.produto_nome === filtroProduto)) setFiltroProduto('todos')
+  }, [vendas])
 
   async function carregarUnidades() {
     const { data } = await supabase.from('unidades').select('id, nome').order('nome')
@@ -271,7 +278,13 @@ export default function AdminVendasPage() {
     return { label: 'Balcão', icon: Store, color: 'text-orange-600 bg-orange-50 border-orange-200' }
   }
 
-  const vendasOrigem = filtroOrigem === 'todas' ? vendas : vendas.filter(v => v.origem === filtroOrigem)
+  // produtos que aparecem nas vendas carregadas (respeita unidade + período)
+  const produtosDisponiveis = [...new Set(vendas.map(v => v.produto_nome).filter(n => n && n !== '—'))]
+    .sort((a, b) => a.localeCompare(b, 'pt-BR'))
+
+  const vendasOrigem = vendas
+    .filter(v => filtroOrigem === 'todas' || v.origem === filtroOrigem)
+    .filter(v => filtroProduto === 'todos' || v.produto_nome === filtroProduto)
 
   const filtrados = filtroStatus === 'todos' ? vendasOrigem : vendasOrigem.filter(v => v.status === filtroStatus)
 
@@ -424,6 +437,21 @@ export default function AdminVendasPage() {
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Filtro de produto */}
+        <div className="mb-3">
+          <div className="text-xs text-gray-400 mb-1">Produto</div>
+          <select
+            className="input text-sm w-full sm:w-72"
+            value={filtroProduto}
+            onChange={e => setFiltroProduto(e.target.value)}
+          >
+            <option value="todos">Todos os produtos</option>
+            {produtosDisponiveis.map(nome => (
+              <option key={nome} value={nome}>{nome}</option>
+            ))}
+          </select>
         </div>
 
         {/* Filtro de período */}
