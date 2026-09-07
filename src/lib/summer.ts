@@ -54,6 +54,7 @@ export function reais(v: number): string {
 // não sai de venda_inicio — senão as tags diriam 07.09 e brigariam com o
 // regulamento. O fim continua saindo de venda_fim, que é a verdade do banco.
 export const JANELA_LABEL_INICIO = '2026-09-08'
+export const JANELA_LABEL_FIM    = '2026-09-30'
 
 // Banner da home
 export const BANNER_TAG_PREFIXO = '// dia do cliente'

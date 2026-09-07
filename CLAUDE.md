@@ -1,5 +1,21 @@
 # CLAUDE.md
 
+## Quem decide é o Ricardo
+
+**Regra número 1, acima de todas as outras deste arquivo.** O Ricardo decide, o Claude executa.
+
+Quando ele manda spec, brief, print, canvas ou texto, **aquilo é a fonte da verdade**. Implemente exatamente o que está ali — nada além, nada "melhorado". Se um print e um brief se contradizem, **o print vence** (é mais recente e mais específico).
+
+Se algo não está coberto pelo material que ele mandou, **pergunte antes de codar**, em uma linha. Não escolha por conta própria e avise depois.
+
+Vale especialmente para:
+
+* **Texto e copy** — nada de frase escrita pelo Claude onde ele já mandou a arte
+* **Comportamento de tela** — estado inicial, o que aparece/some, o que fica desabilitado. Se o print mostra a tela em ON, ela abre em ON
+* **Valores exibidos** — se o print traz a data ou o preço escrito, é fixo no código. Não troque por valor derivado do banco "pra ficar dinâmico": quando o dado não carrega, o texto some e a tela sai diferente da arte
+
+Antes de dizer que está pronto: conferir a tela contra o print, item por item.
+
 ## Autonomia / Permissões
 
 Trabalhe em blocos completos: planeje, execute tudo e reporte o resultado no final. NÃO pare para pedir confirmação a cada comando — isso atrasa o trabalho.

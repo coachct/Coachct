@@ -6,7 +6,7 @@ import SiteHeader from '@/components/SiteHeader'
 import SummerToggle from '@/components/SummerToggle'
 import SummerModeCards from '@/components/SummerModeCards'
 import {
-  CAMPANHA_SUMMER, dentroDaJanela, dataCurta, JANELA_LABEL_INICIO,
+  CAMPANHA_SUMMER, dentroDaJanela, dataCurta, JANELA_LABEL_INICIO, JANELA_LABEL_FIM,
   LANDING_TAG_PREFIXO, LANDING_SUB_ON, LANDING_TEXTO_ON, LANDING_TEXTO_OFF,
   IDEIA_TITULO, IDEIA_TEXTO, PACOTES_TITULO,
   BONUS_TITULO, BONUS_SUB, BONUS_PASSOS,
@@ -18,9 +18,9 @@ const ACCENT = '#ff2d9b'
 // Landing da campanha Summer Mode. Pública: visitante vê tudo sem login — quem
 // trata login/cadastro é o checkout, como no resto do site.
 //
-// A página continua existindo depois de 30/09 (links antigos, print, story):
-// fora da janela o hero mostra OFF e os botões de compra viram "Summer Mode
-// encerrado", desabilitados.
+// O hero é FIXO, sempre em ON, com o texto do canvas — inclusive fora da janela
+// de venda. Quem liga e desliga é o visitante, no toggle. Fora da janela muda só
+// o botão de compra, que vira "Summer Mode encerrado".
 export default function SummerModePage() {
   const router = useRouter()
   const supabase = createClient()
@@ -39,10 +39,7 @@ export default function SummerModePage() {
       .eq('ativo', true)
       .eq('visivel_site', true)
       .order('valor', { ascending: true })
-    const lista = data || []
-    setProdutos(lista)
-    // Campanha fora do ar: o hero já abre desligado.
-    if (!lista.some(p => dentroDaJanela(p))) setOn(false)
+    setProdutos(data || [])
     setLoading(false)
   }
 
@@ -53,7 +50,6 @@ export default function SummerModePage() {
   // Fora da janela ainda mostramos os cards (a página é referência da campanha),
   // só que sem botão de compra.
   const cards  = naJanela.length > 0 ? naJanela : produtos
-  const fim    = cards[0]?.venda_fim
 
   return (
     <div style={{ background: '#080808', minHeight: '100vh', color: '#f0f0f0', fontFamily: "'DM Sans', sans-serif" }}>
@@ -102,7 +98,7 @@ export default function SummerModePage() {
       <div style={{ paddingTop: 64 }}>
         <div className="sm-sec" style={{ paddingTop: '4.5rem', paddingBottom: '3rem', textAlign: 'center' }}>
           <div className="sm-tag">
-            {LANDING_TAG_PREFIXO}{fim ? ` · ${dataCurta(JANELA_LABEL_INICIO)} → ${dataCurta(fim)}` : ''}
+            {LANDING_TAG_PREFIXO} · {dataCurta(JANELA_LABEL_INICIO)} → {dataCurta(JANELA_LABEL_FIM)}
           </div>
 
           <div className="sm-hero-titulo">
