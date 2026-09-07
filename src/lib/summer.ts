@@ -48,6 +48,13 @@ export function reais(v: number): string {
 // Copiados do canvas aprovado "Summer Mode: ON" (Ricardo, 06/09/2026).
 // Qualquer ajuste de copy é aqui — as telas não têm texto solto.
 
+// A arte anuncia a janela como 08.09 → 30.09, e é isso que a regra 1 diz.
+// A venda abre tecnicamente às 21h do dia 07 (decisão do Ricardo, 06/09), ou
+// seja, produtos.venda_inicio é 07/09. Por isso a data ANUNCIADA mora aqui e
+// não sai de venda_inicio — senão as tags diriam 07.09 e brigariam com o
+// regulamento. O fim continua saindo de venda_fim, que é a verdade do banco.
+export const JANELA_LABEL_INICIO = '2026-09-08'
+
 // Banner da home
 export const BANNER_TAG_PREFIXO = '// dia do cliente'
 export const BANNER_TITULO      = 'SUMMER MODE:'

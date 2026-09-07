@@ -6,7 +6,7 @@ import SiteHeader from '@/components/SiteHeader'
 import SummerToggle from '@/components/SummerToggle'
 import SummerModeCards from '@/components/SummerModeCards'
 import {
-  CAMPANHA_SUMMER, dentroDaJanela, dataCurta,
+  CAMPANHA_SUMMER, dentroDaJanela, dataCurta, JANELA_LABEL_INICIO,
   LANDING_TAG_PREFIXO, LANDING_SUB_ON, LANDING_TEXTO_ON, LANDING_TEXTO_OFF,
   IDEIA_TITULO, IDEIA_TEXTO, PACOTES_TITULO,
   BONUS_TITULO, BONUS_SUB, BONUS_PASSOS,
@@ -53,7 +53,6 @@ export default function SummerModePage() {
   // Fora da janela ainda mostramos os cards (a página é referência da campanha),
   // só que sem botão de compra.
   const cards  = naJanela.length > 0 ? naJanela : produtos
-  const inicio = cards[0]?.venda_inicio
   const fim    = cards[0]?.venda_fim
 
   return (
@@ -103,7 +102,7 @@ export default function SummerModePage() {
       <div style={{ paddingTop: 64 }}>
         <div className="sm-sec" style={{ paddingTop: '4.5rem', paddingBottom: '3rem', textAlign: 'center' }}>
           <div className="sm-tag">
-            {LANDING_TAG_PREFIXO}{inicio ? ` · ${dataCurta(inicio)} → ${dataCurta(fim)}` : ''}
+            {LANDING_TAG_PREFIXO}{fim ? ` · ${dataCurta(JANELA_LABEL_INICIO)} → ${dataCurta(fim)}` : ''}
           </div>
 
           <div className="sm-hero-titulo">

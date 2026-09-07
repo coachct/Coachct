@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import SummerToggle from './SummerToggle'
 import {
-  CAMPANHA_SUMMER, dentroDaJanela, dataCurta, reais,
+  CAMPANHA_SUMMER, dentroDaJanela, dataCurta, reais, JANELA_LABEL_INICIO,
   BANNER_TAG_PREFIXO, BANNER_TITULO, BANNER_DAYS, BANNER_PRECO_2, BANNER_CTA,
 } from '@/lib/summer'
 
@@ -44,7 +44,6 @@ export default function SummerBanner() {
     ...lista.map(p => Number(p.valor) / (Number(p.creditos_por_venda) || 1))
   )
   const maxParcelas = Math.max(...lista.map(p => Number(p.max_parcelas) || 1))
-  const inicio = lista[0]?.venda_inicio
   const fim    = lista[0]?.venda_fim
 
   // Uma linha por pacote; a menção às parcelas fecha a última.
@@ -111,7 +110,7 @@ export default function SummerBanner() {
       `}</style>
 
       <div className="smb-card">
-        <div className="smb-tag">{BANNER_TAG_PREFIXO} · {dataCurta(inicio)} → {dataCurta(fim)}</div>
+        <div className="smb-tag">{BANNER_TAG_PREFIXO} · {dataCurta(JANELA_LABEL_INICIO)} → {dataCurta(fim)}</div>
 
         <div className="smb-titulo">{BANNER_TITULO}</div>
 

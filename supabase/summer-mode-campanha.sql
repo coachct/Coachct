@@ -365,10 +365,35 @@ $function$;
 --   false, true, null, '2026-09-08', '2026-09-30', 1, 5, '2026-12-31', 'summer_mode',
 --   'Trinta treinos pra fazer do verão um projeto de verdade. Quanto mais você usa, mais perto do bônus.');
 
--- ── 5. GO-LIVE: rodar DEPOIS do deploy do front ─────────────────────────────
--- A partir daqui a data manda: em 08/09 o banner e a seção aparecem sozinhos.
+-- ── 5. GO-LIVE agendado: 07/09/2026 às 21:00 de São Paulo ───────────────────
+-- APLICADO em 06/09. O pg_cron do Supabase roda em UTC (cron.timezone = GMT),
+-- e São Paulo é UTC-3 o ano inteiro — então 08/09 00:00 UTC é exatamente
+-- 07/09 21:00 em SP.
 --
--- update produtos set visivel_site = true where campanha = 'summer_mode';
+-- O job faz as duas coisas de uma vez: liga a visibilidade e adianta a abertura
+-- da venda para o dia 07, que é o que faz a campanha aparecer na hora.
+-- É idempotente e se desagenda sozinho; a trava de data ainda impede que ele
+-- reabra a campanha se sobreviver até setembro de 2027.
+--
+-- select cron.schedule(
+--   'summer-mode-go-live',
+--   '0 0 8 9 *',
+--   $job$
+--     update produtos
+--        set visivel_site = true,
+--            venda_inicio = date '2026-09-07'
+--      where campanha = 'summer_mode'
+--        and now() < timestamptz '2026-10-01 00:00:00+00';
+--     select cron.unschedule('summer-mode-go-live');
+--   $job$
+-- );
+--
+-- ATENÇÃO: a arte anuncia "08.09 → 30.09" e a regra 1 do regulamento diz
+-- "Venda de 08/09 a 30/09/2026". Por isso a data ANUNCIADA nas tags vem de
+-- JANELA_LABEL_INICIO (src/lib/summer.ts) e não de venda_inicio.
+--
+-- Para adiantar/atrasar: cron.unschedule('summer-mode-go-live') e reagendar.
+-- Para subir na mão, agora: as duas linhas do update acima.
 
 -- ── 6. ENCERRAMENTO (01/10/2026) ────────────────────────────────────────────
 -- O front já para de mostrar em 01/10 sozinho (venda_fim). Desativar o produto
