@@ -19,6 +19,16 @@ export function dentroDaJanela(p: any, hoje: string = hojeSP()): boolean {
   return true
 }
 
+/**
+ * A janela de venda já FECHOU? Só olha venda_fim de propósito.
+ * O botão de compra da landing usa isto: antes da janela ele já compra
+ * (decisão do Ricardo, 06/09), e só encerra depois de venda_fim.
+ */
+export function passouDaJanela(p: any, hoje: string = hojeSP()): boolean {
+  if (!p?.venda_fim) return false
+  return hoje > String(p.venda_fim).slice(0, 10)
+}
+
 /** 'YYYY-MM-DD' -> 'DD/MM/AAAA'. Vazio se não vier data. */
 export function dataBR(iso?: string | null): string {
   if (!iso) return ''
@@ -48,11 +58,9 @@ export function reais(v: number): string {
 // Copiados do canvas aprovado "Summer Mode: ON" (Ricardo, 06/09/2026).
 // Qualquer ajuste de copy é aqui — as telas não têm texto solto.
 
-// A arte anuncia a janela como 08.09 → 30.09, e é isso que a regra 1 diz.
-// A venda abre tecnicamente às 21h do dia 07 (decisão do Ricardo, 06/09), ou
-// seja, produtos.venda_inicio é 07/09. Por isso a data ANUNCIADA mora aqui e
-// não sai de venda_inicio — senão as tags diriam 07.09 e brigariam com o
-// regulamento. O fim continua saindo de venda_fim, que é a verdade do banco.
+// As datas anunciadas nas tags são TEXTO FIXO, como no canvas. Não derivar de
+// venda_inicio/venda_fim: quando o produto não carrega, o texto some e a tela
+// sai diferente da arte.
 export const JANELA_LABEL_INICIO = '2026-09-08'
 export const JANELA_LABEL_FIM    = '2026-09-30'
 

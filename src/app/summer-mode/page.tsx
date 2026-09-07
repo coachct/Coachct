@@ -6,7 +6,7 @@ import SiteHeader from '@/components/SiteHeader'
 import SummerToggle from '@/components/SummerToggle'
 import SummerModeCards from '@/components/SummerModeCards'
 import {
-  CAMPANHA_SUMMER, dentroDaJanela, dataCurta, JANELA_LABEL_INICIO, JANELA_LABEL_FIM,
+  CAMPANHA_SUMMER, passouDaJanela, dataCurta, JANELA_LABEL_INICIO, JANELA_LABEL_FIM,
   LANDING_TAG_PREFIXO, LANDING_SUB_ON, LANDING_TEXTO_ON,
   IDEIA_TITULO, IDEIA_TEXTO, PACOTES_TITULO,
   BONUS_TITULO, BONUS_SUB, BONUS_PASSOS,
@@ -20,8 +20,9 @@ const ACCENT = '#ff2d9b'
 //
 // A página é FIXA, com o texto do canvas — inclusive fora da janela de venda.
 // O toggle é arte, em alusão a "ligar o modo": não é controle e não muda nada.
-// A única coisa que muda fora da janela é o botão de compra, que vira
-// "Summer Mode encerrado".
+// A única coisa que muda é o botão de compra, que vira "Summer Mode encerrado"
+// DEPOIS de venda_fim. Antes da abertura ele já compra, de propósito: é o que
+// permite testar a campanha na noite anterior.
 export default function SummerModePage() {
   const router = useRouter()
   const supabase = createClient()
@@ -45,11 +46,10 @@ export default function SummerModePage() {
 
   function irParaCheckout(id: string) { router.push(`/comprar/checkout?produto=${id}`) }
 
-  const naJanela  = produtos.filter(p => dentroDaJanela(p))
-  const encerrado = !loading && naJanela.length === 0
-  // Fora da janela ainda mostramos os cards (a página é referência da campanha),
-  // só que sem botão de compra.
-  const cards  = naJanela.length > 0 ? naJanela : produtos
+  // O botão só encerra DEPOIS de venda_fim. Antes da janela ele já compra —
+  // é o que deixa a campanha testável na noite anterior à abertura.
+  const cards     = produtos
+  const encerrado = !loading && cards.length > 0 && cards.every(p => passouDaJanela(p))
 
   return (
     <div style={{ background: '#080808', minHeight: '100vh', color: '#f0f0f0', fontFamily: "'DM Sans', sans-serif" }}>
