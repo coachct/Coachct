@@ -96,17 +96,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Cliente bloqueado' }, { status: 403 })
     }
 
-    // Produto de campanha: janela de venda + limite por CPF. As duas checagens
-    // são inertes para o catálogo de sempre (venda_inicio/venda_fim/limite nulos).
-    // O registrar_venda tem a mesma trava no banco; aqui é antes pra não criar
-    // order na Pagar.me de uma venda que o banco vai recusar.
-    const hojeSP = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
-    const inicioVenda = produto.venda_inicio ? String(produto.venda_inicio).slice(0, 10) : null
-    const fimVenda    = produto.venda_fim ? String(produto.venda_fim).slice(0, 10) : null
-    if ((inicioVenda && hojeSP < inicioVenda) || (fimVenda && hojeSP > fimVenda)) {
-      return NextResponse.json({ error: 'Este produto está fora do período de venda.' }, { status: 400 })
-    }
-
+    // Um de cada por CPF (produto de campanha). Inerte para o catálogo de
+    // sempre, onde limite_por_cliente é nulo. O registrar_venda tem a mesma
+    // trava no banco; aqui é antes pra não criar order na Pagar.me de uma
+    // venda que o banco vai recusar.
+    //
+    // A janela de venda (venda_inicio/venda_fim) NÃO barra a compra: ela é só
+    // exibição no site. Link direto compra em qualquer data.
     const limitePorCliente = Number(produto.limite_por_cliente) || 0
     if (limitePorCliente > 0) {
       const { count } = await supabase
