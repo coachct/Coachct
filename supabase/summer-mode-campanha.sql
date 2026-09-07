@@ -370,9 +370,8 @@ $function$;
 -- e São Paulo é UTC-3 o ano inteiro — então 08/09 00:00 UTC é exatamente
 -- 07/09 21:00 em SP.
 --
--- O job liga SÓ a visibilidade. venda_inicio continua 08/09 (decisão do
--- Ricardo): subir na noite do dia 07 é para dar tempo de testar antes de
--- amanhecer, e a campanha abre sozinha à meia-noite, na data anunciada.
+-- LIGA TUDO de uma vez às 21h: visibilidade + abertura da venda no dia 07.
+-- Banner da home, seção do /comprar, landing e compra entram juntos.
 -- É idempotente e se desagenda sozinho; a trava de data ainda impede que ele
 -- reabra a campanha se sobreviver até setembro de 2027.
 --
@@ -381,7 +380,8 @@ $function$;
 --   '0 0 8 9 *',
 --   $job$
 --     update produtos
---        set visivel_site = true
+--        set visivel_site = true,
+--            venda_inicio = date '2026-09-07'
 --      where campanha = 'summer_mode'
 --        and now() < timestamptz '2026-10-01 00:00:00+00';
 --     select cron.unschedule('summer-mode-go-live');
