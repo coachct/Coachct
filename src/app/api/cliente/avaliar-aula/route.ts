@@ -85,8 +85,9 @@ export async function GET(req: NextRequest) {
         .eq('cliente_id', cliente.id).eq('status', 'realizado')
         .order('data', { ascending: false }).order('horario', { ascending: false }).limit(20),
       supabase.from('club_reservas')
-        .select('id, status, club_ocorrencias(id, data, coach_escalado:coaches!coach_id(id, nome), club_aulas(tipo, horario, unidade_id, unidades(nome), coaches(id, nome)))')
-        .eq('cliente_id', cliente.id).in('status', ['presente', 'realizado']).limit(20),
+        .select('id, status, club_ocorrencias!inner(id, data, coach_escalado:coaches!coach_id(id, nome), club_aulas(tipo, horario, unidade_id, unidades(nome), coaches(id, nome)))')
+        .eq('cliente_id', cliente.id).in('status', ['presente', 'realizado'])
+        .order('club_ocorrencias(data)', { ascending: false }).limit(20),
     ])
 
     const candidatos: any[] = []
