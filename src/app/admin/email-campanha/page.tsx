@@ -40,7 +40,7 @@ export default function EmailCampanhaPage() {
   const [form, setForm] = useState({
     nome: 'Summer Mode — disparo geral',
     assunto: 'Summer Mode: ON — treinos a partir de R$ 33,30',
-    remetente: 'Just Club & CT <novidades@news.justct.com.br>',
+    remetente: 'Just Club & CT <novidades@justclubct.com.br>',
     link: 'https://justclub.com.br/summer-mode?utm_source=email&utm_medium=disparo&utm_campaign=summer_mode',
     campanha: 'summer_mode',
     teto_por_rodada: 200,

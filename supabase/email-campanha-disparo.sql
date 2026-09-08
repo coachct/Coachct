@@ -4,14 +4,32 @@
 -- Fila própria, separada de notificacoes_pendentes. Promoção não pode disputar
 -- espaço com reset de senha nem com confirmação de reserva.
 --
--- ANTES DO PRIMEIRO DISPARO — o subdomínio precisa existir:
---   1. Resend > Domains > Add Domain: news.justct.com.br
---   2. Apontar os DNS que ele pedir (SPF, DKIM e o CNAME de return-path)
---   3. Esperar verificar. Sem isso o Resend recusa o envio.
+-- REMETENTE: novidades@justclubct.com.br
 --
--- Por que subdomínio separado: promoção em massa toma denúncia de spam. Se sair
--- pelo justct.com.br, a reputação que cai é a mesma que entrega reserva
--- confirmada e reset de senha. Isolando, um queima e o outro não sente.
+-- Por que um domínio SÓ pra promoção: disparo em massa toma denúncia de spam.
+-- Se sair pelo justct.com.br, a reputação que cai é a mesma que entrega reserva
+-- confirmada e reset de senha. Separando, um queima e o outro não sente.
+--
+-- Por que justclubct.com.br e não um subdomínio do justct.com.br (levantado
+-- em 08/09/2026):
+--   * a zona dele está praticamente vazia — só um A pro Vercel. Sem MX, sem
+--     TXT, sem SPF. Mexer ali não tem como derrubar e-mail, porque não há
+--   * justct.com.br assina o transacional; justclub.com.br tem o Google
+--     Workspace (contato@justclub.com.br). Nesses dois não se encosta
+--   * o nome bate com a marca do site ("JUST CLUB & CT")
+--
+-- ANTES DO PRIMEIRO DISPARO:
+--   1. Resend > Domains: justclubct.com.br  [FEITO em 08/09, região sa-east-1]
+--   2. Registro.br > justclubct.com.br > DNS: os 3 registros abaixo
+--   3. Resend > "I've added the records". Sem verificar, o envio é recusado.
+--
+-- Os registros (apex, então o nome vai sem sufixo):
+--   TXT    resend._domainkey   p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDc0WL0p95FTHZ7KoQ87cm3NR66uUhinxdXqxXB7RS7wyxOnjIHQNaCp2dmP8Viqdzo/hQKwWWeyXm+r9ILoDxb3pY3mC++6s5EaB4OjXv+BshbREvZXZ0k/QT1KohdQVBUPibK84FfvUs1cxBfj23TR3OtYx5xomUP6CSQslRpxQIDAQAB
+--   CNAME  rsend               rsend-sae1.forge.rmta.net
+--   CNAME  send                send.forge.rmta.net
+--
+-- O MX que o Resend também mostra é só pra RECEBER e-mail nesse domínio.
+-- A gente só envia — pular.
 --
 -- RAMPA: subdomínio novo não tem reputação. Sugestão de teto_por_rodada ao
 -- longo dos dias: 200 → 500 → 1500 → 4000 → 10000. Olhar bounce e denúncia no
