@@ -125,10 +125,17 @@ export async function POST(req: NextRequest) {
   }
 
   // Mapa eventId → ocorrencia_id (cada ocorrência TotalPass tem seu próprio eventId).
-  const { data: mapas } = await supabase
-    .from('totalpass_slot_map').select('ocorrencia_id, totalpass_event_id')
-  const ocPorEvento: Record<string, string> = {}
-  for (const m of (mapas || [])) ocPorEvento[(m as any).totalpass_event_id] = (m as any).ocorrencia_id
+  //
+  // ⚠️ INCIDENTE 08/09/2026: isto era um SELECT solto na tabela inteira. O
+  // PostgREST devolve no máximo 1000 linhas e TRUNCA SEM ERRO — a totalpass_slot_map
+  // passou de 1000 linhas em 25/08 e o mapa ficou preso nas linhas mais antigas.
+  // Resultado: todo evento publicado depois disso sumia do mapa, todo slot novo
+  // caía em 'sem-mapa' e NENHUMA reserva feita no app da TotalPass entrava na
+  // agenda (na manhã do dia 08 eram 84 reservas represadas; gente chegou pra aula
+  // e o check-in deu "sem reserva"). Agora carrega só a janela do poll e PAGINA.
+  const janelaDe  = new Date(agora.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const janelaAte = new Date(fim.getTime()   + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const ocPorEvento = await carregarMapaEventos(supabase, janelaDe, janelaAte)
 
   const places = await placesAtivos(supabase)
   if (!places.length) {
@@ -216,6 +223,38 @@ export async function GET(req: NextRequest) {
 }
 
 type ResReserva = 'criada' | 'reativada' | 'rejeitada' | 'ja' | 'sem-mapa' | 'erro' | 'incompleto'
+
+// Mapa eventId → ocorrencia_id das ocorrências dentro da janela do poll (com 1 dia
+// de folga em cada ponta, porque a janela é calculada em UTC e a aula é local).
+// Pagina de 1000 em 1000: o PostgREST corta nesse número sem avisar, e a tabela
+// só cresce (ver o incidente comentado no POST). O .order fixa a ordem, senão a
+// paginação pode repetir/pular linha entre um bloco e outro.
+async function carregarMapaEventos(
+  supabase: SupabaseClient, de: string, ate: string
+): Promise<Record<string, string>> {
+  const BLOCO = 1000
+  const mapa: Record<string, string> = {}
+  for (let inicio = 0; ; inicio += BLOCO) {
+    const { data, error } = await supabase
+      .from('totalpass_slot_map')
+      .select('ocorrencia_id, totalpass_event_id, club_ocorrencias!inner(data)')
+      .gte('club_ocorrencias.data', de)
+      .lte('club_ocorrencias.data', ate)
+      .order('ocorrencia_id', { ascending: true })
+      .range(inicio, inicio + BLOCO - 1)
+    if (error) {
+      console.error('[totalpass/pull] falha ao carregar o mapa de eventos:', error.message)
+      break
+    }
+    for (const m of (data || [])) ocPorEventoSet(mapa, m)
+    if (!data || data.length < BLOCO) break
+  }
+  return mapa
+}
+
+function ocPorEventoSet(mapa: Record<string, string>, m: any): void {
+  if (m?.totalpass_event_id) mapa[m.totalpass_event_id] = m.ocorrencia_id
+}
 
 // Garante que há vaga real na ocorrência e resolve a posição (esteira/funcional
 // nas aulas de Running). Usado tanto na criação quanto na reativação (self-heal),
