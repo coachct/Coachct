@@ -21,9 +21,15 @@ type Campanha = {
   id: string; nome: string; assunto: string; remetente: string; link: string
   status: string; teto_por_rodada: number; criado_em: string; campanha: string | null
 }
-type Contagem = { pendente: number; enviado: number; erro: number; pulado: number }
+type Contagem = {
+  pendente: number; enviado: number; erro: number; pulado: number
+  pendenteAtivo: number; pendenteFrio: number
+}
 
-const RAMPA_SUGERIDA = [200, 500, 1500, 4000, 10000]
+// Rampa do calendário combinado: 500 (ter) → 1.500 → 3.500 → 7.000 →
+// 12.000 (seg) → 14.500. O resto sai depois de 22/09, quando a cota do
+// Resend zera.
+const RAMPA_SUGERIDA = [500, 1500, 3500, 7000, 12000, 14500]
 
 export default function EmailCampanhaPage() {
   const { perfil, loading } = useAuth()
@@ -65,13 +71,25 @@ export default function EmailCampanhaPage() {
 
     const cont: Record<string, Contagem> = {}
     for (const c of (camps || [])) {
-      const base: Contagem = { pendente: 0, enviado: 0, erro: 0, pulado: 0 }
+      const base: Contagem = {
+        pendente: 0, enviado: 0, erro: 0, pulado: 0,
+        pendenteAtivo: 0, pendenteFrio: 0,
+      }
       for (const st of ['pendente', 'enviado', 'erro', 'pulado'] as const) {
         const { count } = await supabase.from('email_disparos')
           .select('id', { count: 'exact', head: true })
           .eq('campanha_id', c.id).eq('status', st)
         base[st] = count || 0
       }
+      // Quanto ainda resta da parte "quente" da base (quem já treinou,
+      // reservou ou comprou). É o que diz se a próxima rodada ainda está
+      // construindo reputação ou já entrou na parte fria.
+      const { count: ativos } = await supabase.from('email_disparos')
+        .select('id', { count: 'exact', head: true })
+        .eq('campanha_id', c.id).eq('status', 'pendente')
+        .not('ultima_atividade', 'is', null)
+      base.pendenteAtivo = ativos || 0
+      base.pendenteFrio = Math.max(0, base.pendente - base.pendenteAtivo)
       cont[c.id] = base
     }
     setContagens(cont)
@@ -201,7 +219,10 @@ export default function EmailCampanhaPage() {
         ) : (
           <div className="space-y-3">
             {campanhas.map(c => {
-              const n = contagens[c.id] || { pendente: 0, enviado: 0, erro: 0, pulado: 0 }
+              const n: Contagem = contagens[c.id] || {
+                pendente: 0, enviado: 0, erro: 0, pulado: 0,
+                pendenteAtivo: 0, pendenteFrio: 0,
+              }
               const total = n.pendente + n.enviado + n.erro + n.pulado
               const pct = total ? Math.round((n.enviado / total) * 100) : 0
               return (
@@ -227,6 +248,26 @@ export default function EmailCampanhaPage() {
                     {n.erro > 0 && <> · <span className="text-danger-600">{n.erro} com erro</span></>}
                     {n.pulado > 0 && <> · {n.pulado} descadastrados</>}
                   </div>
+
+                  {/* A fila sai do mais ativo pro mais frio. Enquanto sobrar
+                      gente com atividade, os lotes ainda estão construindo
+                      reputação. Depois disso, é a parte importada da base —
+                      onde mora o bounce e a denúncia de spam. */}
+                  {c.status !== 'concluida' && n.pendente > 0 && (
+                    n.pendenteAtivo > 0 ? (
+                      <Insight variant="green">
+                        Ainda faltam <strong>{n.pendenteAtivo.toLocaleString('pt-BR')}</strong> pessoas
+                        com treino, reserva ou compra no histórico. São elas que constroem a reputação
+                        do domínio — mande para todas antes de encostar no resto.
+                      </Insight>
+                    ) : (
+                      <Insight variant="amber">
+                        A partir daqui a fila é só gente <strong>sem nenhuma atividade registrada</strong>
+                        {' '}({n.pendenteFrio.toLocaleString('pt-BR')} pessoas). É a parte que gera bounce e
+                        denúncia de spam. Confira o bounce no Resend antes de continuar, e suba o teto devagar.
+                      </Insight>
+                    )
+                  )}
 
                   {c.status !== 'concluida' && (
                     <div className="flex items-end gap-2 flex-wrap mb-3 pb-3 border-b border-gray-100">
