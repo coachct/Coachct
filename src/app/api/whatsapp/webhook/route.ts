@@ -318,6 +318,8 @@ async function processar(de: string, texto: string, wamid: string, botaoId: stri
     const resposta = await responderInfo({ supabase, mensagem: texto, historico })
     const corpo = prefixo + resposta.texto
     await salvarMensagem(supabase, { telefone, clienteId: cliente.id, role: 'assistant', conteudo: resposta.texto })
+    // Se o bot não soube e disse "a equipe te responde", sinaliza no painel pro Ricardo ver.
+    if (/equipe te responde/i.test(resposta.texto)) await marcarAguardandoHumano(supabase, telefone)
     await enviarTexto(de, corpo)
   } catch (e: any) {
     console.error('[whatsapp/webhook] erro no processamento:', e?.message)
@@ -581,6 +583,8 @@ async function resolverPorCadastro(
   //    está gravado e aponta o caminho do site. Não resolve conta/ação, não transfere.
   const hist = await carregarHistorico(supabase, telefone)
   const resp = await responderInfo({ supabase, mensagem: texto, historico: hist })
+  // Se o bot não soube e disse "a equipe te responde", sinaliza no painel pro Ricardo ver.
+  if (/equipe te responde/i.test(resp.texto)) await marcarAguardandoHumano(supabase, telefone)
   return responder(resp.texto)
 }
 

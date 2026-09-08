@@ -119,9 +119,24 @@ function semTelefoneInventado(texto: string): string {
   return t
 }
 
+// TRAVA DETERMINÍSTICA: a gente NÃO tem telefone e NÃO manda ligar; e NÃO manda "ir
+// à recepção pra saber" (recepção só é canal pra OBJETO ESQUECIDO). Quando não sabe a
+// info, o certo é dizer que a EQUIPE responde em breve. Se o bot vazar "ligar/telefone"
+// ou "recepção pra se informar", troca por esse fallback. 100% garantido, custo zero.
+export const FALLBACK_EQUIPE = 'Essa informação eu não tenho aqui certinho 😊 — mas nossa equipe te responde por aqui em breve!'
+const RE_LIGAR = /\bligue?\b|\bligar\b|liga\s+(pra|para|no|na|a[íi])|por\s+telefone|\btelefone\b|\bfone\b/i
+const RE_RECEP_INFO = /recep[çc][ãa]o[^.!?]{0,45}(informa|conseguem|na hora|te diz|saber|perguntar|ver isso)|(passa|v[áa]|vai|va)[^.!?]{0,20}recep[çc][ãa]o[^.!?]{0,20}(saber|informa|perguntar|ver)/i
+const RE_OBJETO_CTX = /guardad|retirar|esquec|perdid|deixou|deixei|achad[oa]s e perdidos/i
+function semCanalExterno(texto: string): string {
+  const t = String(texto || '')
+  if (RE_OBJETO_CTX.test(t)) return t // objeto esquecido usa "recepção" de forma legítima
+  if (RE_LIGAR.test(t) || RE_RECEP_INFO.test(t)) return FALLBACK_EQUIPE
+  return t
+}
+
 /** Passada determinística final aplicada a TODA resposta enviada ao cliente. */
 function finalizarTexto(texto: string): string {
-  return semTelefoneInventado(limparMecanicaCancel(texto))
+  return semCanalExterno(semTelefoneInventado(limparMecanicaCancel(texto)))
 }
 
 function revisorSystem(faqTxt: string): string {
@@ -1293,7 +1308,10 @@ export async function responderInfo(params: {
 Sua função é UMA só: entender a dúvida da pessoa e RESPONDER com a informação que a gente já tem gravada — sobre os treinos, como tudo funciona, planos/preços, endereços, horários e as regras. Você NÃO resolve nada de conta e NÃO faz ações: o site e o sistema já fazem tudo sozinhos (o próprio cliente reserva, cancela, troca de aula e compra lá). Quando a pergunta envolve uma ação, você INFORMA a regra e, quando fizer sentido, aponta o caminho no site — e ENCERRA.
 
 # REGRA MÃE — só o que está gravado (nunca invente)
-Você SÓ pode afirmar o que está na BASE DE CONHECIMENTO abaixo ou o que veio da ferramenta de preços. Se NÃO está gravado, você NÃO inventa, NÃO deduz, NÃO chuta — é PROIBIDO: nada de horário/grade de aula que você não tem, significado de ícone, número de telefone, promoção/pacote que não existe, motivo técnico ("delay", "instabilidade"). Não está na base? Você não sabe — diga com simpatia que essa você não tem aí certinho e, se couber, aponte o site (sem inventar). A mensagem é SÓ INFORMAÇÃO — NUNCA promessa, NUNCA prever resultado ("vai dar certo", "consegue", "garanto", "te seguro a vaga").
+Você SÓ pode afirmar o que está na BASE DE CONHECIMENTO abaixo ou o que veio da ferramenta de preços. Se NÃO está gravado, você NÃO inventa, NÃO deduz, NÃO chuta — é PROIBIDO: nada de horário/grade de aula que você não tem, significado de ícone, número de telefone, promoção/pacote que não existe, motivo técnico ("delay", "instabilidade"), status de manutenção/liberação (ex.: "o vestiário já está liberado?"). Não está na base? Você não sabe — então NÃO invente e NÃO chute um canal: diga com simpatia que essa informação você não tem aí e que a NOSSA EQUIPE te responde por aqui em breve. (Só aponte o site quando a resposta REALMENTE está lá — horários, planos, reservar; pra info que não está em lugar nenhum, é "a equipe te responde em breve".) A mensagem é SÓ INFORMAÇÃO — NUNCA promessa, NUNCA prever resultado ("vai dar certo", "consegue", "garanto", "te seguro a vaga").
+
+# NUNCA mande LIGAR, dar TELEFONE, nem ir à RECEPÇÃO pra se informar (REGRA — nunca erre)
+A gente NÃO tem telefone de contato — "ligar", "telefone", "por telefone" NÃO EXISTE, nunca ofereça. E NÃO mande a pessoa "passar na recepção", "ir na recepção pra saber/perguntar", "eles te informam na hora". Se você não tem a informação, a resposta é UMA: essa você não tem aí e a NOSSA EQUIPE responde em breve por aqui — e PARA. (A única vez que a recepção é citada é OBJETO ESQUECIDO, que fica guardado lá pra retirar.)
 
 # VOCÊ INFORMA, NÃO RESOLVE (o coração da coisa)
 Reservar, cancelar, trocar/remarcar aula, comprar, ativar plano, ver saldo, cadastrar cartão, recuperar senha — o CLIENTE faz tudo isso sozinho no site. Você NÃO faz nada disso, NÃO pede CPF, NÃO acessa conta, NÃO faz lógica de prazo/fila/vaga/multa. Você só INFORMA a regra e aponta o caminho. Exemplos do jeito certo (curto, e encerra):
@@ -1350,8 +1368,7 @@ ${faqTxt}`
   ]
   const transcript = montarTranscript(historico, mensagem)
 
-  const FALLBACK_SEM_INFO =
-    'Essa eu não tenho aqui certinho 😊. Dá uma olhada no nosso site https://www.justclubct.com.br — e qualquer dúvida sobre planos, treinos, horários ou endereços é só me perguntar!'
+  const FALLBACK_SEM_INFO = FALLBACK_EQUIPE
 
   for (let i = 0; i < 3; i++) {
     const resposta = await client.messages.create({
