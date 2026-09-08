@@ -32,22 +32,25 @@ export function primeiroNome(nome?: string | null): string {
   return n.charAt(0).toUpperCase() + n.slice(1).toLowerCase()
 }
 
+// Frase do Ricardo (08/09). O nome entra na frente quando o cadastro tem nome.
+const FRASE = 'o verão não começa apenas em dezembro, começa agora e fica melhor em Dezembro.'
+
 /** Versão em texto puro. Cliente que bloqueia HTML ainda entende o recado. */
 export function textoEmailCampanha(d: DadosEmailCampanha): string {
-  const ola = d.nome ? `${d.nome}, o` : 'O'
+  const abertura = d.nome ? `${d.nome}, ${FRASE}` : FRASE.charAt(0).toUpperCase() + FRASE.slice(1)
   return [
     'SUMMER MODE: ON — 100 DAYS TO GO',
     '',
-    `${ola} verão não começa no verão. Começa no dia em que você liga o modo.`,
+    abertura,
     '',
     'Treinos a partir de R$ 33,30, pra usar em qualquer JustClub e na musculação',
     'livre do Just CT, com validade até 31/03/2027.',
     '',
-    '15 treinos · R$ 599 · +3 de bônus',
-    '30 treinos · R$ 999 · +5 de bônus',
+    '30 TREINOS — R$ 999, ou 3x de R$ 333. Ganha +5 de bônus.',
+    '15 TREINOS — R$ 599, ou 3x de R$ 199,67. Ganha +3 de bônus.',
     'Em até 3x no cartão. Os créditos entram na hora, todos de uma vez.',
     '',
-    `Ver os pacotes: ${d.link}`,
+    `Saiba mais: ${d.link}`,
     '',
     'Completou o pacote até 31/12? A gente credita o bônus em 02/01/2027.',
     '',
@@ -57,9 +60,7 @@ export function textoEmailCampanha(d: DadosEmailCampanha): string {
 }
 
 export function htmlEmailCampanha(d: DadosEmailCampanha): string {
-  const saudacao = d.nome
-    ? `<p style="margin:0 0 18px;font-family:${TEXTO_FONT};font-size:16px;line-height:1.6;color:#cccccc;">${d.nome}, o verão não começa no verão.</p>`
-    : ''
+  const abertura = d.nome ? `${d.nome}, ${FRASE}` : FRASE.charAt(0).toUpperCase() + FRASE.slice(1)
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -119,30 +120,73 @@ export function htmlEmailCampanha(d: DadosEmailCampanha): string {
                 Pra dar início ao seu projeto verão.
               </div>
 
-              ${saudacao}
+              <p style="margin:0 0 26px;font-family:${TEXTO_FONT};font-size:16px;line-height:1.6;color:#cccccc;">
+                ${abertura}
+              </p>
+
+              <!-- OS DOIS PACOTES, antes do botão e com destaque. Empilhados
+                   em vez de lado a lado: a maioria abre no celular, e duas
+                   colunas num card de 560px espremem o preço. -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:14px;background:#1a0a14;border:2px solid ${ACCENT};border-radius:16px;">
+                <tr>
+                  <td style="padding:22px 24px;text-align:left;">
+                    <div style="font-family:${TEXTO_FONT};font-size:10px;letter-spacing:2px;text-transform:uppercase;color:${ACCENT};font-weight:bold;margin-bottom:8px;">
+                      Projeto inteiro
+                    </div>
+                    <div style="font-family:${TITULO_FONT};font-size:44px;line-height:1;color:#ffffff;text-transform:uppercase;">
+                      30 <span style="font-size:24px;">treinos</span>
+                    </div>
+                    <div style="font-family:${TITULO_FONT};font-size:36px;line-height:1.2;color:#ffffff;margin-top:10px;">
+                      R$ 999
+                    </div>
+                    <div style="font-family:${TEXTO_FONT};font-size:13px;color:#aaaaaa;margin-top:2px;">
+                      ou 3x de R$ 333 &middot; R$ 33,30 por treino
+                    </div>
+                    <div style="font-family:${TEXTO_FONT};font-size:14px;font-weight:bold;color:${ACCENT};margin-top:12px;">
+                      Completou até 31/12? Ganha +5.
+                    </div>
+                  </td>
+                </tr>
+              </table>
+
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:26px;background:#141414;border:1px solid #2a2a2a;border-radius:16px;">
+                <tr>
+                  <td style="padding:22px 24px;text-align:left;">
+                    <div style="font-family:${TEXTO_FONT};font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#888888;font-weight:bold;margin-bottom:8px;">
+                      Pra dar um gás extra
+                    </div>
+                    <div style="font-family:${TITULO_FONT};font-size:44px;line-height:1;color:#ffffff;text-transform:uppercase;">
+                      15 <span style="font-size:24px;">treinos</span>
+                    </div>
+                    <div style="font-family:${TITULO_FONT};font-size:36px;line-height:1.2;color:#ffffff;margin-top:10px;">
+                      R$ 599
+                    </div>
+                    <div style="font-family:${TEXTO_FONT};font-size:13px;color:#aaaaaa;margin-top:2px;">
+                      ou 3x de R$ 199,67 &middot; R$ 39,93 por treino
+                    </div>
+                    <div style="font-family:${TEXTO_FONT};font-size:14px;font-weight:bold;color:${ACCENT};margin-top:12px;">
+                      Completou até 31/12? Ganha +3.
+                    </div>
+                  </td>
+                </tr>
+              </table>
 
               <!-- Botão: tabela + href, porque <button> não clica em e-mail -->
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:6px auto 24px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto 20px;">
                 <tr>
                   <td style="background:${ACCENT};border-radius:10px;">
-                    <a href="${d.link}" style="display:inline-block;padding:16px 42px;font-family:${TEXTO_FONT};font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none;letter-spacing:.5px;">
-                      VER OS PACOTES &rarr;
+                    <a href="${d.link}" style="display:inline-block;padding:17px 52px;font-family:${TEXTO_FONT};font-size:16px;font-weight:bold;color:#ffffff;text-decoration:none;letter-spacing:.5px;">
+                      SAIBA MAIS &rarr;
                     </a>
                   </td>
                 </tr>
               </table>
 
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #222222;">
-                <tr>
-                  <td style="padding-top:20px;font-family:${TEXTO_FONT};font-size:14px;line-height:1.9;color:#999999;">
-                    <strong style="color:#ffffff;">15 treinos</strong> &middot; R$ 599 &middot; +3 de bônus<br>
-                    <strong style="color:#ffffff;">30 treinos</strong> &middot; R$ 999 &middot; +5 de bônus<br>
-                    <span style="color:#777777;font-size:13px;">Em até 3x no cartão. Os créditos entram na hora.</span>
-                  </td>
-                </tr>
-              </table>
+              <div style="font-family:${TEXTO_FONT};font-size:13px;color:#777777;margin-bottom:22px;">
+                Em até 3x no cartão. Os créditos entram na hora, todos de uma vez.
+              </div>
 
-              <div style="margin-top:22px;padding:14px 16px;background:#1a0a14;border-radius:12px;font-family:${TEXTO_FONT};font-size:13px;line-height:1.7;color:#bbbbbb;">
+              <div style="padding:14px 16px;background:#141414;border-radius:12px;font-family:${TEXTO_FONT};font-size:13px;line-height:1.7;color:#bbbbbb;">
                 Completou o pacote até <strong style="color:#ffffff;">31/12</strong>?
                 A gente credita o bônus em 02/01/2027, válido até 31/03/2027.
               </div>
