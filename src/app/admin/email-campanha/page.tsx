@@ -42,6 +42,7 @@ export default function EmailCampanhaPage() {
   const [ocupado, setOcupado] = useState('')
   const [msg, setMsg] = useState('')
   const [erro, setErro] = useState('')
+  const [emailTeste, setEmailTeste] = useState('')
 
   const [form, setForm] = useState({
     nome: 'Summer Mode — disparo geral',
@@ -154,6 +155,18 @@ export default function EmailCampanhaPage() {
         : `Rodada enviada: ${dados.enviados} e-mails${dados.erros ? `, ${dados.erros} com erro` : ''}. Faltam ${dados.restantes}.`
     )
     await carregar()
+  }
+
+  // Manda um e-mail só, pro endereço digitado. Não encosta na fila.
+  async function enviarTeste(id: string) {
+    if (!emailTeste.trim()) { setErro('Digite o e-mail que vai receber o teste.'); return }
+    setOcupado(`teste-${id}`); setMsg(''); setErro('')
+    const { ok, dados } = await chamar('/api/email-campanha/teste', {
+      campanha_id: id, email: emailTeste.trim(),
+    })
+    setOcupado('')
+    if (!ok) { setErro(dados?.error || 'Erro ao enviar o teste'); return }
+    setMsg(`Teste enviado para ${dados.para}. Ninguém saiu da fila. Confira a caixa de entrada (e o spam).`)
   }
 
   // Pausar/retomar e mudar o teto passam pela rota: a tabela só tem permissão
@@ -307,6 +320,28 @@ export default function EmailCampanhaPage() {
                         denúncia de spam. Confira o bounce no Resend antes de continuar, e suba o teto devagar.
                       </Insight>
                     )
+                  )}
+
+                  {/* Teste: um e-mail só, pro endereço digitado. A prévia ao
+                      lado é um iframe; Gmail e Outlook renderizam diferente, e
+                      é lá que aparece fonte trocada ou botão que não clica. */}
+                  {c.status !== 'concluida' && (
+                    <div className="flex items-end gap-2 flex-wrap mb-3 pb-3 border-b border-gray-100">
+                      <div className="flex-1 min-w-[220px]">
+                        <label className="text-xs text-gray-500 block mb-1">
+                          Enviar um teste antes — não gasta ninguém da fila
+                        </label>
+                        <input
+                          type="email" value={emailTeste} placeholder="seu@email.com"
+                          onChange={e => setEmailTeste(e.target.value)}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
+                        />
+                      </div>
+                      <button onClick={() => enviarTeste(c.id)} disabled={ocupado === `teste-${c.id}`}
+                        className="border border-gray-300 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50">
+                        {ocupado === `teste-${c.id}` ? 'Enviando...' : 'Enviar e-mail de teste'}
+                      </button>
+                    </div>
                   )}
 
                   {c.status !== 'concluida' && (
