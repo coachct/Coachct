@@ -12,6 +12,7 @@ import {
   BONUS_TITULO, BONUS_SUB, BONUS_PASSOS,
   REGRAS_TAG, REGRAS_TITULO, REGRAS,
 } from '@/lib/summer'
+import { rastrear } from '@/lib/rastreio'
 
 const ACCENT = '#ff2d9b'
 
@@ -30,7 +31,12 @@ export default function SummerModePage() {
   const [produtos, setProdutos] = useState<any[]>([])
   const [loading, setLoading]   = useState(true)
 
-  useEffect(() => { carregar() }, [])
+  useEffect(() => {
+    carregar()
+    // Primeiro degrau do funil. É aqui que o utm do e-mail/story é capturado
+    // e guardado, pra venda de depois ainda saber de qual canal veio.
+    rastrear('visita', { campanha: CAMPANHA_SUMMER })
+  }, [])
 
   async function carregar() {
     const { data } = await supabase
@@ -121,7 +127,7 @@ export default function SummerModePage() {
           </div>
 
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <a href="#pacotes"><button className="sm-btn-primary">VER PACOTES →</button></a>
+            <a href="#pacotes"><button className="sm-btn-primary" onClick={() => rastrear('ver_pacotes', { campanha: CAMPANHA_SUMMER })}>VER PACOTES →</button></a>
             <a href="#regras"><button className="sm-btn-ghost">Ler as regras</button></a>
           </div>
         </div>
@@ -212,7 +218,7 @@ export default function SummerModePage() {
             <span onClick={() => router.push('/comprar')} style={{ color: ACCENT, cursor: 'pointer', fontWeight: 600 }}>planos e pacotes</span>.
           </div>
         ) : (
-          <a href="#pacotes"><button className="sm-btn-primary">VER PACOTES →</button></a>
+          <a href="#pacotes"><button className="sm-btn-primary" onClick={() => rastrear('ver_pacotes', { campanha: CAMPANHA_SUMMER })}>VER PACOTES →</button></a>
         )}
       </div>
 

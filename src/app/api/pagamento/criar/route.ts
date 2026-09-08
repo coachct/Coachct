@@ -46,6 +46,41 @@ function descreverErroPagarme(data: any): string {
   return data?.message || 'Erro desconhecido'
 }
 
+// Fecha o funil da campanha: registra a compra com o canal que a pessoa
+// trouxe da visita. Silencioso de propósito — rastreio não pode derrubar
+// uma venda que já foi aprovada.
+async function registrarCompra(p: {
+  rastreio: any
+  campanha: string | null
+  produto_id: string
+  cliente_id: string
+  venda_id: string | null
+}) {
+  try {
+    const r = p.rastreio
+    if (!r || typeof r.sessao_id !== 'string' || !r.sessao_id) return
+    const corta = (v: any, n: number) =>
+      typeof v === 'string' && v.trim() ? v.trim().slice(0, n) : null
+
+    await supabase.from('campanha_eventos').insert({
+      sessao_id:    r.sessao_id.slice(0, 80),
+      evento:       'compra',
+      campanha:     p.campanha,
+      pagina:       '/comprar/checkout',
+      utm_source:   corta(r.utm_source, 60),
+      utm_medium:   corta(r.utm_medium, 60),
+      utm_campaign: corta(r.utm_campaign, 60),
+      utm_content:  corta(r.utm_content, 60),
+      referrer:     corta(r.referrer, 300),
+      cliente_id:   p.cliente_id,
+      produto_id:   p.produto_id,
+      venda_id:     p.venda_id,
+    })
+  } catch (e) {
+    console.error('Falha ao registrar evento de compra (ignorado):', e)
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
@@ -377,6 +412,16 @@ export async function POST(req: NextRequest) {
       } else {
         console.log('✅ Venda registrada (cartão). Venda ID:', venda?.venda_id)
         updateData.venda_id = venda?.venda_id || null
+
+        // Último degrau do funil. Gravado aqui, no servidor, e não na tela de
+        // sucesso: só conta como compra o que virou venda de verdade.
+        await registrarCompra({
+          rastreio: body.rastreio,
+          campanha: produto.campanha,
+          produto_id: produto.id,
+          cliente_id: cliente.id,
+          venda_id: venda?.venda_id || null,
+        })
       }
 
       updateData.status = 'pago'

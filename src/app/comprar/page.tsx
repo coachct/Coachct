@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
@@ -7,6 +7,7 @@ import SiteHeader from '@/components/SiteHeader'
 import SummerToggle from '@/components/SummerToggle'
 import SummerModeCards from '@/components/SummerModeCards'
 import { CAMPANHA_SUMMER, dentroDaJanela, dataBR, COMPRAR_TITULO, COMPRAR_SUB } from '@/lib/summer'
+import { rastrear } from '@/lib/rastreio'
 
 const ACCENT   = '#ff2d9b'
 const VERDE    = '#2ddd8b'
@@ -20,6 +21,7 @@ export default function ComprarPage() {
   const [produtos, setProdutos]               = useState<any[]>([])
   const [loading, setLoading]                 = useState(true)
   const [coachCtProAtivo, setCoachCtProAtivo] = useState<any | null>(null)
+  const visitaRegistrada = useRef(false)
 
   useEffect(() => { carregarProdutos() }, [])
   useEffect(() => {
@@ -91,6 +93,15 @@ export default function ComprarPage() {
   const ehSummer = (p: any) => p.campanha === CAMPANHA_SUMMER
   const produtosSummer = produtos.filter(p => ehSummer(p) && dentroDaJanela(p))
   const summerFim = produtosSummer[0]?.venda_fim
+
+  // /comprar também é porta de entrada da campanha (link do e-mail, menu do
+  // site). Conta como visita uma única vez, e só quando a seção existe.
+  useEffect(() => {
+    if (produtosSummer.length > 0 && !visitaRegistrada.current) {
+      visitaRegistrada.current = true
+      rastrear('visita', { campanha: CAMPANHA_SUMMER })
+    }
+  }, [produtosSummer.length])
 
   const produtosCoachPro       = produtos.filter(p => p.subtipo === 'coach_ct_pro')
   const produtosAcessoCT       = produtos.filter(p => p.subtipo === 'acesso')

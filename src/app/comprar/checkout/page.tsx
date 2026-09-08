@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { dataBR } from '@/lib/summer'
+import { rastrear, sessaoId, origemSalva } from '@/lib/rastreio'
 
 const ACCENT = '#ff2d9b'
 
@@ -97,6 +98,10 @@ function CheckoutContent() {
       .maybeSingle()
     setProduto(data)
     setLoading(false)
+    // Terceiro degrau do funil, só para produto de campanha.
+    if (data?.campanha) {
+      rastrear('checkout', { campanha: data.campanha, produto_id: data.id })
+    }
   }
 
   async function carregarCliente() {
@@ -225,6 +230,9 @@ function CheckoutContent() {
         metodo: metodo === 'cartao' ? 'cartao_credito' : 'pix',
         parcelas,
         quantidade: qtdCompra,
+        // Origem da visita, pra venda aprovada saber de qual canal veio.
+        // O evento de compra é gravado no servidor, quando a venda existe.
+        rastreio: { sessao_id: sessaoId(), ...origemSalva() },
       }
 
       // Cadastro sem CPF: manda o CPF informado aqui pra API validar e gravar.

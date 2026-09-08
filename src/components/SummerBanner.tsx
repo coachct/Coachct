@@ -7,6 +7,7 @@ import {
   CAMPANHA_SUMMER, dentroDaJanela, dataCurta, reais, JANELA_LABEL_INICIO, JANELA_LABEL_FIM,
   BANNER_TAG_PREFIXO, BANNER_TITULO, BANNER_DAYS, BANNER_PRECO_2, BANNER_CTA,
 } from '@/lib/summer'
+import { rastrear } from '@/lib/rastreio'
 
 const ACCENT = '#ff2d9b'
 
@@ -52,8 +53,14 @@ export default function SummerBanner() {
     return ultima && maxParcelas > 1 ? `${base} · em até ${maxParcelas}x` : base
   })
 
+  // O banner inteiro é clicável; o clique conta como entrada na campanha.
+  function irParaLanding() {
+    rastrear('clique_banner', { campanha: CAMPANHA_SUMMER })
+    router.push('/summer-mode')
+  }
+
   return (
-    <div className="smb-wrap" onClick={() => router.push('/summer-mode')}>
+    <div className="smb-wrap" onClick={irParaLanding}>
       <style>{`
         .smb-wrap { max-width: 1100px; margin: 0 auto; padding: 2.5rem 2.5rem 0; cursor: pointer; }
         .smb-card {
@@ -128,7 +135,7 @@ export default function SummerBanner() {
 
         <button
           className="smb-cta"
-          onClick={e => { e.stopPropagation(); router.push('/summer-mode') }}
+          onClick={e => { e.stopPropagation(); irParaLanding() }}
         >
           {BANNER_CTA}
         </button>

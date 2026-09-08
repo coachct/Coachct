@@ -1,0 +1,75 @@
+-- ============================================================================
+-- RASTREIO DE CAMPANHA — funil da landing até a venda, por canal
+-- ----------------------------------------------------------------------------
+-- APLICADO em 08/09/2026.
+--
+-- Responde: de onde vem a visita (story do Instagram, disparo de e-mail,
+-- WhatsApp, acesso direto) e quanto de cada canal vira venda.
+--
+-- Como conta: por SESSÃO, não por evento. Quem abre a landing três vezes conta
+-- como uma visita. O canal da sessão é o PRIMEIRO utm_source que ela teve, e o
+-- navegador guarda essa origem por 30 dias — quem entra pelo e-mail, some dois
+-- dias e volta pra comprar continua contando como e-mail.
+--
+-- Privacidade: não grava IP nem user-agent. O identificador é um uuid anônimo
+-- gerado no navegador (localStorage). Só quando a pessoa compra é que o evento
+-- ganha cliente_id e venda_id — aí já é uma venda registrada, não rastreamento.
+--
+-- Quem escreve: só a rota /api/track e /api/pagamento/criar, com service_role.
+-- A tabela NÃO tem policy de INSERT, então ninguém escreve nela pelo cliente.
+-- ============================================================================
+
+-- create table if not exists campanha_eventos (
+--   id           uuid primary key default gen_random_uuid(),
+--   criado_em    timestamptz not null default now(),
+--   sessao_id    text not null,
+--   evento       text not null,
+--   campanha     text,
+--   pagina       text,
+--   utm_source   text,
+--   utm_medium   text,
+--   utm_campaign text,
+--   utm_content  text,
+--   referrer     text,
+--   dispositivo  text,
+--   cliente_id   uuid references clientes(id),
+--   produto_id   uuid references produtos(id),
+--   venda_id     uuid references vendas(id),
+--   constraint campanha_eventos_evento_check
+--     check (evento in ('visita','clique_banner','ver_pacotes','checkout','compra'))
+-- );
+--
+-- create index idx_campanha_eventos_campanha on campanha_eventos (campanha, criado_em desc);
+-- create index idx_campanha_eventos_sessao   on campanha_eventos (sessao_id);
+-- create index idx_campanha_eventos_evento   on campanha_eventos (evento, criado_em desc);
+-- create index idx_campanha_eventos_venda    on campanha_eventos (venda_id) where venda_id is not null;
+--
+-- alter table campanha_eventos enable row level security;
+-- create policy campanha_eventos_select_equipe on campanha_eventos
+--   for select using (eh_staff());
+
+-- ── relatorio_campanha(campanha, de, ate) ───────────────────────────────────
+-- Agrega o funil no banco. Com a base de e-mail em 44 mil clientes, somar isso
+-- no navegador não para de pé.
+--
+-- SECURITY INVOKER de propósito: lê com as policies de quem chamou, então
+-- cliente logado que tentar chamar não enxerga linha nenhuma. Corpo completo
+-- na migration relatorio_campanha_rpc_invoker.
+--
+-- select jsonb_pretty(relatorio_campanha('summer_mode', null, null));
+--
+-- Devolve { totais, canais[], dias[], dispositivos[] }.
+-- Tela: /admin/relatorios/campanha
+
+-- ── Os links da campanha ────────────────────────────────────────────────────
+-- Sem utm, a visita cai em "direto" e não dá pra separar canal. Usar sempre:
+--
+--   Story/bio Instagram:
+--     https://justclub.com.br/summer-mode?utm_source=instagram&utm_medium=story&utm_campaign=summer_mode
+--   Disparo de e-mail:
+--     https://justclub.com.br/summer-mode?utm_source=email&utm_medium=disparo&utm_campaign=summer_mode
+--   WhatsApp:
+--     https://justclub.com.br/summer-mode?utm_source=whatsapp&utm_medium=lista&utm_campaign=summer_mode
+--
+-- utm_content é livre, pra separar variações do mesmo canal
+-- (ex.: &utm_content=arte_30treinos vs &utm_content=arte_15treinos).
