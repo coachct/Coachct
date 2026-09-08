@@ -54,13 +54,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, pausada: true, enviados: 0 })
     }
 
-    // Pega só o teto desta rodada.
+    // Pega só o teto desta rodada, na ordem da fila: quem tem atividade mais
+    // recente primeiro. Os primeiros lotes de um domínio novo são os que
+    // constroem a reputação dele — têm que ir pra quem abre e não denuncia.
     const { data: fila } = await supabase
       .from('email_disparos')
       .select('id, email, token, cliente_id')
       .eq('campanha_id', campanhaId)
       .eq('status', 'pendente')
-      .order('criado_em', { ascending: true })
+      .order('ordem', { ascending: true, nullsFirst: false })
       .limit(campanha.teto_por_rodada)
 
     if (!fila || fila.length === 0) {
