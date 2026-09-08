@@ -68,6 +68,18 @@ export function htmlEmailCampanha(d: DadosEmailCampanha): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Summer Mode: ON</title>
+<!-- Modo escuro: sem isto, o Gmail INVERTE e-mail de fundo escuro achando que
+     ajuda — o preto vira branco e o texto branco vira preto, o oposto da arte.
+     Declarar que a mensagem já é escura faz o cliente deixar como está. -->
+<meta name="color-scheme" content="dark">
+<meta name="supported-color-schemes" content="dark">
+<style>
+  :root { color-scheme: dark; supported-color-schemes: dark; }
+  /* Outlook.com marca o que ele inverte com estes atributos */
+  [data-ogsc] .jc-fundo { background: ${FUNDO} !important; }
+  [data-ogsc] .jc-branco { color: #ffffff !important; }
+  [data-ogsc] .jc-rosa  { color: ${ACCENT} !important; }
+</style>
 </head>
 <body style="margin:0;padding:0;background:${FUNDO};">
   <!-- Prévia que aparece na lista do Gmail, antes de abrir -->
@@ -75,7 +87,7 @@ export function htmlEmailCampanha(d: DadosEmailCampanha): string {
     Treinos a partir de R$ 33,30 pra dar início ao seu projeto verão. Até 30/09.
   </div>
 
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${FUNDO};">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${FUNDO}" class="jc-fundo" style="background:${FUNDO};">
     <tr>
       <td align="center" style="padding:28px 14px;">
 
@@ -87,7 +99,7 @@ export function htmlEmailCampanha(d: DadosEmailCampanha): string {
                 // dia do cliente &middot; 08.09 &rarr; 30.09
               </div>
 
-              <div style="font-family:${TITULO_FONT};font-size:46px;line-height:1;letter-spacing:1px;color:#ffffff;text-transform:uppercase;">
+              <div class="jc-branco" style="font-family:${TITULO_FONT};font-size:46px;line-height:1;letter-spacing:1px;color:#ffffff;text-transform:uppercase;">
                 Summer Mode:
               </div>
 
@@ -113,10 +125,10 @@ export function htmlEmailCampanha(d: DadosEmailCampanha): string {
                 100 DAYS TO GO
               </div>
 
-              <div style="font-family:${TITULO_FONT};font-size:28px;line-height:1.2;color:${ACCENT};text-transform:uppercase;">
-                Treinos a partir de R$ 33,30
+              <div class="jc-rosa" style="font-family:${TITULO_FONT};font-size:26px;line-height:1.25;color:${ACCENT};text-transform:uppercase;">
+                Treinos a partir de&nbsp;R$&nbsp;33,30
               </div>
-              <div style="font-family:${TITULO_FONT};font-size:24px;line-height:1.25;color:#ffffff;text-transform:uppercase;margin-bottom:26px;">
+              <div class="jc-branco" style="font-family:${TITULO_FONT};font-size:23px;line-height:1.3;color:#ffffff;text-transform:uppercase;margin-bottom:26px;">
                 Pra dar início ao seu projeto verão.
               </div>
 
