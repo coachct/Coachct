@@ -27,9 +27,11 @@ const FILA_ATRASO_MIN = 30 // fila de sync acima disso = sync travado/erro
 const TENTATIVAS_LIMITE = 10 // item que errou 10x seguidas (~10 min de fila) está emperrado, não em retry normal
 
 // --- Saúde semântica do pull de reservas TotalPass -------------------------
-const PULL_JANELA = 12          // quantos pulls recentes o sentinela olha (a cada 2 min ≈ 24 min)
+// Cadência do pull: pg_cron 'totalpass-pull-bookings' de 1 em 1 min + cron da
+// Vercel de 2 em 2 min (os dois ativos). Logo 12 linhas ≈ os últimos ~5 min.
+const PULL_JANELA = 12          // quantos pulls recentes o sentinela olha
 const PULL_PARADO_MIN = 15      // sem NENHUM pull registrado por mais que isso = cron morto
-const SEM_MAPA_POLLS = 5        // polls seguidos com sem_mapa > 0 (≈10 min) que disparam alerta
+const SEM_MAPA_POLLS = 5        // polls seguidos com sem_mapa > 0 que disparam alerta
 const PULL_LOG_DIAS = 30        // retenção do histórico
 // Horas COMERCIAIS sem nenhuma reserva nova da TotalPass que disparam alerta.
 const SEM_RESERVA_HORAS = parseInt(process.env.TOTALPASS_SEM_RESERVA_HORAS || '6', 10) || 6
