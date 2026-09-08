@@ -76,6 +76,8 @@ const nav = [
       { label: 'Planos',   href: '/admin/planos' },
       { label: 'Produtos', href: '/admin/produtos' },
       { label: 'Cupons',   href: '/admin/cupons' },
+      { label: 'Disparo de e-mail',  href: '/admin/email-campanha' },
+      { label: 'Funil da campanha',  href: '/admin/relatorios/campanha' },
     ],
   },
   {
