@@ -194,7 +194,7 @@ export default function EmailCampanhaPage() {
               />
             </div>
             <button onClick={preparar} disabled={ocupado === 'preparar'}
-              className="w-full bg-primary-500 text-white rounded-lg py-2.5 text-sm font-semibold disabled:opacity-60">
+              className="w-full bg-primary-600 text-white rounded-lg py-2.5 text-sm font-semibold disabled:opacity-60">
               {ocupado === 'preparar' ? 'Montando a fila...' : 'Passo 1 · Criar campanha e montar a fila'}
             </button>
             <p className="text-xs text-gray-400 leading-relaxed">
@@ -298,7 +298,7 @@ export default function EmailCampanhaPage() {
                           <button key={v} onClick={() => ajustar(c.id, { teto_por_rodada: v })}
                             className={`rounded-lg px-2.5 py-1.5 text-xs border ${
                               c.teto_por_rodada === v
-                                ? 'border-primary-400 bg-primary-50 text-primary-700 font-semibold'
+                                ? 'border-primary-400 bg-primary-50 text-primary-800 font-semibold'
                                 : 'border-gray-200 text-gray-500'
                             }`}>
                             {v.toLocaleString('pt-BR')}
@@ -311,7 +311,7 @@ export default function EmailCampanhaPage() {
                   <div className="flex gap-2 flex-wrap">
                     {c.status !== 'concluida' && (
                       <button onClick={() => enviarRodada(c.id)} disabled={ocupado === c.id || c.status === 'pausada'}
-                        className="bg-primary-500 text-white rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-50">
+                        className="bg-primary-600 text-white rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-50">
                         {ocupado === c.id
                           ? 'Enviando...'
                           : `Enviar ${Math.min(c.teto_por_rodada, n.pendente).toLocaleString('pt-BR')} agora`}
