@@ -1,0 +1,65 @@
+-- ============================================================================
+-- DISPARO DE E-MAIL DE CAMPANHA — aplicado em 08/09/2026
+-- ----------------------------------------------------------------------------
+-- Fila própria, separada de notificacoes_pendentes. Promoção não pode disputar
+-- espaço com reset de senha nem com confirmação de reserva.
+--
+-- ANTES DO PRIMEIRO DISPARO — o subdomínio precisa existir:
+--   1. Resend > Domains > Add Domain: news.justct.com.br
+--   2. Apontar os DNS que ele pedir (SPF, DKIM e o CNAME de return-path)
+--   3. Esperar verificar. Sem isso o Resend recusa o envio.
+--
+-- Por que subdomínio separado: promoção em massa toma denúncia de spam. Se sair
+-- pelo justct.com.br, a reputação que cai é a mesma que entrega reserva
+-- confirmada e reset de senha. Isolando, um queima e o outro não sente.
+--
+-- RAMPA: subdomínio novo não tem reputação. Sugestão de teto_por_rodada ao
+-- longo dos dias: 200 → 500 → 1500 → 4000 → 10000. Olhar bounce e denúncia no
+-- painel do Resend antes de cada degrau.
+-- ============================================================================
+
+-- ── Descadastro (LGPD) ──────────────────────────────────────────────────────
+-- NULL = pode receber promoção. Não afeta transacional.
+--
+-- alter table clientes add column if not exists marketing_descadastro_em timestamptz;
+
+-- ── Tabelas ─────────────────────────────────────────────────────────────────
+-- email_campanhas: uma linha por disparo (assunto, remetente, link com utm,
+--   template da arte, status e teto por rodada).
+-- email_disparos:  a fila. Uma linha por destinatário, com token próprio usado
+--   SÓ no link de descadastro. unique (campanha_id, email) deixa remontar a
+--   fila sem duplicar.
+--
+-- Escrita só pela service_role: nenhuma das duas tem policy de INSERT.
+-- Leitura só pra equipe (eh_staff()).
+
+-- ── preparar_disparo_campanha(campanha_id) -> quantos entraram na fila ──────
+-- Monta a fila dentro do banco. São 44 mil clientes: trazer pro JS pra inserir
+-- de volta não faz sentido. É idempotente — rodar de novo insere 0.
+--
+-- Fica de fora quem: não tem e-mail, e-mail sem formato de e-mail, já pediu
+-- descadastro, está bloqueado ou inativo.
+--
+-- Conferido em 08/09: 43.926 de 44.074 clientes ativos.
+
+-- ── Como opera ──────────────────────────────────────────────────────────────
+-- Tela: /admin/email-campanha (só admin)
+--   1. "Criar campanha e montar a fila" — não envia nada, só mostra o tamanho
+--   2. "Enviar uma rodada" — manda teto_por_rodada e para
+--   3. Pausar / Retomar a qualquer momento
+--
+-- Rotas:
+--   POST /api/email-campanha/preparar  (admin)
+--   POST /api/email-campanha/enviar    (admin OU cron com CRON_SECRET)
+--   POST /api/descadastro?t=TOKEN      (público — one-click do Gmail)
+--   GET  /api/descadastro?t=TOKEN      (só redireciona pra página; NÃO
+--                                       descadastra, senão antivírus que abre
+--                                       link tirava todo mundo da lista)
+--
+-- Para automatizar a rampa, dá pra agendar o /api/email-campanha/enviar com
+-- CRON_SECRET. Não deixei agendado de propósito: os primeiros disparos é bom
+-- olhar no olho.
+
+-- ── Medição ─────────────────────────────────────────────────────────────────
+-- O link da campanha leva utm_source=email, então o funil aparece separado em
+-- /admin/relatorios/campanha, ao lado do Instagram. Ver campanha-rastreio.sql.

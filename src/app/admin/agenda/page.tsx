@@ -87,6 +87,14 @@ export default function AdminAgendaPage() {
   const [modalConfirmar, setModalConfirmar] = useState<{ ag: any; acao: 'presenca' | 'falta' } | null>(null)
   const [salvandoStatus, setSalvandoStatus] = useState(false)
 
+  // 🔧 "Treinou em outro horário": move o treino para o horário em que ele realmente
+  // aconteceu (ex.: check-in às 05:31 numa reserva de 19:00) — libera a vaga reservada
+  // sem perder o treino na contagem do mês nem o crédito do coach que atendeu.
+  const [modalHorarioReal, setModalHorarioReal] = useState<any | null>(null)
+  const [horarioRealSel, setHorarioRealSel] = useState('')
+  const [coachRealSel, setCoachRealSel] = useState('')
+  const [salvandoHorarioReal, setSalvandoHorarioReal] = useState(false)
+
   const scrollRef = useRef<number>(0)
   const dateInputRef = useRef<HTMLInputElement>(null)
   const hoje = hojeStr()
@@ -246,6 +254,11 @@ export default function AdminAgendaPage() {
   }
 
   function norm(hora: string) { return (hora || '').slice(0, 5) }
+  // Hora local (SP) de um timestamp do banco — usada nos avisos de check-in.
+  function horaDe(ts: string | null | undefined) {
+    if (!ts) return ''
+    return new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  }
   function coachesPorHorario(horario: string) { return coaches.filter(c => norm(c.hora) === horario) }
   function agendamentosPorHorario(horario: string) { return agendamentos.filter(a => norm(a.horario) === horario) }
   function bloqueiosPorHorario(horario: string) { return bloqueios.filter(b => norm(b.horario) === horario) }
@@ -327,6 +340,49 @@ export default function AdminAgendaPage() {
     await supabase.from('agendamentos').update({
       status: 'cancelado', cancelado_em: new Date().toISOString(), motivo_cancelamento: 'Cancelado pelo admin'
     }).eq('id', agendamentoId)
+    await loadData(true)
+  }
+
+  // 🔧 Abre o modal já sugerindo o horário da grade mais próximo do check-in que
+  // caiu fora da janela (é quase sempre o horário em que a pessoa treinou).
+  function abrirModalHorarioReal(ag: any) {
+    const ref = ag.checkin_fora_janela_em || ag.presenca_checkin_em
+    const lista = usaEscalaFds ? HORARIOS_FDS : HORARIOS
+    let sugerido = norm(ag.horario)
+    if (ref) {
+      const d = new Date(ref)
+      const min = d.getHours() * 60 + d.getMinutes()
+      sugerido = lista.reduce((best, h) => Math.abs(horaParaMin(h) - min) < Math.abs(horaParaMin(best) - min) ? h : best, lista[0])
+    }
+    setModalHorarioReal(ag)
+    setHorarioRealSel(sugerido)
+    setCoachRealSel(ag.coach_id || '')
+  }
+
+  // Move o treino para o horário real: libera a vaga do horário reservado, mantém o
+  // treino como 'realizado' (conta no mês) e permite gravar o coach que deu a aula.
+  // NÃO mexe em crédito (consumido na reserva) nem em cobrança.
+  async function salvarHorarioReal() {
+    if (!modalHorarioReal || !horarioRealSel || salvandoHorarioReal) return
+    setSalvandoHorarioReal(true)
+    const patch: Record<string, any> = {
+      horario: horarioRealSel + ':00',
+      status: 'realizado',
+      checkin_fora_janela: false,
+      movido_horario_real_em: new Date().toISOString(),
+      movido_horario_real_de: norm(modalHorarioReal.horario) + ':00',
+      movido_horario_real_por: perfil?.id,
+    }
+    if (coachRealSel) {
+      patch.coach_id = coachRealSel
+      patch.alocado_em = new Date().toISOString()
+      patch.alocado_por = perfil?.id
+      patch.coach_correcao_manual = true
+    }
+    const { error } = await supabase.from('agendamentos').update(patch).eq('id', modalHorarioReal.id)
+    setSalvandoHorarioReal(false)
+    if (error) { alert('Erro ao mover o treino: ' + error.message); return }
+    setModalHorarioReal(null)
     await loadData(true)
   }
 
@@ -551,6 +607,15 @@ export default function AdminAgendaPage() {
                               </div>
                               {coachNome && <div className="text-xs text-green-700 mt-1 font-medium">Coach: {coachNome}{ag.coach_correcao_manual && <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-amber-600">corrigido</span>}</div>}
                               <button onClick={() => { setModalCorrecao(ag); setCoachCorrecaoSel(ag.coach_id || '') }} className="mt-1 text-xs font-medium text-amber-600 hover:text-amber-700 hover:underline">Corrigir coach</button>
+                              {ag.checkin_fora_janela && (
+                                <div className="mt-1.5 flex items-start gap-1.5 rounded-lg bg-sky-50 px-2 py-1 text-xs font-medium text-sky-800">
+                                  <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
+                                  <span>Check-in às <strong>{horaDe(ag.checkin_fora_janela_em)}</strong> — treinou fora do horário reservado ({horario}). A vaga segue reservada.</span>
+                                </div>
+                              )}
+                              {ag.movido_horario_real_de && (
+                                <div className="mt-1 text-xs text-gray-400">Treino movido de {norm(ag.movido_horario_real_de)}</div>
+                              )}
                             </div>
                           </div>
                           {ag.status !== 'realizado' && ag.status !== 'falta' && (
@@ -577,13 +642,19 @@ export default function AdminAgendaPage() {
                                 <XCircle size={12} /> Falta
                               </button>
                               <button onClick={() => cancelarAgendamento(ag.id)} className="btn btn-sm text-red-400 hover:bg-red-50">Cancelar</button>
+                              <button onClick={() => abrirModalHorarioReal(ag)} className="btn btn-sm gap-1 border border-sky-200 text-sky-700 hover:bg-sky-50">
+                                <Clock size={12} /> Treinou em outro horário
+                              </button>
                             </div>
                           )}
                           {(ag.status === 'realizado' || ag.status === 'falta') && (
-                            <div className="mt-3">
+                            <div className="mt-3 flex flex-wrap gap-2">
                               <button onClick={() => setModalConfirmar({ ag, acao: ag.status === 'realizado' ? 'falta' : 'presenca' })}
                                 className="btn btn-sm gap-1 border border-gray-200 text-gray-600 hover:border-primary-400 hover:text-primary-700">
                                 {ag.status === 'realizado' ? <><XCircle size={12} /> Ajustar para falta</> : <><CheckCircle size={12} /> Ajustar para presença</>}
+                              </button>
+                              <button onClick={() => abrirModalHorarioReal(ag)} className="btn btn-sm gap-1 border border-sky-200 text-sky-700 hover:bg-sky-50">
+                                <Clock size={12} /> Treinou em outro horário
                               </button>
                             </div>
                           )}
@@ -741,6 +812,15 @@ export default function AdminAgendaPage() {
                                         <span>Check-in feito no modo <strong>Musculação Livre</strong> — o certo é <strong>Personal</strong>. Peça pra refazer no app ou marque a presença manual.</span>
                                       </div>
                                     )}
+                                    {ag.checkin_fora_janela && (
+                                      <div className="mt-1.5 flex items-start gap-1.5 rounded-lg bg-sky-100/70 px-2 py-1 text-xs font-medium text-sky-800">
+                                        <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
+                                        <span>Check-in às <strong>{horaDe(ag.checkin_fora_janela_em)}</strong> — treinou fora do horário reservado ({h}). Registre o treino no horário real (libera esta vaga) ou cancele a reserva.</span>
+                                      </div>
+                                    )}
+                                    {ag.movido_horario_real_de && (
+                                      <div className="mt-1 text-xs text-gray-400">Treino movido de {norm(ag.movido_horario_real_de)}</div>
+                                    )}
                                     <div className="mt-2">
                                       {!ag.coach_id && coachesLivres.length > 0 && (
                                         <select className="input input-sm text-xs max-w-[230px]" defaultValue=""
@@ -777,15 +857,25 @@ export default function AdminAgendaPage() {
                                       <button onClick={() => setModalConfirmar({ ag, acao: feito ? 'falta' : 'presenca' })} className="text-xs font-medium text-gray-500 hover:text-primary-700 hover:underline">
                                         Ajustar
                                       </button>
+                                      <button onClick={() => abrirModalHorarioReal(ag)} className="text-xs font-medium text-sky-600 hover:text-sky-700 hover:underline">
+                                        Treinou em outro horário
+                                      </button>
                                     </div>
                                   ) : (
-                                    <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row">
-                                      <button onClick={() => setModalConfirmar({ ag, acao: 'presenca' })} className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
-                                        <CheckCircle size={14} /> Presença
-                                      </button>
-                                      <button onClick={() => setModalConfirmar({ ag, acao: 'falta' })} className="btn btn-sm gap-1 text-orange-600 hover:bg-orange-50">
-                                        <XCircle size={14} /> Falta
-                                      </button>
+                                    <div className="flex flex-shrink-0 flex-col items-end gap-2">
+                                      <div className="flex flex-col gap-2 sm:flex-row">
+                                        <button onClick={() => setModalConfirmar({ ag, acao: 'presenca' })} className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
+                                          <CheckCircle size={14} /> Presença
+                                        </button>
+                                        <button onClick={() => setModalConfirmar({ ag, acao: 'falta' })} className="btn btn-sm gap-1 text-orange-600 hover:bg-orange-50">
+                                          <XCircle size={14} /> Falta
+                                        </button>
+                                      </div>
+                                      {ag.checkin_fora_janela && (
+                                        <button onClick={() => abrirModalHorarioReal(ag)} className="text-xs font-medium text-sky-600 hover:text-sky-700 hover:underline">
+                                          Treinou em outro horário
+                                        </button>
+                                      )}
                                     </div>
                                   )}
                                 </div>
@@ -960,6 +1050,77 @@ export default function AdminAgendaPage() {
                   className={`btn flex-1 gap-1 text-white ${ehPresenca ? 'bg-green-500 hover:bg-green-600' : 'bg-orange-500 hover:bg-orange-600'}`}>
                   {ehPresenca ? <CheckCircle size={12} /> : <XCircle size={12} />}
                   {salvandoStatus ? 'Salvando...' : ehPresenca ? 'Confirmar presença' : 'Confirmar falta'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* 🔧 Treinou em outro horário: registra o treino no horário em que ele
+          aconteceu e LIBERA a vaga do horário reservado. Pode furar a capacidade
+          da grade (é registro retroativo do que já aconteceu) — avisa antes. */}
+      {modalHorarioReal && (() => {
+        const de = norm(modalHorarioReal.horario)
+        const lista = usaEscalaFds ? HORARIOS_FDS : HORARIOS
+        const coachesDestino = coachesPorHorario(horarioRealSel).map(c => c.coaches).filter(Boolean)
+        const idsDestino = new Set(coachesDestino.map((c: any) => c.id))
+        const outros = coachesUnidade.filter(c => !idsDestino.has(c.id))
+        const vagasDestino = vagasDisponiveis(horarioRealSel)
+        const mudouHorario = horarioRealSel !== de
+        return (
+          <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl w-full max-w-md p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <div className="font-bold text-gray-900 flex items-center gap-2"><Clock size={18} className="text-sky-500" /> Treinou em outro horário</div>
+                  <div className="text-sm text-gray-400 mt-0.5">{modalHorarioReal.clientes?.nome} · reserva de {de}</div>
+                </div>
+                <button onClick={() => setModalHorarioReal(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              </div>
+
+              <div className="bg-sky-50 border border-sky-100 rounded-lg p-3 mb-4 text-xs text-sky-800 flex items-start gap-2">
+                <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
+                <span>
+                  O treino passa para o horário escolhido e fica como <strong>realizado</strong> — continua contando na cota do mês e no pagamento do coach.
+                  {mudouHorario && <> A vaga de <strong>{de}</strong> é liberada para outros alunos.</>}
+                  {' '}Não mexe em crédito nem em cobrança.
+                </span>
+              </div>
+
+              {modalHorarioReal.checkin_fora_janela_em && (
+                <div className="mb-3 text-xs text-gray-500">Check-in do parceiro às <strong className="text-gray-700">{horaDe(modalHorarioReal.checkin_fora_janela_em)}</strong></div>
+              )}
+
+              <label className="text-xs text-gray-500 mb-1 block font-medium">Horário em que treinou</label>
+              <select value={horarioRealSel} onChange={e => setHorarioRealSel(e.target.value)} className="input w-full mb-1">
+                {lista.map(h => <option key={h} value={h}>{h}</option>)}
+              </select>
+              <div className="mb-4 text-xs">
+                {vagasDestino === 0
+                  ? <span className="text-amber-700">⚠️ {horarioRealSel} está lotado — vai ficar com um aluno acima da capacidade da grade.</span>
+                  : <span className="text-gray-400">{vagasDestino} vaga(s) livre(s) às {horarioRealSel}</span>}
+              </div>
+
+              <label className="text-xs text-gray-500 mb-1 block font-medium">Coach que deu a aula <span className="text-gray-400">(opcional)</span></label>
+              <select value={coachRealSel} onChange={e => setCoachRealSel(e.target.value)} className="input w-full mb-4">
+                <option value="">Sem coach</option>
+                {coachesDestino.length > 0 && (
+                  <optgroup label={`Na grade das ${horarioRealSel}`}>
+                    {coachesDestino.map((c: any) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                  </optgroup>
+                )}
+                {outros.length > 0 && (
+                  <optgroup label="Outros coaches da unidade">
+                    {outros.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                  </optgroup>
+                )}
+              </select>
+
+              <div className="flex gap-2">
+                <button onClick={() => setModalHorarioReal(null)} className="btn flex-1 text-gray-500 border border-gray-200">Cancelar</button>
+                <button onClick={salvarHorarioReal} disabled={salvandoHorarioReal || !horarioRealSel} className="btn flex-1 gap-1 bg-sky-600 text-white hover:bg-sky-700">
+                  <Clock size={12} /> {salvandoHorarioReal ? 'Salvando...' : 'Registrar treino'}
                 </button>
               </div>
             </div>
