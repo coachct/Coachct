@@ -158,12 +158,18 @@ export default function EmailCampanhaPage() {
 
   // Pausar/retomar e mudar o teto passam pela rota: a tabela só tem permissão
   // de leitura, então escrever direto daqui o banco recusa (e em silêncio).
-  async function ajustar(id: string, mudancas: { status?: string; teto_por_rodada?: number }) {
+  async function ajustar(
+    id: string,
+    mudancas: { status?: string; teto_por_rodada?: number; reenfileirar_erros?: boolean }
+  ) {
     setMsg(''); setErro('')
     const { ok, dados } = await chamar('/api/email-campanha/ajustar', { campanha_id: id, ...mudancas })
     if (!ok) { setErro(dados?.error || 'Erro ao salvar'); return }
     if (mudancas.teto_por_rodada) setMsg(`Agora vai mandar ${mudancas.teto_por_rodada} por rodada.`)
-    carregar()
+    if (mudancas.reenfileirar_erros) {
+      setMsg(`${Number(dados.reenfileirados).toLocaleString('pt-BR')} pessoas voltaram pra fila.`)
+    }
+    await carregar()
   }
 
   const previa = htmlEmailCampanha({
@@ -347,6 +353,12 @@ export default function EmailCampanhaPage() {
                     ) : c.status !== 'concluida' && (
                       <button onClick={() => ajustar(c.id, { status: 'pausada' })}
                         className="border border-gray-200 rounded-lg px-4 py-2 text-sm">Pausar</button>
+                    )}
+                    {n.erro > 0 && (
+                      <button onClick={() => ajustar(c.id, { reenfileirar_erros: true })}
+                        className="border border-danger-200 text-danger-600 rounded-lg px-4 py-2 text-sm">
+                        Devolver {n.erro.toLocaleString('pt-BR')} com erro pra fila
+                      </button>
                     )}
                   </div>
                 </div>

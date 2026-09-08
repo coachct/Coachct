@@ -20,6 +20,26 @@ export async function POST(req: NextRequest) {
     const id = String(body.campanha_id || '').trim()
     if (!id) return NextResponse.json({ error: 'campanha_id é obrigatório' }, { status: 400 })
 
+    // Devolve pra fila quem ficou marcado como erro. Falha de lote costuma ser
+    // do ambiente (chave sem permissão no domínio, limite do Resend, rede) e
+    // não da pessoa — sem isso, esse povo ficava fora do disparo pra sempre.
+    if (body.reenfileirar_erros) {
+      const { count, error } = await supabase
+        .from('email_disparos')
+        .update({ status: 'pendente', erro: null, enviado_em: null, resend_id: null },
+                { count: 'exact' })
+        .eq('campanha_id', id).eq('status', 'erro')
+
+      if (error) {
+        console.error('Erro ao reenfileirar:', error)
+        return NextResponse.json({ error: 'Não consegui devolver pra fila' }, { status: 500 })
+      }
+      await supabase.from('email_campanhas').update({ status: 'rascunho' })
+        .eq('id', id).eq('status', 'concluida')
+
+      return NextResponse.json({ ok: true, reenfileirados: count || 0 })
+    }
+
     const mudancas: Record<string, any> = {}
 
     if (body.teto_por_rodada !== undefined) {

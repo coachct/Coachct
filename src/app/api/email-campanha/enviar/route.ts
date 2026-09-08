@@ -34,8 +34,19 @@ export async function POST(req: NextRequest) {
       if (erroAuth) return erroAuth
     }
 
-    if (!process.env.RESEND_API_KEY) {
-      return NextResponse.json({ error: 'RESEND_API_KEY não configurada' }, { status: 500 })
+    // Chave PRÓPRIA do disparo, separada da transacional de propósito.
+    //
+    // A chave "Coach CT Produção" é restrita ao justct.com.br — mandar pelo
+    // justclubct.com.br com ela volta "This API key is not authorized to send
+    // emails from justclubct.com.br". E trocar aquela chave por uma de acesso
+    // amplo mexeria justamente no que entrega reset de senha e confirmação de
+    // reserva. Então a promoção ganha a sua, e a transacional não é tocada.
+    const chaveResend = process.env.RESEND_API_KEY_MARKETING || process.env.RESEND_API_KEY
+    if (!chaveResend) {
+      return NextResponse.json(
+        { error: 'Falta a RESEND_API_KEY_MARKETING no servidor (chave do Resend com acesso ao domínio da campanha).' },
+        { status: 500 }
+      )
     }
 
     const body = await req.json().catch(() => ({}))
@@ -86,7 +97,7 @@ export async function POST(req: NextRequest) {
 
     let enviados = 0
     let erros = 0
-    const resend = new Resend(process.env.RESEND_API_KEY)
+    const resend = new Resend(chaveResend)
 
     for (let i = 0; i < fila.length; i += POR_LOTE) {
       const lote = fila.slice(i, i + POR_LOTE)
