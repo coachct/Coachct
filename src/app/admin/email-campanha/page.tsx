@@ -49,7 +49,9 @@ export default function EmailCampanhaPage() {
     remetente: 'Just Club & CT <novidades@justclubct.com.br>',
     link: 'https://justclub.com.br/summer-mode?utm_source=email&utm_medium=disparo&utm_campaign=summer_mode',
     campanha: 'summer_mode',
-    teto_por_rodada: 200,
+    // Primeiro lote do calendário combinado. Vai pra quem treinou nos últimos
+    // dias — caixa viva, reconhece a marca. É o que aquece o domínio novo.
+    teto_por_rodada: 500,
   })
 
   useEffect(() => {
@@ -110,7 +112,10 @@ export default function EmailCampanhaPage() {
     const { ok, dados } = await chamar('/api/email-campanha/preparar', form)
     setOcupado('')
     if (!ok) { setErro(dados?.error || 'Erro ao preparar'); return }
-    setMsg(`Fila montada: ${dados.destinatarios} destinatários. Nenhum e-mail saiu ainda.`)
+    setMsg(
+      `Fila montada com ${Number(dados.destinatarios).toLocaleString('pt-BR')} destinatários. ` +
+      `NENHUM e-mail saiu ainda — o envio é o passo 2, no botão "Enviar agora" do card da campanha, aqui embaixo.`
+    )
     carregar()
   }
 
@@ -190,11 +195,13 @@ export default function EmailCampanhaPage() {
             </div>
             <button onClick={preparar} disabled={ocupado === 'preparar'}
               className="w-full bg-primary-500 text-white rounded-lg py-2.5 text-sm font-semibold disabled:opacity-60">
-              {ocupado === 'preparar' ? 'Montando a fila...' : 'Criar campanha e montar a fila'}
+              {ocupado === 'preparar' ? 'Montando a fila...' : 'Passo 1 · Criar campanha e montar a fila'}
             </button>
             <p className="text-xs text-gray-400 leading-relaxed">
               A fila pega todo cliente ativo, com e-mail válido, não bloqueado e que não pediu
-              descadastro. Montar a fila não envia nada.
+              descadastro, e ordena de quem treinou mais recente para o mais antigo.
+              <strong className="text-gray-500"> Montar a fila não envia nada.</strong> O envio é o
+              passo 2, no card da campanha logo abaixo — e sai em rodadas, uma por clique.
             </p>
           </div>
         </div>
@@ -213,9 +220,12 @@ export default function EmailCampanhaPage() {
 
       {/* ── Campanhas ── */}
       <div className="bg-white rounded-xl border border-gray-100 p-4 mt-6">
-        <SectionTitle>Campanhas</SectionTitle>
+        <SectionTitle>Passo 2 · Campanhas — é aqui que o e-mail sai</SectionTitle>
         {carregando ? <Spinner /> : campanhas.length === 0 ? (
-          <p className="text-sm text-gray-500">Nenhuma campanha criada ainda.</p>
+          <p className="text-sm text-gray-500">
+            Nenhuma campanha ainda. Crie uma acima e ela aparece aqui, com o botão de enviar
+            e o progresso de quantos já saíram.
+          </p>
         ) : (
           <div className="space-y-3">
             {campanhas.map(c => {
