@@ -107,16 +107,40 @@ export default function EmailCampanhaPage() {
     return { ok: res.ok, dados: await res.json() }
   }
 
+  // A fila vai em lotes de 8 mil: montar os 44 mil de uma vez leva ~21s e a
+  // chamada morre no meio, deixando a campanha com a fila vazia. Aqui o
+  // navegador repete até acabar e mostra o quanto já entrou.
   async function preparar() {
     setOcupado('preparar'); setMsg(''); setErro('')
-    const { ok, dados } = await chamar('/api/email-campanha/preparar', form)
+
+    let corpo: any = form
+    let total = 0
+    let campanhaId = ''
+
+    for (let volta = 0; volta < 40; volta++) {
+      const { ok, dados } = await chamar('/api/email-campanha/preparar', corpo)
+      if (!ok) {
+        setOcupado('')
+        setErro(dados?.error || 'Erro ao montar a fila')
+        await carregar()
+        return
+      }
+      campanhaId = dados.campanha_id
+      total += Number(dados.inseridos) || 0
+      setMsg(`Montando a fila... ${total.toLocaleString('pt-BR')} até agora. Nada foi enviado.`)
+      if (dados.acabou) break
+      corpo = { campanha_id: campanhaId, depois_de: dados.ultimo_ord }
+    }
+
     setOcupado('')
-    if (!ok) { setErro(dados?.error || 'Erro ao preparar'); return }
     setMsg(
-      `Fila montada com ${Number(dados.destinatarios).toLocaleString('pt-BR')} destinatários. ` +
-      `NENHUM e-mail saiu ainda — o envio é o passo 2, no botão "Enviar agora" do card da campanha, aqui embaixo.`
+      `Fila montada com ${total.toLocaleString('pt-BR')} destinatários. ` +
+      `NENHUM e-mail saiu ainda — o envio é o passo 2, no card da campanha logo abaixo.`
     )
-    carregar()
+    // Espera a lista recarregar e leva a tela até ela: o passo 2 fica abaixo
+    // da dobra, então sem isso parece que o clique não fez nada.
+    await carregar()
+    document.getElementById('passo-2')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   async function enviarRodada(id: string) {
@@ -129,7 +153,7 @@ export default function EmailCampanhaPage() {
         ? 'Campanha concluída: não há mais ninguém na fila.'
         : `Rodada enviada: ${dados.enviados} e-mails${dados.erros ? `, ${dados.erros} com erro` : ''}. Faltam ${dados.restantes}.`
     )
-    carregar()
+    await carregar()
   }
 
   // Pausar/retomar e mudar o teto passam pela rota: a tabela só tem permissão
@@ -219,7 +243,7 @@ export default function EmailCampanhaPage() {
       </div>
 
       {/* ── Campanhas ── */}
-      <div className="bg-white rounded-xl border border-gray-100 p-4 mt-6">
+      <div id="passo-2" className="bg-white rounded-xl border border-gray-100 p-4 mt-6 scroll-mt-4">
         <SectionTitle>Passo 2 · Campanhas — é aqui que o e-mail sai</SectionTitle>
         {carregando ? <Spinner /> : campanhas.length === 0 ? (
           <p className="text-sm text-gray-500">
