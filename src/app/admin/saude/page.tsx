@@ -24,23 +24,37 @@ function haQuanto(iso?: string) {
   const h = Math.round(min / 60)
   return `há ${h}h`
 }
+function horaCurta(iso?: string) {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })
+}
+
+// Régua do pull de reservas TotalPass — a mesma do sentinela
+// (src/app/api/health/integracoes/route.ts). Ver incidente 08/09/2026.
+const PULL_PARADO_MIN = 15
+const SEM_MAPA_POLLS = 5
 
 export default function SaudeIntegracoes() {
   const { perfil } = useAuth() as any
   const [dbCheck, setDbCheck]   = useState<any>(null)   // checagens de banco ao vivo (rpc)
   const [snapshot, setSnapshot] = useState<any>(null)   // último snapshot do cron (traz a auth)
+  const [pulls, setPulls] = useState<any[]>([])         // histórico do pull de reservas TotalPass
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState('')
 
   const carregar = useCallback(async () => {
     setCarregando(true); setErro('')
-    const [{ data: live, error: eLive }, { data: snap }] = await Promise.all([
+    const [{ data: live, error: eLive }, { data: snap }, { data: log }] = await Promise.all([
       supabase.rpc('saude_integracoes'),
       supabase.from('integracoes_health').select('verificado_em, ok, relatorio').order('verificado_em', { ascending: false }).limit(1).maybeSingle(),
+      supabase.from('totalpass_pull_log')
+        .select('criado_em, slots, criadas, reativadas, ja_tinha, sem_mapa, rejeitadas, incompletas')
+        .order('criado_em', { ascending: false }).limit(12),
     ])
     if (eLive) setErro(eLive.message)
     setDbCheck(live || null)
     setSnapshot(snap || null)
+    setPulls(log || [])
     setCarregando(false)
   }, [])
 
@@ -58,9 +72,27 @@ export default function SaudeIntegracoes() {
   const filaTpRuim = (filaTp.mais_antigo_min ?? 0) > 30
   const filaWhRuim = (filaWh.mais_antigo_min ?? 0) > 30
 
+  // Pull de reservas TotalPass: o placar vem AO VIVO do histórico (totalpass_pull_log);
+  // só "faz X horas que não entra reserva" vem do snapshot, porque depende de contar
+  // horas de expediente no servidor. Ver incidente 08/09/2026 — o pull respondia
+  // HTTP 200 o tempo todo enquanto nenhuma reserva do app entrava na agenda.
+  const pullSnap  = snapshot?.relatorio?.pull_totalpass
+  const pullLigado = pullSnap?.ativo !== false
+  const ultPull = pulls[0]
+  const minPull = ultPull ? Math.round((Date.now() - new Date(ultPull.criado_em).getTime()) / 60000) : null
+  let seguidosSemMapa = 0
+  for (const p of pulls) { if ((p.sem_mapa ?? 0) > 0) seguidosSemMapa++; else break }
+  const pullParado   = pullLigado && minPull !== null && minPull > PULL_PARADO_MIN
+  const semMapaRuim  = pullLigado && seguidosSemMapa >= SEM_MAPA_POLLS
+  const semReservaRuim = pullLigado && !!pullSnap?.alerta_sem_reserva
+  const pullRuim = pullParado || semMapaRuim || semReservaRuim
+
   const problemas: string[] = []
   if (over.length) problemas.push(`${over.length} aula(s) futura(s) com overbooking`)
   if (authRuim.length) problemas.push(`conexão com app falhando (${authRuim.map(a => a.unidade).join(', ')})`)
+  if (pullParado) problemas.push(`pull de reservas TotalPass parado há ${minPull} min`)
+  if (semMapaRuim) problemas.push(`${seguidosSemMapa} polls seguidos com slot sem mapa — reserva do app da TotalPass não está entrando na agenda`)
+  if (semReservaRuim) problemas.push(`nenhuma reserva nova da TotalPass há ${pullSnap?.horas_comerciais_sem_reserva}h de expediente`)
   if (filaTpRuim) problemas.push('fila de sync TotalPass atrasada')
   if (filaWhRuim) problemas.push('fila de sync Wellhub atrasada')
   if (semPos.length) problemas.push(`${semPos.length} aula(s) com reserva sem posição`)
@@ -107,6 +139,74 @@ export default function SaudeIntegracoes() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 14 }}>
+        {/* Reservas do app TotalPass — o placar de cada pull, não só "respondeu 200" */}
+        <div style={{ ...cardStyle(pullRuim ? VERMELHO : VERDE), gridColumn: '1 / -1' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <strong>Reservas que chegam do app da TotalPass</strong>
+            <Pill cor={!pullLigado ? CINZA : pullRuim ? VERMELHO : VERDE} texto={!pullLigado ? 'DESLIGADO' : pullRuim ? 'FALHA' : 'OK'} />
+          </div>
+
+          {pulls.length === 0 && (
+            <span style={{ color: CINZA, fontSize: 13 }}>Sem registro de pull ainda (a primeira leitura entra em até 2 min).</span>
+          )}
+
+          {pulls.length > 0 && (
+            <>
+              <div style={{ fontSize: 13 }}>
+                {pullParado ? '🔴' : '🟢'} Último pull <b>{haQuanto(ultPull?.criado_em)}</b>
+                {' · '}{ultPull?.criadas ?? 0} nova(s) · {ultPull?.ja_tinha ?? 0} já registrada(s)
+                {' · '}<b style={{ color: (ultPull?.sem_mapa ?? 0) > 0 ? VERMELHO : undefined }}>{ultPull?.sem_mapa ?? 0} sem mapa</b>
+                {' · '}{ultPull?.rejeitadas ?? 0} rejeitada(s)
+              </div>
+              <div style={{ fontSize: 13 }}>
+                {semMapaRuim ? '🔴' : seguidosSemMapa > 0 ? '🟡' : '🟢'} Polls seguidos com slot <b>sem mapa</b>: <b>{seguidosSemMapa}</b>
+                <span style={{ color: CINZA }}> (alerta a partir de {SEM_MAPA_POLLS})</span>
+              </div>
+              <div style={{ fontSize: 13 }}>
+                {semReservaRuim ? '🔴' : '🟢'} Última reserva do app <b>{haQuanto(pullSnap?.ultima_reserva_em)}</b>
+                {pullSnap?.horas_comerciais_sem_reserva != null && (
+                  <span style={{ color: CINZA }}> · {pullSnap.horas_comerciais_sem_reserva}h de expediente sem reserva nova</span>
+                )}
+              </div>
+
+              {/* Histórico curto: é o que faltava em 08/09 pra datar o começo do problema */}
+              <div style={{ marginTop: 6, overflowX: 'auto' }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: CINZA, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+                  Últimos pulls
+                </div>
+                <table style={{ borderCollapse: 'collapse', fontSize: 12, minWidth: 420 }}>
+                  <thead>
+                    <tr style={{ color: CINZA, textAlign: 'right' }}>
+                      <th style={{ textAlign: 'left', padding: '2px 10px 2px 0', fontWeight: 700 }}>Hora</th>
+                      <th style={{ padding: '2px 10px', fontWeight: 700 }}>Slots</th>
+                      <th style={{ padding: '2px 10px', fontWeight: 700 }}>Novas</th>
+                      <th style={{ padding: '2px 10px', fontWeight: 700 }}>Já tinha</th>
+                      <th style={{ padding: '2px 10px', fontWeight: 700 }}>Sem mapa</th>
+                      <th style={{ padding: '2px 0 2px 10px', fontWeight: 700 }}>Rejeit.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pulls.map((p, i) => (
+                      <tr key={i} style={{ textAlign: 'right', borderTop: '1px solid #0000000d' }}>
+                        <td style={{ textAlign: 'left', padding: '3px 10px 3px 0' }}>{horaCurta(p.criado_em)}</td>
+                        <td style={{ padding: '3px 10px' }}>{p.slots ?? 0}</td>
+                        <td style={{ padding: '3px 10px', fontWeight: (p.criadas ?? 0) > 0 ? 800 : 400 }}>{p.criadas ?? 0}</td>
+                        <td style={{ padding: '3px 10px' }}>{p.ja_tinha ?? 0}</td>
+                        <td style={{ padding: '3px 10px', color: (p.sem_mapa ?? 0) > 0 ? VERMELHO : undefined, fontWeight: (p.sem_mapa ?? 0) > 0 ? 800 : 400 }}>{p.sem_mapa ?? 0}</td>
+                        <td style={{ padding: '3px 0 3px 10px', color: (p.rejeitadas ?? 0) > 0 ? AMARELO : undefined }}>{p.rejeitadas ?? 0}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+          <span style={{ color: CINZA, fontSize: 11 }}>
+            &ldquo;Sem mapa&rdquo; = a TotalPass devolveu uma reserva para uma aula que não está no nosso mapa de eventos.
+            Reserva nesse estado <b>não entra na agenda</b> e o aluno chega para a aula sem check-in.
+          </span>
+        </div>
+
         {/* Auth dos apps */}
         <div style={cardStyle(authRuim.length ? VERMELHO : VERDE)}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>

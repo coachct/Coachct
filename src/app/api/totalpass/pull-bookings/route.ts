@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
   }
   const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
 
+  const t0 = Date.now()
   const agora = new Date()
   const fim = new Date(agora.getTime() + JANELA_DIAS * 24 * 60 * 60 * 1000)
 
@@ -211,11 +212,35 @@ export async function POST(req: NextRequest) {
       { errosApi: errosApi.length, ativos: ativosIds.size })
   }
 
+  // HISTÓRICO (ver supabase/totalpass-pull-log.sql). Antes deste registro, o único
+  // lugar onde o placar do pull existia era o CORPO da resposta HTTP, e o corpo só
+  // sobrevivia em net._http_response — que rotaciona em poucas horas. Foi por isso
+  // que o incidente de 08/09 ficou 2 semanas invisível e depois foi difícil de datar.
+  // Agora cada pull deixa uma linha, e o sentinela alerta em cima dela.
+  //
+  // Best-effort: se a gravação falhar, o pull segue normal. Registrar histórico
+  // NÃO pode derrubar a entrada de reserva.
+  await registrarPull(supabase, {
+    slots: totalSlots, criadas, reativadas, rejeitadas, ja_tinha: jaTinha, sem_mapa: semMapa,
+    incompletas, canceladas, cancelamento_pulado: cancelamentoPulado, erros: erros.length,
+    erros_api: errosApi.length, duracao_ms: Date.now() - t0,
+  })
+
   return NextResponse.json({
     ok: true, slots: totalSlots, criadas, reativadas, rejeitadas, jaTinha, semMapa, incompletas,
     canceladas, cancelamentoPulado, erros: erros.length, errosApi, rejeitadasIds,
     statusVistos: [...statusVistos],
   })
+}
+
+// Grava o placar deste pull. Nunca lança: qualquer falha aqui vira warn no log.
+async function registrarPull(supabase: SupabaseClient, placar: Record<string, any>): Promise<void> {
+  try {
+    const { error } = await supabase.from('totalpass_pull_log').insert(placar)
+    if (error) console.warn('[totalpass/pull] falha ao registrar o placar:', error.message)
+  } catch (e: any) {
+    console.warn('[totalpass/pull] falha ao registrar o placar:', e?.message ?? e)
+  }
 }
 
 export async function GET(req: NextRequest) {
