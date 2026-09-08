@@ -109,8 +109,13 @@ export default function EmailCampanhaPage() {
     carregar()
   }
 
-  async function mudarStatus(id: string, status: string) {
-    await supabase.from('email_campanhas').update({ status }).eq('id', id)
+  // Pausar/retomar e mudar o teto passam pela rota: a tabela só tem permissão
+  // de leitura, então escrever direto daqui o banco recusa (e em silêncio).
+  async function ajustar(id: string, mudancas: { status?: string; teto_por_rodada?: number }) {
+    setMsg(''); setErro('')
+    const { ok, dados } = await chamar('/api/email-campanha/ajustar', { campanha_id: id, ...mudancas })
+    if (!ok) { setErro(dados?.error || 'Erro ao salvar'); return }
+    if (mudancas.teto_por_rodada) setMsg(`Agora vai mandar ${mudancas.teto_por_rodada} por rodada.`)
     carregar()
   }
 
@@ -221,21 +226,51 @@ export default function EmailCampanhaPage() {
                     {n.enviado} enviados · {n.pendente} na fila
                     {n.erro > 0 && <> · <span className="text-danger-600">{n.erro} com erro</span></>}
                     {n.pulado > 0 && <> · {n.pulado} descadastrados</>}
-                    {' '}· {c.teto_por_rodada} por rodada
                   </div>
+
+                  {c.status !== 'concluida' && (
+                    <div className="flex items-end gap-2 flex-wrap mb-3 pb-3 border-b border-gray-100">
+                      <div>
+                        <label className="text-xs text-gray-500 block mb-1">Enviar por rodada</label>
+                        <input
+                          type="number" min={1} max={20000}
+                          defaultValue={c.teto_por_rodada}
+                          onBlur={e => {
+                            const v = Number(e.target.value)
+                            if (v && v !== c.teto_por_rodada) ajustar(c.id, { teto_por_rodada: v })
+                          }}
+                          className="w-28 border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
+                        />
+                      </div>
+                      <div className="flex gap-1.5 pb-0.5">
+                        {RAMPA_SUGERIDA.map(v => (
+                          <button key={v} onClick={() => ajustar(c.id, { teto_por_rodada: v })}
+                            className={`rounded-lg px-2.5 py-1.5 text-xs border ${
+                              c.teto_por_rodada === v
+                                ? 'border-primary-400 bg-primary-50 text-primary-700 font-semibold'
+                                : 'border-gray-200 text-gray-500'
+                            }`}>
+                            {v.toLocaleString('pt-BR')}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="flex gap-2 flex-wrap">
                     {c.status !== 'concluida' && (
                       <button onClick={() => enviarRodada(c.id)} disabled={ocupado === c.id || c.status === 'pausada'}
                         className="bg-primary-500 text-white rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-50">
-                        {ocupado === c.id ? 'Enviando...' : 'Enviar uma rodada'}
+                        {ocupado === c.id
+                          ? 'Enviando...'
+                          : `Enviar ${Math.min(c.teto_por_rodada, n.pendente).toLocaleString('pt-BR')} agora`}
                       </button>
                     )}
                     {c.status === 'pausada' ? (
-                      <button onClick={() => mudarStatus(c.id, 'enviando')}
+                      <button onClick={() => ajustar(c.id, { status: 'enviando' })}
                         className="border border-gray-200 rounded-lg px-4 py-2 text-sm">Retomar</button>
                     ) : c.status !== 'concluida' && (
-                      <button onClick={() => mudarStatus(c.id, 'pausada')}
+                      <button onClick={() => ajustar(c.id, { status: 'pausada' })}
                         className="border border-gray-200 rounded-lg px-4 py-2 text-sm">Pausar</button>
                     )}
                   </div>
