@@ -120,7 +120,7 @@ export default function SummerModeCards({
                 {[
                   { texto: 'Clubs + musculação livre do CT', forte: false },
                   { texto: `Válido até ${dataBR(p.validade_fixa)}`, forte: false },
-                  bonus > 0 ? { texto: `Fecha os ${creditos} até 31/12? Ganha +${bonus}.`, forte: true } : null,
+                  bonus > 0 ? { texto: `Completou os ${creditos} até 31/12? Ganha +${bonus}.`, forte: true } : null,
                 ].filter(Boolean).map((b: any, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem' }}>
                     <span style={{ color: ACCENT, fontSize: 13, flexShrink: 0, lineHeight: 1.5 }}>✓</span>

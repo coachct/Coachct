@@ -64,7 +64,7 @@ export default function SummerModePage() {
                   text-transform: uppercase; color: ${ACCENT}; margin-bottom: 1rem; }
         .sm-h2 { font-family: 'Bebas Neue', sans-serif; font-size: clamp(30px, 4.2vw, 52px);
                  color: #fff; line-height: 1.05; letter-spacing: 1px; margin-bottom: 1.25rem; }
-        .sm-p { font-size: 16px; color: #999; line-height: 1.9; max-width: 720px; }
+        .sm-p { font-size: 16px; color: #999; line-height: 1.9; }
         .sm-hero-titulo { font-family: 'Bebas Neue', sans-serif; line-height: 1;
           font-size: clamp(42px, 8vw, 92px); letter-spacing: 2px; color: #fff; margin-bottom: 1.25rem; }
         .sm-switch { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 1.5rem; }
