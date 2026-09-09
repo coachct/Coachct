@@ -4,11 +4,12 @@ import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
-import { Calendar, Users, LogOut, Map, Dumbbell } from 'lucide-react'
+import { Calendar, Users, LogOut, Map, Dumbbell, ShoppingCart } from 'lucide-react'
 
 const ACCENT = '#ff2d9b'
 const CYAN   = '#00e5ff'
 const VERDE  = '#2ddd8b'
+const AMBAR  = '#ffb020'
 
 export default function SidebarRecepcao({ open = false, onClose }: {
   open?: boolean; onClose?: () => void
@@ -81,6 +82,7 @@ export default function SidebarRecepcao({ open = false, onClose }: {
             <NavItem href="/recepcao/agenda"           label="Agenda"           icon={Calendar} cor={CYAN}   />
             <NavItem href="/recepcao/clientes"         label="Clientes"         icon={Users}    cor={ACCENT} />
             <NavItem href="/recepcao/musculacao-livre" label="Musculação Livre" icon={Dumbbell} cor={VERDE}  />
+            <NavItem href="/recepcao/loja"             label="Venda de Produtos" icon={ShoppingCart} cor={AMBAR} />
           </>
         )}
         {tipo === 'club' && (
@@ -88,6 +90,7 @@ export default function SidebarRecepcao({ open = false, onClose }: {
             <NavItem href="/recepcao/club"      label="Calendário"   icon={Calendar} cor={CYAN}   />
             <NavItem href="/recepcao/clientes"  label="Clientes"     icon={Users}    cor={ACCENT} />
             <NavItem href="/recepcao/posicoes"  label="Mapa Running" icon={Map}      cor={VERDE}  />
+            <NavItem href="/recepcao/loja"      label="Venda de Produtos" icon={ShoppingCart} cor={AMBAR} />
           </>
         )}
       </nav>
