@@ -125,6 +125,7 @@ export default function RecepcaoLojaPage() {
         carrinho_vazio: 'Adicione pelo menos um produto.',
         quantidade_invalida: 'Quantidade inválida.',
         forma_pagamento_obrigatoria: 'Escolha a forma de pagamento.',
+        sem_permissao: 'Seu acesso não pode registrar venda. Fale com o admin.',
       }
       setErro(MOTIVOS[data.motivo] || ('Erro: ' + (data.motivo || 'desconhecido')))
       return

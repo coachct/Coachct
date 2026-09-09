@@ -140,6 +140,13 @@ create policy loja_itens_equipe_select on loja_venda_itens for select
 --
 -- p_itens: [{"produto_id":"uuid","quantidade":2}, ...]
 -- O preco NUNCA vem da tela: e sempre o preco do banco.
+--
+-- SECURITY DEFINER sem checar quem chama seria um furo: qualquer usuario
+-- logado (inclusive aluno) registraria venda pela API, mesmo sem botao na
+-- tela. A guarda de verdade e a checagem de role aqui dentro.
+--
+-- p_vendido_por fica na assinatura por compatibilidade, mas o autor gravado
+-- e sempre auth.uid(): a tela nao escolhe em nome de quem vende.
 -- ============================================================
 create or replace function loja_registrar_venda(
   p_unidade_id      uuid,
@@ -160,7 +167,14 @@ declare
   v_venda_id    uuid;
   v_total       numeric(10,2) := 0;
   v_qtd_itens   int;
+  v_role        text;
 begin
+  -- Quem vende no balcao: recepcao, admin, coordenadora. Mais ninguem.
+  select role into v_role from perfis where id = auth.uid();
+  if v_role is null or v_role not in ('admin', 'recepcao', 'coordenadora') then
+    return jsonb_build_object('sucesso', false, 'motivo', 'sem_permissao');
+  end if;
+
   if p_unidade_id is null then
     return jsonb_build_object('sucesso', false, 'motivo', 'unidade_obrigatoria');
   end if;
@@ -208,7 +222,7 @@ begin
   end loop;
 
   insert into loja_vendas (unidade_id, valor_total, forma_pagamento, observacao, vendido_por)
-  values (p_unidade_id, v_total, trim(p_forma_pagamento), nullif(trim(p_observacao), ''), p_vendido_por)
+  values (p_unidade_id, v_total, trim(p_forma_pagamento), nullif(trim(p_observacao), ''), auth.uid())
   returning id into v_venda_id;
 
   -- Passada 2: grava itens e baixa o estoque.
@@ -225,7 +239,7 @@ begin
     insert into loja_estoque_movimentos
       (produto_id, unidade_id, tipo, quantidade, motivo, venda_id, criado_por)
     values
-      (v_produto.id, p_unidade_id, 'venda', -v_qtd, 'Venda no balcao', v_venda_id, p_vendido_por);
+      (v_produto.id, p_unidade_id, 'venda', -v_qtd, 'Venda no balcao', v_venda_id, auth.uid());
   end loop;
 
   select count(*) into v_qtd_itens from loja_venda_itens where venda_id = v_venda_id;
@@ -239,6 +253,8 @@ $$;
 
 -- ============================================================
 -- RPC: cancelar venda — devolve o estoque.
+-- Decisao do Ricardo (09/09/2026): a RECEPCAO NAO CANCELA.
+-- Erro no balcao vira chamado pro admin/coordenadora.
 -- ============================================================
 create or replace function loja_cancelar_venda(
   p_venda_id uuid,
@@ -252,7 +268,13 @@ as $$
 declare
   v_venda record;
   v_item  record;
+  v_role  text;
 begin
+  select role into v_role from perfis where id = auth.uid();
+  if v_role is null or v_role not in ('admin', 'coordenadora') then
+    return jsonb_build_object('sucesso', false, 'motivo', 'sem_permissao');
+  end if;
+
   select * into v_venda from loja_vendas where id = p_venda_id for update;
 
   if v_venda is null then
@@ -268,16 +290,19 @@ begin
       (produto_id, unidade_id, tipo, quantidade, motivo, venda_id, criado_por)
     values
       (v_item.produto_id, v_venda.unidade_id, 'estorno', v_item.quantidade,
-       coalesce(nullif(trim(p_motivo), ''), 'Venda cancelada'), p_venda_id, p_por);
+       coalesce(nullif(trim(p_motivo), ''), 'Venda cancelada'), p_venda_id, auth.uid());
   end loop;
 
   update loja_vendas
-     set excluido_em = now(), excluido_por = p_por
+     set excluido_em = now(), excluido_por = auth.uid()
    where id = p_venda_id;
 
   return jsonb_build_object('sucesso', true, 'venda_id', p_venda_id);
 end;
 $$;
 
-grant execute on function loja_registrar_venda(uuid, jsonb, text, uuid, text) to authenticated;
-grant execute on function loja_cancelar_venda(uuid, uuid, text)              to authenticated;
+-- Visitante deslogado nao tem o que fazer aqui.
+revoke execute on function loja_registrar_venda(uuid, jsonb, text, uuid, text) from public, anon;
+revoke execute on function loja_cancelar_venda(uuid, uuid, text)              from public, anon;
+grant  execute on function loja_registrar_venda(uuid, jsonb, text, uuid, text) to authenticated;
+grant  execute on function loja_cancelar_venda(uuid, uuid, text)              to authenticated;

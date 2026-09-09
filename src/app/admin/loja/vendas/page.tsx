@@ -77,7 +77,15 @@ export default function AdminLojaVendasPage() {
     })
     setCancelando(null)
     if (error) { alert('Erro ao cancelar: ' + error.message); return }
-    if (data && !data.sucesso) { alert('Não foi possível cancelar: ' + data.motivo); return }
+    if (data && !data.sucesso) {
+      const MOTIVOS: Record<string, string> = {
+        sem_permissao: 'Só admin e coordenadora cancelam venda da loja.',
+        venda_ja_cancelada: 'Esta venda já estava cancelada.',
+        venda_nao_encontrada: 'Venda não encontrada. Recarregue a tela.',
+      }
+      alert(MOTIVOS[data.motivo] || ('Não foi possível cancelar: ' + data.motivo))
+      return
+    }
     carregar()
   }
 
