@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
@@ -47,6 +47,53 @@ function novoBucket(): Bucket {
 function ocupacao(b: Bucket)   { return b.somaCap > 0 ? b.somaReserva / b.somaCap : 0 }
 function presenca(b: Bucket)   { const d = b.somaPresente + b.somaFalta; return d > 0 ? b.somaPresente / d : 0 }
 function noShow(b: Bucket)     { const d = b.somaPresente + b.somaFalta; return d > 0 ? b.somaFalta / d : 0 }
+
+// Agregado completo (o mesmo cálculo, aplicado ao total e a cada unidade separadamente)
+type Agreg = {
+  geral:     Bucket
+  porDia:    Bucket[]
+  porHorario: Record<string, Bucket>
+  porTipo:   Record<string, Bucket>
+  porCoach:  Record<string, { nome: string; b: Bucket }>
+  alunos:    Set<string>
+}
+function novoAgreg(): Agreg {
+  return {
+    geral: novoBucket(),
+    porDia: Array.from({ length: 7 }, novoBucket),
+    porHorario: {},
+    porTipo: {},
+    porCoach: {},
+    alunos: new Set<string>(),
+  }
+}
+type Fatia = {
+  cap: number; reserva: number; pres: number; falta: number
+  dia: number; hora: string; tipo: string
+  coachId: string; coachNome: string; clientes: string[]
+}
+function aplicarNoAgreg(a: Agreg, f: Fatia) {
+  const soma = (b: Bucket) => {
+    b.nAulas++; b.somaCap += f.cap; b.somaReserva += f.reserva
+    b.somaPresente += f.pres; b.somaFalta += f.falta
+  }
+  soma(a.geral)
+  soma(a.porDia[f.dia])
+  soma(a.porHorario[f.hora] ||= novoBucket())
+  soma(a.porTipo[f.tipo]    ||= novoBucket())
+  soma((a.porCoach[f.coachId] ||= { nome: f.coachNome, b: novoBucket() }).b)
+  for (const c of f.clientes) a.alunos.add(c)
+}
+function somaBuckets(bs: (Bucket | undefined)[]): Bucket {
+  const t = novoBucket()
+  for (const b of bs) {
+    if (!b) continue
+    t.nAulas += b.nAulas; t.somaCap += b.somaCap; t.somaReserva += b.somaReserva
+    t.somaPresente += b.somaPresente; t.somaFalta += b.somaFalta
+  }
+  return t
+}
+function nomeCurto(n: string) { return (n || '').replace(/^just\s*club\s*/i, '').trim() || n }
 
 // Busca paginada (o Supabase corta em 1000 linhas por requisição)
 async function buscarTudo(builder: () => any): Promise<any[]> {
@@ -109,7 +156,9 @@ export default function AdminRelatorioClubPage() {
   }
 
   function unidadesAlvo(): any[] {
-    return unidadeSel === 'ambas' ? unidades : unidades.filter(u => u.id === unidadeSel)
+    return (unidadeSel === 'ambas' || unidadeSel === 'comparar')
+      ? unidades
+      : unidades.filter(u => u.id === unidadeSel)
   }
 
   async function gerar() {
@@ -137,7 +186,7 @@ export default function AdminRelatorioClubPage() {
 
     // 3) Avaliações do período (pra nota média por coach)
     const avals = await buscarTudo(() => supabase.from('avaliacoes_aula')
-      .select('coach_id, coach_nome, nota_professor, nota_aula, dispensado')
+      .select('coach_id, coach_nome, nota_professor, nota_aula, dispensado, unidade_id')
       .eq('origem', 'club').eq('dispensado', false)
       .in('unidade_id', unitIds).gte('data_aula', dataIni).lte('data_aula', dataFim))
 
@@ -145,14 +194,9 @@ export default function AdminRelatorioClubPage() {
     const reservasPorOc: Record<string, any[]> = {}
     for (const r of reservas) (reservasPorOc[r.ocorrencia_id] ||= []).push(r)
 
-    // Buckets
-    const geral = novoBucket()
-    const porUnidade: Record<string, Bucket> = {}
-    const porDia:     Bucket[] = Array.from({ length: 7 }, novoBucket)
-    const porHorario: Record<string, Bucket> = {}
-    const porTipo:    Record<string, Bucket> = {}
-    const porCoach:   Record<string, { nome: string; b: Bucket }> = {}
-    const alunosUnicos = new Set<string>()
+    // Buckets — o total e, em paralelo, um agregado completo por unidade
+    const agregGeral = novoAgreg()
+    const agregPorUnidade: Record<string, Agreg> = {}
 
     for (const oc of ocs) {
       const aula = (oc as any).club_aulas
@@ -166,47 +210,55 @@ export default function AdminRelatorioClubPage() {
 
       const rs = reservasPorOc[oc.id] || []
       let reserva = 0, pres = 0, falta = 0
+      const clientes: string[] = []
       for (const r of rs) {
         if (r.status === 'cancelado' || r.status === 'cancelada') continue
         reserva++
         if (r.status === 'presente') pres++
         else if (r.status === 'falta') falta++
-        if (r.cliente_id) alunosUnicos.add(r.cliente_id)
+        if (r.cliente_id) clientes.push(r.cliente_id)
       }
 
-      const aplicar = (b: Bucket) => {
-        b.nAulas++; b.somaCap += cap; b.somaReserva += reserva
-        b.somaPresente += pres; b.somaFalta += falta
-      }
-      aplicar(geral)
-      aplicar((porUnidade[unidadeId] ||= novoBucket()))
-      aplicar(porDia[dia])
-      aplicar((porHorario[hora] ||= novoBucket()))
-      aplicar((porTipo[tipo] ||= novoBucket()))
-      aplicar((porCoach[coachId] ||= { nome: coachNome, b: novoBucket() }).b)
+      const fatia: Fatia = { cap, reserva, pres, falta, dia, hora, tipo, coachId, coachNome, clientes }
+      aplicarNoAgreg(agregGeral, fatia)
+      if (unidadeId) aplicarNoAgreg((agregPorUnidade[unidadeId] ||= novoAgreg()), fatia)
     }
 
-    // Notas por coach
+    // Notas por coach (total e por unidade)
     const notaPorCoach: Record<string, { soma: number; n: number }> = {}
+    const notaPorCoachUnidade: Record<string, Record<string, { soma: number; n: number }>> = {}
     for (const a of avals) {
       const nota = a.nota_professor ?? a.nota_aula
       if (a.coach_id == null || nota == null) continue
       const acc = (notaPorCoach[a.coach_id] ||= { soma: 0, n: 0 })
       acc.soma += Number(nota); acc.n++
+      if (a.unidade_id) {
+        const porUni = (notaPorCoachUnidade[a.unidade_id] ||= {})
+        const accU = (porUni[a.coach_id] ||= { soma: 0, n: 0 })
+        accU.soma += Number(nota); accU.n++
+      }
     }
 
-    setRel({
-      geral,
-      porUnidade,
-      porDia,
-      porHorario: Object.entries(porHorario).sort((a, b) => a[0].localeCompare(b[0])),
-      porTipo:    Object.entries(porTipo).sort((a, b) => ocupacao(b[1]) - ocupacao(a[1])),
-      porCoach:   Object.entries(porCoach)
-        .map(([id, v]) => ({ id, nome: v.nome, b: v.b, nota: notaPorCoach[id] }))
-        .sort((a, b) => ocupacao(b.b) - ocupacao(a.b)),
-      totalReservas: geral.somaReserva,
-      alunosUnicos: alunosUnicos.size,
+    const montar = (a: Agreg, notas: Record<string, { soma: number; n: number }>) => ({
+      geral:      a.geral,
+      porDia:     a.porDia,
+      porHorario: Object.entries(a.porHorario).sort((x, y) => x[0].localeCompare(y[0])),
+      porTipo:    Object.entries(a.porTipo).sort((x, y) => ocupacao(y[1]) - ocupacao(x[1])),
+      porCoach:   Object.entries(a.porCoach)
+        .map(([id, v]) => ({ id, nome: v.nome, b: v.b, nota: notas[id] }))
+        .sort((x, y) => ocupacao(y.b) - ocupacao(x.b)),
+      totalReservas: a.geral.somaReserva,
+      alunosUnicos:  a.alunos.size,
     })
+
+    const porUnidade: Record<string, Bucket> = {}
+    const detalhePorUnidade: Record<string, any> = {}
+    for (const [uid, ag] of Object.entries(agregPorUnidade)) {
+      porUnidade[uid] = ag.geral
+      detalhePorUnidade[uid] = montar(ag, notaPorCoachUnidade[uid] || {})
+    }
+
+    setRel({ ...montar(agregGeral, notaPorCoach), porUnidade, detalhePorUnidade })
     setCarregando(false)
   }
 
@@ -272,6 +324,17 @@ export default function AdminRelatorioClubPage() {
               {u.nome}
             </button>
           ))}
+          {unidades.length > 1 && (
+            <button onClick={() => setUnidadeSel('comparar')}
+              style={{
+                padding: '8px 14px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                border: `1px solid ${unidadeSel === 'comparar' ? ACCENT : '#ddd'}`,
+                background: unidadeSel === 'comparar' ? ACCENT : '#fff',
+                color: unidadeSel === 'comparar' ? '#fff' : '#444',
+              }}>
+              Comparar
+            </button>
+          )}
         </div>
       </div>
 
@@ -285,7 +348,11 @@ export default function AdminRelatorioClubPage() {
         </div>
       )}
 
-      {!carregando && rel && rel.geral.nAulas > 0 && (
+      {!carregando && rel && rel.geral.nAulas > 0 && unidadeSel === 'comparar' && (
+        <Comparativo rel={rel} unidades={unidades} dataIni={dataIni} dataFim={dataFim} />
+      )}
+
+      {!carregando && rel && rel.geral.nAulas > 0 && unidadeSel !== 'comparar' && (
         <>
           {/* Cards-resumo */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 28 }}>
@@ -418,6 +485,219 @@ function Tabela({ colunas, linhas }: { colunas: string[]; linhas: any[][] }) {
         ))}
       </tbody>
     </table>
+  )
+}
+
+// ---- Modo comparativo (unidade x unidade) ----------------------------------
+
+type LinhaComp = { chave: string; label: any; por: Record<string, Bucket>; extra: Record<string, any> }
+type Metrica   = { titulo: string; render: (b: Bucket, uid: string, l: LinhaComp) => any }
+
+const METRICAS_PADRAO: Metrica[] = [
+  { titulo: 'Aulas', render: b => b.nAulas },
+  { titulo: 'Ocup.', render: b => <span style={{ color: corOcupacao(ocupacao(b)), fontWeight: 700 }}>{pct(ocupacao(b))}</span> },
+  { titulo: 'Pres.', render: b => pct(presenca(b)) },
+]
+
+// Junta as linhas das duas unidades pela mesma chave (dia, horário, coach, tipo)
+function montarLinhas(
+  ids: string[],
+  pega: (uid: string) => [string, any, Bucket, any?][],
+): LinhaComp[] {
+  const mapa: Record<string, LinhaComp> = {}
+  for (const uid of ids) {
+    for (const [chave, label, b, extra] of pega(uid)) {
+      if (!b || b.nAulas === 0) continue
+      const linha = (mapa[chave] ||= { chave, label, por: {}, extra: {} })
+      linha.por[uid] = b
+      if (extra !== undefined) linha.extra[uid] = extra
+    }
+  }
+  return Object.values(mapa).sort((a, b) =>
+    ocupacao(somaBuckets(ids.map(u => b.por[u]))) - ocupacao(somaBuckets(ids.map(u => a.por[u]))))
+}
+
+function Comparativo({ rel, unidades, dataIni, dataFim }: {
+  rel: any; unidades: any[]; dataIni: string; dataFim: string
+}) {
+  const ids = unidades.map(u => u.id)
+  const det = (uid: string) => rel.detalhePorUnidade?.[uid]
+  const [uA, uB] = unidades
+  const gA = det(uA?.id)?.geral as Bucket | undefined
+  const gB = det(uB?.id)?.geral as Bucket | undefined
+  const podeDelta = unidades.length === 2 && !!gA && !!gB && gA.nAulas > 0 && gB.nAulas > 0
+
+  return (
+    <>
+      {/* Resumo lado a lado */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(330px, 1fr))', gap: 12, marginBottom: 14 }}>
+        {unidades.map(u => {
+          const d = det(u.id)
+          return (
+            <div key={u.id} style={{ background: '#fff', border: '1px solid #eee', borderRadius: 14, padding: '14px 16px' }}>
+              <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 12, color: '#111' }}>{u.nome}</div>
+              {!d || d.geral.nAulas === 0 ? (
+                <div style={{ color: '#999', fontSize: 13, padding: '10px 0' }}>Sem aulas no período.</div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                  <Mini titulo="Ocupação" valor={pct(ocupacao(d.geral))} cor={corOcupacao(ocupacao(d.geral))} />
+                  <Mini titulo="Aulas"    valor={String(d.geral.nAulas)} cor="#111" />
+                  <Mini titulo="Reservas" valor={String(d.totalReservas)} cor="#111" />
+                  <Mini titulo="Alunos"   valor={String(d.alunosUnicos)} cor="#111" />
+                  <Mini titulo="Presença" valor={pct(presenca(d.geral))} cor={VERDE} />
+                  <Mini titulo="No-show"  valor={pct(noShow(d.geral))} cor={VERMELHO} />
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Faixa de diferença */}
+      {podeDelta && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 28 }}>
+          <span style={{ fontSize: 12, color: '#888', fontWeight: 700 }}>
+            Diferença ({nomeCurto(uA.nome)} − {nomeCurto(uB.nome)}):
+          </span>
+          <Chip titulo="Ocupação" delta={ocupacao(gA!) - ocupacao(gB!)} bomQuandoMaior />
+          <Chip titulo="Presença" delta={presenca(gA!) - presenca(gB!)} bomQuandoMaior />
+          <Chip titulo="No-show"  delta={noShow(gA!)  - noShow(gB!)} />
+          <Chip titulo="Aulas"    delta={gA!.nAulas - gB!.nAulas} bomQuandoMaior bruto sufixo="" />
+        </div>
+      )}
+
+      <Secao titulo="Dias da semana">
+        <TabelaComp primeira="Dia" unidades={unidades}
+          linhas={montarLinhas(ids, uid => (det(uid)?.porDia || [])
+            .map((b: Bucket, i: number) => [String(i), DIAS_SEMANA_LABEL[i], b] as [string, any, Bucket]))} />
+      </Secao>
+
+      <Secao titulo="Horários (ocupação)">
+        <TabelaComp primeira="Horário" unidades={unidades}
+          linhas={montarLinhas(ids, uid => (det(uid)?.porHorario || [])
+            .map(([h, b]: any) => [h, h, b] as [string, any, Bucket]))} />
+      </Secao>
+
+      <Secao titulo="Coaches">
+        <TabelaComp primeira="Coach" unidades={unidades}
+          metricas={[
+            ...METRICAS_PADRAO,
+            { titulo: 'Nota', render: (_b, uid, l) => l.extra[uid] ? `${(l.extra[uid].soma / l.extra[uid].n).toFixed(1)}` : '—' },
+          ]}
+          linhas={montarLinhas(ids, uid => (det(uid)?.porCoach || [])
+            .map((c: any) => [c.id, c.nome, c.b, c.nota] as [string, any, Bucket, any]))} />
+      </Secao>
+
+      <Secao titulo="Tipos de aula">
+        <TabelaComp primeira="Tipo" unidades={unidades}
+          linhas={montarLinhas(ids, uid => (det(uid)?.porTipo || [])
+            .map(([t, b]: any) => [t, <span key={t} style={{ color: tipoColor(t), fontWeight: 700 }}>{tipoLabel(t)}</span>, b] as [string, any, Bucket]))} />
+      </Secao>
+
+      <p style={{ color: '#aaa', fontSize: 12, marginTop: 24 }}>
+        Ocupação = reservas ativas ÷ capacidade. Presença = presentes ÷ (presentes + faltas).
+        {podeDelta && ` Δ = ${nomeCurto(uA.nome)} − ${nomeCurto(uB.nome)}, em pontos percentuais de ocupação.`}
+        {' '}Alunos únicos são contados dentro de cada unidade — quem treina nas duas aparece nas duas.
+        Período: {dataIni} a {dataFim}.
+      </p>
+    </>
+  )
+}
+
+function Mini({ titulo, valor, cor }: { titulo: string; valor: string; cor: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: 11, color: '#888', fontWeight: 600, marginBottom: 2 }}>{titulo}</div>
+      <div style={{ fontSize: 20, fontWeight: 800, color: cor }}>{valor}</div>
+    </div>
+  )
+}
+
+// Chip de diferença: delta em fração (0.07 = +7 p.p.)
+function Chip({ titulo, delta, bomQuandoMaior, bruto, sufixo = ' p.p.' }:
+  { titulo: string; delta: number; bomQuandoMaior?: boolean; bruto?: boolean; sufixo?: string }) {
+  const n = Math.round(bruto ? delta : delta * 100)
+  const bom = bomQuandoMaior ? n >= 0 : n <= 0
+  const cor = n === 0 ? '#888' : (bom ? VERDE : VERMELHO)
+  return (
+    <span style={{
+      display: 'inline-flex', gap: 6, alignItems: 'center', background: '#fff',
+      border: '1px solid #eee', borderRadius: 999, padding: '5px 12px', fontSize: 12,
+    }}>
+      <span style={{ color: '#888', fontWeight: 600 }}>{titulo}</span>
+      <strong style={{ color: cor }}>{n > 0 ? '+' : ''}{n}{sufixo}</strong>
+    </span>
+  )
+}
+
+function TabelaComp({ primeira, unidades, linhas, metricas = METRICAS_PADRAO }: {
+  primeira: string; unidades: any[]; linhas: LinhaComp[]; metricas?: Metrica[]
+}) {
+  const ids = unidades.map(u => u.id)
+  const th = { padding: '8px 10px', color: '#888', fontWeight: 700, fontSize: 11, textAlign: 'center' as const }
+
+  if (!linhas.length) {
+    return <div style={{ padding: 20, color: '#999', fontSize: 13 }}>Sem dados no período.</div>
+  }
+
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+        <thead>
+          <tr style={{ background: '#fafafa' }}>
+            <th rowSpan={2} style={{ ...th, textAlign: 'left' }}>{primeira}</th>
+            {unidades.map(u => (
+              <th key={u.id} colSpan={metricas.length} style={{ ...th, borderLeft: '1px solid #ececec', color: '#111', fontSize: 12 }}>
+                {nomeCurto(u.nome)}
+              </th>
+            ))}
+            {ids.length === 2 && <th rowSpan={2} style={{ ...th, borderLeft: '1px solid #ececec' }}>Δ ocup.</th>}
+          </tr>
+          <tr style={{ background: '#fafafa' }}>
+            {unidades.map(u => (
+              <Fragment key={u.id}>
+                {metricas.map((m, i) => (
+                  <th key={m.titulo} style={{ ...th, borderLeft: i === 0 ? '1px solid #ececec' : undefined }}>{m.titulo}</th>
+                ))}
+              </Fragment>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {linhas.map(l => {
+            const bA = l.por[ids[0]], bB = l.por[ids[1]]
+            const temDelta = ids.length === 2 && bA && bB
+            const d = temDelta ? Math.round((ocupacao(bA) - ocupacao(bB)) * 100) : 0
+            return (
+              <tr key={l.chave} style={{ borderTop: '1px solid #f0f0f0' }}>
+                <td style={{ padding: '9px 10px', fontWeight: 700, color: '#111' }}>{l.label}</td>
+                {unidades.map(u => {
+                  const b = l.por[u.id]
+                  return (
+                    <Fragment key={u.id}>
+                      {metricas.map((m, i) => (
+                        <td key={m.titulo} style={{
+                          padding: '9px 10px', textAlign: 'center', color: '#444',
+                          borderLeft: i === 0 ? '1px solid #f4f4f4' : undefined,
+                        }}>
+                          {b ? m.render(b, u.id, l) : <span style={{ color: '#ccc' }}>—</span>}
+                        </td>
+                      ))}
+                    </Fragment>
+                  )
+                })}
+                {ids.length === 2 && (
+                  <td style={{ padding: '9px 10px', textAlign: 'center', fontWeight: 700, borderLeft: '1px solid #f4f4f4',
+                    color: !temDelta ? '#ccc' : d === 0 ? '#888' : d > 0 ? VERDE : VERMELHO }}>
+                    {!temDelta ? '—' : `${d > 0 ? '+' : ''}${d}`}
+                  </td>
+                )}
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
