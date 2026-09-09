@@ -497,6 +497,7 @@ const METRICAS_PADRAO: Metrica[] = [
   { titulo: 'Aulas', render: b => b.nAulas },
   { titulo: 'Ocup.', render: b => <span style={{ color: corOcupacao(ocupacao(b)), fontWeight: 700 }}>{pct(ocupacao(b))}</span> },
   { titulo: 'Reservas', render: b => b.somaReserva },
+  { titulo: 'Média/aula', render: b => b.nAulas > 0 ? (b.somaReserva / b.nAulas).toFixed(1) : '—' },
 ]
 
 // Junta as linhas das duas unidades pela mesma chave (dia, horário, coach, tipo)
@@ -595,7 +596,8 @@ function Comparativo({ rel, unidades, dataIni, dataFim }: {
       </Secao>
 
       <p style={{ color: '#aaa', fontSize: 12, marginTop: 24 }}>
-        Ocupação = reservas ativas ÷ capacidade. Presença = presentes ÷ (presentes + faltas).
+        Ocupação = reservas ativas ÷ capacidade. Média/aula = reservas ÷ aulas.
+        Presença = presentes ÷ (presentes + faltas).
         {podeDelta && ` Δ = ${nomeCurto(uA.nome)} − ${nomeCurto(uB.nome)}, em pontos percentuais de ocupação.`}
         {' '}Alunos únicos são contados dentro de cada unidade — quem treina nas duas aparece nas duas.
         Período: {dataIni} a {dataFim}.
