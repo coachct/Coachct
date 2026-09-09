@@ -496,7 +496,7 @@ type Metrica   = { titulo: string; render: (b: Bucket, uid: string, l: LinhaComp
 const METRICAS_PADRAO: Metrica[] = [
   { titulo: 'Aulas', render: b => b.nAulas },
   { titulo: 'Ocup.', render: b => <span style={{ color: corOcupacao(ocupacao(b)), fontWeight: 700 }}>{pct(ocupacao(b))}</span> },
-  { titulo: 'Pres.', render: b => pct(presenca(b)) },
+  { titulo: 'Reservas', render: b => b.somaReserva },
 ]
 
 // Junta as linhas das duas unidades pela mesma chave (dia, horário, coach, tipo)
