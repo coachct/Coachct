@@ -98,6 +98,17 @@ export default function AdminLojaVendasPage() {
   }
   const ranking = [...porProduto.entries()].sort((a, b) => b[1].valor - a[1].valor)
 
+  // Faturamento por unidade — separado do faturamento de créditos e planos.
+  const porUnidade = unidades.map(u => {
+    const doPeriodo = validas.filter(v => v.unidade_id === u.id)
+    return {
+      unidade: u,
+      vendas: doPeriodo.length,
+      itens: doPeriodo.reduce((s, v) => s + v.loja_venda_itens.reduce((t, i) => t + i.quantidade, 0), 0),
+      total: doPeriodo.reduce((s, v) => s + Number(v.valor_total), 0),
+    }
+  }).filter(l => l.vendas > 0).sort((a, b) => b.total - a.total)
+
   return (
     <div>
       <Link href="/admin/loja" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mb-3">
@@ -134,6 +145,37 @@ export default function AdminLojaVendasPage() {
 
       {carregando ? <Spinner /> : (
         <>
+          {porUnidade.length > 0 && (
+            <div className="mb-6">
+              <h2 className="text-base font-semibold text-gray-900 mb-1">Faturamento por unidade</h2>
+              <p className="text-xs text-gray-500 mb-3">
+                Só produtos da loja. Não se mistura com o faturamento de créditos e planos.
+              </p>
+              <div className="card p-0 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 text-xs text-gray-500">
+                      <th className="text-left font-medium px-4 py-3">Unidade</th>
+                      <th className="text-right font-medium px-3 py-3">Vendas</th>
+                      <th className="text-right font-medium px-3 py-3">Itens</th>
+                      <th className="text-right font-medium px-4 py-3">Faturamento</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {porUnidade.map(l => (
+                      <tr key={l.unidade.id} className="border-b border-gray-50 last:border-0">
+                        <td className="px-4 py-2.5 text-gray-900">{l.unidade.nome}</td>
+                        <td className="px-3 py-2.5 text-right font-mono text-gray-700">{l.vendas}</td>
+                        <td className="px-3 py-2.5 text-right font-mono text-gray-700">{l.itens}</td>
+                        <td className="px-4 py-2.5 text-right font-mono font-semibold text-gray-900">{moeda(l.total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {ranking.length > 0 && (
             <div className="mb-6">
               <h2 className="text-base font-semibold text-gray-900 mb-3">Mais vendidos no período</h2>
