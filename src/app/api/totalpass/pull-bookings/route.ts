@@ -146,6 +146,7 @@ export async function POST(req: NextRequest) {
   const statusVistos = new Set<string>()
   const ativosIds = new Set<string>()
   let criadas = 0, reativadas = 0, rejeitadas = 0, jaTinha = 0, semMapa = 0, incompletas = 0, totalSlots = 0
+  let duplicadas = 0
   const erros: any[] = []
   const errosApi: any[] = []
   const rejeitadasIds: any[] = [] // quem teve o slot cancelado no app deles — sai na resposta pra dar pra rastrear
@@ -175,12 +176,18 @@ export async function POST(req: NextRequest) {
   const clientePorId = await carregarClientes(
     supabase, [...reservaPorSlot.values()].map((r: any) => r.cliente_id)
   )
+  // Passivo de duplicidade: reservas JÁ registradas do mesmo cliente na mesma
+  // ocorrência (ver o comentário em registrarReserva). Fica a mais antiga.
+  const slotsDuplicados = duplicadosJaRegistrados(reservaPorSlot)
 
   for (const { s, apiKey } of pendentes) {
-    const r = await registrarReserva(supabase, s, ocPorEvento, apiKey, reservaPorSlot, clientePorId, rejeitadasIds)
+    const r = await registrarReserva(
+      supabase, s, ocPorEvento, apiKey, reservaPorSlot, clientePorId, rejeitadasIds, slotsDuplicados
+    )
     if (r === 'criada') criadas++
     else if (r === 'reativada') reativadas++
     else if (r === 'rejeitada') rejeitadas++
+    else if (r === 'duplicada') duplicadas++
     else if (r === 'ja') jaTinha++
     else if (r === 'sem-mapa') semMapa++
     else if (r === 'incompleto') incompletas++
@@ -221,13 +228,13 @@ export async function POST(req: NextRequest) {
   // Best-effort: se a gravação falhar, o pull segue normal. Registrar histórico
   // NÃO pode derrubar a entrada de reserva.
   await registrarPull(supabase, {
-    slots: totalSlots, criadas, reativadas, rejeitadas, ja_tinha: jaTinha, sem_mapa: semMapa,
+    slots: totalSlots, criadas, reativadas, rejeitadas, duplicadas, ja_tinha: jaTinha, sem_mapa: semMapa,
     incompletas, canceladas, cancelamento_pulado: cancelamentoPulado, erros: erros.length,
     erros_api: errosApi.length, duracao_ms: Date.now() - t0,
   })
 
   return NextResponse.json({
-    ok: true, slots: totalSlots, criadas, reativadas, rejeitadas, jaTinha, semMapa, incompletas,
+    ok: true, slots: totalSlots, criadas, reativadas, rejeitadas, duplicadas, jaTinha, semMapa, incompletas,
     canceladas, cancelamentoPulado, erros: erros.length, errosApi, rejeitadasIds,
     statusVistos: [...statusVistos],
   })
@@ -247,7 +254,7 @@ export async function GET(req: NextRequest) {
   return POST(req)
 }
 
-type ResReserva = 'criada' | 'reativada' | 'rejeitada' | 'ja' | 'sem-mapa' | 'erro' | 'incompleto'
+type ResReserva = 'criada' | 'reativada' | 'rejeitada' | 'duplicada' | 'ja' | 'sem-mapa' | 'erro' | 'incompleto'
 
 // Mapa eventId → ocorrencia_id das ocorrências dentro da janela do poll (com 1 dia
 // de folga em cada ponta, porque a janela é calculada em UTC e a aula é local).
@@ -355,11 +362,34 @@ async function carregarReservas(supabase: SupabaseClient, slotIds: string[]): Pr
   for (let i = 0; i < ids.length; i += 100) {
     const { data } = await supabase
       .from('club_reservas')
-      .select('id, cliente_id, status, ocorrencia_id, totalpass_slot_id')
+      .select('id, cliente_id, status, ocorrencia_id, totalpass_slot_id, created_at')
       .in('totalpass_slot_id', ids.slice(i, i + 100))
     for (const r of (data || [])) mapa.set((r as any).totalpass_slot_id, r)
   }
   return mapa
+}
+
+// Duplicidade JÁ REGISTRADA: o mesmo cliente com duas reservas TotalPass ativas
+// na MESMA ocorrência (o app deles deixa reservar de novo; ver registrarReserva).
+// Devolve os slots que devem cair — todos menos a reserva mais antiga do cliente
+// naquela aula, que é a que ele fez de verdade primeiro. Só olha o que já está
+// no banco, em memória: nenhuma consulta a mais no poll.
+function duplicadosJaRegistrados(reservaPorSlot: Map<string, any>): Set<string> {
+  const porClienteNaAula = new Map<string, any[]>()
+  for (const r of reservaPorSlot.values()) {
+    if ((r as any).status === 'cancelado') continue
+    const chave = `${(r as any).ocorrencia_id}|${(r as any).cliente_id}`
+    const lista = porClienteNaAula.get(chave) ?? []
+    lista.push(r)
+    porClienteNaAula.set(chave, lista)
+  }
+  const fora = new Set<string>()
+  for (const lista of porClienteNaAula.values()) {
+    if (lista.length < 2) continue
+    lista.sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+    for (const r of lista.slice(1)) fora.add((r as any).totalpass_slot_id)
+  }
+  return fora
 }
 
 // Cadastros das reservas conhecidas, numa consulta — alimenta o backfill sem
@@ -382,14 +412,42 @@ async function registrarReserva(
   apiKey: string,
   reservaPorSlot: Map<string, any>,
   clientePorId: Map<string, any>,
-  rejeitadas: any[]
+  rejeitadas: any[],
+  slotsDuplicados: Set<string>
 ): Promise<ResReserva> {
   // Já registrada? Mesmo assim faz backfill: o cliente pode ter sido criado
   // antes (payload cru) e agora os dados chegaram — self-heal do "fantasma".
   const existente = reservaPorSlot.get(s.slotId!) ?? null
   if (existente) {
     await backfillCliente(supabase, (existente as any).cliente_id, s, clientePorId)
-    if ((existente as any).status !== 'cancelado') return 'ja'
+    if ((existente as any).status !== 'cancelado') {
+      // Duplicata que já entrou (caso 10/09: o mesmo cliente com R03 e R04 na
+      // mesma aula, dois slots feitos com 10 min de diferença). Derruba a mais
+      // nova: primeiro no app deles, só depois aqui — se cancelássemos só a
+      // nossa, o slot continuaria ativo e o self-heal abaixo reativaria tudo no
+      // poll seguinte. Se o DELETE falhar, deixa como está e tenta no próximo.
+      if (slotsDuplicados.has(s.slotId!)) {
+        const del = await cancelarSlot(apiKey, s.slotId!)
+        if (!del.ok) {
+          console.warn('[totalpass/pull] duplicada: falha ao cancelar o slot deles', s.slotId, del.erro)
+          return 'ja'
+        }
+        const { error: errDup } = await supabase
+          .from('club_reservas')
+          .update({ status: 'cancelado', cancelado_em: new Date().toISOString() })
+          .eq('id', (existente as any).id).neq('status', 'cancelado')
+        if (errDup) {
+          console.warn('[totalpass/pull] duplicada: falha ao cancelar a reserva', (errDup as any).message)
+          return 'erro'
+        }
+        rejeitadas.push({
+          slotId: s.slotId, eventId: s.eventId, ocorrenciaId: (existente as any).ocorrencia_id,
+          motivo: 'duplicada-mesma-aula', etapa: 'limpeza',
+        })
+        return 'duplicada'
+      }
+      return 'ja'
+    }
 
     // SELF-HEAL: o slot voltou ATIVO neste poll, mas nossa reserva está cancelada.
     // Como o slot_id é único por reserva na TotalPass, vê-lo ativo prova que a
@@ -397,6 +455,25 @@ async function registrarReserva(
     // rede de segurança no POST). Reativamos honrando capacidade/posição atuais,
     // em vez de deixar a reserva morta pra sempre.
     const ocId = (existente as any).ocorrencia_id as string
+
+    // ...a não ser que ele já tenha OUTRA reserva ativa nesta aula. Aí reativar
+    // recriaria a duplicata que acabamos de derrubar (ou brigaria com a reserva
+    // que ele fez pelo site). Mesma regra da criação: uma posição por aluno.
+    const { count: outraNaAula } = await supabase
+      .from('club_reservas')
+      .select('id', { count: 'exact', head: true })
+      .eq('ocorrencia_id', ocId)
+      .eq('cliente_id', (existente as any).cliente_id)
+      .neq('status', 'cancelado')
+    if ((outraNaAula ?? 0) > 0) {
+      await cancelarSlot(apiKey, s.slotId!)
+      rejeitadas.push({
+        slotId: s.slotId, eventId: s.eventId, ocorrenciaId: ocId,
+        motivo: 'duplicada-mesma-aula', etapa: 'reativacao',
+      })
+      return 'duplicada'
+    }
+
     const vaga = await garantirVaga(supabase, ocId, apiKey, s.slotId!)
     if (!vaga.ok) {
       rejeitadas.push({ slotId: s.slotId, eventId: s.eventId, ocorrenciaId: ocId, motivo: vaga.motivo, etapa: 'reativacao' })
@@ -435,6 +512,27 @@ async function registrarReserva(
   // fantasma antigo), completa com o que a TotalPass mandou.
   await backfillCliente(supabase, clienteId as unknown as string, s, clientePorId)
 
+  // UMA POSIÇÃO POR ALUNO NA AULA. O app da TotalPass deixa o mesmo membro
+  // reservar duas vezes a mesma ocorrência, e a trava de 1 treino/dia por app
+  // (validar_duplicidade_reserva_club) NÃO alcança isto: origem_sujeita_trava_app
+  // dispensa de propósito tudo que vem com via_app/criado_via de parceiro. Sem
+  // esta guarda, a 2ª reserva segurava mais uma esteira que ele nunca ia usar.
+  // Vale contra QUALQUER reserva ativa dele na aula, inclusive a feita no site.
+  const { count: jaNaAula } = await supabase
+    .from('club_reservas')
+    .select('id', { count: 'exact', head: true })
+    .eq('ocorrencia_id', ocorrenciaId)
+    .eq('cliente_id', clienteId as unknown as string)
+    .neq('status', 'cancelado')
+  if ((jaNaAula ?? 0) > 0) {
+    await cancelarSlot(apiKey, s.slotId!) // falhou? não cria; o próximo poll tenta de novo
+    rejeitadas.push({
+      slotId: s.slotId, eventId: s.eventId, ocorrenciaId,
+      motivo: 'duplicada-mesma-aula', etapa: 'criacao',
+    })
+    return 'duplicada'
+  }
+
   // Vaga real + posição (mesma regra da reativação).
   const vaga = await garantirVaga(supabase, ocorrenciaId, apiKey, s.slotId!)
   if (!vaga.ok) {
@@ -443,7 +541,10 @@ async function registrarReserva(
   }
   const posicao = vaga.posicao
 
-  // Insere. Trava de 1/dia/unidade (P0001) vale no app → rejeita limpo cancelando o slot.
+  // Insere. Reserva de parceiro NÃO passa pela trava de 1 treino/dia por app
+  // (origem_sujeita_trava_app dispensa via_app/criado_via de parceiro de propósito
+  // — quem manda na reserva do app é a TotalPass). Qualquer outra recusa do banco
+  // vira rejeição limpa: cancela o slot deles em vez de deixar a reserva no limbo.
   // 23505 = já existe (reentrega) → trata como criada.
   const payload: any = {
     ocorrencia_id: ocorrenciaId,
