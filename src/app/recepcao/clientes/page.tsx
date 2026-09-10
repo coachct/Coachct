@@ -8,7 +8,7 @@ import { useUnidade } from '@/hooks/useUnidade'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle, ShoppingCart, Package, DollarSign, Building2, Trash2, Zap, Gift, CalendarClock, Edit2, KeyRound, Copy, Dumbbell, CheckCircle2 } from 'lucide-react'
 import UnidadeSelector from '@/components/UnidadeSelector'
-import { numerarTreinosDoMes, PLANOS_SEM_TETO } from '@/lib/treinos-numero'
+import { numerarTreinosDoMes, PLANOS_SEM_TETO, poolReservaClub } from '@/lib/treinos-numero'
 import { CAMPANHA_SUMMER, ERRO_LIMITE_POR_CLIENTE } from '@/lib/summer'
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
@@ -980,12 +980,22 @@ function RecepcaoClientesPageInner() {
     .filter(a => a.data < hoje || ['realizado','falta','cancelado','presente'].includes(a.status))
     .sort((a,b) => b.data.localeCompare(a.data))
 
-  // Numeração "X/N" dos treinos de Coach CT no mês (só planos com teto — avulso/
-  // pacote não recebem). Só temos saldo do mês atual, então só os treinos deste
-  // mês ganham rótulo. N = total do pool; X = ordem cronológica no mês.
+  // Numeração "X/N" dos treinos no mês — Coach CT (agendamentos) e Club
+  // (club_reservas), cada pool de crédito contado separadamente (só planos com
+  // teto — avulso/pacote não recebem). Só temos saldo do mês atual, então só os
+  // treinos deste mês ganham rótulo. N = total do pool; X = ordem cronológica.
   const anoMesAtual = hoje.slice(0, 7)
   const numeroTreino = numerarTreinosDoMes(
-    historico.map((a:any) => ({ id: a.id, data: a.data, horario: a.horario, status: a.status, tipo_credito: a.tipo_credito })),
+    [
+      ...historico.map((a:any) => ({ id: a.id, data: a.data, horario: a.horario, status: a.status, tipo_credito: a.tipo_credito })),
+      ...clubReservas.map((cr:any) => ({
+        id: cr.id,
+        data: cr.club_ocorrencias?.data,
+        horario: cr.club_ocorrencias?.club_aulas?.horario,
+        status: cr.status,
+        tipo_credito: poolReservaClub(cr.tipo_credito, cr.club_ocorrencias?.club_aulas?.unidade_id, saldoMes),
+      })),
+    ],
     (tipo, ym) => {
       if (ym !== anoMesAtual) return null
       const info = saldoMes?.[tipo]
@@ -1604,6 +1614,7 @@ function RecepcaoClientesPageInner() {
                                 <span className="text-base font-bold text-gray-900">{tipoLabelClub(aula?.tipo) || 'Club'}</span>
                                 <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">Club</span>
                                 <span className={`text-xs px-2 py-0.5 rounded-full ${statusConfig[cr.status]?.color || 'bg-gray-100 text-gray-600'}`}>{statusConfig[cr.status]?.label || cr.status}</span>
+                                {numeroTreino.get(cr.id) && <span title="treino do mês" className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold font-mono">{numeroTreino.get(cr.id)}</span>}
                               </div>
                               <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-500 mt-0.5">
                                 <span className="capitalize">{data ? new Date(data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long'}) : '—'}</span>
@@ -1726,6 +1737,7 @@ function RecepcaoClientesPageInner() {
                               <span className="text-base font-bold text-gray-900">{tipoLabelClub(aula?.tipo) || 'Club'}</span>
                               <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">Club</span>
                               <span className={`text-xs px-2 py-0.5 rounded-full ${statusConfig[cr.status]?.color || 'bg-gray-100 text-gray-600'}`}>{statusConfig[cr.status]?.label || cr.status}</span>
+                              {numeroTreino.get(cr.id) && <span title="treino do mês" className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold font-mono">{numeroTreino.get(cr.id)}</span>}
                             </div>
                             <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-500 mt-0.5">
                               <span className="capitalize">{data ? new Date(data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long'}) : '—'}</span>

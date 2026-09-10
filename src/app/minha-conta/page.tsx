@@ -8,7 +8,7 @@ import { dashboardDoRole } from '@/lib/auth-redirect'
 import SiteHeader from '@/components/SiteHeader'
 import ModalTelefone from '@/components/ModalTelefone'
 import CompraCreditoExtra, { type CreditoExtraStatus } from '@/components/CompraCreditoExtra'
-import { numerarTreinosDoMes, PLANOS_SEM_TETO } from '@/lib/treinos-numero'
+import { numerarTreinosDoMes, PLANOS_SEM_TETO, poolReservaClub } from '@/lib/treinos-numero'
 
 const ACCENT  = '#ff2d9b'
 const CYAN    = '#00e5ff'
@@ -361,16 +361,27 @@ export default function MinhaContaPage() {
     const mp:Record<string,any>={}; sp.forEach(r=>Object.assign(mp,r.data||{})); setSaldoProximo(mp)
   }
 
-  // Numeração "X/N" dos treinos de Coach CT no mês (só planos com teto mensal —
-  // avulso/pacote não recebem). N vem do saldo do mês (total do pool); X é a
-  // ordem cronológica dos treinos que consomem crédito. Só temos saldo do mês
-  // atual e do próximo, então treinos de meses anteriores ficam sem rótulo.
+  // Numeração "X/N" dos treinos no mês — Coach CT (agendamentos) e Club
+  // (club_reservas), cada pool de crédito contado separadamente (só planos com
+  // teto mensal — avulso/pacote não recebem). N vem do saldo do mês (total do
+  // pool); X é a ordem cronológica dos treinos que consomem crédito. Só temos
+  // saldo do mês atual e do próximo, então meses anteriores ficam sem rótulo.
   const anoMesAtual   = `${anoAtual}-${String(mesAtual).padStart(2,'0')}`
   const anoMesProximo = `${anoProximo}-${String(mesProximo).padStart(2,'0')}`
+  const saldoTodosMeses = { ...saldoProximo, ...saldoAtual } // só para resolver a chave do pool (`_app` → unidade)
   const numeroTreino = numerarTreinosDoMes(
-    [...agendamentos, ...agendamentosPassados].map((a:any) => ({
-      id: a.id, data: a.data, horario: a.horario, status: a.status, tipo_credito: a.tipo_credito,
-    })),
+    [
+      ...[...agendamentos, ...agendamentosPassados].map((a:any) => ({
+        id: a.id, data: a.data, horario: a.horario, status: a.status, tipo_credito: a.tipo_credito,
+      })),
+      ...[...clubReservas, ...clubReservasPassadas].map((cr:any) => ({
+        id: cr.id,
+        data: cr.club_ocorrencias?.data,
+        horario: cr.club_ocorrencias?.club_aulas?.horario,
+        status: cr.status,
+        tipo_credito: poolReservaClub(cr.tipo_credito, cr.club_ocorrencias?.club_aulas?.unidade_id, saldoTodosMeses),
+      })),
+    ],
     (tipo, ym) => {
       const saldo = ym === anoMesAtual ? saldoAtual : ym === anoMesProximo ? saldoProximo : null
       const info = saldo?.[tipo]
@@ -811,7 +822,7 @@ export default function MinhaContaPage() {
                         {item.tipoCredito && (()=>{ const {label,icon}=parsePlanoKey(item.tipoCredito); return (
                           <span style={{fontSize:10,color:'#777',background:'#1a1a1a',padding:'1px 7px',borderRadius:20,border:'1px solid #2a2a2a'}}>{icon} {label}</span>
                         )})()}
-                        {!isClub && numeroTreino.get(item.id) && (
+                        {numeroTreino.get(item.id) && (
                           <span title="treino do mês" style={{fontSize:10,color:ACCENT,background:`${ACCENT}15`,padding:'1px 7px',borderRadius:20,fontFamily:"'DM Mono', monospace",fontWeight:700}}>{numeroTreino.get(item.id)}</span>
                         )}
                         {isProxMes && (
@@ -1086,7 +1097,7 @@ export default function MinhaContaPage() {
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:13,color:'#888',fontWeight:500,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
                         <span>{item.horario} · {item.unidadeNome}</span>
-                        {!isClub && numeroTreino.get(item.id) && (
+                        {numeroTreino.get(item.id) && (
                           <span title="treino do mês" style={{fontSize:10,color:ACCENT,fontFamily:"'DM Mono', monospace",fontWeight:700}}>{numeroTreino.get(item.id)}</span>
                         )}
                       </div>

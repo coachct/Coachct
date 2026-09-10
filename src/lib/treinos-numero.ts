@@ -57,3 +57,30 @@ export function numerarTreinosDoMes(
 
 /** Pools SEM teto mensal — nunca recebem "X/N". */
 export const PLANOS_SEM_TETO = new Set(['avulso', 'pacote'])
+
+/**
+ * Chave do pool de crédito de uma reserva de Club, no mesmo formato das chaves
+ * do saldo (`<tipo>_<slug da unidade>`, ex.: `totalpass_just_club_vila_olimpia`).
+ *
+ * Reserva feita pelo app do parceiro grava `<tipo>_app` (sem unidade), mas
+ * consome o MESMO pote da unidade da aula — o RPC de saldo já soma os dois.
+ * Aqui resolvemos `_app` para a chave da unidade, senão a contagem se quebraria
+ * em dois grupos e o "X/N" sairia errado.
+ */
+export function poolReservaClub(
+  tipoCredito: string | null | undefined,
+  unidadeIdAula: string | null | undefined,
+  saldo: Record<string, any> | null | undefined,
+): string | null {
+  const tipo = String(tipoCredito || '')
+  if (!tipo) return null
+  if (saldo && saldo[tipo]) return tipo
+  if (tipo.endsWith('_app') && unidadeIdAula && saldo) {
+    const prefixo = tipo.slice(0, -'_app'.length)
+    for (const [chave, info] of Object.entries(saldo)) {
+      const i = info as any
+      if (i?.tipo_plano === prefixo && i?.unidade_id === unidadeIdAula) return chave
+    }
+  }
+  return tipo
+}
