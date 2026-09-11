@@ -10,9 +10,22 @@ import { hojeSP } from '@/lib/tempo'
 // ou prefere manter — 'tanto faz' não ajuda na decisão.
 // O voto é gravado DEPOIS que a reserva já entrou, fire-and-forget: se a gravação
 // falhar, a reserva vale do mesmo jeito (e a pergunta volta na próxima reserva).
-// Para encerrar antes do prazo, é só mudar ENQUETE_HORARIO_ATE para uma data passada.
-export const ENQUETE_HORARIO_UNIDADE = '05eeab3e-5eae-4140-bc3a-1c1d56ac95be' // JustClub Vila Olímpia
-export const ENQUETE_HORARIO_ATE     = '2026-09-19' // último dia em que a caixinha aparece
+//
+// DESLIGADA em 11/09/2026 — os dados já bastavam: 18:30 teve 47 respostas, 39
+// "manter" (83%); 19:30 teve 21, 16 "manter" (76%). Decisão: os horários ficam
+// como estão. Nada foi apagado — as respostas seguem em /admin/enquete-horario.
+//
+// PRA RODAR UMA ENQUETE NOVA (o caminho já está pronto, é só trocar as infos):
+//   1. ENQUETE_HORARIO_ATIVA = true
+//   2. ENQUETE_HORARIO_UNIDADE = id da unidade que vai ser perguntada
+//   3. ENQUETE_HORARIO_ATE = último dia em que a caixinha aparece
+//   4. ENQUETE_HORARIO = os horários, a pergunta e as opções (a `chave` tem que
+//      ser NOVA — é ela que controla o "uma resposta por cliente"; reaproveitar
+//      uma chave antiga faz a pergunta não aparecer pra quem já respondeu aquela)
+//   5. /admin/enquete-horario espelha essas opções: atualizar a lista de lá também
+export const ENQUETE_HORARIO_ATIVA    = false
+export const ENQUETE_HORARIO_UNIDADE  = '05eeab3e-5eae-4140-bc3a-1c1d56ac95be' // JustClub Vila Olímpia
+export const ENQUETE_HORARIO_ATE      = '2026-09-19' // último dia em que a caixinha aparece
 
 export type EnqueteHorario = {
   chave: string
@@ -42,6 +55,7 @@ export const ENQUETE_HORARIO: Record<string, EnqueteHorario> = {
 }
 
 export function enqueteDoHorario(unidadeId: string, horario: string): EnqueteHorario | null {
+  if (!ENQUETE_HORARIO_ATIVA) return null
   if (unidadeId !== ENQUETE_HORARIO_UNIDADE) return null
   if (hojeSP() > ENQUETE_HORARIO_ATE) return null
   return ENQUETE_HORARIO[(horario || '').slice(0, 5)] || null

@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { PageHeader, Spinner, KpiCard, EmptyState } from '@/components/ui'
+import { ENQUETE_HORARIO_ATIVA } from '@/lib/enquete-horario'
 
 // Espelha o que o cliente vê em /aulas (src/app/aulas/page.tsx).
 // Se mudar as opções lá, mudar aqui também.
@@ -89,6 +90,13 @@ export default function EnqueteHorarioPage() {
         title="Enquete de horário · aulas da noite"
         subtitle="Obrigatória na confirmação de reserva pelo site (Vila Olímpia), uma única vez por cliente por horário. Quem reserva pelo app do Wellhub/TotalPass não passa por essa tela e não é perguntado."
       />
+
+      {!ENQUETE_HORARIO_ATIVA && (
+        <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 mb-5 text-sm text-gray-600">
+          <strong className="text-gray-900">Enquete encerrada.</strong> A caixinha não aparece mais na
+          confirmação de reserva. As respostas abaixo ficam guardadas para consulta.
+        </div>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
         <KpiCard label="Respostas no total" value={String(totalGeral)} />
