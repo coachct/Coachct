@@ -139,6 +139,24 @@ function finalizarTexto(texto: string): string {
   return semCanalExterno(semTelefoneInventado(limparMecanicaCancel(texto)))
 }
 
+// TRAVA DETERMINÍSTICA: NUNCA falar de multa se o cliente não perguntou — nem pra
+// dizer que NÃO tem ("não tem cobrança nem multa"). Se o cliente NÃO tocou no assunto
+// (multa/cobrança/cartão/taxa) e a resposta menciona multa/cobrança/no-show, remove as
+// frases que citam isso e mantém o resto. `clientePerguntou` vem do contexto da conversa.
+const RE_MULTA = /multa|cobran|no.?show/i
+function semMultaProativa(texto: string, clientePerguntou: boolean): string {
+  const t = String(texto || '')
+  if (clientePerguntou || !RE_MULTA.test(t)) return t
+  const partes = t.split(/(?<=[.!?…])\s+|\n+/)
+  const limpo = partes
+    .filter((p) => !RE_MULTA.test(p))
+    .join(' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s+([.!?,])/g, '$1')
+    .trim()
+  return limpo.length >= 8 ? limpo : t
+}
+
 function revisorSystem(faqTxt: string): string {
   return `Você é o REVISOR de qualidade do atendimento da Just Club & CT. Releia, COM CALMA, a resposta que o atendente está prestes a enviar ao cliente e confira, item por item, se ela respeita TODAS as regras. Você NÃO fala com o cliente — só APROVA ou CORRIGE a resposta.
 
@@ -156,7 +174,7 @@ Os itens abaixo são só EXEMPLOS comuns da regra mãe — não uma lista fechad
    - CANCELAMENTO: a regra é "sem multa até 12h antes". NUNCA liderar com "3h" nem dizer que 3h é o prazo sem multa.
    - CÁLCULO DE HORÁRIO/PRAZO no cancelamento (corte SEMPRE): o bot NÃO calcula horas e sempre erra. Se o rascunho faz conta e afirma um prazo específico — "você pode cancelar até 21h", "ainda tem tempo", "faltam X horas", "até hoje/amanhã às ...", "o prazo conta a partir do horário da aula" — CORTE e troque pela política genérica: "Sobre cancelamento: com 12h de antecedência você cancela direto na sua conta, no site 👉 https://www.justclubct.com.br . Fora desse prazo, não tem mais cancelamento." Quem decide o prazo é o site, não o bot.
    - CANCELAMENTO NÃO POSSÍVEL = curto, SEM explicar mecânica (corte SEMPRE): quando o rascunho diz que NÃO dá pra cancelar, é PROIBIDO explicar o porquê técnico. Se o rascunho contiver QUALQUER destes: "janela entre 3h e 12h" / "entre 3h e 12h" / "faltam X horas" / "fila de espera nessa aula" / "só funciona se houver fila" / "consultei a fila" / "não há ninguém na fila" / "o sistema verifica" → CORTE toda essa explicação e substitua por UMA linha curta e gentil, tipo: "Poxa 🙏 a essa altura não dá mais pra cancelar essa reserva. Se cuida e melhoras!" (mantenha só a empatia que fizer sentido no contexto). O cliente NÃO pode ver janela, horas restantes nem fila — ele só quer saber se dá ou não.
-   - CARTÃO / MULTA proativos (corte): NUNCA mencionar por conta própria o CARTÃO cadastrado / "garantia", nem a MULTA / valor (R$ 99 / R$ 49,90). Só vale se o cliente PERGUNTOU sobre pagamento/cobrança/multa/cartão. Se o rascunho está explicando plano/unidade/como reservar e puxa cartão ou multa sem a pessoa ter perguntado, CORTE essa parte.
+   - CARTÃO / MULTA proativos (corte SEMPRE): NUNCA mencionar por conta própria o CARTÃO cadastrado / "garantia", nem a MULTA / COBRANÇA / no-show / valor (R$ 99 / R$ 49,90) — INCLUSIVE pra dizer que NÃO tem ("não tem cobrança nem multa", "sem multa", "fica tranquilo que não é cobrado"): reassegurar que não tem multa TAMBÉM introduz o assunto e é proibido. Só vale se o cliente PERGUNTOU sobre pagamento/cobrança/multa/cartão. Se o cliente não perguntou e o rascunho cita multa/cobrança/cartão de qualquer forma, CORTE essa parte (deixe a resposta sem a palavra multa).
    - SEM CARTÃO: NUNCA responder só "sem cartão não dá pra reservar" — tem que oferecer o caminho do app do parceiro (em Pinheiros o Wellhub/TotalPass agenda direto no app, sem o cartão do nosso site).
    - CANAIS: NUNCA mandar "ligar", "ir/procurar a recepção", "usar o app", "falar no balcão" como se fosse outro canal de atendimento (exceção ÚNICA: OBJETO ESQUECIDO, que fica guardado na recepção).
    - IDENTIDADE: nunca se apresentar como "bot", "IA", "assistente virtual" ou "atendimento automático".
@@ -1338,8 +1356,8 @@ As três unidades NÃO oferecem as mesmas coisas. NUNCA atribua uma modalidade �
 - **JustClub Pinheiros:** SÓ as aulas coletivas (Lift, Lift for Girls, Running + Funcional). NÃO tem musculação livre NEM Coach CT.
 Ao falar de UMA unidade, cite só o que ELA tem: falando de Vila Olímpia ou Pinheiros, é PROIBIDO mencionar musculação livre ou Coach CT (isso é do Just CT). Ao listar o escopo de um plano (sem saber a unidade), organize por unidade sem embaralhar: Clubs (VO/Pinheiros) = as aulas coletivas; Just CT = musculação livre e/ou Coach CT.
 
-# NÃO fale de CARTÃO nem de MULTA de cara (REGRA — só se perguntarem)
-Ao explicar como funciona um plano, uma unidade ou como reservar, NÃO mencione por conta própria o CARTÃO cadastrado, a "garantia", nem a MULTA / valor de no-show (R$ 49,90 / R$ 99). Isso é assunto chato e você NÃO puxa. Explique a modalidade e o caminho (site) e PARE. Só fale de cartão/multa/valor SE a pessoa PERGUNTAR diretamente sobre pagamento, cobrança, multa ou cartão.
+# MULTA: NUNCA fale de multa se o cliente não perguntar — NEM pra dizer que NÃO tem (REGRA ABSOLUTA)
+É TERMINANTEMENTE PROIBIDO escrever a palavra MULTA, COBRANÇA, no-show ou TAXA se o cliente NÃO perguntou diretamente sobre isso. Isso vale INCLUSIVE pra tranquilizar/dizer que NÃO tem ("não tem cobrança nem multa", "sem multa", "fica tranquilo que não é cobrado") — reassegurar que não tem multa TAMBÉM é PROIBIDO, porque INTRODUZ o assunto. Se ninguém perguntou sobre cobrança/multa, a palavra multa simplesmente NÃO aparece na sua resposta, ponto. O mesmo pro CARTÃO cadastrado / "garantia": não puxe por conta própria. Só fale de multa/cobrança/cartão SE a pessoa PERGUNTAR diretamente sobre pagamento, cobrança, multa ou cartão.
 
 # HORÁRIOS / GRADE DE AULAS → só o link do calendário (REGRA — nunca diga "não tenho")
 Quando perguntarem os horários das aulas / a grade / "que horas tem aula" / horários de funcionamento das aulas: NÃO diga "não tenho isso aqui", "pra não te passar errado", nem liste nada. Só mande o link do calendário do site, curto e positivo, e encerre. Ex.: "Os horários você vê (e já reserva!) direto no site 👉 https://www.justclubct.com.br/aulas 😊". A grade fica sempre atualizada lá — é só o link.
@@ -1386,6 +1404,11 @@ ${faqTxt}`
   ]
   const transcript = montarTranscript(historico, mensagem)
 
+  // O cliente tocou no assunto multa/cobrança/cartão em ALGUM momento? Se NÃO, o bot
+  // não pode nem mencionar multa (nem pra dizer que não tem) — a trava remove.
+  const textoCliente = [mensagem, ...historico.filter((t) => t.role === 'user').map((t) => t.content)].join(' ')
+  const perguntouMulta = /multa|cobran|no.?show|cart[ãa]o|taxa|cobrad|pagar.{0,10}falt/i.test(textoCliente)
+
   const FALLBACK_SEM_INFO = FALLBACK_EQUIPE
 
   for (let i = 0; i < 3; i++) {
@@ -1424,8 +1447,8 @@ ${faqTxt}`
     // Revisor (barato) como rede: pega invenção/promessa. Aqui NÃO existe transferir —
     // se o revisor achar que a resposta não tem base, cai no fallback de informação.
     const rev = await revisarResposta({ client, faqTxt, transcript, draft, escalou: false })
-    if (rev) return { texto: rev.escalar ? FALLBACK_SEM_INFO : finalizarTexto(rev.texto) }
-    return { texto: finalizarTexto(draft) }
+    if (rev) return { texto: rev.escalar ? FALLBACK_SEM_INFO : semMultaProativa(finalizarTexto(rev.texto), perguntouMulta) }
+    return { texto: semMultaProativa(finalizarTexto(draft), perguntouMulta) }
   }
   return { texto: FALLBACK_SEM_INFO }
 }
