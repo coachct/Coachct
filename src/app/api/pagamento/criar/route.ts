@@ -154,6 +154,42 @@ export async function POST(req: NextRequest) {
             : `Você já comprou este produto. O limite é de ${limitePorCliente} por pessoa.`,
         }, { status: 409 })
       }
+
+      // PIX ainda válido pro mesmo produto limitado: sem isso dava pra gerar
+      // dois PIX (ou PIX + cartão) e pagar os dois — o 2º cai no Pagar.me mas o
+      // registrar_venda recusa pelo limite. Pedindo PIX de novo, devolve o mesmo
+      // QR; pedindo cartão, barra até o PIX pagar ou expirar.
+      const { data: pixAberto } = await supabase
+        .from('pagamentos_pendentes')
+        .select('id, pix_qr_code, pix_qr_code_url, pix_expira_em')
+        .eq('cliente_id', cliente.id)
+        .eq('produto_id', produto.id)
+        .eq('metodo_pagamento', 'pix')
+        .eq('status', 'pendente')
+        .is('excluido_em', null)
+        .gt('pix_expira_em', new Date().toISOString())
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (pixAberto) {
+        if (metodo === 'pix' && pixAberto.pix_qr_code) {
+          return NextResponse.json({
+            ok: true,
+            pagamento_id: pixAberto.id,
+            status: 'pendente',
+            pix: {
+              qr_code: pixAberto.pix_qr_code,
+              qr_code_url: pixAberto.pix_qr_code_url,
+              expira_em: pixAberto.pix_expira_em,
+            },
+            cartao: null,
+          })
+        }
+        return NextResponse.json({
+          error: 'Você já gerou um PIX para este produto. Pague esse PIX ou aguarde ele expirar (1 hora) para pagar com cartão.',
+        }, { status: 409 })
+      }
     }
 
     // Pré-voo: o Pagar.me valida o CPF (customer.document) e devolve 422 "The request
