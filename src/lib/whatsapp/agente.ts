@@ -1413,9 +1413,20 @@ ${enderecosTxt}
 ${faqTxt}`
 
   const agoraHora = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'long', hour: '2-digit', minute: '2-digit' }).format(new Date())
+  // "Modo pico": perto das aulas (manhã cedo / fim de tarde) e o dia todo no fim de
+  // semana é quando chega a enxurrada de "cancelar/alterar fora do prazo". Nesses
+  // momentos, reforça a regra de cancelamento — sem mudar nada quando não é pico.
+  const spNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))
+  const dow = spNow.getDay() // 0=domingo, 6=sábado
+  const hh = spNow.getHours()
+  const modoPico = dow === 0 || dow === 6 || (hh >= 5 && hh < 10) || (hh >= 17 && hh < 21)
+  const alertaPico = modoPico
+    ? `\n\n# ⚠️ HORÁRIO DE PICO — REDOBRE A ATENÇÃO NO CANCELAMENTO
+Agora é horário de pico de pedidos de CANCELAR / ALTERAR / REMARCAR treino em cima da hora (perto das aulas / fim de semana). A grande maioria é FORA DO PRAZO. Então, redobre: se o treino é de HOJE (já passou, é agora, ou ainda hoje em cima da hora) → a essa altura NÃO dá mais pra cancelar/alterar — responda a conclusão LIMPA e gentil ("como é ainda pra hoje, a essa altura não dá mais pra cancelar 🙏"), SEM mostrar conta, SEM multa, e NUNCA afirmando que ainda dá. Só treino claramente de OUTRO dia usa a regra genérica (12h, na conta pelo site).`
+    : ''
   const dinamico = `# AGORA — você SABE o dia E a HORA (nunca pergunte)
 - HOJE é ${hoje.extenso} — ${hoje.dataStr}. Quando disserem "hoje", é esse dia.
-- AGORA são cerca de ${agoraHora} (horário de São Paulo). Use isso pra entender o contexto do que a pessoa fala ("hoje às 5h30", "agora", "mais tarde") — principalmente pra cancelamento (ver a regra).`
+- AGORA são cerca de ${agoraHora} (horário de São Paulo). Use isso pra entender o contexto do que a pessoa fala ("hoje às 5h30", "agora", "mais tarde") — principalmente pra cancelamento (ver a regra).${alertaPico}`
 
   const system: Anthropic.TextBlockParam[] = [
     { type: 'text', text: estatico, cache_control: { type: 'ephemeral' } },
