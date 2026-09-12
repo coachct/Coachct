@@ -30,9 +30,6 @@ function CheckoutContent() {
   const { perfil, signIn } = useAuth()
   const searchParams = useSearchParams()
   const produtoId = searchParams.get('produto')
-  // PIX está fora do checkout desde 17/05 (action_forbidden no Pagar.me).
-  // Só aparece com ?pix=1 no link, pra testar antes de liberar pra todos.
-  const pixTeste = searchParams.get('pix') === '1'
 
   const [produto, setProduto] = useState<any>(null)
   const [cliente, setCliente] = useState<any>(null)
@@ -636,14 +633,14 @@ function CheckoutContent() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {[
                     { key: 'cartao' as MetodoPagamento, label: 'Cartão de crédito', icon: '💳', desc: maxParcelas > 1 ? `À vista ou em até ${maxParcelas}x` : 'À vista' },
-                    ...(pixTeste ? [{ key: 'pix' as MetodoPagamento, label: 'PIX', icon: '⚡', desc: 'Aprovação imediata' }] : []),
+                    { key: 'pix' as MetodoPagamento, label: 'Pix', icon: '⚡', desc: '' },
                   ].map(m => (
                     <div key={m.key} onClick={() => { setMetodo(m.key); setParcelas(1); setErro('') }} className="metodo-card-h"
                       style={{ border: `1.5px solid ${metodo === m.key ? ACCENT : '#333'}`, background: metodo === m.key ? `${ACCENT}10` : 'transparent', borderRadius: 10, padding: '0.85rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                       <span style={{ fontSize: 22 }}>{m.icon}</span>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 15, fontWeight: 600, color: metodo === m.key ? '#fff' : '#888' }}>{m.label}</div>
-                        <div style={{ fontSize: 12, color: '#555', marginTop: 1 }}>{m.desc}</div>
+                        {m.desc && <div style={{ fontSize: 12, color: '#555', marginTop: 1 }}>{m.desc}</div>}
                       </div>
                       <div style={{ width: 18, height: 18, borderRadius: '50%', border: `2px solid ${metodo === m.key ? ACCENT : '#444'}`, background: metodo === m.key ? ACCENT : 'transparent', flexShrink: 0 }} />
                     </div>
