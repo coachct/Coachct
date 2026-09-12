@@ -68,17 +68,24 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Erro ao registrar venda' }, { status: 500 })
       }
 
+      // Dinheiro entrou, mas o banco recusou a venda (ex.: limite_por_cliente).
+      // Reenviar o webhook não resolve, então fica 'pago' — o valor foi recebido —
+      // com o motivo em motivo_falha, que o admin/vendas mostra em vermelho.
+      const vendaRecusada = venda?.sucesso === false
+      if (vendaRecusada) console.error('registrar_venda retornou sucesso=false (webhook):', venda)
+
       await supabase
         .from('pagamentos_pendentes')
         .update({
           status: 'pago',
           pago_em: new Date().toISOString(),
           venda_id: venda?.venda_id || null,
+          motivo_falha: vendaRecusada ? `PAGO SEM CRÉDITO — venda recusada: ${venda.motivo}` : null,
           atualizado_em: new Date().toISOString(),
         })
         .eq('id', pagamento.id)
 
-      console.log('✅ Venda registrada com sucesso. Venda ID:', venda?.venda_id)
+      if (!vendaRecusada) console.log('✅ Venda registrada com sucesso. Venda ID:', venda?.venda_id)
     }
 
     if (isFalhou) {

@@ -409,6 +409,8 @@ export async function POST(req: NextRequest) {
         console.error('Erro ao registrar venda (cartão):', errVenda)
       } else if (venda && venda.sucesso === false) {
         console.error('registrar_venda retornou sucesso=false (cartão):', venda)
+        // Cobrou no cartão, mas o banco recusou a venda: aparece em vermelho no admin/vendas.
+        updateData.motivo_falha = `PAGO SEM CRÉDITO — venda recusada: ${venda.motivo}`
       } else {
         console.log('✅ Venda registrada (cartão). Venda ID:', venda?.venda_id)
         updateData.venda_id = venda?.venda_id || null
