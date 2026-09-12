@@ -52,6 +52,8 @@ function CheckoutContent() {
   // PIX
   const [pixQrCode, setPixQrCode] = useState('')
   const [pixQrCodeUrl, setPixQrCodeUrl] = useState('')
+  const [pixPagamentoId, setPixPagamentoId] = useState('')
+  const [pixTotal, setPixTotal] = useState('')
 
   // Cartão
   const [cartaoNumero, setCartaoNumero] = useState('')
@@ -89,6 +91,31 @@ function CheckoutContent() {
       setErro('Apenas clientes podem realizar compras pelo site. Use a aba "Vender produto" no painel.')
     }
   }, [perfil])
+
+  // PIX: quem confirma o pagamento é o webhook. Enquanto o QR está na tela,
+  // consulta o status a cada 4s e segue pro sucesso quando cair. Para sozinho
+  // se o pagamento sair de 'pendente' sem pagar ou depois de 65 min (PIX vale 1h).
+  useEffect(() => {
+    if (!pixPagamentoId) return
+    const limite = Date.now() + 65 * 60_000
+    let parado = false
+    const timer = setInterval(async () => {
+      if (parado) return
+      if (Date.now() > limite) { parado = true; clearInterval(timer); return }
+      try {
+        const res = await fetch(`/api/pagamento/status?id=${pixPagamentoId}`, { cache: 'no-store' })
+        if (!res.ok || parado) return
+        const { status } = await res.json()
+        if (status === 'pendente') return
+        parado = true
+        clearInterval(timer)
+        if (status === 'pago') {
+          router.push(`/comprar/sucesso?produto=${produtoId}&metodo=pix&pagamento=${pixPagamentoId}&total=${pixTotal}`)
+        }
+      } catch {}
+    }, 4000)
+    return () => { parado = true; clearInterval(timer) }
+  }, [pixPagamentoId])
 
   async function carregarProduto() {
     setLoading(true)
@@ -283,6 +310,8 @@ function CheckoutContent() {
       if (metodo === 'pix' && data.pix?.qr_code) {
         setPixQrCode(data.pix.qr_code)
         setPixQrCodeUrl(data.pix.qr_code_url)
+        setPixPagamentoId(data.pagamento_id)
+        setPixTotal(valorFinal.toFixed(2))
         setEtapa('pagamento')
         return
       }
