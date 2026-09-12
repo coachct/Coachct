@@ -73,6 +73,7 @@ const nav = [
     icon: ShoppingCart,
     children: [
       { label: 'Vendas',   href: '/admin/vendas' },
+      { label: 'Carrinho abandonado', href: '/admin/carrinho-abandonado' },
       { label: 'Planos',   href: '/admin/planos' },
       { label: 'Produtos', href: '/admin/produtos' },
       { label: 'Cupons',   href: '/admin/cupons' },

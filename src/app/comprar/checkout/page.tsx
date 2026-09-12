@@ -89,6 +89,14 @@ function CheckoutContent() {
     }
   }, [perfil])
 
+  // Carrinho abandonado: registra que o cliente logado abriu o checkout deste
+  // produto. A função identifica o cliente pelo login e ignora repetição em
+  // 30 min. Silencioso — nunca pode atrapalhar a compra.
+  useEffect(() => {
+    if (!cliente?.id || !produto?.id) return
+    supabase.rpc('registrar_visita_checkout', { p_produto_id: produto.id }).then(() => {}, () => {})
+  }, [cliente?.id, produto?.id])
+
   // PIX: quem confirma o pagamento é o webhook. Enquanto o QR está na tela,
   // consulta o status a cada 4s e segue pro sucesso quando cair. Para sozinho
   // se o pagamento sair de 'pendente' sem pagar ou depois de 65 min (PIX vale 1h).
