@@ -1528,45 +1528,22 @@ function AdminClientesPageInner() {
                 {(Object.keys(saldosPorUnidade).length > 0 || saldosGlobais.length > 0) && (
                   <div className="card">
                     <div className="flex items-center gap-2 mb-3"><Zap size={16} className="text-primary-600" /><div className="text-sm font-semibold text-gray-900">Créditos disponíveis</div><span className="text-xs text-gray-400">· este mês</span></div>
-                    <div className="space-y-3">
-                      {todasUnidades.map(u => {
-                        const saldosU = saldosPorUnidade[u.id]
-                        if (!saldosU || saldosU.length === 0) return null
-                        return (
-                          <div key={u.id} className="border border-gray-100 rounded-xl p-3 bg-gray-50">
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${u.tipo === 'ct' ? 'bg-primary-100 text-primary-700' : 'bg-blue-100 text-blue-700'}`}>{u.tipo === 'ct' ? 'CT' : 'Club'}</span>
-                              <span className="text-xs font-semibold text-gray-700">{u.nome}</span>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2">
-                              {saldosU.map((s: any) => (
-                                <div key={s.key} className="bg-white rounded-lg p-2 text-center border border-gray-100">
-                                  <div className={`text-2xl font-bold ${s.disponivel === 0 ? 'text-gray-300' : s.disponivel <= 2 ? 'text-orange-500' : 'text-primary-600'}`}>{s.disponivel}</div>
-                                  <div className="text-xs text-gray-500 capitalize mt-0.5 truncate">{labelSaldo(s)}</div>
-                                  <div className="text-xs text-gray-400 mt-0.5">de {s.total}</div>
-                                </div>
-                              ))}
-                            </div>
+                    {/* Um card por saldo, lado a lado; a unidade vai no topo de cada card */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      {[
+                        ...todasUnidades.flatMap(u => (saldosPorUnidade[u.id] || []).map((s: any) => ({ s, tipo: u.tipo, nome: u.nome }))),
+                        ...saldosGlobais.map((s: any) => ({ s, tipo: 'club', nome: saldosGlobais[0]?.unidade_nome || 'Todas as unidades' })),
+                      ].map(({ s, tipo, nome }) => (
+                        <div key={`${nome}-${s.key}`} className="border border-gray-100 rounded-xl p-3 bg-gray-50 text-center">
+                          <div className="flex items-center justify-center gap-1.5 mb-1 min-w-0">
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${tipo === 'ct' ? 'bg-primary-100 text-primary-700' : 'bg-blue-100 text-blue-700'}`}>{tipo === 'ct' ? 'CT' : 'Club'}</span>
+                            <span className="text-xs font-semibold text-gray-700 truncate" title={nome}>{nome}</span>
                           </div>
-                        )
-                      })}
-                      {saldosGlobais.length > 0 && (
-                        <div className="border border-gray-100 rounded-xl p-3 bg-gray-50">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-700">Club</span>
-                            <span className="text-xs font-semibold text-gray-700">{saldosGlobais[0]?.unidade_nome || 'Todas as unidades'}</span>
-                          </div>
-                          <div className="grid grid-cols-3 gap-2">
-                            {saldosGlobais.map((s: any) => (
-                              <div key={s.key} className="bg-white rounded-lg p-2 text-center border border-gray-100">
-                                <div className={`text-2xl font-bold ${s.disponivel === 0 ? 'text-gray-300' : s.disponivel <= 2 ? 'text-orange-500' : 'text-primary-600'}`}>{s.disponivel}</div>
-                                <div className="text-xs text-gray-500 capitalize mt-0.5 truncate">{labelSaldo(s)}</div>
-                                <div className="text-xs text-gray-400 mt-0.5">de {s.total}</div>
-                              </div>
-                            ))}
-                          </div>
+                          <div className={`text-2xl font-bold ${s.disponivel === 0 ? 'text-gray-300' : s.disponivel <= 2 ? 'text-orange-500' : 'text-primary-600'}`}>{s.disponivel}</div>
+                          <div className="text-xs text-gray-500 capitalize mt-0.5 truncate">{labelSaldo(s)}</div>
+                          <div className="text-xs text-gray-400 mt-0.5">de {s.total}</div>
                         </div>
-                      )}
+                      ))}
                     </div>
                   </div>
                 )}
