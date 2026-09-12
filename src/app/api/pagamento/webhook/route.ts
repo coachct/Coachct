@@ -45,7 +45,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
-    if (pagamento.status === 'pago' || pagamento.status === 'falhou') {
+    // Só pendente vira venda: pago/falhou já foram tratados, e um PIX cancelado
+    // (cliente trocou pra cartão) ou expirado nunca pode gerar crédito.
+    if (pagamento.status !== 'pendente') {
       console.log('Evento já processado anteriormente. Ignorando.')
       return NextResponse.json({ ok: true })
     }

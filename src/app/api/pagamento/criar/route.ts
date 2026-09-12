@@ -46,6 +46,46 @@ function descreverErroPagarme(data: any): string {
   return data?.message || 'Erro desconhecido'
 }
 
+// Cliente trocou pra cartão com um PIX aberto: cancela o PIX no Pagar.me pra
+// ele não poder mais ser pago. Confere o status antes — cobrança já paga não
+// é cancelada, o crédito vem pelo webhook.
+async function cancelarPixPendente(p: { id: string; pagarme_charge_id: string | null }): Promise<'cancelado' | 'pago' | 'erro'> {
+  if (!p.pagarme_charge_id) return 'erro'
+  const url = `${PAGARME_API_URL}/charges/${p.pagarme_charge_id}`
+  const headers = { 'Authorization': getAuthHeader() }
+  try {
+    const resCharge = await fetch(url, { headers })
+    if (!resCharge.ok) return 'erro'
+    const charge = await resCharge.json()
+
+    if (charge.status === 'pending') {
+      const resCancel = await fetch(url, { method: 'DELETE', headers })
+      if (!resCancel.ok) return 'erro'
+      const cancelada = await resCancel.json()
+      // 'refunded' só se o PIX foi pago entre a consulta e o cancelamento: o
+      // dinheiro volta pro cliente, então também libera o cartão.
+      if (cancelada.status !== 'canceled' && cancelada.status !== 'refunded') return 'erro'
+    } else if (charge.status !== 'canceled' && charge.status !== 'failed') {
+      // paid, processing, overpaid...: o dinheiro entrou ou está entrando
+      return 'pago'
+    }
+
+    await supabase
+      .from('pagamentos_pendentes')
+      .update({
+        status: 'cancelado',
+        motivo_falha: 'PIX cancelado: cliente trocou para cartão',
+        atualizado_em: new Date().toISOString(),
+      })
+      .eq('id', p.id)
+      .eq('status', 'pendente')
+    return 'cancelado'
+  } catch (e) {
+    console.error('Falha ao cancelar PIX pendente:', e)
+    return 'erro'
+  }
+}
+
 // Fecha o funil da campanha: registra a compra com o canal que a pessoa
 // trouxe da visita. Silencioso de propósito — rastreio não pode derrubar
 // uma venda que já foi aprovada.
@@ -158,10 +198,10 @@ export async function POST(req: NextRequest) {
       // PIX ainda válido pro mesmo produto limitado: sem isso dava pra gerar
       // dois PIX (ou PIX + cartão) e pagar os dois — o 2º cai no Pagar.me mas o
       // registrar_venda recusa pelo limite. Pedindo PIX de novo, devolve o mesmo
-      // QR; pedindo cartão, barra até o PIX pagar ou expirar.
+      // QR; pedindo cartão, cancela o PIX no Pagar.me antes de cobrar.
       const { data: pixAberto } = await supabase
         .from('pagamentos_pendentes')
-        .select('id, pix_qr_code, pix_qr_code_url, pix_expira_em')
+        .select('id, pagarme_charge_id, pix_qr_code, pix_qr_code_url, pix_expira_em')
         .eq('cliente_id', cliente.id)
         .eq('produto_id', produto.id)
         .eq('metodo_pagamento', 'pix')
@@ -186,9 +226,18 @@ export async function POST(req: NextRequest) {
             cartao: null,
           })
         }
-        return NextResponse.json({
-          error: 'Você já gerou um PIX para este produto. Pague esse PIX ou aguarde ele expirar (1 hora) para pagar com cartão.',
-        }, { status: 409 })
+        const resultado = await cancelarPixPendente(pixAberto)
+        if (resultado === 'pago') {
+          return NextResponse.json({
+            error: 'Seu PIX para este produto já foi pago. O crédito aparece na sua conta em instantes.',
+          }, { status: 409 })
+        }
+        if (resultado === 'erro') {
+          return NextResponse.json({
+            error: 'Não foi possível cancelar o PIX gerado para este produto. Tente novamente em instantes.',
+          }, { status: 409 })
+        }
+        // PIX cancelado: segue pra cobrança no cartão.
       }
     }
 

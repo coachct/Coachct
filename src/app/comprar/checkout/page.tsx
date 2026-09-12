@@ -111,6 +111,12 @@ function CheckoutContent() {
         clearInterval(timer)
         if (status === 'pago') {
           router.push(`/comprar/sucesso?produto=${produtoId}&metodo=pix&pagamento=${pixPagamentoId}&total=${pixTotal}`)
+        } else if (status === 'cancelado') {
+          // Cliente pagou no cartão (o PIX foi cancelado no Pagar.me): tira o QR
+          // da tela e volta a mostrar as formas de pagamento.
+          setPixQrCode('')
+          setPixQrCodeUrl('')
+          setPixPagamentoId('')
         }
       } catch {}
     }, 4000)
