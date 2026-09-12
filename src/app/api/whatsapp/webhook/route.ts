@@ -315,7 +315,7 @@ async function processar(de: string, texto: string, wamid: string, botaoId: stri
     // BALCÃO DE INFORMAÇÃO (reformulação): só informa/aponta o site. Não resolve
     // conta/ação, não pede confirmação, não transfere. O Ricardo acompanha o painel
     // e assume o que precisar. (pedeHumano acima já sinaliza quem pediu atendente.)
-    const resposta = await responderInfo({ supabase, mensagem: texto, historico })
+    const resposta = await responderInfo({ supabase, cliente, mensagem: texto, historico })
     const corpo = prefixo + resposta.texto
     await salvarMensagem(supabase, { telefone, clienteId: cliente.id, role: 'assistant', conteudo: resposta.texto })
     // Se o bot não soube e disse "a equipe te responde", sinaliza no painel pro Ricardo ver.

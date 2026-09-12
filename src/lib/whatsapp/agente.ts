@@ -1309,14 +1309,26 @@ const TOOLS_INFO: Anthropic.Tool[] = [
     description: 'Catálogo de preços de planos e pacotes da Just Club & CT. Use sempre que perguntarem quanto custa algo, valores, planos ou pacotes. Nunca chute valores.',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
+  {
+    name: 'recuperar_acesso',
+    description: 'Recupera/redefine o acesso do cliente ao site (login = e-mail + senha): gera uma senha provisória que VOCÊ repassa AQUI no WhatsApp (não depende de e-mail). Use quando o cliente não consegue logar, esqueceu a senha, ou diz que a senha provisória do site não chegou. Antes de chamar, você precisa que o cliente esteja IDENTIFICADO (nome+CPF ou nome+e-mail) — se ainda não estiver, peça isso primeiro. Pergunte também qual e-mail ele quer usar pra entrar e passe em "email".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        email: { type: 'string', description: 'e-mail que o cliente quer usar para fazer login' },
+      },
+      required: ['email'],
+    },
+  },
 ]
 
 export async function responderInfo(params: {
   supabase: SupabaseClient
   mensagem: string
   historico?: TurnoConversa[]
+  cliente?: ClienteIdentificado | null
 }): Promise<{ texto: string }> {
-  const { supabase, mensagem, historico = [] } = params
+  const { supabase, mensagem, historico = [], cliente = null } = params
   const client = new Anthropic()
   const hoje = calcularHoje()
 
@@ -1367,6 +1379,13 @@ Ao falar de UMA unidade, cite só o que ELA tem: falando de Vila Olímpia ou Pin
 # HORÁRIOS / GRADE DE AULAS → só o link do calendário (REGRA — nunca diga "não tenho")
 Quando perguntarem os horários das aulas / a grade / "que horas tem aula" / horários de funcionamento das aulas: NÃO diga "não tenho isso aqui", "pra não te passar errado", nem liste nada. Só mande o link do calendário do site, curto e positivo, e encerre. Ex.: "Os horários você vê (e já reserva!) direto no site 👉 https://www.justclubct.com.br/aulas 😊". A grade fica sempre atualizada lá — é só o link.
 
+# RECUPERAR ACESSO / ESQUECEU A SENHA / NÃO CONSEGUE LOGAR → você RESOLVE aqui (a ÚNICA ação que você faz)
+Se a pessoa não consegue entrar, esqueceu a senha, nunca acessou, OU diz que a senha provisória do site NÃO chegou: você recupera o acesso AQUI mesmo — NÃO fique só mandando pro site (o e-mail do site às vezes não chega, por isso o certo é resolver por aqui). Passo a passo:
+1) Peça, numa mensagem só: NOME COMPLETO + CPF (ou nome + e-mail do cadastro) E o e-mail que a pessoa quer usar pra entrar.
+2) Com os dados, chame a ferramenta **recuperar_acesso** passando esse e-mail.
+3) A ferramenta devolve o login + uma SENHA PROVISÓRIA — repasse os DOIS aqui no WhatsApp e oriente: entrar em https://www.justclubct.com.br/login e depois trocar a senha em "Minha Conta".
+Se a ferramenta responder "precisa_identificar", é porque ainda falta o CPF/e-mail — peça e tente de novo. NUNCA invente senha (use só a que a ferramenta devolver). NUNCA diga que "precisa da equipe técnica" pra isso — resolve aqui.
+
 # MAPA DO SITE (aponte o link certo pro que a pessoa quer)
 - Reservar / cancelar / trocar AULA do JustClub (Lift, Lift for Girls, Running+Funcional): https://www.justclubct.com.br/aulas
 - Agendar / cancelar COACH CT (personal): https://www.justclubct.com.br/agendar
@@ -1374,7 +1393,7 @@ Quando perguntarem os horários das aulas / a grade / "que horas tem aula" / hor
 - Minha conta (ativar plano Wellhub/TotalPass, ver saldo, minhas reservas, dados): https://www.justclubct.com.br/minha-conta
 - Cadastrar / atualizar cartão: https://www.justclubct.com.br/cadastrar-cartao
 - Entrar (login): https://www.justclubct.com.br/login
-- Esqueci a senha / recuperar acesso (recebe senha provisória por e-mail): https://www.justclubct.com.br/trocar-senha
+- Esqueci a senha / recuperar acesso: você RESOLVE aqui (ver a regra "RECUPERAR ACESSO" acima) — NÃO mande só pro site.
 - Ainda não é aluno(a) / criar cadastro: https://www.justclubct.com.br/cadastro
 Reserva/cancelamento feito pelo APP do Wellhub/TotalPass é gerenciado por eles (a gente não controla) — isso é direto no app deles.
 
@@ -1432,9 +1451,17 @@ ${faqTxt}`
         if (bloco.type === 'tool_use') {
           let conteudo: string
           try {
-            conteudo = bloco.name === 'consultar_precos'
-              ? JSON.stringify(await consultarPrecos(supabase))
-              : JSON.stringify({ erro: `ferramenta indisponível: ${bloco.name}` })
+            if (bloco.name === 'consultar_precos') {
+              conteudo = JSON.stringify(await consultarPrecos(supabase))
+            } else if (bloco.name === 'recuperar_acesso') {
+              // Só reseta se o cliente estiver identificado (nome+CPF/e-mail — o webhook
+              // identifica). Senão, orienta o bot a pedir a identificação primeiro.
+              conteudo = cliente?.id
+                ? JSON.stringify(await recuperarAcessoCliente(supabase, cliente.id, String((bloco.input as any)?.email ?? '')))
+                : JSON.stringify({ ok: false, precisa_identificar: true, mensagem: 'Pra recuperar o acesso, primeiro preciso te identificar: peça o NOME COMPLETO + CPF (ou nome + e-mail do cadastro) numa mensagem só, junto com o e-mail que a pessoa quer usar pra entrar.' })
+            } else {
+              conteudo = JSON.stringify({ erro: `ferramenta indisponível: ${bloco.name}` })
+            }
           } catch (e: any) { conteudo = JSON.stringify({ erro: e.message }) }
           resultados.push({ type: 'tool_result', tool_use_id: bloco.id, content: conteudo })
         }
