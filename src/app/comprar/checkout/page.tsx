@@ -30,6 +30,9 @@ function CheckoutContent() {
   const { perfil, signIn } = useAuth()
   const searchParams = useSearchParams()
   const produtoId = searchParams.get('produto')
+  // PIX está fora do checkout desde 17/05 (action_forbidden no Pagar.me).
+  // Só aparece com ?pix=1 no link, pra testar antes de liberar pra todos.
+  const pixTeste = searchParams.get('pix') === '1'
 
   const [produto, setProduto] = useState<any>(null)
   const [cliente, setCliente] = useState<any>(null)
@@ -598,6 +601,7 @@ function CheckoutContent() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {[
                     { key: 'cartao' as MetodoPagamento, label: 'Cartão de crédito', icon: '💳', desc: maxParcelas > 1 ? `À vista ou em até ${maxParcelas}x` : 'À vista' },
+                    ...(pixTeste ? [{ key: 'pix' as MetodoPagamento, label: 'PIX', icon: '⚡', desc: 'Aprovação imediata' }] : []),
                   ].map(m => (
                     <div key={m.key} onClick={() => { setMetodo(m.key); setParcelas(1); setErro('') }} className="metodo-card-h"
                       style={{ border: `1.5px solid ${metodo === m.key ? ACCENT : '#333'}`, background: metodo === m.key ? `${ACCENT}10` : 'transparent', borderRadius: 10, padding: '0.85rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
