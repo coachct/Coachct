@@ -26,6 +26,7 @@ const nav = [
       { label: 'Reservas Wellhub', href: '/admin/justclub/reservas-wellhub' },
       { label: 'Mapa de Posições', href: '/admin/posicoes' },
       { label: 'Enquete de horário', href: '/admin/enquete-horario' },
+      { label: 'Playlists do dia', href: '/admin/playlists' },
     ],
   },
   {
