@@ -643,11 +643,17 @@ function Ranking() {
   const [ordem, setOrdem] = useState<Ordem>('baixas')
   const [busca, setBusca] = useState('')
   const [editando, setEditando] = useState<Stat | null>(null)
+  // Playlists que um coach marcou como "não abriu no app"
+  const [erros, setErros] = useState<Map<string, string>>(new Map())
 
   async function carregar() {
-    const { data, error } = await supabase.rpc('playlists_estatisticas', {})
+    const [{ data, error }, { data: comErro }] = await Promise.all([
+      supabase.rpc('playlists_estatisticas', {}),
+      supabase.from('playlists').select('id, erro_em').not('erro_em', 'is', null),
+    ])
     if (error) setErro(error.message)
     setStats((data || []) as Stat[])
+    setErros(new Map((comErro || []).map((p: any) => [p.id, p.erro_em])))
     setLoading(false)
   }
 
@@ -700,7 +706,11 @@ function Ranking() {
             >
               <div className="text-sm text-gray-900">
                 {s.nome}
-                {!s.ativo && <span className="text-xs text-gray-400"> · inativa</span>}
+                {!s.ativo && (
+                  erros.has(s.playlist_id)
+                    ? <span className="text-xs text-red-600"> · não abriu no app ({new Date(erros.get(s.playlist_id)!).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })})</span>
+                    : <span className="text-xs text-gray-400"> · inativa</span>
+                )}
                 {s.link && <span className="text-xs text-primary-600"> · com link</span>}
               </div>
               <div className="text-xs text-gray-400 mt-0.5 flex flex-wrap items-center gap-x-2">
@@ -744,7 +754,8 @@ function EditarPlaylist({ playlist, onClose, onSaved }: { playlist: Stat; onClos
     if (!nome.trim()) return
     const { data: upd, error } = await supabase
       .from('playlists')
-      .update({ nome: nome.trim(), link: link.trim() || null, ativo })
+      // Reativar limpa a marca de "não abriu no app"
+      .update({ nome: nome.trim(), link: link.trim() || null, ativo, ...(ativo ? { erro_em: null } : {}) })
       .eq('id', playlist.playlist_id)
       .select('id')
     if (error) {

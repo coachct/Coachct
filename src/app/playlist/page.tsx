@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react'
 import { Copy, Check } from 'lucide-react'
 
-type Item = { nome: string; link: string | null; observacao: string | null }
+type Item = { playlist_id: string; nome: string; link: string | null; observacao: string | null; sugestao: boolean }
 type Dia = { data: string; lift: Item | null; running: Item | null }
 type Modalidade = 'lift' | 'running'
 
@@ -120,6 +120,24 @@ export default function PlaylistCoachPage() {
     if (!j[modalidade]) setErro('Nenhuma sugestão disponível para hoje')
   }
 
+  // Sugestão não abre no app: tira ela das sugestões e gera outra
+  async function erroSugestao(modalidade: Modalidade, item: Item) {
+    if (!window.confirm(`"${item.nome}" não abre no app?\n\nEla sai das sugestões e outra será gerada.`)) return
+    setGerando(modalidade)
+    setErro('')
+    const { ok, status, j } = await chamar('/api/playlist/erro', { pin: lerPin(), modalidade, playlist_id: item.playlist_id })
+    setGerando(null)
+    if (status === 401) {
+      gravarPin(null)
+      setErro(j.error || 'PIN incorreto')
+      setFase('pin')
+      return
+    }
+    if (!ok) { setErro(j.error || 'Não foi possível gerar outra'); return }
+    setDia(j)
+    if (!j[modalidade]) setErro('Nenhuma outra sugestão disponível para hoje')
+  }
+
   return (
     <main className="min-h-screen bg-gray-950 text-white px-5 py-8">
       <div className="max-w-md mx-auto">
@@ -194,6 +212,15 @@ export default function PlaylistCoachPage() {
                         </div>
                         {item.observacao && (
                           <div className="mt-2 text-sm text-amber-300">{item.observacao}</div>
+                        )}
+                        {item.sugestao && (
+                          <button
+                            onClick={() => erroSugestao(m.key, item)}
+                            disabled={gerando !== null}
+                            className="mt-4 text-xs text-gray-500 underline underline-offset-2 disabled:opacity-60"
+                          >
+                            {gerando === m.key ? 'Gerando outra…' : 'Não abriu no app? Gerar outra'}
+                          </button>
                         )}
                       </>
                     ) : (

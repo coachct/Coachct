@@ -3,7 +3,13 @@
 // Ricardo define em admin/playlists. As rotas usam service role depois do PIN.
 import { SupabaseClient } from '@supabase/supabase-js'
 
-export type ItemPlaylist = { nome: string; link: string | null; observacao: string | null }
+export type ItemPlaylist = {
+  playlist_id: string
+  nome: string
+  link: string | null
+  observacao: string | null
+  sugestao: boolean // veio do botão "Sugestão do dia" (só essa o coach pode descartar)
+}
 export type DiaPlaylist = { data: string; lift: ItemPlaylist | null; running: ItemPlaylist | null }
 
 /** null = PIN confere; senão, a mensagem de erro. */
@@ -20,11 +26,19 @@ export async function conferirPin(sb: SupabaseClient, pin: unknown): Promise<str
 export async function playlistsDoDia(sb: SupabaseClient, data: string): Promise<DiaPlaylist> {
   const { data: rows } = await sb
     .from('playlist_dia')
-    .select('modalidade, observacao, playlists(nome, link)')
+    .select('modalidade, playlist_id, observacao, origem, playlists(nome, link)')
     .eq('data', data)
   const item = (m: string): ItemPlaylist | null => {
     const r: any = (rows || []).find((x: any) => x.modalidade === m)
-    return r?.playlists ? { nome: r.playlists.nome, link: r.playlists.link, observacao: r.observacao } : null
+    return r?.playlists
+      ? {
+          playlist_id: r.playlist_id,
+          nome: r.playlists.nome,
+          link: r.playlists.link,
+          observacao: r.observacao,
+          sugestao: r.origem === 'sugestao',
+        }
+      : null
   }
   return { data, lift: item('lift'), running: item('running') }
 }

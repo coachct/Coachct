@@ -226,6 +226,44 @@ begin
 end;
 $$;
 
+-- Coach: a sugestão do dia não abre no app (playlist saiu do SoundCloud).
+-- Inativa a playlist (sai de todas as sugestões), marca erro_em pro Ricardo ver
+-- no Ranking e já sorteia outra. Só vale pra sugestão, e só se a playlist ainda é
+-- a que o coach viu (dois coaches apertando juntos não derrubam a nova).
+alter table public.playlists add column if not exists erro_em timestamptz;
+
+create or replace function public.playlist_sugestao_erro(p_modalidade text, p_playlist_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path to 'public'
+as $$
+declare
+  v_hoje date := (now() at time zone 'America/Sao_Paulo')::date;
+begin
+  if p_modalidade not in ('lift', 'running') then
+    raise exception 'MODALIDADE_INVALIDA';
+  end if;
+
+  if not exists (
+    select 1 from playlist_dia
+     where data = v_hoje and modalidade = p_modalidade
+       and origem = 'sugestao' and playlist_id = p_playlist_id
+  ) then
+    return;
+  end if;
+
+  update playlists set ativo = false, erro_em = now() where id = p_playlist_id;
+  delete from playlist_dia
+   where data = v_hoje and modalidade = p_modalidade
+     and origem = 'sugestao' and playlist_id = p_playlist_id;
+  perform playlist_sugerir(p_modalidade);
+end;
+$$;
+
+revoke all on function public.playlist_sugestao_erro(text, uuid) from public, anon, authenticated;
+grant execute on function public.playlist_sugestao_erro(text, uuid) to service_role;
+
 -- Admin: exposição das playlists já escolhidas num intervalo (selo de alerta na agenda).
 -- O número muda conforme entram reservas, então é recalculado a cada abertura.
 create or replace function public.playlist_alertas(p_inicio date, p_fim date)
