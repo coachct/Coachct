@@ -73,6 +73,18 @@ async function lerClipboard(): Promise<string | null> {
   }
 }
 
+// Texto do "compartilhar" do SoundCloud:
+//   "Just Club Sessions #36 by Just Club on #SoundCloud https://on.soundcloud.com/..."
+// Separa link, título e artista. Sem o "on #SoundCloud", o texto todo é o nome.
+function desmembrar(texto: string) {
+  const link = texto.match(/https?:\/\/\S+/)?.[0] || null
+  let resto = (link ? texto.replace(link, ' ') : texto).replace(/\s+/g, ' ').trim()
+  const doSoundCloud = /\s*on #?SoundCloud\s*$/i.test(resto)
+  resto = resto.replace(/\s*on #?SoundCloud\s*$/i, '').trim()
+  const m = doSoundCloud ? /^(.*)\s+by\s+(.+)$/i.exec(resto) : null
+  return { titulo: m ? m[1].trim() : resto, artista: m ? m[2].trim() : null, link }
+}
+
 const inputCls = 'w-full border border-gray-200 rounded-lg px-3 py-2.5 text-base md:text-sm bg-white'
 
 export default function PlaylistsPage() {
@@ -347,8 +359,10 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
   const [stats, setStats] = useState<Stat[]>([])
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
-  const [nome, setNome] = useState(atual?.playlists?.nome || '')
-  const [link, setLink] = useState(atual?.playlists?.link || '')
+  // Nome e link num campo só (cola o texto do compartilhar do SoundCloud)
+  const [texto, setTexto] = useState(
+    atual?.playlists ? [atual.playlists.nome, atual.playlists.link].filter(Boolean).join('\n') : ''
+  )
   const [obs, setObs] = useState(atual?.observacao || '')
   const [salvando, setSalvando] = useState(false)
   const [posSugestao, setPosSugestao] = useState(-1)
@@ -376,24 +390,38 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
     (b.nota_media ?? 0) - (a.nota_media ?? 0) ||
     b.qtd_notas - a.qtd_notas
 
-  const nomeLimpo = nome.trim()
-  const sel = stats.find(s => s.nome.toLowerCase() === nomeLimpo.toLowerCase()) || null
+  // A planilha gravava "título artista"; o SoundCloud manda "título by artista".
+  // Procura a playlist nos dois formatos; nova ganha "título artista" (sem repetir
+  // o artista quando ele já está no título, ex.: Just Club Sessions #36).
+  const partes = desmembrar(texto)
+  const candidatos = partes.artista
+    ? [`${partes.titulo} ${partes.artista}`, partes.titulo, `${partes.titulo} by ${partes.artista}`]
+    : [partes.titulo]
+  const sel = candidatos
+    .map(c => stats.find(s => s.nome.toLowerCase() === c.toLowerCase()))
+    .find(Boolean) || null
+  const nomeLimpo = sel
+    ? sel.nome
+    : partes.artista && !partes.titulo.toLowerCase().includes(partes.artista.toLowerCase())
+      ? `${partes.titulo} ${partes.artista}`
+      : partes.titulo
+  // Sem link no texto, mantém o que a playlist já tem
+  const linkFinal = partes.link || sel?.link || null
 
   // Digitando um nome que ainda não existe, a lista filtra; com uma escolhida, mostra tudo
   const lista = useMemo(() => {
-    const q = !sel ? nomeLimpo.toLowerCase() : ''
+    const q = !sel ? partes.titulo.toLowerCase() : ''
     return stats
       .filter(s => (s.ativo || s.playlist_id === sel?.playlist_id) && (!q || s.nome.toLowerCase().includes(q)))
       .sort(ordenar)
-  }, [stats, nomeLimpo, sel])
+  }, [stats, texto, sel])
 
   // Sugestão do admin: qualquer dia da semana, só da mesma modalidade. Cada toque vai pra próxima.
   const sugestoes = useMemo(() => stats.filter(s => s.ativo && vezesMod(s) > 0).sort(ordenar), [stats])
   const selEhSugestao = posSugestao >= 0 && sugestoes[posSugestao]?.playlist_id === sel?.playlist_id
 
   function escolher(s: Stat) {
-    setNome(s.nome)
-    setLink(s.link || '')
+    setTexto([s.nome, s.link].filter(Boolean).join('\n'))
     setErro(null)
     scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -407,15 +435,15 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
 
   async function colar() {
     const t = await lerClipboard()
-    if (t) setLink(t)
-    else setErro('Não foi possível colar. Toque e segure no campo Link para colar.')
+    if (t) { setTexto(t); setPosSugestao(-1); setErro(null) }
+    else setErro('Não foi possível colar. Toque e segure no campo para colar.')
   }
 
   async function salvar() {
     if (!nomeLimpo) { setErro('Informe a playlist'); return }
     setSalvando(true)
     setErro(null)
-    const novoLink = link.trim() || null
+    const novoLink = linkFinal
     let playlistId = sel?.playlist_id
 
     if (!sel) {
@@ -480,43 +508,38 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
         <div ref={scrollRef} className="flex-1 overflow-y-auto">
           <div className="p-4 space-y-3 border-b border-gray-100">
             <div>
-              <label className="block text-xs text-gray-400 uppercase tracking-wide mb-1">Playlist</label>
-              <input
-                value={nome}
-                onChange={e => { setNome(e.target.value); setPosSugestao(-1) }}
-                placeholder="Nome da playlist"
-                className={inputCls}
-              />
-              <div className="text-xs mt-1 min-h-[1rem]">
-                {nomeLimpo && (sel ? (
-                  <span className="text-gray-400">
-                    Já cadastrada · {sel.pct ?? 0}% já ouviram · {vezesMod(sel)}x no {label}
-                    {sel.qtd_notas ? ` · nota ${Number(sel.nota_media).toFixed(2)} (${sel.qtd_notas})` : ''}
-                    {selEhSugestao ? ` · sugestão ${posSugestao + 1} de ${sugestoes.length}` : ''}
-                  </span>
-                ) : (
-                  <span className="text-primary-700">Nova playlist: será criada ao salvar</span>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs text-gray-400 uppercase tracking-wide mb-1">Link</label>
-              <div className="flex gap-2">
-                <input
-                  value={link}
-                  onChange={e => setLink(e.target.value)}
-                  type="url"
-                  inputMode="url"
+              <label className="block text-xs text-gray-400 uppercase tracking-wide mb-1">Playlist (nome e link)</label>
+              <div className="flex gap-2 items-stretch">
+                <textarea
+                  value={texto}
+                  onChange={e => { setTexto(e.target.value); setPosSugestao(-1) }}
+                  rows={3}
                   autoCapitalize="off"
                   autoCorrect="off"
-                  placeholder="https://…"
-                  className={inputCls}
+                  placeholder="Cole aqui o texto do SoundCloud ou digite o nome"
+                  className={`${inputCls} resize-none`}
                 />
                 <button onClick={colar} className="shrink-0 px-4 rounded-lg border border-gray-200 bg-white text-sm font-medium">
                   Colar
                 </button>
               </div>
+              {nomeLimpo && (
+                <div className="mt-2 rounded-lg bg-gray-50 px-3 py-2 text-xs space-y-0.5">
+                  <div className="text-gray-900"><span className="text-gray-400">Nome:</span> {nomeLimpo}</div>
+                  <div className="text-gray-900 truncate">
+                    <span className="text-gray-400">Link:</span> {linkFinal || <span className="text-gray-400">sem link</span>}
+                  </div>
+                  {sel ? (
+                    <div className="text-gray-400">
+                      Já cadastrada · {sel.pct ?? 0}% já ouviram · {vezesMod(sel)}x no {label}
+                      {sel.qtd_notas ? ` · nota ${Number(sel.nota_media).toFixed(2)} (${sel.qtd_notas})` : ''}
+                      {selEhSugestao ? ` · sugestão ${posSugestao + 1} de ${sugestoes.length}` : ''}
+                    </div>
+                  ) : (
+                    <div className="text-primary-700">Nova playlist: será criada ao salvar</div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div>
