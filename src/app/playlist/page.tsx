@@ -169,7 +169,18 @@ export default function PlaylistCoachPage() {
                     {item ? (
                       <>
                         <div className="mt-3 flex items-start gap-3">
-                          <div className="flex-1 text-base leading-snug">{item.nome}</div>
+                          {item.link ? (
+                            <a
+                              href={item.link}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex-1 text-base leading-snug underline decoration-white/30 underline-offset-4"
+                            >
+                              {item.nome}
+                            </a>
+                          ) : (
+                            <div className="flex-1 text-base leading-snug">{item.nome}</div>
+                          )}
                           <button
                             onClick={() => copiar(m.key, item.nome)}
                             aria-label="Copiar nome da playlist"
@@ -183,16 +194,6 @@ export default function PlaylistCoachPage() {
                         </div>
                         {item.observacao && (
                           <div className="mt-2 text-sm text-amber-300">{item.observacao}</div>
-                        )}
-                        {item.link && (
-                          <a
-                            href={item.link}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="mt-4 inline-block rounded-xl bg-white text-gray-950 font-semibold px-4 py-2 text-sm"
-                          >
-                            Abrir playlist
-                          </a>
                         )}
                       </>
                     ) : (
