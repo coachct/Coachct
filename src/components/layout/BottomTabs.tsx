@@ -36,7 +36,7 @@ export default function BottomTabs({ onMore, menuAberto }: { onMore: () => void;
               href={t.href}
               className={cn(
                 'flex flex-col items-center justify-center gap-1 py-2.5 min-h-[56px] transition-colors',
-                on ? 'text-primary-700' : 'text-gray-400 active:text-gray-600'
+                on ? 'text-primary-600' : 'text-gray-400 active:text-gray-600'
               )}
             >
               <Icon size={20} className="flex-shrink-0" />
@@ -48,7 +48,7 @@ export default function BottomTabs({ onMore, menuAberto }: { onMore: () => void;
           onClick={onMore}
           className={cn(
             'flex flex-col items-center justify-center gap-1 py-2.5 min-h-[56px] transition-colors',
-            menuAberto ? 'text-primary-700' : 'text-gray-400 active:text-gray-600'
+            menuAberto ? 'text-primary-600' : 'text-gray-400 active:text-gray-600'
           )}
         >
           <Menu size={20} className="flex-shrink-0" />

@@ -29,7 +29,7 @@ function AcoesRapidas() {
           <Link
             key={a.href}
             href={a.href}
-            className="flex flex-col items-start justify-center gap-2 min-h-[76px] rounded-xl border border-gray-200 bg-white px-4 py-3 active:bg-gray-50 hover:border-primary-300 transition-colors"
+            className="flex flex-col items-start justify-center gap-2 min-h-[76px] rounded-xl border border-gray-200 bg-white px-4 py-3 active:bg-gray-50 hover:border-primary-200 transition-colors"
           >
             <Icon size={20} className="text-primary-600 flex-shrink-0" />
             <span className="text-sm font-medium text-gray-800 leading-tight">{a.label}</span>
@@ -146,7 +146,7 @@ export default function AdminDashboard() {
   return (
     <div>
       {/* Header com filtro de unidade — fixo no topo no mobile pra nao perder a unidade de vista */}
-      <div className="sticky top-14 z-20 -mx-4 px-4 pt-1 pb-3 bg-gray-50 border-b border-gray-100 md:static md:mx-0 md:px-0 md:pt-0 md:pb-0 md:bg-transparent md:border-0 flex items-start justify-between mb-4 md:mb-6 gap-4 flex-wrap">
+      <div className="sticky top-0 z-20 -mx-4 px-4 pt-1 pb-3 bg-gray-50 border-b border-gray-100 md:static md:mx-0 md:px-0 md:pt-0 md:pb-0 md:bg-transparent md:border-0 flex items-start justify-between mb-4 md:mb-6 gap-4 flex-wrap">
         <PageHeader title="Dashboard" subtitle={mesNome.charAt(0).toUpperCase() + mesNome.slice(1)} />
         {unidades.length > 0 && (
           <div className="flex gap-2 flex-wrap">
