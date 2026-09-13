@@ -1,8 +1,8 @@
 'use client'
 // Playlists do dia do Club (Lift e Running). Substitui a planilha "Playlists 2026".
-// Agenda: escolher a playlist de cada dia, com alerta de quantos reservados já
-// ouviram na última semana. Ranking: histórico e nota de música por playlist.
-import { useEffect, useMemo, useState } from 'react'
+// Pensada pro celular (é onde o Ricardo usa): atalho pro dia de hoje no topo,
+// próximos dias em cartões, e a tela do dia já abre com os campos da playlist.
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { PageHeader, Spinner, Badge, Insight, EmptyState } from '@/components/ui'
 import { hojeSP } from '@/lib/tempo'
@@ -46,12 +46,6 @@ function addDias(data: string, n: number) {
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10)
 }
 
-function segundaDaSemana(data: string) {
-  const [y, m, d] = data.split('-').map(Number)
-  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
-  return addDias(data, dow === 0 ? -6 : 1 - dow)
-}
-
 function fmtDia(data: string) {
   const [y, m, d] = data.split('-').map(Number)
   const sem = new Date(Date.UTC(y, m - 1, d))
@@ -70,24 +64,33 @@ function pctDe(publico: number, ouviram: number) {
   return publico > 0 ? Math.round((100 * ouviram) / publico) : 0
 }
 
+async function lerClipboard(): Promise<string | null> {
+  try {
+    const t = await navigator.clipboard.readText()
+    return t ? t.trim() : null
+  } catch {
+    return null
+  }
+}
+
+const inputCls = 'w-full border border-gray-200 rounded-lg px-3 py-2.5 text-base md:text-sm bg-white'
+
 export default function PlaylistsPage() {
   const [aba, setAba] = useState<'agenda' | 'ranking'>('agenda')
 
   return (
-    <div>
+    <div className="max-w-3xl">
       <PageHeader
         title="Playlists do dia"
         subtitle="Uma de Lift e uma de Running por dia, iguais nas duas unidades. Lift for Girls usa a do Lift."
       />
-
-      <PinCard />
 
       <div className="flex gap-2 mb-4">
         {([['agenda', 'Agenda'], ['ranking', 'Ranking']] as const).map(([k, label]) => (
           <button
             key={k}
             onClick={() => setAba(k)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium ${
+            className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-sm font-medium ${
               aba === k ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600'
             }`}
           >
@@ -97,6 +100,8 @@ export default function PlaylistsPage() {
       </div>
 
       {aba === 'agenda' ? <Agenda /> : <Ranking />}
+
+      <PinCard />
     </div>
   )
 }
@@ -130,7 +135,7 @@ function PinCard() {
   }
 
   return (
-    <div className="card mb-4">
+    <div className="card mt-6">
       <div className="flex flex-wrap items-end gap-4">
         <div>
           <div className="text-xs text-gray-400 uppercase tracking-wide mb-1.5">PIN dos coaches</div>
@@ -139,20 +144,20 @@ function PinCard() {
               value={pin}
               onChange={e => { setPin(e.target.value); setStatus('') }}
               inputMode="numeric"
-              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-32"
+              className="border border-gray-200 rounded-lg px-3 py-2 text-base md:text-sm w-32"
             />
             <button
               onClick={salvar}
               disabled={pin.trim() === (salvo || '')}
-              className="px-3 py-1.5 rounded-lg text-sm bg-gray-900 text-white disabled:opacity-40"
+              className="px-4 py-2 rounded-lg text-sm bg-gray-900 text-white disabled:opacity-40"
             >
               Salvar
             </button>
           </div>
         </div>
-        <div className="text-sm">
+        <div className="text-sm min-w-0">
           <div className="text-xs text-gray-400 uppercase tracking-wide mb-1.5">Link para os coaches</div>
-          <a href="/playlist" target="_blank" rel="noreferrer" className="text-primary-600 hover:underline">
+          <a href="/playlist" target="_blank" rel="noreferrer" className="text-primary-600 hover:underline break-all">
             {origem}/playlist
           </a>
         </div>
@@ -170,8 +175,9 @@ function PinCard() {
 function Agenda() {
   const supabase = createClient()
   const hoje = hojeSP()
-  const [inicio, setInicio] = useState(segundaDaSemana(hoje))
-  const fim = addDias(inicio, 13)
+  // Próximos dias começam amanhã; setas andam de 7 em 7
+  const [inicio, setInicio] = useState(addDias(hoje, 1))
+  const fim = addDias(inicio, 6)
   const [itens, setItens] = useState<DiaItem[]>([])
   const [alertas, setAlertas] = useState<Alerta[]>([])
   const [loading, setLoading] = useState(true)
@@ -180,16 +186,16 @@ function Agenda() {
 
   async function carregar() {
     setErro(null)
+    const de = inicio < hoje ? inicio : hoje
+    const ate = fim > hoje ? fim : hoje
     const [{ data, error }, al] = await Promise.all([
       supabase
         .from('playlist_dia')
         .select('data, modalidade, playlist_id, observacao, origem, playlists(nome, link)')
-        .gte('data', inicio)
-        .lte('data', fim),
+        .gte('data', de)
+        .lte('data', ate),
       // Alerta só faz sentido de hoje em diante: o passado já tocou
-      fim >= hoje
-        ? supabase.rpc('playlist_alertas', { p_inicio: inicio > hoje ? inicio : hoje, p_fim: fim })
-        : Promise.resolve({ data: [], error: null } as any),
+      supabase.rpc('playlist_alertas', { p_inicio: hoje, p_fim: ate }),
     ])
     if (error) setErro(error.message)
     else if (al.error) setErro(al.error.message)
@@ -200,7 +206,7 @@ function Agenda() {
 
   useEffect(() => { setLoading(true); carregar() }, [inicio])
 
-  const dias = useMemo(() => Array.from({ length: 14 }, (_, i) => addDias(inicio, i)), [inicio])
+  const dias = useMemo(() => Array.from({ length: 7 }, (_, i) => addDias(inicio, i)), [inicio])
   const porChave = useMemo(() => {
     const m = new Map<string, DiaItem>()
     itens.forEach(i => m.set(`${i.data}|${i.modalidade}`, i))
@@ -212,85 +218,69 @@ function Agenda() {
     return m
   }, [alertas])
 
+  const fHoje = fmtDia(hoje)
+  const fIni = fmtDia(inicio)
+  const fFim = fmtDia(fim)
+
+  if (loading) return <Spinner />
+
   return (
     <>
       {erro && <Insight variant="red">Erro ao carregar: {erro}</Insight>}
 
-      <div className="card">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex gap-2">
-            <button onClick={() => setInicio(addDias(inicio, -7))} className="px-3 py-1.5 rounded-lg text-sm border border-gray-200 bg-white">
-              ← Semana anterior
-            </button>
-            <button onClick={() => setInicio(segundaDaSemana(hoje))} className="px-3 py-1.5 rounded-lg text-sm border border-gray-200 bg-white">
-              Hoje
-            </button>
-            <button onClick={() => setInicio(addDias(inicio, 7))} className="px-3 py-1.5 rounded-lg text-sm border border-gray-200 bg-white">
-              Próxima semana →
-            </button>
-          </div>
-          <div className="text-xs text-gray-400">
-            % = reservados do dia que já fizeram aula com a playlist nos 7 dias anteriores
-          </div>
+      {/* Atalho: hoje */}
+      <div className="card mb-5">
+        <div className="text-xs text-gray-400 uppercase tracking-wide mb-2">
+          Hoje · <span className="capitalize">{fHoje.sem}</span> {fHoje.dm}
         </div>
+        <div className="grid gap-2 md:grid-cols-2">
+          {MODS.map(m => (
+            <Slot
+              key={m.key}
+              grande
+              label={m.label}
+              item={porChave.get(`${hoje}|${m.key}`)}
+              alerta={alertaPorChave.get(`${hoje}|${m.key}`)}
+              onClick={() => setEditando({ data: hoje, modalidade: m.key })}
+            />
+          ))}
+        </div>
+      </div>
 
-        {loading ? <Spinner /> : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm table-fixed">
-              <thead>
-                <tr className="text-xs text-gray-400 uppercase tracking-wide border-b border-gray-100">
-                  <th className="text-left pb-3 pr-2 w-24">Dia</th>
-                  {MODS.map(m => <th key={m.key} className="text-left pb-3 pr-2">{m.label}</th>)}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {dias.map((d, idx) => {
-                  const f = fmtDia(d)
-                  return (
-                    <tr key={d} className={`${d === hoje ? 'bg-primary-50/40' : ''} ${idx === 7 ? 'border-t-2 border-gray-200' : ''}`}>
-                      <td className="py-2 pr-2 align-top">
-                        <div className="font-medium text-gray-900">{f.dm}</div>
-                        <div className="text-xs text-gray-400 capitalize">{f.sem}{d === hoje ? ' · hoje' : ''}</div>
-                      </td>
-                      {MODS.map(m => {
-                        const k = `${d}|${m.key}`
-                        const it = porChave.get(k)
-                        const al = alertaPorChave.get(k)
-                        const pct = al ? pctDe(al.publico, al.ouviram) : null
-                        return (
-                          <td key={m.key} className="py-2 pr-2 align-top">
-                            <button
-                              onClick={() => setEditando({ data: d, modalidade: m.key })}
-                              className="w-full text-left rounded-lg px-2 py-1.5 hover:bg-gray-50"
-                            >
-                              {it ? (
-                                <>
-                                  <div className="text-gray-900 line-clamp-2">{it.playlists?.nome}</div>
-                                  {it.observacao && <div className="text-xs text-amber-700">{it.observacao}</div>}
-                                  {al && al.publico > 0 && (
-                                    <div className="mt-1">
-                                      {pct! > LIMITE_PCT ? (
-                                        <Badge variant="red">{pct}% já ouviram ({al.ouviram}/{al.publico})</Badge>
-                                      ) : (
-                                        <span className="text-xs text-gray-400">{pct}% já ouviram ({al.ouviram}/{al.publico})</span>
-                                      )}
-                                    </div>
-                                  )}
-                                </>
-                              ) : (
-                                <span className="text-gray-300">+ definir</span>
-                              )}
-                            </button>
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+      {/* Próximos dias */}
+      <div className="flex items-center justify-between mb-2">
+        <button onClick={() => setInicio(addDias(inicio, -7))} className="w-10 h-10 rounded-lg border border-gray-200 bg-white text-lg">‹</button>
+        <div className="text-center">
+          <div className="text-sm font-medium text-gray-900">{fIni.dm} – {fFim.dm}</div>
+          {inicio !== addDias(hoje, 1) && (
+            <button onClick={() => setInicio(addDias(hoje, 1))} className="text-xs text-primary-600">voltar para os próximos dias</button>
+          )}
+        </div>
+        <button onClick={() => setInicio(addDias(inicio, 7))} className="w-10 h-10 rounded-lg border border-gray-200 bg-white text-lg">›</button>
+      </div>
+
+      <div className="space-y-2">
+        {dias.map(d => {
+          const f = fmtDia(d)
+          return (
+            <div key={d} className={`card !p-3 ${d === hoje ? 'ring-1 ring-primary-200' : ''}`}>
+              <div className="text-sm font-medium text-gray-900 mb-1.5">
+                <span className="capitalize">{f.sem}</span> {f.dm}{d === hoje ? ' · hoje' : ''}
+              </div>
+              <div className="grid gap-1.5 md:grid-cols-2">
+                {MODS.map(m => (
+                  <Slot
+                    key={m.key}
+                    label={m.label}
+                    item={porChave.get(`${d}|${m.key}`)}
+                    alerta={d >= hoje ? alertaPorChave.get(`${d}|${m.key}`) : undefined}
+                    onClick={() => setEditando({ data: d, modalidade: m.key })}
+                  />
+                ))}
+              </div>
+            </div>
+          )
+        })}
       </div>
 
       {editando && (
@@ -306,6 +296,46 @@ function Agenda() {
   )
 }
 
+function Slot({ label, item, alerta, onClick, grande }: {
+  label: string
+  item?: DiaItem
+  alerta?: Alerta
+  onClick: () => void
+  grande?: boolean
+}) {
+  const pct = alerta ? pctDe(alerta.publico, alerta.ouviram) : null
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full text-left rounded-lg border border-gray-100 bg-gray-50/60 active:bg-gray-100 flex items-center gap-3 ${grande ? 'px-3 py-3' : 'px-3 py-2'}`}
+    >
+      <div className="w-16 shrink-0 text-xs text-gray-400 uppercase tracking-wide">{label}</div>
+      <div className="flex-1 min-w-0">
+        {item ? (
+          <>
+            <div className={`text-gray-900 ${grande ? 'text-base' : 'text-sm'} line-clamp-2`}>{item.playlists?.nome}</div>
+            {item.observacao && <div className="text-xs text-amber-700">{item.observacao}</div>}
+            {alerta && alerta.publico > 0 && (
+              <div className="mt-0.5">
+                {pct! > LIMITE_PCT ? (
+                  <Badge variant="red">{pct}% já ouviram ({alerta.ouviram}/{alerta.publico})</Badge>
+                ) : (
+                  <span className="text-xs text-gray-400">{pct}% já ouviram ({alerta.ouviram}/{alerta.publico})</span>
+                )}
+              </div>
+            )}
+          </>
+        ) : (
+          <span className={`text-gray-400 ${grande ? 'text-base' : 'text-sm'}`}>+ definir</span>
+        )}
+      </div>
+      <span className="text-gray-300 text-lg">›</span>
+    </button>
+  )
+}
+
+// Tela do dia: em cima os campos (playlist, link, observação) e o Sugerir;
+// embaixo a lista de todas as playlists. Salvar cria a playlist se o nome é novo.
 function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
   data: string
   modalidade: Modalidade
@@ -317,22 +347,24 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
   const [stats, setStats] = useState<Stat[]>([])
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
-  const [busca, setBusca] = useState('')
-  const [selId, setSelId] = useState<string | null>(atual?.playlist_id || null)
+  const [nome, setNome] = useState(atual?.playlists?.nome || '')
+  const [link, setLink] = useState(atual?.playlists?.link || '')
   const [obs, setObs] = useState(atual?.observacao || '')
   const [salvando, setSalvando] = useState(false)
-  const [novaAberta, setNovaAberta] = useState(false)
-  const [novoNome, setNovoNome] = useState('')
-  const [novoLink, setNovoLink] = useState('')
+  const [posSugestao, setPosSugestao] = useState(-1)
+  const scrollRef = useRef<HTMLDivElement>(null)
 
-  async function carregar() {
-    const { data: rows, error } = await supabase.rpc('playlists_estatisticas', { p_data: data, p_modalidade: modalidade })
-    if (error) setErro(error.message)
-    setStats((rows || []) as Stat[])
-    setLoading(false)
-  }
-
-  useEffect(() => { carregar() }, [])
+  useEffect(() => {
+    supabase.rpc('playlists_estatisticas', { p_data: data, p_modalidade: modalidade }).then(({ data: rows, error }) => {
+      if (error) setErro(error.message)
+      setStats((rows || []) as Stat[])
+      setLoading(false)
+    })
+    // Trava o fundo enquanto a tela está aberta (no celular o fundo rolava junto)
+    const antes = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = antes }
+  }, [])
 
   const vezesMod = (s: Stat) => (modalidade === 'lift' ? s.vezes_lift : s.vezes_running)
 
@@ -344,52 +376,70 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
     (b.nota_media ?? 0) - (a.nota_media ?? 0) ||
     b.qtd_notas - a.qtd_notas
 
-  const lista = useMemo(() => {
-    const q = busca.trim().toLowerCase()
-    return stats
-      .filter(s => (s.ativo || s.playlist_id === selId) && (!q || s.nome.toLowerCase().includes(q)))
-      .sort(ordenar)
-  }, [stats, busca, selId])
+  const nomeLimpo = nome.trim()
+  const sel = stats.find(s => s.nome.toLowerCase() === nomeLimpo.toLowerCase()) || null
 
-  // Sugestão do admin: qualquer dia da semana, só da mesma modalidade. Cada clique vai pra próxima.
+  // Digitando um nome que ainda não existe, a lista filtra; com uma escolhida, mostra tudo
+  const lista = useMemo(() => {
+    const q = !sel ? nomeLimpo.toLowerCase() : ''
+    return stats
+      .filter(s => (s.ativo || s.playlist_id === sel?.playlist_id) && (!q || s.nome.toLowerCase().includes(q)))
+      .sort(ordenar)
+  }, [stats, nomeLimpo, sel])
+
+  // Sugestão do admin: qualquer dia da semana, só da mesma modalidade. Cada toque vai pra próxima.
   const sugestoes = useMemo(() => stats.filter(s => s.ativo && vezesMod(s) > 0).sort(ordenar), [stats])
-  const [posSugestao, setPosSugestao] = useState(-1)
+  const selEhSugestao = posSugestao >= 0 && sugestoes[posSugestao]?.playlist_id === sel?.playlist_id
+
+  function escolher(s: Stat) {
+    setNome(s.nome)
+    setLink(s.link || '')
+    setErro(null)
+    scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   function sugerir() {
     if (!sugestoes.length) return
     const pos = (posSugestao + 1) % sugestoes.length
-    const s = sugestoes[pos]
     setPosSugestao(pos)
-    setBusca('')
-    setSelId(s.playlist_id)
-    setTimeout(() => document.getElementById(`pl-${s.playlist_id}`)?.scrollIntoView({ block: 'nearest' }), 0)
+    escolher(sugestoes[pos])
   }
 
-  const sel = stats.find(s => s.playlist_id === selId) || null
-
-  // Link é da playlist (vale pra todos os dias); editável aqui pra não ter que ir no Ranking
-  const [link, setLink] = useState('')
-  useEffect(() => { setLink(sel?.link || '') }, [selId, stats])
-
-  const selEhSugestao = posSugestao >= 0 && sugestoes[posSugestao]?.playlist_id === selId
-  const f = fmtDia(data)
-  const label = MODS.find(m => m.key === modalidade)!.label
+  async function colar() {
+    const t = await lerClipboard()
+    if (t) setLink(t)
+    else setErro('Não foi possível colar. Toque e segure no campo Link para colar.')
+  }
 
   async function salvar() {
-    if (!selId) return
+    if (!nomeLimpo) { setErro('Informe a playlist'); return }
     setSalvando(true)
+    setErro(null)
     const novoLink = link.trim() || null
-    if (sel && novoLink !== (sel.link || null)) {
-      const { data: upd, error: errLink } = await supabase
-        .from('playlists').update({ link: novoLink }).eq('id', selId).select('id')
-      if (errLink || !upd?.length) {
+    let playlistId = sel?.playlist_id
+
+    if (!sel) {
+      const { data: nova, error } = await supabase
+        .from('playlists').insert({ nome: nomeLimpo, link: novoLink }).select('id').single()
+      if (error || !nova) {
         setSalvando(false)
-        setErro('Não foi possível salvar o link' + (errLink ? `: ${errLink.message}` : ''))
+        setErro((error as any)?.code === '23505' ? 'Já existe uma playlist com esse nome' : 'Não foi possível criar a playlist' + (error ? `: ${error.message}` : ''))
+        return
+      }
+      playlistId = nova.id
+    } else if (novoLink !== (sel.link || null)) {
+      const { data: upd, error } = await supabase
+        .from('playlists').update({ link: novoLink }).eq('id', sel.playlist_id).select('id')
+      // RLS barrando o update não devolve erro, só 0 linhas
+      if (error || !upd?.length) {
+        setSalvando(false)
+        setErro('Não foi possível salvar o link' + (error ? `: ${error.message}` : ''))
         return
       }
     }
+
     const { error } = await supabase.from('playlist_dia').upsert(
-      { data, modalidade, playlist_id: selId, observacao: obs.trim() || null, origem: 'admin' },
+      { data, modalidade, playlist_id: playlistId, observacao: obs.trim() || null, origem: 'admin' },
       { onConflict: 'data,modalidade' }
     )
     setSalvando(false)
@@ -405,160 +455,147 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
     onSaved()
   }
 
-  async function criar() {
-    const nome = novoNome.trim()
-    if (!nome) return
-    const { data: nova, error } = await supabase
-      .from('playlists')
-      .insert({ nome, link: novoLink.trim() || null })
-      .select('id')
-      .single()
-    if (error) {
-      setErro((error as any).code === '23505' ? 'Já existe uma playlist com esse nome' : error.message)
-      return
-    }
-    setNovaAberta(false)
-    setNovoNome('')
-    setNovoLink('')
-    await carregar()
-    setSelId(nova.id)
-  }
+  const f = fmtDia(data)
+  const label = MODS.find(m => m.key === modalidade)!.label
+  const publico = stats[0]?.publico
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+    <div className="fixed inset-0 z-[60] bg-black/40 md:flex md:items-center md:justify-center md:p-4" onClick={onClose}>
+      <div
+        className="bg-white w-full h-full md:h-auto md:max-h-[90vh] md:max-w-2xl md:rounded-xl flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="shrink-0 px-4 py-3 border-b border-gray-100 flex items-center justify-between">
           <div>
-            <div className="text-base font-semibold text-gray-900">{label} · <span className="capitalize">{f.sem}</span> {f.dm}</div>
-            {sel?.publico != null && (
-              <div className="text-xs text-gray-400">{sel.publico} clientes reservados no {label} nesse dia até agora</div>
+            <div className="text-base font-semibold text-gray-900">
+              {label} · <span className="capitalize">{f.sem}</span> {f.dm}
+            </div>
+            {publico != null && (
+              <div className="text-xs text-gray-400">{publico} reservados no {label} até agora</div>
             )}
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+          <button onClick={onClose} className="w-10 h-10 -mr-2 text-gray-400 text-2xl leading-none">×</button>
         </div>
 
-        <div className="px-5 py-3 flex gap-2 border-b border-gray-100">
-          <input
-            value={busca}
-            onChange={e => setBusca(e.target.value)}
-            placeholder="Buscar playlist"
-            className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
-          />
-          <button
-            onClick={sugerir}
-            disabled={loading || !sugestoes.length}
-            className="px-3 py-1.5 rounded-lg text-sm bg-gray-900 text-white disabled:opacity-40"
-          >
-            {posSugestao < 0 ? 'Sugerir' : 'Próxima sugestão'}
-          </button>
-          <button onClick={() => setNovaAberta(v => !v)} className="px-3 py-1.5 rounded-lg text-sm border border-gray-200 bg-white">
-            + Nova playlist
-          </button>
-        </div>
+        <div ref={scrollRef} className="flex-1 overflow-y-auto">
+          <div className="p-4 space-y-3 border-b border-gray-100">
+            <div>
+              <label className="block text-xs text-gray-400 uppercase tracking-wide mb-1">Playlist</label>
+              <input
+                value={nome}
+                onChange={e => { setNome(e.target.value); setPosSugestao(-1) }}
+                placeholder="Nome da playlist"
+                className={inputCls}
+              />
+              <div className="text-xs mt-1 min-h-[1rem]">
+                {nomeLimpo && (sel ? (
+                  <span className="text-gray-400">
+                    Já cadastrada · {sel.pct ?? 0}% já ouviram · {vezesMod(sel)}x no {label}
+                    {sel.qtd_notas ? ` · nota ${Number(sel.nota_media).toFixed(2)} (${sel.qtd_notas})` : ''}
+                    {selEhSugestao ? ` · sugestão ${posSugestao + 1} de ${sugestoes.length}` : ''}
+                  </span>
+                ) : (
+                  <span className="text-primary-700">Nova playlist: será criada ao salvar</span>
+                ))}
+              </div>
+            </div>
 
-        {novaAberta && (
-          <div className="px-5 py-3 flex gap-2 border-b border-gray-100 bg-gray-50">
-            <input value={novoNome} onChange={e => setNovoNome(e.target.value)} placeholder="Nome" className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm" />
-            <input value={novoLink} onChange={e => setNovoLink(e.target.value)} placeholder="Link (opcional)" className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm" />
-            <button onClick={criar} className="px-3 py-1.5 rounded-lg text-sm bg-gray-900 text-white">Criar</button>
+            <div>
+              <label className="block text-xs text-gray-400 uppercase tracking-wide mb-1">Link</label>
+              <div className="flex gap-2">
+                <input
+                  value={link}
+                  onChange={e => setLink(e.target.value)}
+                  type="url"
+                  inputMode="url"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  placeholder="https://…"
+                  className={inputCls}
+                />
+                <button onClick={colar} className="shrink-0 px-4 rounded-lg border border-gray-200 bg-white text-sm font-medium">
+                  Colar
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs text-gray-400 uppercase tracking-wide mb-1">Observação</label>
+              <input
+                value={obs}
+                onChange={e => setObs(e.target.value)}
+                placeholder="ex.: iniciar em 02:25"
+                className={inputCls}
+              />
+            </div>
+
+            <button
+              onClick={sugerir}
+              disabled={loading || !sugestoes.length}
+              className="w-full py-2.5 rounded-lg border border-gray-900 text-gray-900 text-sm font-medium disabled:opacity-40"
+            >
+              {posSugestao < 0 ? 'Sugerir' : 'Próxima sugestão'}
+            </button>
+
+            {sel && sel.publico != null && sel.publico > 0 && (sel.pct ?? 0) > LIMITE_PCT && (
+              <Insight variant="red">
+                {sel.ouviram} dos {sel.publico} reservados ({sel.pct}%) já fizeram aula com essa playlist nos 7 dias anteriores.
+              </Insight>
+            )}
+            {sel && sel.notas_baixas > 0 && (
+              <Insight variant="amber">
+                {sel.notas_baixas} {sel.notas_baixas === 1 ? 'nota' : 'notas'} de música 3 ou menos nos dias em que tocou.
+              </Insight>
+            )}
           </div>
-        )}
 
-        <div className="flex-1 overflow-y-auto px-5">
-          {loading ? <Spinner /> : (
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-white">
-                <tr className="text-xs text-gray-400 uppercase tracking-wide border-b border-gray-100">
-                  <th className="text-left py-2 pr-2">Playlist</th>
-                  <th className="text-right py-2 pr-2">Já ouviram</th>
-                  <th className="text-right py-2 pr-2">Vezes {label}</th>
-                  <th className="text-right py-2 pr-2">Última vez</th>
-                  <th className="text-right py-2">Nota música</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
+          <div className="px-4 pt-3 pb-4">
+            <div className="text-xs text-gray-400 uppercase tracking-wide mb-2">
+              {sel || !nomeLimpo ? 'Todas as playlists' : 'Playlists com esse nome'}
+            </div>
+            {loading ? <Spinner /> : (
+              <div className="divide-y divide-gray-50">
                 {lista.map(s => {
-                  const ativo = s.playlist_id === selId
+                  const ativo = s.playlist_id === sel?.playlist_id
                   return (
-                    <tr
+                    <button
                       key={s.playlist_id}
-                      id={`pl-${s.playlist_id}`}
-                      onClick={() => setSelId(s.playlist_id)}
-                      className={`cursor-pointer ${ativo ? 'bg-primary-50' : 'hover:bg-gray-50'}`}
+                      onClick={() => escolher(s)}
+                      className={`w-full text-left py-2.5 px-2 rounded-lg ${ativo ? 'bg-primary-50' : 'active:bg-gray-50'}`}
                     >
-                      <td className="py-2 pr-2 text-gray-900">{s.nome}</td>
-                      <td className="py-2 pr-2 text-right whitespace-nowrap">
+                      <div className="text-sm text-gray-900">{s.nome}</div>
+                      <div className="text-xs text-gray-400 mt-0.5 flex flex-wrap items-center gap-x-2">
                         {s.publico ? (
                           (s.pct ?? 0) > LIMITE_PCT
-                            ? <Badge variant="red">{s.pct}%</Badge>
-                            : <span className="text-gray-600">{s.pct}%</span>
-                        ) : <span className="text-gray-300">—</span>}
-                      </td>
-                      <td className="py-2 pr-2 text-right text-gray-600">{vezesMod(s)}</td>
-                      <td className="py-2 pr-2 text-right text-gray-600 whitespace-nowrap">{fmtData(s.ultima_vez)}</td>
-                      <td className="py-2 text-right whitespace-nowrap">
-                        {s.qtd_notas ? (
-                          <span className="text-gray-600">
-                            {Number(s.nota_media).toFixed(2)}
-                            <span className="text-xs text-gray-400"> ({s.qtd_notas})</span>
-                          </span>
-                        ) : <span className="text-gray-300">—</span>}
-                      </td>
-                    </tr>
+                            ? <Badge variant="red">{s.pct}% já ouviram</Badge>
+                            : <span>{s.pct}% já ouviram</span>
+                        ) : null}
+                        <span>{vezesMod(s)}x no {label}</span>
+                        <span>última {fmtData(s.ultima_vez)}</span>
+                        {s.qtd_notas ? <span>nota {Number(s.nota_media).toFixed(2)} ({s.qtd_notas})</span> : null}
+                      </div>
+                    </button>
                   )
                 })}
-              </tbody>
-            </table>
-          )}
-          {!loading && lista.length === 0 && <EmptyState message="Nenhuma playlist encontrada." />}
+              </div>
+            )}
+            {!loading && lista.length === 0 && <EmptyState message="Nenhuma playlist com esse nome." />}
+          </div>
         </div>
 
-        <div className="px-5 py-4 border-t border-gray-100">
+        <div className="shrink-0 border-t border-gray-100 p-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
           {erro && <Insight variant="red">{erro}</Insight>}
-          {sel && sel.publico != null && sel.publico > 0 && (sel.pct ?? 0) > LIMITE_PCT && (
-            <Insight variant="red">
-              {sel.ouviram} dos {sel.publico} clientes reservados ({sel.pct}%) já fizeram aula com essa playlist nos 7 dias anteriores.
-            </Insight>
-          )}
-          {sel && sel.notas_baixas > 0 && (
-            <Insight variant="amber">
-              {sel.notas_baixas} {sel.notas_baixas === 1 ? 'nota' : 'notas'} de música 3 ou menos nos dias em que tocou.
-            </Insight>
-          )}
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-xs text-gray-400 uppercase tracking-wide w-10">Link</span>
-            <input
-              value={link}
-              onChange={e => setLink(e.target.value)}
-              disabled={!sel}
-              placeholder="https://… (fica salvo na playlist, vale para todos os dias)"
-              className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm disabled:bg-gray-50"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex-1 min-w-0">
-              <div className="text-sm text-gray-900 truncate">
-                {sel ? sel.nome : <span className="text-gray-400">Selecione uma playlist</span>}
-              </div>
-              {sel && selEhSugestao && (
-                <div className="text-xs text-gray-400">
-                  Sugestão {posSugestao + 1} de {sugestoes.length} · {sel.pct ?? 0}% já ouviram
-                  {sel.qtd_notas ? ` · nota ${Number(sel.nota_media).toFixed(2)} (${sel.qtd_notas})` : ' · sem nota'}
-                </div>
-              )}
-            </div>
-            <input
-              value={obs}
-              onChange={e => setObs(e.target.value)}
-              placeholder="Observação (ex.: iniciar em 02:25)"
-              className="w-64 border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
-            />
+          <div className="flex gap-2">
             {atual && (
-              <button onClick={remover} disabled={salvando} className="px-3 py-1.5 rounded-lg text-sm border border-gray-200 text-red-600 bg-white">
+              <button onClick={remover} disabled={salvando} className="px-4 py-3 rounded-lg text-sm border border-gray-200 text-red-600 bg-white">
                 Remover
               </button>
             )}
-            <button onClick={salvar} disabled={!selId || salvando} className="px-4 py-1.5 rounded-lg text-sm bg-gray-900 text-white disabled:opacity-40">
+            <button
+              onClick={salvar}
+              disabled={!nomeLimpo || salvando}
+              className="flex-1 py-3 rounded-lg text-base font-medium bg-gray-900 text-white disabled:opacity-40"
+            >
               {salvando ? 'Salvando…' : 'Salvar'}
             </button>
           </div>
@@ -613,14 +650,14 @@ function Ranking() {
       </Insight>
 
       <div className="card">
-        <div className="flex gap-2 mb-3">
+        <div className="flex flex-col md:flex-row gap-2 mb-3">
           <input
             value={busca}
             onChange={e => setBusca(e.target.value)}
             placeholder="Buscar playlist"
-            className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
+            className={inputCls}
           />
-          <select value={ordem} onChange={e => setOrdem(e.target.value as Ordem)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white">
+          <select value={ordem} onChange={e => setOrdem(e.target.value as Ordem)} className="border border-gray-200 rounded-lg px-3 py-2.5 text-base md:text-sm bg-white">
             <option value="baixas">Mais notas baixas</option>
             <option value="media">Menor nota média</option>
             <option value="vezes">Mais tocadas</option>
@@ -628,52 +665,29 @@ function Ranking() {
           </select>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-xs text-gray-400 uppercase tracking-wide border-b border-gray-100">
-                <th className="text-left pb-3 pr-2">Playlist</th>
-                <th className="text-right pb-3 pr-2">Lift</th>
-                <th className="text-right pb-3 pr-2">Running</th>
-                <th className="text-right pb-3 pr-2">Última vez</th>
-                <th className="text-right pb-3 pr-2">Nota média</th>
-                <th className="text-right pb-3 pr-2">Notas ≤ 3</th>
-                <th className="pb-3"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {lista.map(s => (
-                <tr key={s.playlist_id} className={s.ativo ? '' : 'opacity-50'}>
-                  <td className="py-2 pr-2">
-                    <div className="text-gray-900">{s.nome}</div>
-                    {s.link && (
-                      <a href={s.link} target="_blank" rel="noreferrer" className="text-xs text-primary-600 hover:underline">abrir</a>
-                    )}
-                    {!s.ativo && <span className="text-xs text-gray-400"> · inativa</span>}
-                  </td>
-                  <td className="py-2 pr-2 text-right text-gray-600">{s.vezes_lift || '—'}</td>
-                  <td className="py-2 pr-2 text-right text-gray-600">{s.vezes_running || '—'}</td>
-                  <td className="py-2 pr-2 text-right text-gray-600 whitespace-nowrap">{fmtData(s.ultima_vez)}</td>
-                  <td className="py-2 pr-2 text-right whitespace-nowrap">
-                    {s.qtd_notas ? (
-                      <span className="text-gray-700">
-                        {Number(s.nota_media).toFixed(2)}
-                        <span className="text-xs text-gray-400"> ({s.qtd_notas})</span>
-                      </span>
-                    ) : <span className="text-gray-300">—</span>}
-                  </td>
-                  <td className="py-2 pr-2 text-right">
-                    {s.notas_baixas ? <Badge variant="amber">{s.notas_baixas}</Badge> : <span className="text-gray-300">—</span>}
-                  </td>
-                  <td className="py-2 text-right">
-                    <button onClick={() => setEditando(s)} className="text-xs text-primary-600 hover:underline">Editar</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {lista.length === 0 && <EmptyState message="Nenhuma playlist encontrada." />}
+        <div className="divide-y divide-gray-50">
+          {lista.map(s => (
+            <button
+              key={s.playlist_id}
+              onClick={() => setEditando(s)}
+              className={`w-full text-left py-2.5 px-1 active:bg-gray-50 ${s.ativo ? '' : 'opacity-50'}`}
+            >
+              <div className="text-sm text-gray-900">
+                {s.nome}
+                {!s.ativo && <span className="text-xs text-gray-400"> · inativa</span>}
+                {s.link && <span className="text-xs text-primary-600"> · com link</span>}
+              </div>
+              <div className="text-xs text-gray-400 mt-0.5 flex flex-wrap items-center gap-x-2">
+                <span>Lift {s.vezes_lift}x</span>
+                <span>Running {s.vezes_running}x</span>
+                <span>última {fmtData(s.ultima_vez)}</span>
+                {s.qtd_notas ? <span>nota {Number(s.nota_media).toFixed(2)} ({s.qtd_notas})</span> : <span>sem nota</span>}
+                {s.notas_baixas ? <Badge variant="amber">{s.notas_baixas} notas ≤ 3</Badge> : null}
+              </div>
+            </button>
+          ))}
         </div>
+        {lista.length === 0 && <EmptyState message="Nenhuma playlist encontrada." />}
       </div>
 
       {editando && (
@@ -694,6 +708,12 @@ function EditarPlaylist({ playlist, onClose, onSaved }: { playlist: Stat; onClos
   const [ativo, setAtivo] = useState(playlist.ativo)
   const [erro, setErro] = useState<string | null>(null)
 
+  async function colar() {
+    const t = await lerClipboard()
+    if (t) setLink(t)
+    else setErro('Não foi possível colar. Toque e segure no campo Link para colar.')
+  }
+
   async function salvar() {
     if (!nome.trim()) return
     const { data: upd, error } = await supabase
@@ -711,23 +731,38 @@ function EditarPlaylist({ playlist, onClose, onSaved }: { playlist: Stat; onClos
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl w-full max-w-lg p-5" onClick={e => e.stopPropagation()}>
-        <div className="text-base font-semibold text-gray-900 mb-4">Editar playlist</div>
+    <div className="fixed inset-0 z-[60] bg-black/40 flex items-end md:items-center justify-center md:p-4" onClick={onClose}>
+      <div
+        className="bg-white w-full md:max-w-lg rounded-t-2xl md:rounded-xl p-4 pb-[max(env(safe-area-inset-bottom),1rem)]"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-base font-semibold text-gray-900">Editar playlist</div>
+          <button onClick={onClose} className="w-10 h-10 -mr-2 text-gray-400 text-2xl leading-none">×</button>
+        </div>
         <label className="block text-xs text-gray-400 uppercase tracking-wide mb-1">Nome</label>
-        <input value={nome} onChange={e => setNome(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm mb-3" />
+        <input value={nome} onChange={e => setNome(e.target.value)} className={`${inputCls} mb-3`} />
         <label className="block text-xs text-gray-400 uppercase tracking-wide mb-1">Link</label>
-        <input value={link} onChange={e => setLink(e.target.value)} placeholder="https://soundcloud.com/…" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm mb-3" />
+        <div className="flex gap-2 mb-3">
+          <input
+            value={link}
+            onChange={e => setLink(e.target.value)}
+            type="url"
+            inputMode="url"
+            autoCapitalize="off"
+            autoCorrect="off"
+            placeholder="https://…"
+            className={inputCls}
+          />
+          <button onClick={colar} className="shrink-0 px-4 rounded-lg border border-gray-200 bg-white text-sm font-medium">Colar</button>
+        </div>
         <label className="flex items-center gap-2 text-sm text-gray-700 mb-1">
-          <input type="checkbox" checked={ativo} onChange={e => setAtivo(e.target.checked)} />
+          <input type="checkbox" checked={ativo} onChange={e => setAtivo(e.target.checked)} className="w-5 h-5" />
           Ativa
         </label>
         <div className="text-xs text-gray-400 mb-4">Inativa não aparece na escolha nem entra no sorteio da sugestão do dia.</div>
         {erro && <Insight variant="red">{erro}</Insight>}
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 rounded-lg text-sm border border-gray-200 bg-white">Cancelar</button>
-          <button onClick={salvar} className="px-4 py-1.5 rounded-lg text-sm bg-gray-900 text-white">Salvar</button>
-        </div>
+        <button onClick={salvar} className="w-full py-3 rounded-lg text-base font-medium bg-gray-900 text-white">Salvar</button>
       </div>
     </div>
   )
