@@ -336,19 +336,37 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
 
   const vezesMod = (s: Stat) => (modalidade === 'lift' ? s.vezes_lift : s.vezes_running)
 
-  // Primeiro as que já tocaram nessa modalidade; depois menor % e a que tocou há mais tempo
+  // Ordem = ordem da sugestão: primeiro as que já tocaram nessa modalidade; depois
+  // menos gente que já ouviu na última semana; depois melhor nota de música.
+  const ordenar = (a: Stat, b: Stat) =>
+    (vezesMod(b) > 0 ? 1 : 0) - (vezesMod(a) > 0 ? 1 : 0) ||
+    (a.pct ?? 0) - (b.pct ?? 0) ||
+    (b.nota_media ?? 0) - (a.nota_media ?? 0) ||
+    b.qtd_notas - a.qtd_notas
+
   const lista = useMemo(() => {
     const q = busca.trim().toLowerCase()
     return stats
       .filter(s => (s.ativo || s.playlist_id === selId) && (!q || s.nome.toLowerCase().includes(q)))
-      .sort((a, b) =>
-        (vezesMod(b) > 0 ? 1 : 0) - (vezesMod(a) > 0 ? 1 : 0) ||
-        (a.pct ?? 0) - (b.pct ?? 0) ||
-        (a.ultima_vez || '').localeCompare(b.ultima_vez || '')
-      )
+      .sort(ordenar)
   }, [stats, busca, selId])
 
+  // Sugestão do admin: qualquer dia da semana, só da mesma modalidade. Cada clique vai pra próxima.
+  const sugestoes = useMemo(() => stats.filter(s => s.ativo && vezesMod(s) > 0).sort(ordenar), [stats])
+  const [posSugestao, setPosSugestao] = useState(-1)
+
+  function sugerir() {
+    if (!sugestoes.length) return
+    const pos = (posSugestao + 1) % sugestoes.length
+    const s = sugestoes[pos]
+    setPosSugestao(pos)
+    setBusca('')
+    setSelId(s.playlist_id)
+    setTimeout(() => document.getElementById(`pl-${s.playlist_id}`)?.scrollIntoView({ block: 'nearest' }), 0)
+  }
+
   const sel = stats.find(s => s.playlist_id === selId) || null
+  const selEhSugestao = posSugestao >= 0 && sugestoes[posSugestao]?.playlist_id === selId
   const f = fmtDia(data)
   const label = MODS.find(m => m.key === modalidade)!.label
 
@@ -411,6 +429,13 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
             placeholder="Buscar playlist"
             className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
           />
+          <button
+            onClick={sugerir}
+            disabled={loading || !sugestoes.length}
+            className="px-3 py-1.5 rounded-lg text-sm bg-gray-900 text-white disabled:opacity-40"
+          >
+            {posSugestao < 0 ? 'Sugerir' : 'Próxima sugestão'}
+          </button>
           <button onClick={() => setNovaAberta(v => !v)} className="px-3 py-1.5 rounded-lg text-sm border border-gray-200 bg-white">
             + Nova playlist
           </button>
@@ -442,6 +467,7 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
                   return (
                     <tr
                       key={s.playlist_id}
+                      id={`pl-${s.playlist_id}`}
                       onClick={() => setSelId(s.playlist_id)}
                       className={`cursor-pointer ${ativo ? 'bg-primary-50' : 'hover:bg-gray-50'}`}
                     >
@@ -485,8 +511,16 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
             </Insight>
           )}
           <div className="flex items-center gap-2">
-            <div className="flex-1 text-sm text-gray-900 truncate">
-              {sel ? sel.nome : <span className="text-gray-400">Selecione uma playlist</span>}
+            <div className="flex-1 min-w-0">
+              <div className="text-sm text-gray-900 truncate">
+                {sel ? sel.nome : <span className="text-gray-400">Selecione uma playlist</span>}
+              </div>
+              {sel && selEhSugestao && (
+                <div className="text-xs text-gray-400">
+                  Sugestão {posSugestao + 1} de {sugestoes.length} · {sel.pct ?? 0}% já ouviram
+                  {sel.qtd_notas ? ` · nota ${Number(sel.nota_media).toFixed(2)} (${sel.qtd_notas})` : ' · sem nota'}
+                </div>
+              )}
             </div>
             <input
               value={obs}
