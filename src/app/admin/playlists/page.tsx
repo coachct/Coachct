@@ -366,6 +366,11 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
   }
 
   const sel = stats.find(s => s.playlist_id === selId) || null
+
+  // Link é da playlist (vale pra todos os dias); editável aqui pra não ter que ir no Ranking
+  const [link, setLink] = useState('')
+  useEffect(() => { setLink(sel?.link || '') }, [selId, stats])
+
   const selEhSugestao = posSugestao >= 0 && sugestoes[posSugestao]?.playlist_id === selId
   const f = fmtDia(data)
   const label = MODS.find(m => m.key === modalidade)!.label
@@ -373,6 +378,16 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
   async function salvar() {
     if (!selId) return
     setSalvando(true)
+    const novoLink = link.trim() || null
+    if (sel && novoLink !== (sel.link || null)) {
+      const { data: upd, error: errLink } = await supabase
+        .from('playlists').update({ link: novoLink }).eq('id', selId).select('id')
+      if (errLink || !upd?.length) {
+        setSalvando(false)
+        setErro('Não foi possível salvar o link' + (errLink ? `: ${errLink.message}` : ''))
+        return
+      }
+    }
     const { error } = await supabase.from('playlist_dia').upsert(
       { data, modalidade, playlist_id: selId, observacao: obs.trim() || null, origem: 'admin' },
       { onConflict: 'data,modalidade' }
@@ -510,6 +525,16 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
               {sel.notas_baixas} {sel.notas_baixas === 1 ? 'nota' : 'notas'} de música 3 ou menos nos dias em que tocou.
             </Insight>
           )}
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xs text-gray-400 uppercase tracking-wide w-10">Link</span>
+            <input
+              value={link}
+              onChange={e => setLink(e.target.value)}
+              disabled={!sel}
+              placeholder="https://… (fica salvo na playlist, vale para todos os dias)"
+              className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm disabled:bg-gray-50"
+            />
+          </div>
           <div className="flex items-center gap-2">
             <div className="flex-1 min-w-0">
               <div className="text-sm text-gray-900 truncate">
@@ -671,14 +696,17 @@ function EditarPlaylist({ playlist, onClose, onSaved }: { playlist: Stat; onClos
 
   async function salvar() {
     if (!nome.trim()) return
-    const { error } = await supabase
+    const { data: upd, error } = await supabase
       .from('playlists')
       .update({ nome: nome.trim(), link: link.trim() || null, ativo })
       .eq('id', playlist.playlist_id)
+      .select('id')
     if (error) {
       setErro((error as any).code === '23505' ? 'Já existe uma playlist com esse nome' : error.message)
       return
     }
+    // RLS barrando o update não devolve erro, só 0 linhas
+    if (!upd?.length) { setErro('Não foi possível salvar'); return }
     onSaved()
   }
 
