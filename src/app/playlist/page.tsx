@@ -2,6 +2,7 @@
 // Página dos coaches do Club: playlist de hoje (Lift e Running), entrada por PIN.
 // Dia sem playlist mostra o botão "Sugestão do dia".
 import { useEffect, useState } from 'react'
+import { Copy, Check } from 'lucide-react'
 
 type Item = { nome: string; link: string | null; observacao: string | null }
 type Dia = { data: string; lift: Item | null; running: Item | null }
@@ -29,6 +30,26 @@ function fmtDia(data: string) {
   return new Date(y, m - 1, d, 12).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' })
 }
 
+async function copiarTexto(texto: string) {
+  try {
+    await navigator.clipboard.writeText(texto)
+    return true
+  } catch {
+    // Celular antigo sem Clipboard API
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = texto
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      const ok = document.execCommand('copy')
+      document.body.removeChild(ta)
+      return ok
+    } catch { return false }
+  }
+}
+
 async function chamar(url: string, body: any) {
   const r = await fetch(url, {
     method: 'POST',
@@ -46,6 +67,14 @@ export default function PlaylistCoachPage() {
   const [dia, setDia] = useState<Dia | null>(null)
   const [erro, setErro] = useState('')
   const [gerando, setGerando] = useState<Modalidade | null>(null)
+  const [copiado, setCopiado] = useState<Modalidade | null>(null)
+
+  async function copiar(m: Modalidade, texto: string) {
+    if (await copiarTexto(texto)) {
+      setCopiado(m)
+      setTimeout(() => setCopiado(c => (c === m ? null : c)), 2000)
+    }
+  }
 
   async function carregar(pin: string) {
     const { ok, j } = await chamar('/api/playlist/hoje', { pin })
@@ -139,7 +168,19 @@ export default function PlaylistCoachPage() {
                     </div>
                     {item ? (
                       <>
-                        <div className="mt-3 text-base leading-snug">{item.nome}</div>
+                        <div className="mt-3 flex items-start gap-3">
+                          <div className="flex-1 text-base leading-snug">{item.nome}</div>
+                          <button
+                            onClick={() => copiar(m.key, item.nome)}
+                            aria-label="Copiar nome da playlist"
+                            className={`shrink-0 flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs ${
+                              copiado === m.key ? 'border-green-400/40 text-green-400' : 'border-white/15 text-gray-300'
+                            }`}
+                          >
+                            {copiado === m.key ? <Check size={16} /> : <Copy size={16} />}
+                            {copiado === m.key ? 'Copiado' : 'Copiar'}
+                          </button>
+                        </div>
                         {item.observacao && (
                           <div className="mt-2 text-sm text-amber-300">{item.observacao}</div>
                         )}
