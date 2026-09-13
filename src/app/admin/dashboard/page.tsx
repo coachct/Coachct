@@ -5,6 +5,40 @@ import { fmt } from '@/lib/utils'
 import { KpiCard, PageHeader, Spinner } from '@/components/ui'
 import CardAcompanhados from '@/components/CardAcompanhados'
 import Link from 'next/link'
+import { CalendarDays, Dumbbell, Users, Clock, Receipt, MessageCircle } from 'lucide-react'
+
+// ============================================================
+// AÇÕES RÁPIDAS — atalhos das rotinas do dia a dia, no topo da home.
+// Trocar um atalho = trocar uma linha desta lista.
+// ============================================================
+const ACOES_RAPIDAS = [
+  { label: 'Calendário Club', href: '/admin/justclub/calendario',      icon: CalendarDays },
+  { label: 'Calendário CT',   href: '/admin/agenda',                   icon: Dumbbell },
+  { label: 'Clientes',        href: '/admin/clientes',                 icon: Users },
+  { label: 'Fila de espera',  href: '/admin/fila-espera',              icon: Clock },
+  { label: 'Contas a pagar',  href: '/admin/financeiro/contas-a-pagar', icon: Receipt },
+  { label: 'WhatsApp',        href: '/admin/conversas',                icon: MessageCircle },
+]
+
+function AcoesRapidas() {
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
+      {ACOES_RAPIDAS.map(a => {
+        const Icon = a.icon
+        return (
+          <Link
+            key={a.href}
+            href={a.href}
+            className="flex flex-col items-start justify-center gap-2 min-h-[76px] rounded-xl border border-gray-200 bg-white px-4 py-3 active:bg-gray-50 hover:border-primary-300 transition-colors"
+          >
+            <Icon size={20} className="text-primary-600 flex-shrink-0" />
+            <span className="text-sm font-medium text-gray-800 leading-tight">{a.label}</span>
+          </Link>
+        )
+      })}
+    </div>
+  )
+}
 
 type Unidade = {
   id: string
@@ -111,8 +145,8 @@ export default function AdminDashboard() {
 
   return (
     <div>
-      {/* Header com filtro de unidade */}
-      <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
+      {/* Header com filtro de unidade — fixo no topo no mobile pra nao perder a unidade de vista */}
+      <div className="sticky top-14 z-20 -mx-4 px-4 pt-1 pb-3 bg-gray-50 border-b border-gray-100 md:static md:mx-0 md:px-0 md:pt-0 md:pb-0 md:bg-transparent md:border-0 flex items-start justify-between mb-4 md:mb-6 gap-4 flex-wrap">
         <PageHeader title="Dashboard" subtitle={mesNome.charAt(0).toUpperCase() + mesNome.slice(1)} />
         {unidades.length > 0 && (
           <div className="flex gap-2 flex-wrap">
@@ -135,6 +169,9 @@ export default function AdminDashboard() {
           </div>
         )}
       </div>
+
+      {/* Atalhos das rotinas do dia */}
+      <AcoesRapidas />
 
       {/* Clientes marcados pra acompanhar — some sozinho se não tiver ninguém */}
       <CardAcompanhados />
