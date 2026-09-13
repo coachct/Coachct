@@ -6,7 +6,6 @@ import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
 import { Menu, X, LogOut, Home, ChevronDown } from 'lucide-react'
 import { dashboardDoRole, Role } from '@/lib/auth-redirect'
-import BottomTabs from './BottomTabs'
 
 interface NavItem {
   label: string
@@ -265,11 +264,6 @@ export default function SidebarLayout({ children, navItems, role, rolesPermitido
           {children}
         </div>
       </main>
-
-      {/* Abas fixas no rodapé — só admin, só mobile. Recepção/coach seguem como estão. */}
-      {role === 'admin' && (
-        <BottomTabs onMore={() => setOpen(o => !o)} menuAberto={open} />
-      )}
     </div>
   )
 }
