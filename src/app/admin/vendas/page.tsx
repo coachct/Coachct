@@ -383,7 +383,7 @@ export default function AdminVendasPage() {
         </div>
       )}
 
-      <div className="max-w-4xl mx-auto px-6 py-5">
+      <div className="max-w-4xl mx-auto px-0 md:px-6 py-5">
 
         {/* Cards de resumo */}
         <div className="grid grid-cols-2 gap-3 mb-6 sm:grid-cols-4">
@@ -512,8 +512,9 @@ export default function AdminVendasPage() {
               const StatusIcon = status.icon
               const OrigemIcon = origem.icon
               return (
-                <div key={v.id} className="card flex items-center gap-3">
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${metodo.color}`}>
+                <div key={v.id} className="card flex items-start md:items-center gap-3">
+                  {/* Ícone do método só no desktop — no celular o método já aparece escrito */}
+                  <div className={`w-9 h-9 rounded-xl hidden md:flex items-center justify-center flex-shrink-0 ${metodo.color}`}>
                     <MetodoIcon size={16} />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -556,11 +557,15 @@ export default function AdminVendasPage() {
                     {v.motivo_falha && (
                       <div className="text-xs text-red-500 mt-0.5">{v.motivo_falha}</div>
                     )}
+                    {/* Celular: e-mail aqui embaixo (na coluna do valor ele espremia o nome) */}
+                    {v.cliente_email && (
+                      <div className="md:hidden text-xs text-gray-400 mt-0.5 truncate">{v.cliente_email}</div>
+                    )}
                   </div>
                   <div className="text-right flex-shrink-0">
                     <div className="text-sm font-bold text-gray-900">{formatarValor(v.valor_total)}</div>
                     {v.cliente_email && (
-                      <div className="text-xs text-gray-400">{v.cliente_email}</div>
+                      <div className="hidden md:block text-xs text-gray-400">{v.cliente_email}</div>
                     )}
                   </div>
                   <button

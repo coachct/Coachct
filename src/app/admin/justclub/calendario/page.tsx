@@ -203,22 +203,23 @@ export default function AdminCalendarioClubPage() {
                   {(aula?.horario||'').slice(0,5)}
                 </div>
 
-                <div style={{ flex:1 }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
-                    <span style={{ fontSize:11, fontWeight:700, color:cor, background:`${cor}18`,
-                      padding:'2px 10px', borderRadius:20 }}>{tipoLabel(aula?.tipo)}</span>
+                <div style={{ flex:1, minWidth:0 }}>
+                  {/* Hierarquia: tipo da aula (destaque) → coach → grupo muscular (discreto) */}
+                  <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3 }}>
+                    <span style={{ width:9, height:9, borderRadius:'50%', background:cor, flexShrink:0 }}/>
+                    <span style={{ fontSize:16, fontWeight:700, color:'#111', lineHeight:1.2 }}>{tipoLabel(aula?.tipo)}</span>
                   </div>
-                  <div style={{ fontSize:14, fontWeight:600, color:'#111', marginBottom:2 }}>
-                    {aula?.grupos_musculares?.nome || '—'}
-                  </div>
-                  <div style={{ fontSize:12, color:'#888' }}>
+                  <div style={{ fontSize:13, fontWeight:600, color:'#444', marginBottom:2 }}>
                     👤 {nomeCoach
                           ? nomeCoach
                           : <span style={{ color: VERMELHO, fontWeight:700 }}>Coach a definir</span>}
                     {oc.coach_correcao_manual && (
                       <span style={{ marginLeft:6, fontSize:9, fontWeight:700, color:AMARELO, textTransform:'uppercase', letterSpacing:0.5 }}>corrigido</span>
                     )}
-                    {' · '}{aula?.duracao_min || 50}min
+                    <span style={{ fontWeight:400, color:'#999' }}>{' · '}{aula?.duracao_min || 50}min</span>
+                  </div>
+                  <div style={{ fontSize:12, color:'#aaa' }}>
+                    {aula?.grupos_musculares?.nome || '—'}
                   </div>
                 </div>
 

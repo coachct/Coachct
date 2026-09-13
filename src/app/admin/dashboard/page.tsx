@@ -5,6 +5,43 @@ import { fmt } from '@/lib/utils'
 import { KpiCard, PageHeader, Spinner } from '@/components/ui'
 import CardAcompanhados from '@/components/CardAcompanhados'
 import Link from 'next/link'
+import { CalendarDays, Dumbbell, ShoppingCart, Receipt, MessageCircle, Instagram, Star, UserX, Music } from 'lucide-react'
+
+// ============================================================
+// AÇÕES RÁPIDAS — atalhos das rotinas do dia a dia, no topo da home.
+// Trocar um atalho = trocar uma linha desta lista.
+// ============================================================
+const ACOES_RAPIDAS = [
+  { label: 'Calendário CT',   href: '/admin/agenda',                   icon: Dumbbell },
+  { label: 'Calendário Club', href: '/admin/justclub/calendario',      icon: CalendarDays },
+  { label: 'Playlists',       href: '/admin/playlists',                icon: Music },
+  { label: 'WhatsApp',        href: '/admin/conversas',                icon: MessageCircle },
+  { label: 'Instagram',       href: '/admin/conversas-instagram',      icon: Instagram },
+  { label: 'Avaliações',      href: '/admin/avaliacoes',               icon: Star },
+  { label: 'Vendas',          href: '/admin/vendas',                   icon: ShoppingCart },
+  { label: 'Contas a pagar',  href: '/admin/financeiro/contas-a-pagar', icon: Receipt },
+  { label: 'No-show',         href: '/admin/cobranca-noshow',          icon: UserX },
+]
+
+function AcoesRapidas() {
+  return (
+    <div className="grid grid-cols-3 gap-3 mb-6">
+      {ACOES_RAPIDAS.map(a => {
+        const Icon = a.icon
+        return (
+          <Link
+            key={a.href}
+            href={a.href}
+            className="flex flex-col items-start justify-center gap-2 min-h-[76px] rounded-xl border border-[#ff2d9b]/20 bg-[#ff2d9b]/10 px-4 py-3 active:bg-[#ff2d9b]/20 hover:border-[#ff2d9b]/40 transition-colors"
+          >
+            <Icon size={20} className="flex-shrink-0 text-[#ff2d9b]" />
+            <span className="text-sm font-medium leading-tight text-gray-900">{a.label}</span>
+          </Link>
+        )
+      })}
+    </div>
+  )
+}
 
 type Unidade = {
   id: string
@@ -111,8 +148,11 @@ export default function AdminDashboard() {
 
   return (
     <div>
-      {/* Header com filtro de unidade */}
-      <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
+      {/* Atalhos das rotinas do dia — no topo, antes do dashboard da unidade */}
+      <AcoesRapidas />
+
+      {/* Header com filtro de unidade — fixo no topo no mobile pra nao perder a unidade de vista */}
+      <div className="sticky top-0 z-20 -mx-4 px-4 pt-1 pb-3 bg-gray-50 border-b border-gray-100 md:static md:mx-0 md:px-0 md:pt-0 md:pb-0 md:bg-transparent md:border-0 flex items-start justify-between mb-4 md:mb-6 gap-4 flex-wrap">
         <PageHeader title="Dashboard" subtitle={mesNome.charAt(0).toUpperCase() + mesNome.slice(1)} />
         {unidades.length > 0 && (
           <div className="flex gap-2 flex-wrap">
@@ -124,8 +164,8 @@ export default function AdminDashboard() {
                   onClick={() => setUnidadeSelecionada(u.id)}
                   className={`px-5 py-2.5 rounded-xl border text-sm font-semibold transition-colors ${
                     ativo
-                      ? 'bg-primary-500 text-white border-primary-500 shadow-sm'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300 hover:text-primary-700'
+                      ? 'bg-[#ff2d9b] text-white border-[#ff2d9b] shadow-sm'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-[#ff2d9b]/40 hover:text-[#ff2d9b]'
                   }`}
                 >
                   {labelCurtoUnidade(u)}
@@ -447,10 +487,11 @@ function DashboardClub({ unidadeId, unidadeNome }: { unidadeId: string; unidadeN
   const [resumoAmanha, setResumoAmanha] = useState<any>(null)
   const [vendasDia, setVendasDia]     = useState(0)
   const [vendasMes, setVendasMes]     = useState(0)
-  const [dataSel, setDataSel]         = useState(hoje)
-  const [detalhe, setDetalhe]         = useState<any>(null)
   const [loading, setLoading]         = useState(true)
-  const [loadingDetalhe, setLoadingDetalhe] = useState(false)
+  // "Ver outro dia": data escolhida no fim da tela ('' = nenhuma) e as aulas dela
+  const [dataOutro, setDataOutro]       = useState('')
+  const [detalheOutro, setDetalheOutro] = useState<any>(null)
+  const [loadingOutro, setLoadingOutro] = useState(false)
 
   // Carrega as aulas (ocorrências) + reservas de um dia, monta resumo
   async function carregarDia(dataStr: string) {
@@ -507,8 +548,8 @@ function DashboardClub({ unidadeId, unidadeNome }: { unidadeId: string; unidadeN
       if (!ativo) return
       setResumoHoje(rh)
       setResumoAmanha(ra)
-      setDataSel(hoje)
-      setDetalhe(rh)
+      setDataOutro('')
+      setDetalheOutro(null)
       const v = await buscarVendas(supabase, unidadeId)
       if (!ativo) return
       setVendasDia(v.dia)
@@ -519,31 +560,73 @@ function DashboardClub({ unidadeId, unidadeNome }: { unidadeId: string; unidadeN
     return () => { ativo = false }
   }, [unidadeId])
 
-  // Detalhe muda com a data selecionada (reaproveita hoje/amanhã já carregados)
+  // "Ver outro dia" — reaproveita hoje/amanhã já carregados; outro dia busca na hora
   useEffect(() => {
-    if (loading) return
+    if (!dataOutro) { setDetalheOutro(null); return }
+    if (dataOutro === hoje && resumoHoje)     { setDetalheOutro(resumoHoje); return }
+    if (dataOutro === amanha && resumoAmanha) { setDetalheOutro(resumoAmanha); return }
     let ativo = true
-    async function loadDet() {
-      if (dataSel === hoje && resumoHoje)   { setDetalhe(resumoHoje); return }
-      if (dataSel === amanha && resumoAmanha) { setDetalhe(resumoAmanha); return }
-      setLoadingDetalhe(true)
-      const r = await carregarDia(dataSel)
+    setLoadingOutro(true)
+    carregarDia(dataOutro).then(r => {
       if (!ativo) return
-      setDetalhe(r)
-      setLoadingDetalhe(false)
-    }
-    loadDet()
+      setDetalheOutro(r)
+      setLoadingOutro(false)
+    })
     return () => { ativo = false }
-  }, [dataSel])
+  }, [dataOutro])
 
   if (loading) return <Spinner />
 
-  const labelDataSel = (() => {
-    if (dataSel === hoje) return 'Hoje'
-    if (dataSel === amanha) return 'Amanhã'
-    return new Date(dataSel + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
-  })()
-  const ehHoje = dataSel === hoje
+  const labelOutro = dataOutro
+    ? new Date(dataOutro + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
+    : ''
+
+  // Aulas de um dia, já listadas (cada uma abre o detalhe). Presenças/faltas só no dia de hoje, como antes.
+  function ListaAulas({ resumo, mostrarPresencas }: { resumo: any; mostrarPresencas?: boolean }) {
+    if (!resumo || resumo.aulas.length === 0) {
+      return <div className="text-center py-6 text-sm text-gray-400 italic">Nenhuma aula nesse dia.</div>
+    }
+    return (
+      <div className="space-y-2">
+        {resumo.aulas.map((a: any) => {
+          const pct = a.capacidade > 0 ? Math.round((a.reservas / a.capacidade) * 100) : 0
+          return (
+            <Link
+              key={a.id}
+              href={`/admin/justclub/calendario/${a.id}`}
+              className="flex items-center gap-3 px-4 py-3 rounded-xl border bg-white border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer"
+            >
+              <div className="text-center flex-shrink-0 w-14">
+                <div className="text-sm font-bold text-gray-700">{a.horario}</div>
+              </div>
+              <div className="w-px h-8 bg-gray-200 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-gray-900 truncate">{tipoLabelClub(a.tipo)}</div>
+                <div className="text-xs text-gray-400 mt-0.5 truncate">
+                  {a.coach ? `Coach: ${a.coach}` : 'Coach a definir'}
+                  {a.bloqueadas > 0 && <span className="text-red-400"> · {a.bloqueadas} bloqueada{a.bloqueadas !== 1 ? 's' : ''}</span>}
+                  {mostrarPresencas && (a.presentes > 0 || a.faltas > 0) && (
+                    <span className="text-gray-400"> · {a.presentes} pres. / {a.faltas} falta{a.faltas !== 1 ? 's' : ''}</span>
+                  )}
+                </div>
+              </div>
+              <div className="flex-shrink-0 w-28">
+                <div className="flex items-center justify-end gap-2 mb-1">
+                  <span className="text-sm font-semibold text-gray-700">{a.reservas}/{a.capacidade}</span>
+                </div>
+                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${pct >= 85 ? 'bg-red-500' : pct >= 50 ? 'bg-primary-400' : 'bg-green-500'}`}
+                    style={{ width: `${Math.min(100, pct)}%` }}
+                  />
+                </div>
+              </div>
+            </Link>
+          )
+        })}
+      </div>
+    )
+  }
 
   function CardDia({ titulo, dataStr, resumo, destaque }: { titulo: string; dataStr: string; resumo: any; destaque?: boolean }) {
     const cap = resumo?.capacidade || 0
@@ -568,7 +651,7 @@ function DashboardClub({ unidadeId, unidadeNome }: { unidadeId: string; unidadeN
         </div>
         <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
           <div
-            className={`h-full rounded-full transition-all ${pct >= 85 ? 'bg-red-500' : pct >= 50 ? 'bg-primary-500' : 'bg-green-500'}`}
+            className={`h-full rounded-full transition-all ${pct >= 85 ? 'bg-red-500' : pct >= 50 ? 'bg-primary-400' : 'bg-green-500'}`}
             style={{ width: `${Math.min(100, pct)}%` }}
           />
         </div>
@@ -579,94 +662,59 @@ function DashboardClub({ unidadeId, unidadeNome }: { unidadeId: string; unidadeN
 
   return (
     <div>
-      {/* Resumo HOJE / AMANHÃ */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <CardDia titulo="Hoje"   dataStr={hoje}   resumo={resumoHoje}   destaque />
-        <CardDia titulo="Amanhã" dataStr={amanha} resumo={resumoAmanha} />
+      {/* Hoje com as aulas embaixo, depois Amanhã com as aulas — já listadas, sem precisar tocar.
+          Desktop: duas colunas lado a lado. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 items-start">
+        <div className="space-y-2">
+          <CardDia titulo="Hoje" dataStr={hoje} resumo={resumoHoje} destaque />
+          <ListaAulas resumo={resumoHoje} mostrarPresencas />
+        </div>
+        <div className="space-y-2">
+          <CardDia titulo="Amanhã" dataStr={amanha} resumo={resumoAmanha} />
+          <ListaAulas resumo={resumoAmanha} />
+        </div>
       </div>
 
-      {/* Resumo por aula */}
+      {/* Ver outro dia — mantém a consulta por data que existia no bloco "Reservas por aula" */}
       <div className="card mb-6">
-        <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <h2 className="text-sm font-semibold text-gray-900">Reservas por aula</h2>
-            <p className="text-xs text-gray-400 mt-0.5 capitalize">{labelDataSel}{unidadeNome && <span className="text-gray-300"> · {unidadeNome}</span>}</p>
+            <h2 className="text-sm font-semibold text-gray-900">Ver outro dia</h2>
+            {dataOutro && (
+              <p className="text-xs text-gray-400 mt-0.5 capitalize">{labelOutro}{unidadeNome && <span className="text-gray-300"> · {unidadeNome}</span>}</p>
+            )}
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex bg-gray-100 rounded-lg p-0.5">
-              <button
-                onClick={() => setDataSel(hoje)}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${dataSel === hoje ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
-              >
-                Hoje
-              </button>
-              <button
-                onClick={() => setDataSel(amanha)}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${dataSel === amanha ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
-              >
-                Amanhã
-              </button>
-            </div>
+          <div className="flex items-center gap-2">
             <input
               type="date"
-              value={dataSel}
-              onChange={(e) => setDataSel(e.target.value)}
-              className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400"
+              value={dataOutro}
+              onChange={(e) => setDataOutro(e.target.value)}
+              className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-base md:text-xs font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400"
             />
+            {dataOutro && (
+              <button onClick={() => setDataOutro('')} className="text-xs text-gray-400 underline">limpar</button>
+            )}
           </div>
         </div>
 
-        {loadingDetalhe ? (
-          <div className="text-center py-8 text-sm text-gray-400 italic">Carregando…</div>
-        ) : !detalhe || detalhe.aulas.length === 0 ? (
-          <div className="text-center py-8 text-sm text-gray-400 italic">Nenhuma aula nesse dia.</div>
-        ) : (
-          <>
-            <div className="flex items-center justify-between mb-3 text-xs">
-              <span className="text-gray-500">{detalhe.nAulas} aulas</span>
-              <span className="font-semibold text-gray-700">
-                {detalhe.ocupadas}/{detalhe.capacidade} vagas ocupadas · {detalhe.capacidade > 0 ? Math.round((detalhe.ocupadas / detalhe.capacidade) * 100) : 0}%
-              </span>
-            </div>
-            <div className="space-y-2">
-              {detalhe.aulas.map((a: any) => {
-                const pct = a.capacidade > 0 ? Math.round((a.reservas / a.capacidade) * 100) : 0
-                return (
-                  <Link
-                    key={a.id}
-                    href={`/admin/justclub/calendario/${a.id}`}
-                    className="flex items-center gap-3 px-4 py-3 rounded-xl border bg-gray-50 border-gray-100 hover:bg-gray-100 hover:border-gray-200 transition-colors cursor-pointer"
-                  >
-                    <div className="text-center flex-shrink-0 w-14">
-                      <div className="text-sm font-bold text-gray-700">{a.horario}</div>
-                    </div>
-                    <div className="w-px h-8 bg-gray-200 flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-gray-900 truncate">{tipoLabelClub(a.tipo)}</div>
-                      <div className="text-xs text-gray-400 mt-0.5 truncate">
-                        {a.coach ? `Coach: ${a.coach}` : 'Coach a definir'}
-                        {a.bloqueadas > 0 && <span className="text-red-400"> · {a.bloqueadas} bloqueada{a.bloqueadas !== 1 ? 's' : ''}</span>}
-                        {ehHoje && (a.presentes > 0 || a.faltas > 0) && (
-                          <span className="text-gray-400"> · {a.presentes} pres. / {a.faltas} falta{a.faltas !== 1 ? 's' : ''}</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex-shrink-0 w-32">
-                      <div className="flex items-center justify-end gap-2 mb-1">
-                        <span className="text-sm font-semibold text-gray-700">{a.reservas}/{a.capacidade}</span>
-                      </div>
-                      <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all ${pct >= 85 ? 'bg-red-500' : pct >= 50 ? 'bg-primary-500' : 'bg-green-500'}`}
-                          style={{ width: `${Math.min(100, pct)}%` }}
-                        />
-                      </div>
-                    </div>
-                  </Link>
-                )
-              })}
-            </div>
-          </>
+        {dataOutro && (
+          <div className="mt-4">
+            {loadingOutro ? (
+              <div className="text-center py-8 text-sm text-gray-400 italic">Carregando…</div>
+            ) : (
+              <>
+                {detalheOutro && detalheOutro.aulas.length > 0 && (
+                  <div className="flex items-center justify-between mb-3 text-xs">
+                    <span className="text-gray-500">{detalheOutro.nAulas} aulas</span>
+                    <span className="font-semibold text-gray-700">
+                      {detalheOutro.ocupadas}/{detalheOutro.capacidade} vagas ocupadas · {detalheOutro.capacidade > 0 ? Math.round((detalheOutro.ocupadas / detalheOutro.capacidade) * 100) : 0}%
+                    </span>
+                  </div>
+                )}
+                <ListaAulas resumo={detalheOutro} mostrarPresencas={dataOutro === hoje} />
+              </>
+            )}
+          </div>
         )}
       </div>
 

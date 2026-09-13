@@ -256,12 +256,18 @@ export default function FinanceiroDREPage() {
   const inputCls =
     'rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20'
 
+  // No celular, em "Todas as unidades", a DRE mostra só Conta + Total (sem rolar pro lado).
+  // Pra ver uma unidade, troca no filtro do topo. No desktop (md+) mostra todas as colunas.
+  function colCls(key: string): string {
+    return unidadeFiltro === 'todas' && key !== 'total' ? 'hidden md:table-cell' : ''
+  }
+
   function celValor(valores: Record<string, number>, key: string): number {
     return valores[key] || 0
   }
 
   return (
-    <div className="min-h-screen bg-[#f3f4f6] px-4 py-6 sm:px-8">
+    <div className="min-h-screen bg-[#f3f4f6] px-0 py-6 sm:px-8">
       <div className="mx-auto max-w-6xl">
         {/* Cabeçalho */}
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -405,7 +411,7 @@ export default function FinanceiroDREPage() {
                       {colunas.map((c) => (
                         <th
                           key={c.key}
-                          className={`px-4 py-3 text-right font-medium ${
+                          className={`px-4 py-3 text-right font-medium ${colCls(c.key)} ${
                             c.key === 'total' ? 'text-gray-700' : ''
                           }`}
                         >
@@ -421,7 +427,7 @@ export default function FinanceiroDREPage() {
                         Receita
                       </td>
                       {colunas.map((c) => (
-                        <td key={c.key} className="px-4 py-2" />
+                        <td key={c.key} className={`px-4 py-2 ${colCls(c.key)}`} />
                       ))}
                     </tr>
                     <tr className="border-b border-gray-50">
@@ -429,7 +435,7 @@ export default function FinanceiroDREPage() {
                       {colunas.map((c) => (
                         <td
                           key={c.key}
-                          className={`px-4 py-2.5 text-right ${
+                          className={`px-4 py-2.5 text-right ${colCls(c.key)} ${
                             c.key === 'total' ? 'font-semibold text-gray-900' : 'text-gray-700'
                           }`}
                         >
@@ -444,7 +450,7 @@ export default function FinanceiroDREPage() {
                         Despesas
                       </td>
                       {colunas.map((c) => (
-                        <td key={c.key} className="px-4 py-2" />
+                        <td key={c.key} className={`px-4 py-2 ${colCls(c.key)}`} />
                       ))}
                     </tr>
 
@@ -463,6 +469,7 @@ export default function FinanceiroDREPage() {
                         categorias={g.categorias}
                         colunas={colunas}
                         celValor={celValor}
+                        colCls={colCls}
                       />
                     ))}
 
@@ -472,7 +479,7 @@ export default function FinanceiroDREPage() {
                         {colunas.map((c) => (
                           <td
                             key={c.key}
-                            className="px-4 py-2.5 text-right font-semibold text-amber-700"
+                            className={`px-4 py-2.5 text-right font-semibold text-amber-700 ${colCls(c.key)}`}
                           >
                             {money(despPorColuna[c.key] || 0)}
                           </td>
@@ -488,7 +495,7 @@ export default function FinanceiroDREPage() {
                         return (
                           <td
                             key={c.key}
-                            className={`px-4 py-3 text-right font-bold ${
+                            className={`px-4 py-3 text-right font-bold ${colCls(c.key)} ${
                               v >= 0 ? 'text-green-600' : 'text-red-600'
                             }`}
                           >
@@ -507,7 +514,7 @@ export default function FinanceiroDREPage() {
                         return (
                           <td
                             key={c.key}
-                            className={`px-4 py-2.5 text-right text-sm ${
+                            className={`px-4 py-2.5 text-right text-sm ${colCls(c.key)} ${
                               v >= 0 ? 'text-green-600' : 'text-red-600'
                             }`}
                           >
@@ -581,11 +588,13 @@ function FragmentGrupo({
   categorias,
   colunas,
   celValor,
+  colCls,
 }: {
   grupo: string
   categorias: { nome: string; valores: Record<string, number> }[]
   colunas: { key: string; label: string }[]
   celValor: (valores: Record<string, number>, key: string) => number
+  colCls: (key: string) => string
 }) {
   return (
     <>
@@ -603,7 +612,7 @@ function FragmentGrupo({
           {colunas.map((c) => (
             <td
               key={c.key}
-              className={`px-4 py-2 text-right ${
+              className={`px-4 py-2 text-right ${colCls(c.key)} ${
                 c.key === 'total' ? 'font-medium text-gray-700' : 'text-gray-600'
               }`}
             >

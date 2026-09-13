@@ -105,6 +105,8 @@ export default function RecepcaoClubDetalhe() {
   const [loadingData,  setLoadingData]  = useState(true)
   const [atualizando,  setAtualizando]  = useState<string | null>(null)
   const [msg,          setMsg]          = useState('')
+  // Celular: qual aluno está com o menu ⋯ (Trocar de aula / Cancelar) aberto
+  const [menuAluno,    setMenuAluno]    = useState<string | null>(null)
 
   // Walk-in
   const [buscaTexto,   setBuscaTexto]   = useState('')
@@ -752,6 +754,22 @@ export default function RecepcaoClubDetalhe() {
     showMsg(isFuturo ? '✅ Reserva criada!' : '✅ Cliente adicionado como presente!')
   }
 
+  // Trocar de aula: só reserva nossa (não app parceiro), ativa, e aula não encerrada
+  function podeTrocarAula(r: any) {
+    return !isPassado && ['reservado','presente'].includes(r.status)
+      && !r.via_app && !r.wellhub_booking_number && !r.totalpass_slot_id
+  }
+  function clicarTrocaAula(r: any) {
+    if (origemLotada) showMsg('⚠️ Aula lotada — troca indisponível (a aula de origem não pode estar cheia).')
+    else abrirTrocaAula(r)
+  }
+  // Cancelar reserva — exclusivo admin
+  async function cancelarReserva(r: any) {
+    if (!confirm(`Cancelar reserva de ${r.clientes?.nome}?`)) return
+    await supabase.from('club_reservas').update({ status:'cancelado' }).eq('id', r.id)
+    await carregarDados(); showMsg('🗑️ Reserva cancelada.')
+  }
+
   function showMsg(texto: string) { setMsg(texto); setTimeout(() => setMsg(''), 3500) }
 
   const aula      = ocorrencia?.club_aulas
@@ -1002,24 +1020,57 @@ export default function RecepcaoClubDetalhe() {
   )
 
   return (
-    <div style={{ padding:'2rem', fontFamily:"'DM Sans', sans-serif", maxWidth:900 }}>
+    <div className="det-root" style={{ padding:'2rem', fontFamily:"'DM Sans', sans-serif", maxWidth:900 }}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
-        @media (max-width: 640px) {
-          .aluno-row { flex-wrap: wrap !important; }
-          .aluno-acoes { display: flex !important; width: 100%; align-items: center; justify-content: flex-end; gap: 0.55rem; }
-          .aluno-acoes > div:first-child { margin-right: auto; }
+        /* Elementos que só existem no celular */
+        .det-lbl, .aluno-mais { display: none; }
+        .aluno-menu { display: none !important; }
+        @media (max-width: 767px) {
+          /* sem margem extra (o layout já tem) e ordem: header → números → lista → ajustes */
+          .det-root { padding: 0 !important; display: flex; flex-direction: column; }
+          .det-header { order: -3; flex-wrap: wrap; align-items: center !important; gap: 0.35rem 0.75rem !important; }
+          .det-stats  { order: -2; }
+          .det-lista  { order: -1; }
+          /* header em linhas: ‹ + título + selo / grupo · coach · data / Corrigir coach + ‹ › */
+          .det-info { display: contents; }
+          .det-titulo { flex: 1 1 0; min-width: 0; flex-wrap: wrap; margin-bottom: 0 !important; }
+          .det-sub { flex-basis: 100%; }
+          .det-corrigir { margin-top: 0 !important; }
+          .det-nav { margin-left: auto; }
+          /* aviso flutuando logo acima das abas do rodapé */
+          .det-msg { position: fixed; left: 16px; right: 16px; z-index: 35; margin: 0 !important;
+            bottom: calc(68px + env(safe-area-inset-bottom)); box-shadow: 0 6px 20px rgba(0,0,0,0.12); }
+          /* linha do aluno: ✓ Presente / ✗ Falta grandes + ⋯ */
+          .aluno-row { flex-wrap: wrap !important; padding: 0.85rem 1rem !important; }
+          /* o destaque é nome + posição; botões menores, à direita, na linha de baixo */
+          .aluno-nome { font-size: 16px !important; }
+          .aluno-info { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+          .aluno-linha1, .aluno-linha2 { display: contents !important; }
+          .aluno-pos { order: 1; font-size: 15px !important; background: #ff2d9b1a !important; color: #ff2d9b !important;
+            border: 1px solid #ff2d9b33; padding: 1px 10px !important; }
+          .aluno-linha1 > span { order: 2; }
+          .aluno-plano { order: 3; flex-basis: 100%; }
+          .aluno-acoes { display: flex !important; width: 100%; align-items: center; justify-content: flex-end; gap: 0.4rem; }
+          .aluno-status, .aluno-troca, .aluno-cancelar { display: none !important; }
+          .aluno-botoes { gap: 0.4rem !important; }
+          .aluno-btn { padding: 0.35rem 0.75rem !important; font-size: 12px !important; }
+          .aluno-presente-on { background: #2ddd8b24 !important; color: #0f9d58 !important; border-color: #2ddd8b !important; }
+          .aluno-falta-on { background: #ff44441a !important; color: #dc2626 !important; border-color: #ff4444 !important; }
+          .det-lbl { display: inline; margin-left: 4px; }
+          .aluno-mais { display: block; width: 34px !important; align-self: stretch; font-size: 16px !important; }
+          .aluno-menu { display: flex !important; }
         }
       `}</style>
 
       {/* Header */}
-      <div style={{ display:'flex', alignItems:'center', gap:'1rem', marginBottom:'1.5rem' }}>
+      <div className="det-header" style={{ display:'flex', alignItems:'center', gap:'1rem', marginBottom:'1.5rem' }}>
         <button onClick={() => router.push('/admin/justclub/calendario')}
           style={{ background:'#f3f4f6', border:'none', borderRadius:8, width:36, height:36,
             cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, color:'#555', flexShrink:0 }}>
           ‹
         </button>
-        <div style={{ flex:1 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:4 }}>
+        <div className="det-info" style={{ flex:1 }}>
+          <div className="det-titulo" style={{ display:'flex', alignItems:'center', gap:10, marginBottom:4 }}>
             <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:24, color:'#111', letterSpacing:1 }}>
               {tipoLabel(aula?.tipo)} — {(aula?.horario||'').slice(0,5)}
             </div>
@@ -1028,7 +1079,7 @@ export default function RecepcaoClubDetalhe() {
               {badge.label}
             </span>
           </div>
-          <div style={{ fontSize:13, color:'#888' }}>
+          <div className="det-sub" style={{ fontSize:13, color:'#888' }}>
             {aula?.grupos_musculares?.nome} ·{' '}
             {nomeCoachExibir
               ? nomeCoachExibir
@@ -1039,7 +1090,7 @@ export default function RecepcaoClubDetalhe() {
             {' · '}
             {ocorrencia?.data ? new Date(ocorrencia.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'}) : ''}
           </div>
-          <button onClick={() => { setCoachSelCorrecao(ocorrencia?.coach_id || ''); setModalCoach(true) }}
+          <button className="det-corrigir" onClick={() => { setCoachSelCorrecao(ocorrencia?.coach_id || ''); setModalCoach(true) }}
             style={{ marginTop:6, background:'transparent', border:'none', color:ACCENT, fontSize:12, fontWeight:600,
               cursor:'pointer', textDecoration:'underline', padding:0, fontFamily:"'DM Sans', sans-serif" }}>
             ✏️ Corrigir coach
@@ -1047,7 +1098,7 @@ export default function RecepcaoClubDetalhe() {
         </div>
 
         {/* NOVO: navegar para a aula anterior / próxima (mesmo dia e unidade, por horário) */}
-        <div style={{ display:'flex', gap:6, flexShrink:0, alignItems:'center' }}>
+        <div className="det-nav" style={{ display:'flex', gap:6, flexShrink:0, alignItems:'center' }}>
           <button
             onClick={() => vizinhas.prev && router.push(`/admin/justclub/calendario/${vizinhas.prev.id}`)}
             disabled={!vizinhas.prev}
@@ -1078,14 +1129,14 @@ export default function RecepcaoClubDetalhe() {
       </div>
 
       {msg && (
-        <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:10,
+        <div className="det-msg" style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:10,
           padding:'0.75rem 1.25rem', marginBottom:'1rem', fontSize:13, color:'#166534', fontWeight:600 }}>
           {msg}
         </div>
       )}
 
       {/* Stats */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:'1.5rem' }}>
+      <div className="det-stats" style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:'1.5rem' }}>
         {[
           { label:'Reservas',   value:reservas.length, cor:'#111' },
           { label:'Presentes',  value:presentes,       cor:VERDE },
@@ -1346,7 +1397,7 @@ export default function RecepcaoClubDetalhe() {
       )}
 
       {/* Lista de reservas */}
-      <div style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:16, marginBottom:'1.5rem', overflow:'hidden' }}>
+      <div className="det-lista" style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:16, marginBottom:'1.5rem', overflow:'hidden' }}>
         <div style={{ padding:'1rem 1.5rem', borderBottom:'1px solid #f3f4f6', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>Lista de alunos</div>
           <div style={{ fontSize:12, color:'#aaa' }}>{reservas.length} de {aula?.capacidade||'—'} vagas</div>
@@ -1372,10 +1423,10 @@ export default function RecepcaoClubDetalhe() {
                     display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, color:'#888', flexShrink:0 }}>
                     {i+1}
                   </div>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:2 }}>
+                  <div className="aluno-info" style={{ flex:1, minWidth:0 }}>
+                    <div className="aluno-linha1" style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:2 }}>
                     {cli?.id ? (
-                      <button onClick={() => router.push(`/admin/clientes?id=${cli.id}`)}
+                      <button className="aluno-nome" onClick={() => router.push(`/admin/clientes?id=${cli.id}`)}
                         title="Ver perfil do cliente"
                         style={{ fontSize:14, fontWeight:600, color:ACCENT, background:'none', border:'none',
                           padding:0, cursor:'pointer', textAlign:'left', fontFamily:"'DM Sans', sans-serif",
@@ -1383,14 +1434,14 @@ export default function RecepcaoClubDetalhe() {
                         {cli.nome || '—'}
                       </button>
                     ) : (
-                      <div style={{ fontSize:14, fontWeight:600, color:'#111' }}>{cli?.nome||'—'}</div>
+                      <div className="aluno-nome" style={{ fontSize:14, fontWeight:600, color:'#111' }}>{cli?.nome||'—'}</div>
                     )}
                     {flagP && <FlagPrimeira tipo={flagP} modalidade={tipoLabelCurto(aula?.tipo)} />}
                     </div>
-                    <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
-                      <span style={{ fontSize:11, color:'#888' }}>{icon} {(r as any).creditos_avulsos?.observacao || label}</span>
+                    <div className="aluno-linha2" style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+                      <span className="aluno-plano" style={{ fontSize:11, color:'#888' }}>{icon} {(r as any).creditos_avulsos?.observacao || label}</span>
                       {r.posicao ? (
-                        <span style={{ fontSize:14, fontFamily:"'DM Mono', monospace", fontWeight:800,
+                        <span className="aluno-pos" style={{ fontSize:14, fontFamily:"'DM Mono', monospace", fontWeight:800,
                           color:'#fff', background:ACCENT, padding:'3px 12px', borderRadius:8,
                           letterSpacing:1 }}>
                           {r.posicao}
@@ -1401,20 +1452,18 @@ export default function RecepcaoClubDetalhe() {
                     </div>
                   </div>
                   <div className="aluno-acoes" style={{ display:'contents' }}>
-                  <div style={{ flexShrink:0, marginRight:4 }}>
+                  <div className="aluno-status" style={{ flexShrink:0, marginRight:4 }}>
                     {isPresente  && <span style={{ fontSize:11, fontWeight:700, color:VERDE }}>✓ PRESENTE</span>}
                     {isFalta     && <span style={{ fontSize:11, fontWeight:700, color:VERMELHO }}>✗ FALTA</span>}
                   </div>
 
                   {/* Presença / Falta — livre, com toggle (clicar no ativo desmarca; falta pede confirmação) */}
-                  <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                  <div className="aluno-botoes" style={{ display:'flex', gap:6, flexShrink:0 }}>
                     {/* NOVO: Trocar de aula — só reserva nossa (não app parceiro) e aula não encerrada */}
-                    {!isPassado && ['reservado','presente'].includes(r.status)
-                      && !r.via_app && !r.wellhub_booking_number && !r.totalpass_slot_id && (
+                    {podeTrocarAula(r) && (
                       <button
-                        onClick={() => origemLotada
-                          ? showMsg('⚠️ Aula lotada — troca indisponível (a aula de origem não pode estar cheia).')
-                          : abrirTrocaAula(r)}
+                        className="aluno-troca"
+                        onClick={() => clicarTrocaAula(r)}
                         disabled={atualizando===r.id}
                         title={origemLotada ? 'Aula de origem lotada — troca indisponível' : 'Trocar de aula'}
                         style={{ padding:'0.35rem 0.7rem', borderRadius:8, border:`1.5px solid ${origemLotada?'#e5e7eb':CYAN}`,
@@ -1424,35 +1473,60 @@ export default function RecepcaoClubDetalhe() {
                         ⇄
                       </button>
                     )}
-                    <button onClick={() => marcarStatus(r.id, isPresente ? 'reservado' : 'presente')} disabled={atualizando===r.id}
+                    <button className={`aluno-btn${isPresente ? ' aluno-presente-on' : ''}`} onClick={() => marcarStatus(r.id, isPresente ? 'reservado' : 'presente')} disabled={atualizando===r.id}
                       title={isPresente ? 'Clique para desmarcar' : 'Marcar presença'}
                       style={{ padding:'0.35rem 0.75rem', borderRadius:8, border:`1.5px solid ${isPresente?VERDE:'#e5e7eb'}`,
                         background:isPresente?VERDE:'#fff', color:isPresente?'#fff':'#555',
                         fontSize:12, fontWeight:600, cursor:atualizando===r.id?'default':'pointer',
                         opacity:atualizando===r.id?0.5:1, fontFamily:"'DM Sans', sans-serif" }}>
-                      ✓
+                      ✓<span className="det-lbl">Presente</span>
                     </button>
-                    <button onClick={() => marcarStatus(r.id, isFalta ? 'reservado' : 'falta')} disabled={atualizando===r.id}
+                    <button className={`aluno-btn${isFalta ? ' aluno-falta-on' : ''}`} onClick={() => marcarStatus(r.id, isFalta ? 'reservado' : 'falta')} disabled={atualizando===r.id}
                       title={isFalta ? 'Clique para desmarcar' : 'Marcar falta'}
                       style={{ padding:'0.35rem 0.75rem', borderRadius:8, border:`1.5px solid ${isFalta?VERMELHO:'#e5e7eb'}`,
                         background:isFalta?VERMELHO:'#fff', color:isFalta?'#fff':'#888',
                         fontSize:12, fontWeight:600, cursor:atualizando===r.id?'default':'pointer',
                         opacity:atualizando===r.id?0.5:1, fontFamily:"'DM Sans', sans-serif" }}>
-                      ✗
+                      ✗<span className="det-lbl">Falta</span>
                     </button>
                   </div>
 
                   {/* Cancelar reserva — exclusivo admin */}
-                  <button onClick={async () => {
-                    if (!confirm(`Cancelar reserva de ${r.clientes?.nome}?`)) return
-                    await supabase.from('club_reservas').update({ status:'cancelado' }).eq('id', r.id)
-                    await carregarDados(); showMsg('🗑️ Reserva cancelada.')
-                  }} style={{ padding:'0.35rem 0.75rem', borderRadius:8, border:'1.5px solid #fecaca',
+                  <button className="aluno-cancelar" onClick={() => cancelarReserva(r)}
+                    style={{ padding:'0.35rem 0.75rem', borderRadius:8, border:'1.5px solid #fecaca',
                     background:'#fff5f5', color:VERMELHO, fontSize:12, fontWeight:600,
                     cursor:'pointer', flexShrink:0, fontFamily:"'DM Sans', sans-serif" }}>
                     Cancelar
                   </button>
+
+                  {/* Celular: Trocar de aula e Cancelar ficam no ⋯ */}
+                  <button className="aluno-mais" onClick={() => setMenuAluno(menuAluno === r.id ? null : r.id)}
+                    title="Mais ações"
+                    style={{ width:44, flexShrink:0, borderRadius:8, border:'1.5px solid #e5e7eb',
+                      background: menuAluno === r.id ? '#f3f4f6' : '#fff', color:'#555', fontSize:18, fontWeight:700,
+                      cursor:'pointer', lineHeight:1, fontFamily:"'DM Sans', sans-serif" }}>
+                    ⋯
+                  </button>
                   </div>
+
+                  {menuAluno === r.id && (
+                    <div className="aluno-menu" style={{ width:'100%', gap:8 }}>
+                      {podeTrocarAula(r) && (
+                        <button onClick={() => { setMenuAluno(null); clicarTrocaAula(r) }}
+                          style={{ flex:1, padding:'0.65rem 0', borderRadius:8, border:`1.5px solid ${origemLotada?'#e5e7eb':CYAN}`,
+                            background:'#fff', color:origemLotada?'#bbb':CYAN, fontSize:13, fontWeight:700,
+                            cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
+                          ⇄ Trocar de aula
+                        </button>
+                      )}
+                      <button onClick={() => { setMenuAluno(null); cancelarReserva(r) }}
+                        style={{ flex:1, padding:'0.65rem 0', borderRadius:8, border:'1.5px solid #fecaca',
+                          background:'#fff5f5', color:VERMELHO, fontSize:13, fontWeight:700,
+                          cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
+                        Cancelar reserva
+                      </button>
+                    </div>
+                  )}
 
                 </div>
               )

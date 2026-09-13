@@ -72,8 +72,9 @@ export default function JuTreinosPage() {
           const exs = treino?.treino_exercicios || []
           return (
             <div key={pub.id} className={`card ${pub.publicado ? 'border-primary-100' : 'border-dashed border-gray-200 opacity-70'}`}>
-              <div className="flex items-start gap-3">
-                <div className="flex-1">
+              {/* Celular: botões descem pra baixo do treino (lado a lado espremiam os exercícios) */}
+              <div className="flex flex-col md:flex-row md:items-start gap-3">
+                <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span className="font-semibold text-sm text-gray-900">{treino?.nome}</span>
                     {treino?.descricao && <span className="text-xs text-gray-400">— {treino.descricao}</span>}
@@ -83,7 +84,7 @@ export default function JuTreinosPage() {
                   </div>
                   <div className="flex flex-wrap gap-1.5 mb-2">
                     {exs.map((te: any) => (
-                      <span key={te.id} className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs px-2.5 py-1 rounded-full">
+                      <span key={te.id} className="inline-flex flex-wrap items-center gap-1 max-w-full bg-gray-100 text-gray-700 text-xs px-2.5 py-1 rounded-full">
                         {te.exercicios?.nome}
                         {te.series_override && <span className="text-gray-400">· {te.series_override}×{te.reps_override}</span>}
                         {te.exercicios?.numero_maquina && <span className="text-blue-500">· {te.exercicios.numero_maquina}</span>}
@@ -94,7 +95,7 @@ export default function JuTreinosPage() {
                     {exs.length} exercícios · publicado em {new Date(pub.publicado_em).toLocaleDateString('pt-BR')}
                   </div>
                 </div>
-                <div className="flex gap-2 flex-shrink-0">
+                <div className="flex gap-2 justify-end flex-shrink-0">
                   <button onClick={() => togglePublicado(pub)}
                     className={`btn btn-sm gap-1 ${pub.publicado ? '' : 'btn-primary'}`}>
                     {pub.publicado

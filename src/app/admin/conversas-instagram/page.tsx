@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
-import { MessageCircle, Search, Bot, User, Send, Headset, Instagram } from 'lucide-react'
+import { MessageCircle, Search, Bot, User, Send, Headset, Instagram, ArrowLeft } from 'lucide-react'
 
 const LIMITE_MSGS = 3000
 
@@ -151,25 +151,26 @@ export default function ConversasInstagramPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
-        <h1 className="text-lg font-semibold text-gray-900 flex items-center gap-2"><Instagram size={18} className="text-pink-600" /> Conversas do Instagram</h1>
+      <div className="bg-white border-b border-gray-200 px-4 py-3 md:px-6 md:py-4 sticky top-0 z-10">
+        <h1 className="text-base md:text-lg font-semibold text-gray-900 flex items-center gap-2"><Instagram size={18} className="text-pink-600" /> Conversas do Instagram</h1>
         <p className="text-xs text-gray-400 mt-0.5">Atendimentos do assistente no Direct (@justclub.ct)</p>
       </div>
 
-      <div className="max-w-6xl mx-auto px-6 py-5">
-        <div className="grid grid-cols-12 gap-4" style={{ height: 'calc(100vh - 140px)' }}>
+      <div className="max-w-6xl mx-auto px-3 py-3 md:px-6 md:py-5">
+        {/* Celular: uma coisa por vez (lista OU conversa), igual à tela de WhatsApp. Desktop: lado a lado. */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 h-[calc(100dvh-104px)] md:h-[calc(100vh-140px)]">
 
-          <div className="col-span-5 card p-0 flex flex-col overflow-hidden">
+          <div className={`${sel ? 'hidden md:flex' : 'flex'} md:col-span-5 card p-0 flex-col overflow-hidden`}>
             <div className="p-3 border-b border-gray-100 space-y-2">
               <div className="relative">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar por conteúdo ou id…"
-                  className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-gray-200 focus:border-primary-400 focus:outline-none" />
+                  className="w-full pl-9 pr-3 py-2 text-base md:text-sm rounded-xl border border-gray-200 focus:border-primary-400 focus:outline-none" />
               </div>
               <div className="flex items-center gap-2">
                 <label className="text-xs text-gray-400">Desde</label>
                 <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)}
-                  className="flex-1 px-2 py-1.5 text-sm rounded-lg border border-gray-200 focus:border-primary-400 focus:outline-none" />
+                  className="flex-1 min-w-0 px-2 py-1.5 text-base md:text-sm rounded-lg border border-gray-200 focus:border-primary-400 focus:outline-none" />
                 {desde && <button onClick={() => setDesde('')} className="text-xs text-primary-600 hover:underline">limpar</button>}
               </div>
             </div>
@@ -201,25 +202,36 @@ export default function ConversasInstagramPage() {
             </div>
           </div>
 
-          <div className="col-span-7 card p-0 flex flex-col overflow-hidden">
+          <div className={`${sel ? 'flex' : 'hidden md:flex'} md:col-span-7 card p-0 flex-col overflow-hidden`}>
             {!convSel ? (
               <div className="flex-1 flex flex-col items-center justify-center text-gray-400 text-sm">
                 <Instagram size={36} className="mb-3 text-gray-300" /> Selecione uma conversa para ler.
               </div>
             ) : (
               <>
-                <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold text-gray-900 truncate">{rotulo(convSel.igsid)}</div>
-                    <div className="text-xs text-gray-400">{convSel.total} mensagens</div>
+                <div className="px-3 md:px-5 py-3 border-b border-gray-100 flex items-center justify-between gap-2 md:gap-3">
+                  <div className="min-w-0 flex items-center gap-1.5">
+                    {/* Voltar pra lista — só no celular (no desktop a lista está do lado). */}
+                    <button
+                      onClick={() => setSel(null)}
+                      aria-label="Voltar para a lista de conversas"
+                      className="md:hidden -ml-1 p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 flex-shrink-0"
+                    >
+                      <ArrowLeft size={18} />
+                    </button>
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-gray-900 truncate">{rotulo(convSel.igsid)}</div>
+                      <div className="text-xs text-gray-400">{convSel.total} mensagens</div>
+                    </div>
                   </div>
                   <button onClick={() => toggleHumano(convSel.igsid, !humanoAtivo)}
-                    className={`flex-shrink-0 px-3 py-2 rounded-xl text-xs font-medium border transition-all ${humanoAtivo ? 'bg-white text-gray-600 border-gray-200 hover:border-primary-300' : 'bg-green-600 text-white border-green-600 hover:bg-green-700'}`}>
-                    {humanoAtivo ? 'Devolver ao assistente' : 'Assumir conversa'}
+                    className={`flex-shrink-0 px-2.5 md:px-3 py-2 rounded-xl text-xs font-medium border transition-all whitespace-nowrap ${humanoAtivo ? 'bg-white text-gray-600 border-gray-200 hover:border-primary-300' : 'bg-green-600 text-white border-green-600 hover:bg-green-700'}`}>
+                    <span className="md:hidden">{humanoAtivo ? 'Devolver' : 'Assumir'}</span>
+                    <span className="hidden md:inline">{humanoAtivo ? 'Devolver ao assistente' : 'Assumir conversa'}</span>
                   </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
+                <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3 bg-gray-50">
                   {thread.map((m, i) => {
                     const novoDia = i === 0 || diaStr(thread[i - 1].criado_em) !== diaStr(m.criado_em)
                     const ehCliente = m.role === 'user'
@@ -236,7 +248,7 @@ export default function ConversasInstagramPage() {
                           </div>
                         )}
                         <div className={`flex ${ehCliente ? 'justify-start' : 'justify-end'}`}>
-                          <div className={`max-w-[78%] rounded-2xl px-3.5 py-2 ${bolha}`}>
+                          <div className={`max-w-[85%] md:max-w-[78%] rounded-2xl px-3.5 py-2 ${bolha}`}>
                             <div className={`flex items-center gap-1.5 mb-0.5 text-[10px] uppercase tracking-wide ${tagCor}`}>
                               {ehCliente ? <User size={11} /> : ehHumano ? <Headset size={11} /> : <Bot size={11} />} {quem}
                             </div>
@@ -254,10 +266,10 @@ export default function ConversasInstagramPage() {
                     <textarea value={rascunho} onChange={(e) => setRascunho(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarMensagem() } }}
                       rows={1} placeholder="Escreva sua resposta… (Enter envia)"
-                      className="flex-1 resize-none px-3 py-2 text-sm rounded-xl border border-gray-200 focus:border-primary-400 focus:outline-none max-h-32" />
+                      className="flex-1 min-w-0 resize-none px-3 py-2 text-base md:text-sm rounded-xl border border-gray-200 focus:border-primary-400 focus:outline-none max-h-32" />
                     <button onClick={enviarMensagem} disabled={enviando || !rascunho.trim()}
-                      className="flex-shrink-0 px-4 py-2 rounded-xl bg-primary-600 text-white text-sm font-medium disabled:opacity-50 flex items-center gap-1.5">
-                      <Send size={15} /> {enviando ? 'Enviando…' : 'Enviar'}
+                      className="flex-shrink-0 px-3 md:px-4 py-2 rounded-xl bg-primary-600 text-white text-sm font-medium disabled:opacity-50 flex items-center gap-1.5">
+                      <Send size={15} /> <span className="hidden md:inline">{enviando ? 'Enviando…' : 'Enviar'}</span>
                     </button>
                   </div>
                 ) : (

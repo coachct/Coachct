@@ -1389,8 +1389,9 @@ function AdminClientesPageInner() {
                   </div>
                 </div>
 
-                {/* Três cards na mesma linha: foto, status de acesso, bloquear */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Quatro cards num bloco só: foto, status de acesso, bloquear, acompanhar.
+                    Celular 2x2 (sem as descrições), desktop 4 lado a lado. */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {/* 1. Foto facial */}
                   <div className={`card border-l-4 flex flex-col ${clienteTemFoto ? 'border-l-green-400 bg-green-50' : 'border-l-blue-400 bg-blue-50'}`}>
                     <div className="flex items-center gap-2 mb-2">
@@ -1403,7 +1404,7 @@ function AdminClientesPageInner() {
                     </div>
                     {!clienteTemCpf ? (
                       <>
-                        <div className="text-xs text-blue-700 mb-3">Cadastre o <strong>CPF</strong> do cliente primeiro.</div>
+                        <div className="hidden md:block text-xs text-blue-700 mb-3">Cadastre o <strong>CPF</strong> do cliente primeiro.</div>
                         <button disabled className="btn btn-sm bg-gray-200 text-gray-400 cursor-not-allowed gap-1 mt-auto w-full"><Camera size={12} /> Cadastre o CPF</button>
                       </>
                     ) : clienteTemFoto ? (
@@ -1424,7 +1425,7 @@ function AdminClientesPageInner() {
                       </>
                     ) : (
                       <>
-                        <div className="text-xs text-blue-700 mb-3">Sincroniza com o iDFace para reconhecimento na entrada.</div>
+                        <div className="hidden md:block text-xs text-blue-700 mb-3">Sincroniza com o iDFace para reconhecimento na entrada.</div>
                         <button onClick={abrirModalFoto} className="btn btn-sm gap-1 bg-primary-600 text-white hover:bg-primary-700 mt-auto w-full"><Camera size={12} /> Cadastrar foto</button>
                       </>
                     )}
@@ -1440,7 +1441,7 @@ function AdminClientesPageInner() {
                         {!clienteTemAcesso ? 'Sem acesso' : acessoBloqueado ? 'Acesso bloqueado' : 'Acesso ativo'}
                       </div>
                     </div>
-                    <div className={`text-xs ${!clienteTemAcesso ? 'text-orange-700' : acessoBloqueado ? 'text-red-600' : 'text-green-700'}`}>
+                    <div className={`hidden md:block text-xs ${!clienteTemAcesso ? 'text-orange-700' : acessoBloqueado ? 'text-red-600' : 'text-green-700'}`}>
                       {!clienteTemAcesso ? 'Este cliente ainda não tem login no sistema.' : acessoBloqueado ? 'Este cliente não consegue entrar no sistema.' : 'Este cliente entra no sistema normalmente.'}
                     </div>
                   </div>
@@ -1454,7 +1455,7 @@ function AdminClientesPageInner() {
                         </div>
                         <div className="text-sm font-semibold text-gray-800 leading-tight">{acessoBloqueado ? 'Liberar acesso' : 'Bloquear acesso'}</div>
                       </div>
-                      <div className="text-xs text-gray-500 mb-3">{acessoBloqueado ? 'Devolve o acesso do cliente ao sistema.' : 'Impede o cliente de entrar no sistema.'}</div>
+                      <div className="hidden md:block text-xs text-gray-500 mb-3">{acessoBloqueado ? 'Devolve o acesso do cliente ao sistema.' : 'Impede o cliente de entrar no sistema.'}</div>
                       <button onClick={toggleBloqueioAcesso} disabled={salvandoBloqueio}
                         className={`btn btn-sm gap-1 mt-auto w-full ${acessoBloqueado ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-red-500 text-white hover:bg-red-600'} disabled:opacity-50`}>
                         {acessoBloqueado ? <><Unlock size={14} /> Desbloquear</> : <><Lock size={14} /> Bloquear</>}
@@ -1468,12 +1469,12 @@ function AdminClientesPageInner() {
                       </div>
                       {clienteSemEmailSemAcesso ? (
                         <>
-                          <div className="text-xs text-orange-700 mb-3">Cadastre o email do cliente primeiro.</div>
+                          <div className="hidden md:block text-xs text-orange-700 mb-3">Cadastre o email do cliente primeiro.</div>
                           <button disabled className="btn btn-sm bg-gray-200 text-gray-400 cursor-not-allowed gap-1 mt-auto w-full"><KeyRound size={12} /> Cadastre o email</button>
                         </>
                       ) : (
                         <>
-                          <div className="text-xs text-orange-700 mb-2">Gera senha provisória e envia boas-vindas para <strong>{clienteSel.email}</strong>.</div>
+                          <div className="hidden md:block text-xs text-orange-700 mb-2">Gera senha provisória e envia boas-vindas para <strong>{clienteSel.email}</strong>.</div>
                           {erroCriarAcesso && <div className="bg-red-50 border border-red-200 rounded-lg p-2 mb-2 text-xs text-red-700">{erroCriarAcesso}</div>}
                           <button onClick={criarAcessoClienteExistente} disabled={criandoAcesso} className="btn btn-sm gap-1 bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50 mt-auto w-full">
                             <KeyRound size={12} />{criandoAcesso ? 'Criando...' : 'Criar acesso'}
@@ -1482,30 +1483,30 @@ function AdminClientesPageInner() {
                       )}
                     </div>
                   )}
-                </div>
 
-                {/* Acompanhamento — coloca o cliente no card do dashboard com a próxima aula dele */}
-                <div className={`card border-l-4 flex items-center gap-3 flex-wrap ${clienteSel.acompanhar ? 'border-l-amber-400 bg-amber-50' : 'border-l-gray-200'}`}>
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${clienteSel.acompanhar ? 'bg-amber-200 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>
-                    {clienteSel.acompanhar ? <Eye size={16} /> : <EyeOff size={16} />}
-                  </div>
-                  <div className="flex-1 min-w-[180px]">
-                    <div className={`text-sm font-semibold leading-tight ${clienteSel.acompanhar ? 'text-amber-900' : 'text-gray-800'}`}>
-                      {clienteSel.acompanhar ? 'Em acompanhamento' : 'Acompanhar cliente'}
+                  {/* 4. Acompanhamento — coloca o cliente no card do dashboard com a próxima aula dele */}
+                  <div className={`card border-l-4 flex flex-col ${clienteSel.acompanhar ? 'border-l-amber-400 bg-amber-50' : 'border-l-gray-200'}`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${clienteSel.acompanhar ? 'bg-amber-200 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {clienteSel.acompanhar ? <Eye size={16} /> : <EyeOff size={16} />}
+                      </div>
+                      <div className={`text-sm font-semibold leading-tight ${clienteSel.acompanhar ? 'text-amber-900' : 'text-gray-800'}`}>
+                        {clienteSel.acompanhar ? 'Em acompanhamento' : 'Acompanhar cliente'}
+                      </div>
                     </div>
-                    <div className={`text-xs mt-0.5 ${clienteSel.acompanhar ? 'text-amber-700' : 'text-gray-500'}`}>
+                    <div className={`hidden md:block text-xs mb-3 ${clienteSel.acompanhar ? 'text-amber-700' : 'text-gray-500'}`}>
                       {clienteSel.acompanhar
                         ? (clienteSel.acompanhar_nota || 'Aparece no dashboard com a próxima aula dele.')
                         : 'Mostra este cliente no dashboard com a data da próxima aula.'}
                     </div>
+                    <button
+                      onClick={toggleAcompanhar}
+                      disabled={salvandoAcompanhar}
+                      className={`btn btn-sm gap-1 mt-auto w-full disabled:opacity-50 ${clienteSel.acompanhar ? 'text-amber-700 border border-amber-300 hover:bg-amber-100' : 'bg-amber-500 text-white hover:bg-amber-600'}`}
+                    >
+                      {clienteSel.acompanhar ? <><EyeOff size={14} /> Parar</> : <><Eye size={14} /> Acompanhar</>}
+                    </button>
                   </div>
-                  <button
-                    onClick={toggleAcompanhar}
-                    disabled={salvandoAcompanhar}
-                    className={`btn btn-sm gap-1 disabled:opacity-50 ${clienteSel.acompanhar ? 'text-amber-700 border border-amber-300 hover:bg-amber-100' : 'bg-amber-500 text-white hover:bg-amber-600'}`}
-                  >
-                    {clienteSel.acompanhar ? <><EyeOff size={14} /> Parar</> : <><Eye size={14} /> Acompanhar</>}
-                  </button>
                 </div>
 
                 {planosJustCT.filter(isPlanoVigente).length > 0 && (

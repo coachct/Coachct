@@ -431,13 +431,36 @@ export default function ContasAPagarPage() {
     }
   }
 
+  // Selo de status — usado na tabela (desktop) e nos cartões (celular)
+  function statusBadge(d: Despesa, vencida: boolean) {
+    if (d.pago) {
+      return (
+        <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+          Pago {d.pago_em ? `· ${fmtData(d.pago_em)}` : ''}
+        </span>
+      )
+    }
+    if (vencida) {
+      return (
+        <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+          Vencida
+        </span>
+      )
+    }
+    return (
+      <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+        Em aberto
+      </span>
+    )
+  }
+
   const inputCls =
     'w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20'
 
   const fornecedoresAtivos = fornecedores.filter((f) => f.ativo || f.id === mFornecedor)
 
   return (
-    <div className="min-h-screen bg-[#f3f4f6] px-4 py-6 pb-28 sm:px-8">
+    <div className="min-h-screen bg-[#f3f4f6] px-0 py-6 pb-28 sm:px-8">
       <div className="mx-auto max-w-6xl">
         {/* Cabeçalho */}
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -686,7 +709,74 @@ export default function ContasAPagarPage() {
               Nenhuma despesa encontrada para os filtros selecionados.
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            {/* Celular: um cartão por despesa (sem rolar pro lado). A tabela aparece a partir de md. */}
+            <div className="divide-y divide-gray-100 md:hidden">
+              {lista.map((d) => {
+                const cat = d.categoria_id ? categoriaPorId.get(d.categoria_id) : null
+                const vencida = !!d.vencimento && !d.pago && d.vencimento < hoje
+                return (
+                  <div key={d.id} className="flex gap-3 px-4 py-3">
+                    <div className="pt-0.5">
+                      {!d.pago ? (
+                        <input
+                          type="checkbox"
+                          checked={selecionadas.has(d.id)}
+                          onChange={() => toggleSel(d.id)}
+                          className="h-5 w-5 rounded border-gray-300 text-[#ff2d9b] focus:ring-[#ff2d9b]"
+                        />
+                      ) : (
+                        <span className="block h-5 w-5" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-sm font-medium text-gray-900">{d.descricao}</span>
+                        <span className="shrink-0 text-sm font-semibold text-gray-900">
+                          {fmtBRL(Number(d.valor))}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+                        <span className={vencida ? 'font-semibold text-red-600' : 'text-gray-500'}>
+                          Venc. {fmtData(d.vencimento)}
+                        </span>
+                        <span className="text-gray-300">·</span>
+                        {statusBadge(d, vencida)}
+                      </div>
+                      <div className="mt-1 text-xs text-gray-500">
+                        {nomeUnidade(d.unidade_id)}
+                        {cat ? ` · ${cat.nome}` : ''}
+                      </div>
+                      <div className="mt-2.5 flex gap-2">
+                        <button
+                          onClick={() => alternarPago(d)}
+                          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white py-2 text-sm font-medium text-gray-700 active:bg-gray-50"
+                        >
+                          {d.pago ? <RotateCcw size={15} /> : <CheckCircle2 size={15} />}
+                          {d.pago ? 'Reverter' : 'Pagar'}
+                        </button>
+                        <button
+                          onClick={() => abrirEdicao(d)}
+                          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white py-2 text-sm font-medium text-gray-700 active:bg-gray-50"
+                        >
+                          <Pencil size={15} />
+                          Editar
+                        </button>
+                        <button
+                          onClick={() => excluir(d)}
+                          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-red-100 bg-white py-2 text-sm font-medium text-red-600 active:bg-red-50"
+                        >
+                          <Trash2 size={15} />
+                          Excluir
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-left text-[13px] leading-5">
                 <thead>
                   <tr className="border-b border-gray-100 text-xs uppercase tracking-wide text-gray-400">
@@ -760,19 +850,7 @@ export default function ContasAPagarPage() {
                           {fmtData(d.vencimento)}
                         </td>
                         <td className="px-2 py-3">
-                          {d.pago ? (
-                            <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                              Pago {d.pago_em ? `· ${fmtData(d.pago_em)}` : ''}
-                            </span>
-                          ) : vencida ? (
-                            <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
-                              Vencida
-                            </span>
-                          ) : (
-                            <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
-                              Em aberto
-                            </span>
-                          )}
+                          {statusBadge(d, vencida)}
                         </td>
                         <td className="px-2 py-3 text-right font-semibold text-gray-900">
                           {fmtBRL(Number(d.valor))}
@@ -812,23 +890,32 @@ export default function ContasAPagarPage() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </div>
       </div>
 
       {/* Barra de ação em lote */}
       {selecionadas.size > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white shadow-[0_-4px_20px_rgba(0,0,0,0.08)]">
-          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-8">
-            <div className="text-sm text-gray-700">
-              <span className="font-semibold text-gray-900">{selecionadas.size}</span> selecionada(s)
-              {' · '}
-              <span className="font-semibold text-gray-900">{fmtBRL(somaSelecionadas)}</span>
+        <div className="fixed inset-x-0 bottom-[calc(56px_+_env(safe-area-inset-bottom))] z-30 border-t border-gray-200 bg-white shadow-[0_-4px_20px_rgba(0,0,0,0.08)] md:bottom-0 md:z-40">
+          <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-2.5 sm:px-8 md:flex-row md:flex-wrap md:items-center md:justify-between md:gap-3 md:py-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm text-gray-700">
+                <span className="font-semibold text-gray-900">{selecionadas.size}</span> selecionada(s)
+                {' · '}
+                <span className="font-semibold text-gray-900">{fmtBRL(somaSelecionadas)}</span>
+              </div>
+              <button
+                onClick={() => setSelecionadas(new Set())}
+                className="rounded-xl px-3 py-1.5 text-sm font-medium text-gray-600 transition hover:bg-gray-100 md:hidden"
+              >
+                Limpar
+              </button>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => setSelecionadas(new Set())}
-                className="rounded-xl px-3 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-100"
+                className="hidden rounded-xl px-3 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-100 md:block"
               >
                 Limpar
               </button>
