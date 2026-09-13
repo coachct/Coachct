@@ -440,7 +440,10 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
   }
 
   async function salvar() {
-    if (!nomeLimpo) { setErro('Informe a playlist'); return }
+    // Campo vazio = deixar o dia em branco de novo (ex.: desfazer a sugestão que o
+    // coach gerou). Apaga mesmo sem "atual": a sugestão pode ter sido gerada depois
+    // que a agenda carregou.
+    if (!nomeLimpo) { await remover(); return }
     setSalvando(true)
     setErro(null)
     const novoLink = linkFinal
@@ -616,10 +619,10 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
             )}
             <button
               onClick={salvar}
-              disabled={!nomeLimpo || salvando}
+              disabled={salvando}
               className="flex-1 py-3 rounded-lg text-base font-medium bg-gray-900 text-white disabled:opacity-40"
             >
-              {salvando ? 'Salvando…' : 'Salvar'}
+              {salvando ? 'Salvando…' : nomeLimpo ? 'Salvar' : 'Salvar em branco'}
             </button>
           </div>
         </div>
