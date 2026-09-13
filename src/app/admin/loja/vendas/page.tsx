@@ -129,23 +129,23 @@ export default function AdminLojaVendasPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
             <label className="label">Unidade</label>
-            <select className="input" value={filtroUnidade} onChange={e => setFiltroUnidade(e.target.value)}>
+            <select className="input text-base md:text-sm" value={filtroUnidade} onChange={e => setFiltroUnidade(e.target.value)}>
               <option value="">Todas</option>
               {unidades.map(u => <option key={u.id} value={u.id}>{u.nome}</option>)}
             </select>
           </div>
           <div>
             <label className="label">De</label>
-            <input type="date" className="input" value={de} onChange={e => setDe(e.target.value)} />
+            <input type="date" className="input text-base md:text-sm" value={de} onChange={e => setDe(e.target.value)} />
           </div>
           <div>
             <label className="label">Até</label>
-            <input type="date" className="input" value={ate} onChange={e => setAte(e.target.value)} />
+            <input type="date" className="input text-base md:text-sm" value={ate} onChange={e => setAte(e.target.value)} />
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
         <KpiCard label="Faturamento" value={moeda(total)} />
         <KpiCard label="Vendas" value={String(validas.length)} />
         <KpiCard label="Itens vendidos" value={String(itensVendidos)} />

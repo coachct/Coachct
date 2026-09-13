@@ -283,7 +283,7 @@ export default function JuMontarPage() {
             {renderExItem(proximo, realIdxB, numItem, 'B', true)}
             <div className="px-3 py-2 bg-primary-50/50 flex items-center gap-2">
               <span className="text-xs text-gray-500 flex-shrink-0">Descanso após o par:</span>
-              <input className="input text-center w-20 text-xs py-1" value={ex.descanso}
+              <input className="input text-center w-20 text-base md:text-xs py-1" value={ex.descanso}
                 onChange={e => updateEx(ex.id, 'descanso', e.target.value)} />
               <span className="text-xs text-gray-400">seg</span>
             </div>
@@ -308,7 +308,8 @@ export default function JuMontarPage() {
 
     return (
       <div key={ex.id} className={`${isInConjugado ? '' : 'border border-gray-100 rounded-xl overflow-hidden'}`}>
-        <div className="flex items-center gap-2 px-3 py-2.5 bg-gray-50">
+        {/* Mobile: os botões descem para a linha de baixo, o nome fica com a largura toda */}
+        <div className="flex flex-wrap md:flex-nowrap items-center gap-2 px-3 py-2.5 bg-gray-50">
           <div className="w-6 h-6 rounded-full bg-primary-100 text-primary-800 text-xs font-semibold flex items-center justify-center flex-shrink-0">
             {letra ? `${numItem}${letra}` : numItem}
           </div>
@@ -320,7 +321,7 @@ export default function JuMontarPage() {
               {!isOpen && isInConjugado && `${ex.reps} reps`}
             </div>
           </div>
-          <div className="flex gap-1 flex-shrink-0">
+          <div className="flex flex-wrap md:flex-nowrap justify-end gap-1 flex-shrink-0 w-full md:w-auto">
             {!isInConjugado && (
               <>
                 <button onClick={() => moverEx(realIdx, 'up')} disabled={realIdx === 0}
@@ -348,22 +349,22 @@ export default function JuMontarPage() {
             {!isInConjugado && (
               <div>
                 <label className="label">Séries</label>
-                <input className="input text-center" value={ex.series} onChange={e => updateEx(ex.id, 'series', e.target.value)} />
+                <input className="input text-center text-base md:text-sm" value={ex.series} onChange={e => updateEx(ex.id, 'series', e.target.value)} />
               </div>
             )}
             <div className={isInConjugado ? 'col-span-3' : ''}>
               <label className="label">Reps</label>
-              <input className="input text-center" value={ex.reps} onChange={e => updateEx(ex.id, 'reps', e.target.value)} />
+              <input className="input text-center text-base md:text-sm" value={ex.reps} onChange={e => updateEx(ex.id, 'reps', e.target.value)} />
             </div>
             {!isInConjugado && (
               <div>
                 <label className="label">Descanso (s)</label>
-                <input className="input text-center" value={ex.descanso} onChange={e => updateEx(ex.id, 'descanso', e.target.value)} />
+                <input className="input text-center text-base md:text-sm" value={ex.descanso} onChange={e => updateEx(ex.id, 'descanso', e.target.value)} />
               </div>
             )}
             <div className="col-span-3">
               <label className="label">Observação</label>
-              <textarea className="input resize-none" rows={2} value={ex.obs_treino}
+              <textarea className="input resize-none text-base md:text-sm" rows={2} value={ex.obs_treino}
                 placeholder="Observação específica deste exercício..."
                 onChange={e => updateEx(ex.id, 'obs_treino', e.target.value)} />
             </div>
@@ -377,11 +378,11 @@ export default function JuMontarPage() {
   // card selecionado) e na coluna da direita no desktop. Só chamar quando há editandoId.
   function renderEditor() {
     return (
-      <div className="card">
+      <div className="card p-3 md:p-5">
         <div className="flex items-center gap-3 mb-4 flex-wrap">
           <input className="text-base font-semibold text-gray-900 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 outline-none focus:border-primary-400 focus:ring-1 focus:ring-primary-200 flex-1 min-w-0"
             value={nomeEdit} onChange={e => setNomeEdit(e.target.value)} placeholder="Nome do treino..." title="Clique para renomear o treino" />
-          <input className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 outline-none focus:border-primary-400 focus:ring-1 focus:ring-primary-200 flex-1 min-w-0"
+          <input className="text-base md:text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 outline-none focus:border-primary-400 focus:ring-1 focus:ring-primary-200 flex-1 min-w-0"
             value={descEdit} onChange={e => setDescEdit(e.target.value)} placeholder="Grupos musculares..." title="Ênfase / grupos musculares" />
           <div className="flex gap-2 flex-shrink-0">
             <button onClick={salvarEdicao} disabled={saving} className="btn btn-primary btn-sm gap-1">
@@ -520,7 +521,7 @@ export default function JuMontarPage() {
             <div className="mb-4">
               <label className="label">Nome do treino</label>
               <input
-                className="input"
+                className="input text-base md:text-sm"
                 placeholder="Ex: Treino A - Maio, Treino B Pernas..."
                 value={nomeNovo}
                 onChange={e => setNomeNovo(e.target.value)}
@@ -547,13 +548,13 @@ export default function JuMontarPage() {
             <div className="grid grid-cols-2 gap-3 mb-5">
               <div>
                 <label className="label">Mês</label>
-                <select className="input" value={pubMes} onChange={e => setPubMes(+e.target.value)}>
+                <select className="input text-base md:text-sm" value={pubMes} onChange={e => setPubMes(+e.target.value)}>
                   {MESES.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
                 </select>
               </div>
               <div>
                 <label className="label">Ano</label>
-                <select className="input" value={pubAno} onChange={e => setPubAno(+e.target.value)}>
+                <select className="input text-base md:text-sm" value={pubAno} onChange={e => setPubAno(+e.target.value)}>
                   {[2025, 2026, 2027].map(a => <option key={a} value={a}>{a}</option>)}
                 </select>
               </div>

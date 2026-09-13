@@ -46,7 +46,73 @@ export default function PagamentosPage() {
       </div>
 
       <div className="card">
-        <div className="overflow-x-auto">
+        {/* Celular: um cartão por coach (sem rolar pro lado). A tabela aparece a partir de md. */}
+        <div className="md:hidden divide-y divide-gray-100">
+          {coaches.map(c => {
+            const n = aulasPorCoach(c.id)
+            const variavel = c.adicional_por_aula * n
+            const total = c.salario_fixo + variavel
+            const fat = c.valor_cliente_aula * n
+            const mrg = fat - total
+            const isPago = pagos.has(c.id)
+            return (
+              <div key={c.id} className="py-3 first:pt-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-7 h-7 shrink-0 rounded-full bg-primary-100 text-primary-800 text-xs font-semibold flex items-center justify-center">{c.nome.slice(0,2).toUpperCase()}</div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-gray-900">{c.nome}</div>
+                      <div className="text-xs text-gray-400">{c.contrato}</div>
+                    </div>
+                  </div>
+                  <span className={`badge shrink-0 ${isPago ? 'badge-green' : 'badge-amber'}`}>{isPago ? 'Pago' : 'Pendente'}</span>
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-1.5">
+                  <div className="bg-gray-50 rounded-lg px-2.5 py-1.5">
+                    <div className="text-[10px] text-gray-400 uppercase tracking-wide">Aulas</div>
+                    <div className="text-sm">{n}</div>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg px-2.5 py-1.5">
+                    <div className="text-[10px] text-gray-400 uppercase tracking-wide">Salário fixo</div>
+                    <div className="text-sm text-danger-600">{fmt(c.salario_fixo)}</div>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg px-2.5 py-1.5">
+                    <div className="text-[10px] text-gray-400 uppercase tracking-wide">Adicional aulas</div>
+                    <div className="text-sm text-warning-700">{fmt(variavel)}</div>
+                    <div className="text-xs text-gray-400">{n}×R${c.adicional_por_aula}</div>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg px-2.5 py-1.5">
+                    <div className="text-[10px] text-gray-400 uppercase tracking-wide">Total a pagar</div>
+                    <div className="text-sm font-bold text-gray-900">{fmt(total)}</div>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg px-2.5 py-1.5">
+                    <div className="text-[10px] text-gray-400 uppercase tracking-wide">Fat. gerado</div>
+                    <div className="text-sm">{fmt(fat)}</div>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg px-2.5 py-1.5">
+                    <div className="text-[10px] text-gray-400 uppercase tracking-wide">Margem</div>
+                    <div className={`text-sm font-semibold ${mrg >= 0 ? '' : 'text-danger-600'}`}>{fmt(mrg)}</div>
+                  </div>
+                </div>
+                <div className="mt-2.5">
+                  {isPago
+                    ? <button className="btn btn-sm w-full">Recibo</button>
+                    : <button onClick={() => setPagos(prev => new Set([...prev, c.id]))} className="btn btn-primary btn-sm w-full">Pagar</button>
+                  }
+                </div>
+              </div>
+            )
+          })}
+          <div className="pt-3 flex items-start justify-between gap-3 text-sm font-semibold">
+            <span className="text-gray-900">Total</span>
+            <div className="text-right">
+              <div className="text-gray-900">{fmt(totalPagar)}</div>
+              <div className="text-xs font-normal text-gray-400">Fat. gerado {fmt(coaches.reduce((s,c)=>s+c.valor_cliente_aula*aulasPorCoach(c.id),0))}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-xs text-gray-400 uppercase tracking-wide border-b border-gray-100">

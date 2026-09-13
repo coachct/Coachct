@@ -173,10 +173,10 @@ export default function AdminCuponsPage() {
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+    <div className="py-6 px-0 md:p-6 max-w-4xl mx-auto">
+      <div className="flex flex-wrap md:flex-nowrap items-center justify-between gap-3 md:gap-0 mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900 flex items-center gap-2">
+          <h1 className="text-xl md:text-2xl font-semibold text-gray-900 flex items-center gap-2">
             <Ticket size={22} style={{ color: PINK }} /> Cupons de desconto
           </h1>
           <p className="text-sm text-gray-500 mt-1">Crie e gerencie cupons usados no checkout do cliente.</p>
@@ -240,7 +240,7 @@ export default function AdminCuponsPage() {
 
       {modalAberto && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setModalAberto(false)}>
-          <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-4 md:p-6" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-gray-900">{editando ? 'Editar cupom' : 'Novo cupom'}</h2>
               <button onClick={() => setModalAberto(false)} className="text-gray-400 hover:text-gray-700"><X size={20} /></button>
@@ -253,7 +253,7 @@ export default function AdminCuponsPage() {
                   value={form.codigo}
                   onChange={e => setForm(f => ({ ...f, codigo: e.target.value.toUpperCase() }))}
                   placeholder="Ex: VERAO10"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase tracking-wide" />
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-base md:text-sm uppercase tracking-wide" />
               </div>
 
               <div>
@@ -262,7 +262,7 @@ export default function AdminCuponsPage() {
                   value={form.descricao}
                   onChange={e => setForm(f => ({ ...f, descricao: e.target.value }))}
                   placeholder="Ex: Promoção de verão"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-base md:text-sm" />
               </div>
 
               <div>
@@ -272,7 +272,7 @@ export default function AdminCuponsPage() {
                   value={form.desconto_percentual}
                   onChange={e => setForm(f => ({ ...f, desconto_percentual: e.target.value }))}
                   placeholder="Ex: 10"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-base md:text-sm" />
               </div>
 
               <div>
@@ -308,7 +308,7 @@ export default function AdminCuponsPage() {
                     value={form.max_usos_total}
                     onChange={e => setForm(f => ({ ...f, max_usos_total: e.target.value }))}
                     placeholder="ilimitado"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-base md:text-sm" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Máx. por cliente</label>
@@ -316,18 +316,18 @@ export default function AdminCuponsPage() {
                     type="number" min={1}
                     value={form.max_usos_por_cliente}
                     onChange={e => setForm(f => ({ ...f, max_usos_por_cliente: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-base md:text-sm" />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Válido de (opcional)</label>
                   <input
                     type="date"
                     value={form.valido_de}
                     onChange={e => setForm(f => ({ ...f, valido_de: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-base md:text-sm" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Válido até (opcional)</label>
@@ -335,7 +335,7 @@ export default function AdminCuponsPage() {
                     type="date"
                     value={form.valido_ate}
                     onChange={e => setForm(f => ({ ...f, valido_ate: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-base md:text-sm" />
                 </div>
               </div>
 

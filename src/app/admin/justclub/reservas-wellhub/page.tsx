@@ -185,26 +185,26 @@ export default function ReservasWellhubPage() {
     <div>
       <PageHeader title="Reservas Wellhub · Club" subtitle="App (reservou no app do Wellhub) e Site (lançada no nosso sistema) — por data da aula" />
 
-      <div className="flex flex-wrap items-end gap-3 mb-5">
-        <label className="text-xs text-gray-500">
+      <div className="grid grid-cols-2 items-end gap-3 mb-5 md:flex md:flex-wrap">
+        <label className="text-xs text-gray-500 min-w-0 md:min-w-[auto]">
           <div className="mb-1">De</div>
-          <input type="date" value={de} onChange={e => setDe(e.target.value)} className="input" />
+          <input type="date" value={de} onChange={e => setDe(e.target.value)} className="input text-base md:text-sm" />
         </label>
-        <label className="text-xs text-gray-500">
+        <label className="text-xs text-gray-500 min-w-0 md:min-w-[auto]">
           <div className="mb-1">Até</div>
-          <input type="date" value={ate} onChange={e => setAte(e.target.value)} className="input" />
+          <input type="date" value={ate} onChange={e => setAte(e.target.value)} className="input text-base md:text-sm" />
         </label>
-        <label className="text-xs text-gray-500">
+        <label className="text-xs text-gray-500 min-w-0 md:min-w-[auto]">
           <div className="mb-1">Origem</div>
-          <select value={origemFiltro} onChange={e => setOrigemFiltro(e.target.value)} className="input">
+          <select value={origemFiltro} onChange={e => setOrigemFiltro(e.target.value)} className="input text-base md:text-sm">
             <option value="app">App (Wellhub)</option>
             <option value="site">Site (nosso sistema)</option>
             <option value="todas">Todas</option>
           </select>
         </label>
-        <label className="text-xs text-gray-500">
+        <label className="text-xs text-gray-500 min-w-0 md:min-w-[auto]">
           <div className="mb-1">Status</div>
-          <select value={statusFiltro} onChange={e => setStatusFiltro(e.target.value)} className="input">
+          <select value={statusFiltro} onChange={e => setStatusFiltro(e.target.value)} className="input text-base md:text-sm">
             <option value="todas">Todas</option>
             <option value="reservado">Reservado</option>
             <option value="presente">Presente</option>
@@ -212,7 +212,7 @@ export default function ReservasWellhubPage() {
             <option value="falta">Falta</option>
           </select>
         </label>
-        <button onClick={baixarCsv} disabled={!visiveis.length} className="btn btn-primary btn-sm ml-auto disabled:opacity-40">
+        <button onClick={baixarCsv} disabled={!visiveis.length} className="btn btn-primary btn-sm col-span-2 ml-auto disabled:opacity-40">
           ⬇ Exportar CSV
         </button>
       </div>
@@ -229,7 +229,29 @@ export default function ReservasWellhubPage() {
       ) : !visiveis.length ? (
         <div className="text-center py-10 text-sm text-gray-400">Nenhuma reserva Wellhub neste período/filtro.</div>
       ) : (
-        <div className="card overflow-x-auto">
+        <div className="card">
+          {/* Celular: um cartão por reserva (sem rolar pro lado). A tabela aparece a partir de md. */}
+          <div className="md:hidden divide-y divide-gray-100">
+            {visiveis.map(l => (
+              <div key={l.id} className="py-3 first:pt-0 last:pb-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-gray-900">{l.cliente}</div>
+                    <div className="text-xs text-gray-500">{fmtData(l.data)} · {l.horario} · {l.aula}</div>
+                  </div>
+                  <span className={`badge shrink-0 ${STATUS[l.status]?.cls || 'badge-gray'}`}>{STATUS[l.status]?.label || l.status}</span>
+                </div>
+                <div className="mt-1 text-xs text-gray-400">{l.unidade}</div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                  <span>CPF {l.cpf}</span>
+                  <span>Posição {l.posicao}</span>
+                  <span className={`badge ${l.origem === 'App' ? 'badge-blue' : 'badge-gray'}`}>{l.origem}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
@@ -264,6 +286,7 @@ export default function ReservasWellhubPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

@@ -343,10 +343,22 @@ export default function ReceitasPage() {
   )
 
   const inputCls =
-    'w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20'
+    'w-full rounded-xl border border-gray-200 px-3 py-2.5 text-base text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20 md:text-sm'
+
+  function badgeRecebido(recebido: boolean) {
+    return recebido ? (
+      <span className="inline-flex rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
+        Recebido
+      </span>
+    ) : (
+      <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+        A receber
+      </span>
+    )
+  }
 
   return (
-    <div className="min-h-screen bg-[#f3f4f6] px-4 py-6 sm:px-8">
+    <div className="min-h-screen bg-[#f3f4f6] px-0 py-6 sm:px-8">
       <div className="mx-auto max-w-5xl">
         {/* Cabeçalho */}
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -568,7 +580,63 @@ export default function ReceitasPage() {
               Nenhuma receita encontrada para os filtros selecionados.
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            {/* Celular: um cartão por receita (sem rolar pro lado). A tabela aparece a partir de md. */}
+            <div className="md:hidden">
+              <div className="divide-y divide-gray-100">
+                {lista.map((r) => (
+                  <div key={r.id} className="px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${ORIGEM_BADGE[r.origem]}`}
+                        >
+                          {ORIGEM_LABEL[r.origem]}
+                        </span>
+                        {r.descricao && (
+                          <div className="mt-0.5 text-xs text-gray-400">{r.descricao}</div>
+                        )}
+                      </div>
+                      <span className="shrink-0 text-sm font-semibold text-gray-900">
+                        {fmtBRL(Number(r.valor))}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500">
+                      {nomeUnidade(r.unidade_id)} · {fmtCompetencia(r.competencia)}
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
+                      <span>Recebido em {fmtData(r.recebido_em)}</span>
+                      <span className="text-gray-300">·</span>
+                      {badgeRecebido(r.recebido)}
+                    </div>
+                    <div className="mt-2.5 flex gap-2">
+                      <button
+                        onClick={() => abrirEdicao(r)}
+                        className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white py-2 text-sm font-medium text-gray-700 active:bg-gray-50"
+                      >
+                        <Pencil size={15} />
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => excluir(r)}
+                        className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-red-100 bg-white py-2 text-sm font-medium text-red-600 active:bg-red-50"
+                      >
+                        <Trash2 size={15} />
+                        Excluir
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center justify-between gap-3 border-t border-gray-100 bg-gray-50/60 px-4 py-3">
+                <span className="text-sm font-medium text-gray-600">
+                  Total ({lista.length} lançamento{lista.length !== 1 ? 's' : ''})
+                </span>
+                <span className="shrink-0 text-base font-bold text-gray-900">{fmtBRL(totalLista)}</span>
+              </div>
+            </div>
+
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 text-xs uppercase tracking-wide text-gray-400">
@@ -600,17 +668,7 @@ export default function ReceitasPage() {
                       <td className="px-4 py-3 text-gray-700">{nomeUnidade(r.unidade_id)}</td>
                       <td className="px-4 py-3 text-gray-600">{fmtCompetencia(r.competencia)}</td>
                       <td className="px-4 py-3 text-gray-600">{fmtData(r.recebido_em)}</td>
-                      <td className="px-4 py-3">
-                        {r.recebido ? (
-                          <span className="inline-flex rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
-                            Recebido
-                          </span>
-                        ) : (
-                          <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
-                            A receber
-                          </span>
-                        )}
-                      </td>
+                      <td className="px-4 py-3">{badgeRecebido(r.recebido)}</td>
                       <td className="px-4 py-3 text-right font-semibold text-gray-900">
                         {fmtBRL(Number(r.valor))}
                       </td>
@@ -648,6 +706,7 @@ export default function ReceitasPage() {
                 </tfoot>
               </table>
             </div>
+            </>
           )}
         </div>
       </div>
@@ -655,7 +714,7 @@ export default function ReceitasPage() {
       {/* Modal avulsa / edição */}
       {modalAberto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl">
+          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-xl md:max-h-none md:overflow-visible">
             <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
               <h2 className="text-lg font-bold text-gray-900">
                 {editando ? 'Editar receita' : 'Nova receita avulsa'}

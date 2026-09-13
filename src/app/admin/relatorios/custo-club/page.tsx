@@ -243,14 +243,14 @@ export default function CustoRetornoClubPage() {
                   <div className="w-10 h-10 rounded-full bg-primary-100 text-primary-800 text-sm font-semibold flex items-center justify-center flex-shrink-0">
                     {l.nome.slice(0, 2).toUpperCase()}
                   </div>
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <div className="font-semibold text-gray-900">{l.nome}</div>
                     <div className="text-xs text-gray-400">Coach Club · R${l.valor_aula}/aula</div>
                   </div>
                   <span className={`badge badge-${margem >= 0 ? 'green' : 'red'}`}>{margem >= 0 ? 'Positivo' : 'Negativo'}</span>
                 </div>
 
-                <div className="grid grid-cols-4 gap-2 mb-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
                   {[
                     { l: 'Aulas', v: String(l.aulas), c: 'text-gray-900' },
                     { l: 'Custo', v: fmt(custo), c: 'text-danger-600' },

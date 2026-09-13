@@ -724,14 +724,14 @@ export default function JustClubAdminPage() {
     <div className="min-h-screen bg-gray-50">
 
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="px-6 pt-4 pb-0">
+        <div className="px-0 md:px-6 pt-4 pb-0">
           <h1 className="text-lg font-semibold text-gray-900 mb-4">JustClub — Aulas coletivas</h1>
           <div className="flex gap-0">
             {unidades.map(u => {
               const ativa = unidadeAtiva?.id === u.id
               return (
                 <button key={u.id} onClick={() => setUnidadeAtiva(u)}
-                  className={`px-6 py-2.5 text-sm font-medium border-b-2 transition-all relative ${ativa?'border-primary-600 text-primary-700 bg-primary-50/50':'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
+                  className={`px-3 md:px-6 py-2.5 text-sm font-medium border-b-2 transition-all relative ${ativa?'border-primary-600 text-primary-700 bg-primary-50/50':'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
                   {u.nome}
                   {ativa && unidadeAtiva && <span className="ml-2 text-xs text-primary-500 font-normal">{aulas.filter(a=>a.ativo).length} aulas</span>}
                 </button>
@@ -742,7 +742,7 @@ export default function JustClubAdminPage() {
       </div>
 
       {!unidadeAtiva ? (
-        <div className="max-w-3xl mx-auto px-6 py-16 text-center">
+        <div className="max-w-3xl mx-auto px-0 md:px-6 py-16 text-center">
           <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-5">
             <CalendarDays size={30} className="text-gray-400"/>
           </div>
@@ -758,7 +758,7 @@ export default function JustClubAdminPage() {
           </div>
         </div>
       ) : (
-        <div className="max-w-3xl mx-auto px-6 py-5">
+        <div className="max-w-3xl mx-auto px-0 md:px-6 py-5">
 
           {msg && (
             <div className={`mb-4 px-4 py-2.5 rounded-xl text-sm font-medium ${msg.startsWith('Erro')?'bg-red-50 text-red-700 border border-red-100':'bg-green-50 text-green-800 border border-green-100'}`}>{msg}</div>
@@ -809,7 +809,7 @@ export default function JustClubAdminPage() {
               </div>
               <div className="w-px h-5 bg-gray-200 flex-shrink-0"/>
               <select value={filtroCoach} onChange={e=>setFiltroCoach(e.target.value)}
-                className="text-xs border border-gray-200 rounded-lg px-2 py-1 text-gray-600 bg-white focus:outline-none focus:border-primary-400">
+                className="text-base md:text-xs border border-gray-200 rounded-lg px-2 py-1 text-gray-600 bg-white focus:outline-none focus:border-primary-400">
                 <option value="todos">Todos os coaches</option>
                 {coaches.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}
               </select>
@@ -884,7 +884,8 @@ export default function JustClubAdminPage() {
                     </div>
                   ) : todasAulas.map(aula => (
                     <div key={aula.id} className={`card transition-opacity ${!aula.ativo?'opacity-50 border-dashed':''}`}>
-                      <div className="flex items-start gap-3">
+                      {/* mobile: botões quebram para a linha de baixo */}
+                      <div className="flex flex-wrap md:flex-nowrap items-start gap-3">
                         <div className="w-10 h-10 rounded-xl bg-primary-50 text-primary-700 text-xs font-bold flex items-center justify-center flex-shrink-0 border border-primary-100">
                           {DIAS_ABREV[aula.dia_semana]}
                         </div>
@@ -904,7 +905,7 @@ export default function JustClubAdminPage() {
                             <span className="flex items-center gap-1"><Users size={10}/> {aula.capacidade} vagas</span>
                           </div>
                         </div>
-                        <div className="flex flex-col gap-1.5 flex-shrink-0">
+                        <div className="flex flex-row flex-wrap justify-end md:flex-col md:flex-nowrap md:justify-start gap-1.5 flex-shrink-0 w-full md:w-auto">
                           <div className="flex gap-1.5">
                             <button onClick={()=>abrirEdicao(aula)} className="btn btn-sm gap-1 text-gray-600 hover:bg-gray-100"><Pencil size={12}/> Editar</button>
                             <button onClick={()=>toggleAtivo(aula)} className={`btn btn-sm gap-1 ${aula.ativo?'text-red-500 hover:bg-red-50':'text-green-600 hover:bg-green-50'}`}>
@@ -915,7 +916,7 @@ export default function JustClubAdminPage() {
                             </button>
                           </div>
                           {aula.ativo && (
-                            <button onClick={()=>abrirReplicar(aula)} className="btn btn-sm gap-1 text-cyan-700 bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 w-full justify-center">
+                            <button onClick={()=>abrirReplicar(aula)} className="btn btn-sm gap-1 text-cyan-700 bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 w-auto md:w-full justify-center">
                               <RefreshCw size={12}/> Replicar grade
                             </button>
                           )}
@@ -944,11 +945,11 @@ export default function JustClubAdminPage() {
                         {expandido && (
                           <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
                             {aulasNoDia.sort((a,b)=>a.horario.localeCompare(b.horario)).map(aula => (
-                              <div key={aula.id} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5">
+                              <div key={aula.id} className="flex flex-wrap md:flex-nowrap items-center gap-x-3 gap-y-1 md:gap-3 bg-gray-50 rounded-xl px-3 py-2.5">
                                 <span className="font-mono text-sm font-bold text-gray-900 w-12 flex-shrink-0">{(aula.horario||'').slice(0,5)}</span>
                                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${tipoColor(aula.tipo)}`}>{tipoLabel(aula.tipo)}</span>
-                                <span className="text-xs text-gray-600 flex-1 truncate">{aula.grupos_musculares?.nome||'—'}</span>
-                                <span className="text-xs text-gray-400 flex-shrink-0">👤 <NomeCoach nome={aula.coaches?.nome}/></span>
+                                <span className="text-xs text-gray-600 flex-1 truncate order-last md:order-none min-w-full md:min-w-0">{aula.grupos_musculares?.nome||'—'}</span>
+                                <span className="text-xs text-gray-400 flex-shrink-0 ml-auto md:ml-0">👤 <NomeCoach nome={aula.coaches?.nome}/></span>
                                 <span className="text-xs text-gray-400 flex-shrink-0 flex items-center gap-1"><Users size={10}/> {aula.capacidade}</span>
                                 <button onClick={()=>abrirEdicao(aula)} className="text-gray-400 hover:text-primary-600 flex-shrink-0"><Pencil size={13}/></button>
                                 <button onClick={()=>abrirExcluirAula(aula)} className="text-gray-400 hover:text-red-600 flex-shrink-0" title="Excluir"><Trash2 size={13}/></button>
@@ -977,7 +978,7 @@ export default function JustClubAdminPage() {
                         type="date"
                         value={dataCalendario}
                         onChange={e=>setDataCalendario(e.target.value)}
-                        className={`text-sm font-medium bg-transparent outline-none ${dataCalendario?'text-white':'text-gray-600'}`}
+                        className={`text-base md:text-sm font-medium bg-transparent outline-none ${dataCalendario?'text-white':'text-gray-600'}`}
                       />
                       {dataCalendario && (
                         <button onClick={()=>setDataCalendario('')} className="text-white/80 hover:text-white" title="Voltar para a janela de dias">
@@ -1017,11 +1018,11 @@ export default function JustClubAdminPage() {
                             </div>
                             <div className="space-y-1.5">
                               {(ocs as any[]).sort((a,b)=>(a.club_aulas?.horario||'').localeCompare(b.club_aulas?.horario||'')).map(oc => (
-                                <div key={oc.id} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-100">
+                                <div key={oc.id} className="flex flex-wrap md:flex-nowrap items-center gap-x-3 gap-y-1 md:gap-3 bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-100">
                                   <span className="font-mono text-sm font-bold text-gray-900 w-12 flex-shrink-0">{(oc.club_aulas?.horario||'').slice(0,5)}</span>
                                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${tipoColor(oc.club_aulas?.tipo||'')}`}>{tipoLabel(oc.club_aulas?.tipo||'')}</span>
-                                  <span className="text-xs text-gray-600 flex-1 truncate">{oc.club_aulas?.grupos_musculares?.nome||'—'}</span>
-                                  <span className="text-xs text-gray-400 flex-shrink-0">👤 <NomeCoach nome={oc.club_aulas?.coaches?.nome}/></span>
+                                  <span className="text-xs text-gray-600 flex-1 truncate order-last md:order-none min-w-full md:min-w-0">{oc.club_aulas?.grupos_musculares?.nome||'—'}</span>
+                                  <span className="text-xs text-gray-400 flex-shrink-0 ml-auto md:ml-0">👤 <NomeCoach nome={oc.club_aulas?.coaches?.nome}/></span>
                                   <span className="text-xs text-gray-400 flex-shrink-0 flex items-center gap-1"><Users size={10}/> {oc.club_aulas?.capacidade||'—'}</span>
                                   <button onClick={()=>abrirExcluirOcorrencia(oc)} className="text-gray-400 hover:text-red-600 flex-shrink-0" title="Excluir"><Trash2 size={13}/></button>
                                 </div>
@@ -1040,7 +1041,7 @@ export default function JustClubAdminPage() {
                   <div className="card">
                     <h3 className="text-sm font-semibold text-gray-900 mb-3">Novo grupo muscular</h3>
                     <div className="flex gap-2">
-                      <input className="input flex-1" placeholder="Ex: Inferiores, Full Body, HIIT & ABS..."
+                      <input className="input flex-1 text-base md:text-sm" placeholder="Ex: Inferiores, Full Body, HIIT & ABS..."
                         value={novoGrupo} onChange={e=>setNovoGrupo(e.target.value)} onKeyDown={e=>e.key==='Enter'&&criarGrupo()}/>
                       <button onClick={criarGrupo} disabled={salvandoGrupo||!novoGrupo.trim()} className="btn bg-primary-600 text-white hover:bg-primary-700 gap-1 disabled:opacity-50 flex-shrink-0">
                         <Plus size={14}/> {salvandoGrupo?'Criando...':'Criar'}
@@ -1057,7 +1058,7 @@ export default function JustClubAdminPage() {
                           <div key={grupo.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border ${grupo.ativo===false?'bg-gray-50 border-gray-100 opacity-60':'bg-white border-gray-100'}`}>
                             {editandoGrupo?.id===grupo.id ? (
                               <>
-                                <input className="input flex-1 py-1 text-sm" value={nomeGrupoEdit} onChange={e=>setNomeGrupoEdit(e.target.value)} onKeyDown={e=>e.key==='Enter'&&salvarEdicaoGrupo()} autoFocus/>
+                                <input className="input flex-1 py-1 text-base md:text-sm" value={nomeGrupoEdit} onChange={e=>setNomeGrupoEdit(e.target.value)} onKeyDown={e=>e.key==='Enter'&&salvarEdicaoGrupo()} autoFocus/>
                                 <button onClick={salvarEdicaoGrupo} className="btn btn-sm bg-primary-600 text-white gap-1"><Save size={12}/> Salvar</button>
                                 <button onClick={()=>setEditandoGrupo(null)} className="btn btn-sm text-gray-500"><X size={12}/></button>
                               </>
@@ -1129,11 +1130,11 @@ export default function JustClubAdminPage() {
                             ) : (
                               <div className="space-y-1.5 mb-3">
                                 {aulasDoFeriado.map(a => (
-                                  <div key={a.id} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5">
+                                  <div key={a.id} className="flex flex-wrap md:flex-nowrap items-center gap-x-3 gap-y-1 md:gap-3 bg-gray-50 rounded-xl px-3 py-2.5">
                                     <span className="font-mono text-sm font-bold text-gray-900 w-12 flex-shrink-0">{(a.horario||'').slice(0,5)}</span>
                                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${tipoColor(a.tipo)}`}>{tipoLabel(a.tipo)}</span>
-                                    <span className="text-xs text-gray-600 flex-1 truncate">{a.grupos_musculares?.nome||'—'}</span>
-                                    <span className="text-xs text-gray-400 flex-shrink-0">👤 <NomeCoach nome={a.coaches?.nome}/></span>
+                                    <span className="text-xs text-gray-600 flex-1 truncate order-last md:order-none min-w-full md:min-w-0">{a.grupos_musculares?.nome||'—'}</span>
+                                    <span className="text-xs text-gray-400 flex-shrink-0 ml-auto md:ml-0">👤 <NomeCoach nome={a.coaches?.nome}/></span>
                                     <span className="text-xs text-gray-400 flex-shrink-0 flex items-center gap-1"><Users size={10}/> {a.capacidade}</span>
                                     <button onClick={()=>removerAulaFeriado(a)} className="text-gray-400 hover:text-red-600 flex-shrink-0" title="Remover aula"><Trash2 size={13}/></button>
                                   </div>
@@ -1199,7 +1200,7 @@ export default function JustClubAdminPage() {
                 {gruposAtivos.length===0 ? (
                   <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5 text-xs text-orange-700 flex items-center gap-2"><AlertCircle size={14}/> Nenhum grupo ativo. Cadastre na aba "Grupos".</div>
                 ) : (
-                  <select className="input" value={form.grupo_muscular_id} onChange={e=>setForm(f=>({...f,grupo_muscular_id:e.target.value}))}>
+                  <select className="input text-base md:text-sm" value={form.grupo_muscular_id} onChange={e=>setForm(f=>({...f,grupo_muscular_id:e.target.value}))}>
                     <option value="">Selecione...</option>
                     {gruposAtivos.map(g=><option key={g.id} value={g.id}>{g.nome}</option>)}
                   </select>
@@ -1211,7 +1212,7 @@ export default function JustClubAdminPage() {
                 {coaches.length===0 ? (
                   <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5 text-xs text-orange-700 flex items-center gap-2"><AlertCircle size={14}/> Nenhum coach para esta unidade. Configure em Coaches.</div>
                 ) : (
-                  <select className="input" value={form.coach_id} onChange={e=>setForm(f=>({...f,coach_id:e.target.value}))}>
+                  <select className="input text-base md:text-sm" value={form.coach_id} onChange={e=>setForm(f=>({...f,coach_id:e.target.value}))}>
                     <option value="">⚠️ Coach a definir (escalar depois)</option>
                     {coaches.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}
                   </select>
@@ -1242,7 +1243,7 @@ export default function JustClubAdminPage() {
                   const isCustom = form.horario !== '' && !lista.includes(form.horario)
                   return (
                     <div className="space-y-2">
-                      <select className="input" value={isCustom ? '__custom__' : form.horario}
+                      <select className="input text-base md:text-sm" value={isCustom ? '__custom__' : form.horario}
                         onChange={e => {
                           if (e.target.value === '__custom__') setForm(f => ({ ...f, horario: '' }))
                           else setForm(f => ({ ...f, horario: e.target.value }))
@@ -1251,7 +1252,7 @@ export default function JustClubAdminPage() {
                         <option value="__custom__">Outro horário...</option>
                       </select>
                       {(isCustom || form.horario === '') && (
-                        <input type="time" className="input" value={form.horario}
+                        <input type="time" className="input text-base md:text-sm" value={form.horario}
                           onChange={e => setForm(f => ({ ...f, horario: e.target.value }))}/>
                       )}
                     </div>
@@ -1262,7 +1263,7 @@ export default function JustClubAdminPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label">Duração (min)</label>
-                  <input className="input" type="number" min={10} max={180} value={form.duracao_min} onChange={e=>setForm(f=>({...f,duracao_min:+e.target.value}))}/>
+                  <input className="input text-base md:text-sm" type="number" min={10} max={180} value={form.duracao_min} onChange={e=>setForm(f=>({...f,duracao_min:+e.target.value}))}/>
                 </div>
                 <div>
                   <label className="label">Capacidade (vagas)</label>
@@ -1293,7 +1294,7 @@ export default function JustClubAdminPage() {
                   </button>
                   {formReplicar && (
                     <div className="px-4 py-4 space-y-3 border-t border-gray-100 bg-white">
-                      <div><label className="label">A partir de</label><input type="date" className="input" value={formInicio} onChange={e=>setFormInicio(e.target.value)}/></div>
+                      <div><label className="label">A partir de</label><input type="date" className="input text-base md:text-sm" value={formInicio} onChange={e=>setFormInicio(e.target.value)}/></div>
                       <div>
                         <label className="label">Por quantos meses?</label>
                         <div className="grid grid-cols-4 gap-2">
@@ -1337,7 +1338,7 @@ export default function JustClubAdminPage() {
               </div>
               <div>
                 <label className="label">Trocar a partir de</label>
-                <input type="date" className="input" value={confirmCoach.data}
+                <input type="date" className="input text-base md:text-sm" value={confirmCoach.data}
                   onChange={e=>setConfirmCoach(c=>c?{...c, data:e.target.value}:c)}/>
               </div>
               <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-xs text-amber-800 flex gap-2">
@@ -1378,7 +1379,7 @@ export default function JustClubAdminPage() {
                 </div>
               ) : (
                 <>
-                  <div><label className="label">A partir de</label><input type="date" className="input" value={replicarInicio} onChange={e=>setReplicarInicio(e.target.value)}/></div>
+                  <div><label className="label">A partir de</label><input type="date" className="input text-base md:text-sm" value={replicarInicio} onChange={e=>setReplicarInicio(e.target.value)}/></div>
                   <div>
                     <label className="label">Por quantos meses?</label>
                     <div className="grid grid-cols-4 gap-2">
@@ -1499,11 +1500,11 @@ export default function JustClubAdminPage() {
               </div>
               <div>
                 <label className="label">Data</label>
-                <input type="date" className="input" value={novoFeriadoData} onChange={e=>setNovoFeriadoData(e.target.value)}/>
+                <input type="date" className="input text-base md:text-sm" value={novoFeriadoData} onChange={e=>setNovoFeriadoData(e.target.value)}/>
               </div>
               <div>
                 <label className="label">Descrição</label>
-                <input type="text" className="input" placeholder="Ex: Corpus Christi" value={novoFeriadoDesc} onChange={e=>setNovoFeriadoDesc(e.target.value)}/>
+                <input type="text" className="input text-base md:text-sm" placeholder="Ex: Corpus Christi" value={novoFeriadoDesc} onChange={e=>setNovoFeriadoDesc(e.target.value)}/>
               </div>
               {erroFeriado && (
                 <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">{erroFeriado}</div>

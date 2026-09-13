@@ -271,7 +271,25 @@ export default function AdminRelatorioClubPage() {
   )
 
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '1.5rem 1rem 4rem' }}>
+    <div className="relclub-pagina" style={{ maxWidth: 1100, margin: '0 auto', padding: '1.5rem 1rem 4rem' }}>
+      {/* Ajustes só no celular — desktop fica igual */}
+      <style>{`
+        @media (max-width: 767px) {
+          .relclub-pagina { padding-left: 0 !important; padding-right: 0 !important; }
+          .relclub-grupo { flex-wrap: wrap !important; }
+          .relclub-input { font-size: 16px !important; }
+          .relclub-comp-grid { grid-template-columns: 1fr !important; }
+          .relclub-secao-box { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+          .relclub-tabela th, .relclub-tabela td { white-space: nowrap; }
+          .relclub-tabela thead tr:first-child th:first-child,
+          .relclub-tabela tbody td:first-child {
+            white-space: normal; min-width: 88px; position: sticky; left: 0; z-index: 1;
+            border-right: 1px solid #f0f0f0;
+          }
+          .relclub-tabela thead tr:first-child th:first-child { background: #fafafa; }
+          .relclub-tabela tbody td:first-child { background: #fff; }
+        }
+      `}</style>
       <h1 style={{ fontSize: 26, fontWeight: 800, marginBottom: 4 }}>Relatório Club</h1>
       <p style={{ color: '#666', marginBottom: 20, fontSize: 14 }}>
         Frequência, ocupação, presença e desempenho dos coaches — Pinheiros e Vila Olímpia.
@@ -279,7 +297,7 @@ export default function AdminRelatorioClubPage() {
 
       {/* Filtros */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', marginBottom: 24 }}>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div className="relclub-grupo" style={{ display: 'flex', gap: 6 }}>
           {(['7', '15', '30', 'custom'] as const).map(p => (
             <button key={p} onClick={() => setPeriodo(p)}
               style={{
@@ -294,16 +312,16 @@ export default function AdminRelatorioClubPage() {
         </div>
 
         {periodo === 'custom' && (
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <input type="date" value={dataIni} onChange={e => setDataIni(e.target.value)}
+          <div className="relclub-grupo" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input className="relclub-input" type="date" value={dataIni} onChange={e => setDataIni(e.target.value)}
               style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #ddd', fontSize: 13 }} />
             <span style={{ color: '#999' }}>até</span>
-            <input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)}
+            <input className="relclub-input" type="date" value={dataFim} onChange={e => setDataFim(e.target.value)}
               style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #ddd', fontSize: 13 }} />
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
+        <div className="relclub-grupo" style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
           <button onClick={() => setUnidadeSel('ambas')}
             style={{
               padding: '8px 14px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer',
@@ -456,7 +474,7 @@ function Secao({ titulo, children }: { titulo: string; children: any }) {
   return (
     <div style={{ marginBottom: 28 }}>
       <h2 style={{ fontSize: 16, fontWeight: 800, marginBottom: 10, color: '#222' }}>{titulo}</h2>
-      <div style={{ background: '#fff', border: '1px solid #eee', borderRadius: 14, overflow: 'hidden' }}>
+      <div className="relclub-secao-box" style={{ background: '#fff', border: '1px solid #eee', borderRadius: 14, overflow: 'hidden' }}>
         {children}
       </div>
     </div>
@@ -465,7 +483,7 @@ function Secao({ titulo, children }: { titulo: string; children: any }) {
 
 function Tabela({ colunas, linhas }: { colunas: string[]; linhas: any[][] }) {
   return (
-    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+    <table className="relclub-tabela" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
       <thead>
         <tr style={{ background: '#fafafa', textAlign: 'left' }}>
           {colunas.map((c, i) => (
@@ -531,7 +549,7 @@ function Comparativo({ rel, unidades, dataIni, dataFim }: {
   return (
     <>
       {/* Resumo lado a lado */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(330px, 1fr))', gap: 12, marginBottom: 14 }}>
+      <div className="relclub-comp-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(330px, 1fr))', gap: 12, marginBottom: 14 }}>
         {unidades.map(u => {
           const d = det(u.id)
           return (
@@ -644,7 +662,7 @@ function TabelaComp({ primeira, unidades, linhas, metricas = METRICAS_PADRAO }: 
 
   return (
     <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+      <table className="relclub-tabela" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
         <thead>
           <tr style={{ background: '#fafafa' }}>
             <th rowSpan={2} style={{ ...th, textAlign: 'left' }}>{primeira}</th>

@@ -276,11 +276,11 @@ export default function RelatorioCreditoExtraPage() {
 
       <div className="flex flex-wrap items-center gap-3 mb-5">
         {unidades.length > 1 && (
-          <select className="input" value={unidadeId} onChange={e => setUnidadeId(e.target.value)}>
+          <select className="input text-base md:text-sm" value={unidadeId} onChange={e => setUnidadeId(e.target.value)}>
             {unidades.map(u => <option key={u.id} value={u.id}>{u.nome}</option>)}
           </select>
         )}
-        <select className="input" value={`${ano}-${mes}`}
+        <select className="input text-base md:text-sm" value={`${ano}-${mes}`}
           onChange={e => { const [a, m] = e.target.value.split('-'); setAno(Number(a)); setMes(Number(m)) }}>
           {opcoesMes.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
         </select>
@@ -392,7 +392,7 @@ export default function RelatorioCreditoExtraPage() {
         <div className="text-xs text-gray-400 mb-4">
           {creditosVendidosMes} crédito(s) vendido(s) em {nomeMes}.
         </div>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {[
             { l: 'Avulso', v: fmt(receitaAvulso), c: 'text-gray-900' },
             { l: 'Pacote mensal', v: fmt(receitaPacote), c: 'text-gray-900' },

@@ -411,11 +411,11 @@ export default function FuncionariosPage() {
   }
 
   const inputCls =
-    'w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20'
+    'w-full rounded-xl border border-gray-200 px-3 py-2.5 text-base text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20 md:text-sm'
   const labelCls = 'mb-1 block text-xs font-medium text-gray-500'
 
   return (
-    <div className="min-h-screen bg-[#f3f4f6] px-4 py-6 sm:px-8">
+    <div className="min-h-screen bg-[#f3f4f6] px-0 py-6 sm:px-8">
       <div className="mx-auto max-w-6xl">
         {/* Cabeçalho */}
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -491,7 +491,54 @@ export default function FuncionariosPage() {
           ) : funcionarios.length === 0 ? (
             <div className="py-16 text-center text-sm text-gray-500">Nenhum funcionário cadastrado ainda.</div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            {/* Celular: um cartão por funcionário (sem rolar pro lado). A tabela aparece a partir de md. */}
+            <div className="divide-y divide-gray-100 md:hidden">
+              {funcionarios.map((f) => {
+                const ap = apontPorFunc[f.id] || []
+                return (
+                  <div key={f.id} className={`px-4 py-3 ${f.ativo ? '' : 'opacity-50'}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-sm font-medium text-gray-900">{f.nome}</span>
+                      <span className="shrink-0 text-sm font-semibold text-gray-900">{fmtBRL(totalFunc(f))}</span>
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500">
+                      {f.cargo || '—'}
+                      {ap.length > 0 && (
+                        <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                          {ap.length} apontamento{ap.length > 1 ? 's' : ''}
+                        </span>
+                      )}
+                      {!f.ativo && <span className="ml-2 text-[10px] font-semibold text-gray-400">INATIVO</span>}
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500">{nomeUnidade(f.unidade_id)}</div>
+                    <div className="mt-1 text-xs text-gray-500">
+                      Salário {fmtBRL(Number(f.salario))} · VT {fmtBRL(Number(f.vale_transporte))} · VA{' '}
+                      {fmtBRL(Number(f.vale_alimentacao))}
+                    </div>
+                    <div className="mt-2.5 grid grid-cols-2 gap-2">
+                      <button onClick={() => abrirApont(f)}
+                        className="col-span-2 inline-flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white py-2 text-sm font-medium text-gray-700 active:bg-gray-50">
+                        <ListPlus size={15} />
+                        Apontamentos do mês
+                      </button>
+                      <button onClick={() => abrirEdicao(f)}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white py-2 text-sm font-medium text-gray-700 active:bg-gray-50">
+                        <Pencil size={15} />
+                        Editar
+                      </button>
+                      <button onClick={() => toggleAtivo(f)}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white py-2 text-sm font-medium text-gray-700 active:bg-gray-50">
+                        <Power size={15} />
+                        {f.ativo ? 'Desativar' : 'Reativar'}
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 text-xs uppercase tracking-wide text-gray-400">
@@ -548,6 +595,7 @@ export default function FuncionariosPage() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </div>
       </div>
@@ -579,7 +627,7 @@ export default function FuncionariosPage() {
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
                 <div>
                   <label className={labelCls}>Salário (R$)</label>
                   <input value={mSalario} onChange={(e) => setMSalario(e.target.value)} className={inputCls} placeholder="0,00" inputMode="decimal" />
@@ -593,7 +641,7 @@ export default function FuncionariosPage() {
                   <input value={mVA} onChange={(e) => setMVA(e.target.value)} className={inputCls} placeholder="0,00" inputMode="decimal" />
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
                 <div>
                   <label className={labelCls}>Jornada início</label>
                   <input type="time" value={mInicio} onChange={(e) => setMInicio(e.target.value)} className={inputCls} />
@@ -712,7 +760,49 @@ export default function FuncionariosPage() {
               Há apontamentos neste mês. Confira/edite os valores base — os apontamentos entram na linha de salário. Pagamento em {fmtData(vencFolhaStr(gAno, gMes))}.
             </p>
 
-            <div className="overflow-x-auto">
+            {/* Celular: um bloco por funcionário com os campos empilhados. A tabela aparece a partir de md. */}
+            <div className="divide-y divide-gray-100 md:hidden">
+              {ativos.map((f) => {
+                const ov = revisao[f.id] || { salario: '', vt: '', va: '' }
+                const ap = somaApont(f.id)
+                return (
+                  <div key={f.id} className="py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-gray-900">{f.nome}</div>
+                        <div className="text-xs text-gray-400">{nomeUnidade(f.unidade_id)}</div>
+                      </div>
+                      <span className="shrink-0 text-sm font-semibold text-gray-900">{fmtBRL(totalRevisao(f))}</span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <div>
+                        <label className={labelCls}>Salário</label>
+                        <input value={ov.salario} onChange={(e) => setRevisao((p) => ({ ...p, [f.id]: { ...ov, salario: e.target.value } }))}
+                          className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-base outline-none focus:border-[#ff2d9b]" inputMode="decimal" />
+                      </div>
+                      <div>
+                        <label className={labelCls}>VT</label>
+                        <input value={ov.vt} onChange={(e) => setRevisao((p) => ({ ...p, [f.id]: { ...ov, vt: e.target.value } }))}
+                          className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-base outline-none focus:border-[#ff2d9b]" inputMode="decimal" />
+                      </div>
+                      <div>
+                        <label className={labelCls}>VA</label>
+                        <input value={ov.va} onChange={(e) => setRevisao((p) => ({ ...p, [f.id]: { ...ov, va: e.target.value } }))}
+                          className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-base outline-none focus:border-[#ff2d9b]" inputMode="decimal" />
+                      </div>
+                      <div>
+                        <label className={labelCls}>Apont.</label>
+                        <div className={`py-1.5 text-xs font-semibold ${ap < 0 ? 'text-red-600' : ap > 0 ? 'text-green-700' : 'text-gray-400'}`}>
+                          {ap === 0 ? '—' : (ap < 0 ? '− ' : '+ ') + fmtBRL(Math.abs(ap))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 text-xs uppercase tracking-wide text-gray-400">

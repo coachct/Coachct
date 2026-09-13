@@ -645,10 +645,22 @@ export default function RecorrentesPage() {
   const ativosCount = useMemo(() => recorrentes.filter((t) => t.ativo).length, [recorrentes])
 
   const inputCls =
-    'w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20'
+    'w-full rounded-xl border border-gray-200 px-3 py-2.5 text-base text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20 md:text-sm'
+
+  function badgeAtivo(ativo: boolean) {
+    return ativo ? (
+      <span className="inline-flex rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
+        Ativo
+      </span>
+    ) : (
+      <span className="inline-flex rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-500">
+        Inativo
+      </span>
+    )
+  }
 
   return (
-    <div className="min-h-screen bg-[#f3f4f6] px-4 py-6 sm:px-8">
+    <div className="min-h-screen bg-[#f3f4f6] px-0 py-6 sm:px-8">
       <div className="mx-auto max-w-5xl">
         {/* Cabeçalho */}
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -753,7 +765,74 @@ export default function RecorrentesPage() {
               Nenhum template cadastrado ainda.
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            {/* Celular: um cartão por template (sem rolar pro lado). A tabela aparece a partir de md. */}
+            <div className="divide-y divide-gray-100 md:hidden">
+              {recorrentes.map((t) => {
+                const cat = t.categoria_id ? categoriaPorId.get(t.categoria_id) : null
+                return (
+                  <div key={t.id} className={`px-4 py-3 ${!t.ativo ? 'opacity-60' : ''}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-sm font-medium text-gray-900">{t.descricao}</span>
+                      <span className="shrink-0 text-sm font-semibold text-gray-900">
+                        {fmtBRL(Number(t.valor))}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
+                      <span>Venc. dia {t.dia_vencimento}</span>
+                      <span className="text-gray-300">·</span>
+                      {badgeAtivo(t.ativo)}
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500">
+                      {nomeUnidade(t.unidade_id)}
+                      {cat ? ` · ${cat.nome}` : ''}
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500">
+                      Vigência: {fmtData(t.inicio)} → {t.fim ? fmtData(t.fim) : 'sem fim'}
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500">
+                      Último gerado: {fmtCompetencia(t.ultima_geracao)}
+                    </div>
+                    <div className="mt-2.5 grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => abrirReajuste(t)}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white py-2 text-sm font-medium text-gray-700 active:bg-gray-50"
+                      >
+                        <DollarSign size={15} />
+                        Reajustar valor
+                      </button>
+                      <button
+                        onClick={() => abrirRenovar(t)}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white py-2 text-sm font-medium text-gray-700 active:bg-gray-50"
+                      >
+                        <CalendarClock size={15} />
+                        Renovar vigência
+                      </button>
+                      <button
+                        onClick={() => abrirEdicao(t)}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white py-2 text-sm font-medium text-gray-700 active:bg-gray-50"
+                      >
+                        <Pencil size={15} />
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => alternarAtivo(t)}
+                        className={`inline-flex items-center justify-center gap-1.5 rounded-xl border bg-white py-2 text-sm font-medium ${
+                          t.ativo
+                            ? 'border-red-100 text-red-600 active:bg-red-50'
+                            : 'border-gray-200 text-green-600 active:bg-gray-50'
+                        }`}
+                      >
+                        <Power size={15} />
+                        {t.ativo ? 'Inativar' : 'Ativar'}
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 text-xs uppercase tracking-wide text-gray-400">
@@ -794,17 +873,7 @@ export default function RecorrentesPage() {
                           {fmtData(t.inicio)} → {t.fim ? fmtData(t.fim) : 'sem fim'}
                         </td>
                         <td className="px-4 py-3 text-gray-600">{fmtCompetencia(t.ultima_geracao)}</td>
-                        <td className="px-4 py-3">
-                          {t.ativo ? (
-                            <span className="inline-flex rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
-                              Ativo
-                            </span>
-                          ) : (
-                            <span className="inline-flex rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-500">
-                              Inativo
-                            </span>
-                          )}
-                        </td>
+                        <td className="px-4 py-3">{badgeAtivo(t.ativo)}</td>
                         <td className="px-4 py-3 text-right font-semibold text-gray-900">
                           {fmtBRL(Number(t.valor))}
                         </td>
@@ -850,6 +919,7 @@ export default function RecorrentesPage() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </div>
       </div>
@@ -857,7 +927,7 @@ export default function RecorrentesPage() {
       {/* Modal template */}
       {modalAberto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl">
+          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-xl md:max-h-none md:overflow-visible">
             <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
               <h2 className="text-lg font-bold text-gray-900">
                 {editando ? 'Editar template' : 'Novo template recorrente'}
@@ -1007,7 +1077,7 @@ export default function RecorrentesPage() {
       {/* Modal renovar */}
       {renovarAlvo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
+          <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white shadow-xl md:max-h-none md:overflow-visible">
             <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
               <h2 className="text-lg font-bold text-gray-900">Renovar vigência</h2>
               <button
@@ -1074,7 +1144,7 @@ export default function RecorrentesPage() {
       {/* Modal reajustar */}
       {reajusteAlvo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
+          <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white shadow-xl md:max-h-none md:overflow-visible">
             <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
               <h2 className="text-lg font-bold text-gray-900">Reajustar valor</h2>
               <button

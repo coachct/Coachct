@@ -192,7 +192,7 @@ export default function EmailCampanhaPage() {
   })
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="py-6 px-0 md:p-6 max-w-5xl mx-auto">
       <PageHeader
         title="Disparo de e-mail"
         subtitle="Monta a fila, confere o tamanho e manda em rodadas. Nada sai sozinho."
@@ -224,7 +224,7 @@ export default function EmailCampanhaPage() {
                 <input
                   value={(form as any)[campo]}
                   onChange={e => setForm({ ...form, [campo]: e.target.value })}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-base md:text-sm"
                 />
               </div>
             ))}
@@ -233,7 +233,7 @@ export default function EmailCampanhaPage() {
               <input
                 type="number" min={1} max={5000} value={form.teto_por_rodada}
                 onChange={e => setForm({ ...form, teto_por_rodada: Number(e.target.value) })}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-base md:text-sm"
               />
             </div>
             <button onClick={preparar} disabled={ocupado === 'preparar'}
@@ -334,7 +334,7 @@ export default function EmailCampanhaPage() {
                         <input
                           type="email" value={emailTeste} placeholder="seu@email.com"
                           onChange={e => setEmailTeste(e.target.value)}
-                          className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
+                          className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-base md:text-sm"
                         />
                       </div>
                       <button onClick={() => enviarTeste(c.id)} disabled={ocupado === `teste-${c.id}`}
@@ -355,7 +355,7 @@ export default function EmailCampanhaPage() {
                             const v = Number(e.target.value)
                             if (v && v !== c.teto_por_rodada) ajustar(c.id, { teto_por_rodada: v })
                           }}
-                          className="w-28 border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
+                          className="w-28 border border-gray-200 rounded-lg px-3 py-1.5 text-base md:text-sm"
                         />
                       </div>
                       <div className="flex gap-1.5 pb-0.5">

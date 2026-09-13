@@ -241,8 +241,20 @@ export default function FornecedoresPage() {
 
   const criandoCategoria = form.categoria_padrao_id === NOVA_CATEGORIA
 
+  function badgeAtivo(ativo: boolean) {
+    return ativo ? (
+      <span className="inline-flex rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
+        Ativo
+      </span>
+    ) : (
+      <span className="inline-flex rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-500">
+        Inativo
+      </span>
+    )
+  }
+
   return (
-    <div className="min-h-screen bg-[#f3f4f6] px-4 py-6 sm:px-8">
+    <div className="min-h-screen bg-[#f3f4f6] px-0 py-6 sm:px-8">
       <div className="mx-auto max-w-5xl">
         {/* Cabeçalho */}
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -278,7 +290,7 @@ export default function FornecedoresPage() {
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             placeholder="Buscar por nome, documento ou contato…"
-            className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-sm text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20"
+            className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-base text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20 md:text-sm"
           />
         </div>
 
@@ -302,7 +314,56 @@ export default function FornecedoresPage() {
                 : 'Nenhum fornecedor cadastrado ainda.'}
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            {/* Celular: um cartão por fornecedor (sem rolar pro lado). A tabela aparece a partir de md. */}
+            <div className="divide-y divide-gray-100 md:hidden">
+              {lista.map((f) => {
+                const cat = f.categoria_padrao_id
+                  ? categoriaPorId.get(f.categoria_padrao_id)
+                  : null
+                return (
+                  <div key={f.id} className="px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-sm font-medium text-gray-900">{f.nome}</span>
+                      <span className="shrink-0">{badgeAtivo(f.ativo)}</span>
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500">
+                      {f.tipo || '—'} · {f.documento || '—'}
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500">{f.contato || '—'}</div>
+                    {cat && (
+                      <div className="mt-1.5">
+                        <span className="inline-flex rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-700">
+                          {cat.nome}
+                        </span>
+                      </div>
+                    )}
+                    <div className="mt-2.5 flex gap-2">
+                      <button
+                        onClick={() => abrirEdicao(f)}
+                        className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white py-2 text-sm font-medium text-gray-700 active:bg-gray-50"
+                      >
+                        <Pencil size={15} />
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => alternarAtivo(f)}
+                        className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border bg-white py-2 text-sm font-medium ${
+                          f.ativo
+                            ? 'border-red-100 text-red-600 active:bg-red-50'
+                            : 'border-gray-200 text-green-600 active:bg-gray-50'
+                        }`}
+                      >
+                        <Power size={15} />
+                        {f.ativo ? 'Inativar' : 'Ativar'}
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 text-xs uppercase tracking-wide text-gray-400">
@@ -338,17 +399,7 @@ export default function FornecedoresPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-gray-600">{f.contato || '—'}</td>
-                        <td className="px-4 py-3">
-                          {f.ativo ? (
-                            <span className="inline-flex rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
-                              Ativo
-                            </span>
-                          ) : (
-                            <span className="inline-flex rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-500">
-                              Inativo
-                            </span>
-                          )}
-                        </td>
+                        <td className="px-4 py-3">{badgeAtivo(f.ativo)}</td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
                             <button
@@ -377,6 +428,7 @@ export default function FornecedoresPage() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </div>
       </div>
@@ -412,7 +464,7 @@ export default function FornecedoresPage() {
                   type="text"
                   value={form.nome}
                   onChange={(e) => setForm({ ...form, nome: e.target.value })}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20"
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-base text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20 md:text-sm"
                   placeholder="Ex.: Imobiliária São Paulo Ltda"
                 />
               </div>
@@ -427,7 +479,7 @@ export default function FornecedoresPage() {
                     onChange={(e) =>
                       setForm({ ...form, tipo: e.target.value as '' | 'PJ' | 'PF' })
                     }
-                    className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20"
+                    className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-base text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20 md:text-sm"
                   >
                     <option value="">—</option>
                     <option value="PJ">PJ</option>
@@ -443,7 +495,7 @@ export default function FornecedoresPage() {
                     type="text"
                     value={form.documento}
                     onChange={(e) => setForm({ ...form, documento: e.target.value })}
-                    className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20"
+                    className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-base text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20 md:text-sm"
                     placeholder="CNPJ / CPF"
                   />
                 </div>
@@ -458,7 +510,7 @@ export default function FornecedoresPage() {
                   onChange={(e) =>
                     setForm({ ...form, categoria_padrao_id: e.target.value })
                   }
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20"
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-base text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20 md:text-sm"
                 >
                   <option value="">— Sem categoria padrão —</option>
                   {categorias.map((c) => (
@@ -480,7 +532,7 @@ export default function FornecedoresPage() {
                         value={novaCatNome}
                         onChange={(e) => setNovaCatNome(e.target.value)}
                         placeholder="Ex.: Software / Assinaturas"
-                        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20"
+                        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-base text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20 md:text-sm"
                       />
                     </div>
                     <div className="col-span-2">
@@ -490,7 +542,7 @@ export default function FornecedoresPage() {
                       <select
                         value={novaCatGrupo}
                         onChange={(e) => setNovaCatGrupo(e.target.value)}
-                        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20"
+                        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-base text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20 md:text-sm"
                       >
                         {GRUPOS_CATEGORIA.map((g) => (
                           <option key={g} value={g}>
@@ -518,7 +570,7 @@ export default function FornecedoresPage() {
                   type="text"
                   value={form.contato}
                   onChange={(e) => setForm({ ...form, contato: e.target.value })}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20"
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-base text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20 md:text-sm"
                   placeholder="Telefone, e-mail ou responsável"
                 />
               </div>
@@ -531,7 +583,7 @@ export default function FornecedoresPage() {
                   value={form.observacao}
                   onChange={(e) => setForm({ ...form, observacao: e.target.value })}
                   rows={3}
-                  className="w-full resize-none rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20"
+                  className="w-full resize-none rounded-xl border border-gray-200 px-3 py-2.5 text-base text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20 md:text-sm"
                   placeholder="Anotações internas (opcional)"
                 />
               </div>

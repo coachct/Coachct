@@ -749,8 +749,18 @@ export default function AdminEscalaClubPage() {
   )
 
   return (
-    <div style={{ padding:'2rem', fontFamily:"'DM Sans', sans-serif", maxWidth:1100 }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');`}</style>
+    <div className="esc-root" style={{ padding:'2rem', fontFamily:"'DM Sans', sans-serif", maxWidth:1100 }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+        @media (max-width: 767px) {
+          /* sem margem extra (o layout já tem) */
+          .esc-root { padding: 0 !important; }
+          .esc-tabs, .esc-wrap { flex-wrap: wrap !important; }
+          /* grades de colunas fixas viram 1 coluna */
+          .esc-grid-1 { grid-template-columns: 1fr !important; }
+          /* Montar: "✓ Escalar" + "N livres" descem pra linha de baixo, à direita, sem espremer o coach */
+          .esc-montar-row { flex-wrap: wrap !important; }
+          .esc-montar-acoes { flex-basis: 100%; justify-content: flex-end; }
+        }`}</style>
 
       {/* Header */}
       <div style={{ marginBottom:'1.5rem' }}>
@@ -806,7 +816,7 @@ export default function AdminEscalaClubPage() {
       )}
 
       {/* Abas: FDS / Montar / Feriados / Capacidade / Disponibilidade */}
-      <div style={{ display:'flex', gap:8, borderBottom:'1px solid #e5e7eb', marginBottom:'1.5rem' }}>
+      <div className="esc-tabs" style={{ display:'flex', gap:8, borderBottom:'1px solid #e5e7eb', marginBottom:'1.5rem' }}>
         {[
           { key:'fds',             label:'Final de Semana' },
           { key:'montar',          label:'Montar' },
@@ -1017,7 +1027,7 @@ export default function AdminEscalaClubPage() {
                 </div>
 
                 {/* Ações */}
-                <div style={{ display:'flex', gap:8, marginBottom:'1rem' }}>
+                <div className="esc-wrap" style={{ display:'flex', gap:8, marginBottom:'1rem' }}>
                   <button onClick={montarSugestao} disabled={montando || totalOcsDia === 0}
                     style={{ padding:'0.6rem 1.25rem', borderRadius:10, border:'none', background:ACCENT, color:'#fff',
                       fontSize:13, fontWeight:700, cursor: (montando || totalOcsDia === 0) ? 'default' : 'pointer',
@@ -1077,7 +1087,7 @@ export default function AdminEscalaClubPage() {
 
                 {/* Quadro: 2 unidades lado a lado */}
                 {totalOcsDia > 0 && dia && (
-                  <div style={{ display:'grid', gridTemplateColumns:`repeat(${Math.max(unidades.length, 1)}, 1fr)`, gap:'1rem' }}>
+                  <div className="esc-grid-1" style={{ display:'grid', gridTemplateColumns:`repeat(${Math.max(unidades.length, 1)}, 1fr)`, gap:'1rem' }}>
                     {unidades.map((u: any) => {
                       const ocsU = (ocsMontarMap[dia] || []).filter((o: any) => o.club_aulas?.unidade_id === u.id)
                       return (
@@ -1104,7 +1114,7 @@ export default function AdminEscalaClubPage() {
                                 const escassezCor = livres.length <= 1 ? VERMELHO : livres.length === 2 ? AMARELO : null
 
                                 return (
-                                  <div key={oc.id} onClick={() => abrirModal(oc)}
+                                  <div key={oc.id} onClick={() => abrirModal(oc)} className="esc-montar-row"
                                     style={{ display:'flex', alignItems:'center', gap:10, padding:'0.6rem 0.75rem',
                                       background:'#fafafa', border:'1px solid #f0f0f0', borderRadius:10, cursor:'pointer', transition:'all .15s' }}
                                     onMouseEnter={e => (e.currentTarget.style.borderColor = ACCENT)}
@@ -1146,7 +1156,7 @@ export default function AdminEscalaClubPage() {
                                     </div>
 
                                     {ef.origem === 'indefinido' ? (
-                                      <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
+                                      <div className="esc-montar-acoes" style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
                                         {/* Atalho: acata a sugestão do card sem abrir o modal */}
                                         {ghost && (
                                           <button onClick={(e) => { e.stopPropagation(); aceitarSugestao(oc.id, ghost.c.id) }}
@@ -1229,14 +1239,14 @@ export default function AdminEscalaClubPage() {
             // Uma seção (título + descrição + grade de cards).
             const secao = (titulo: string, desc: string, blocos: any[], cols: number) => (
               <div style={{ marginBottom:'1.75rem' }}>
-                <div style={{ display:'flex', alignItems:'baseline', gap:8, marginBottom:'0.75rem' }}>
+                <div className="esc-wrap" style={{ display:'flex', alignItems:'baseline', gap:8, marginBottom:'0.75rem' }}>
                   <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:18, color:'#111', letterSpacing:0.5 }}>{titulo}</div>
                   <div style={{ fontSize:12, color:'#aaa' }}>{desc}</div>
                 </div>
                 {blocos.length === 0 ? (
                   <div style={{ fontSize:13, color:'#aaa', fontStyle:'italic' }}>Sem aulas de fim de semana neste mês.</div>
                 ) : (
-                  <div style={{ display:'grid', gridTemplateColumns:`repeat(${cols}, 1fr)`, gap:'0.85rem' }}>
+                  <div className="esc-grid-1" style={{ display:'grid', gridTemplateColumns:`repeat(${cols}, 1fr)`, gap:'0.85rem' }}>
                     {blocos.map(card)}
                   </div>
                 )}
@@ -1259,7 +1269,7 @@ export default function AdminEscalaClubPage() {
         loadingDados ? (
           <div style={{ textAlign:'center', padding:'3rem', color:'#aaa', fontSize:14 }}>Carregando aulas...</div>
         ) : (
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem' }}>
+        <div className="esc-grid-1" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem' }}>
           {proximosFDS.map(({ data, nome }) => {
             const ocs = ocorrenciasMap[data] || []
             const dataObj = new Date(data + 'T12:00:00')

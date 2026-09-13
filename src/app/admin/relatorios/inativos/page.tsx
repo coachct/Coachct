@@ -272,7 +272,7 @@ export default function ClientesInativosPage() {
                 min={1}
                 value={dias}
                 onChange={e => setDias(Math.max(1, Number(e.target.value) || 1))}
-                className="w-20 border border-gray-200 rounded-lg px-2 py-1.5 text-sm"
+                className="w-20 border border-gray-200 rounded-lg px-2 py-1.5 text-base md:text-sm"
               />
               <span className="text-xs text-gray-400">dias</span>
             </div>
@@ -285,7 +285,7 @@ export default function ClientesInativosPage() {
             <select
               value={unidadeId}
               onChange={e => setUnidadeId(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white"
+              className="border border-gray-200 rounded-lg px-3 py-1.5 text-base md:text-sm bg-white"
             >
               <option value="">Todas as unidades</option>
               {unidades.map(u => (
@@ -299,7 +299,7 @@ export default function ClientesInativosPage() {
             <select
               value={tipo}
               onChange={e => setTipo(e.target.value as any)}
-              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white"
+              className="border border-gray-200 rounded-lg px-3 py-1.5 text-base md:text-sm bg-white"
             >
               <option value="todos">Todas (CT + JustClub)</option>
               <option value="ct">Coach CT (personal)</option>
@@ -313,7 +313,7 @@ export default function ClientesInativosPage() {
               value={busca}
               onChange={e => setBusca(e.target.value)}
               placeholder="Nome ou CPF"
-              className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
+              className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-base md:text-sm"
             />
           </div>
 
@@ -330,7 +330,7 @@ export default function ClientesInativosPage() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
         <KpiCard label="Clientes na lista" value={String(linhas.length)} sub={`parados há ${dias}+ dias`} />
         <KpiCard label="Média de dias parado" value={String(mediaDias)} sub="dias sem treinar" />
         <KpiCard label="Fizeram só 1 treino" value={String(qtdUmTreino)} sub="e não voltaram" subColor="text-danger-600" />
@@ -348,7 +348,55 @@ export default function ClientesInativosPage() {
 
       {/* Tabela */}
       <div className="card">
-        <div className="overflow-x-auto">
+        {/* Celular: um cartão por cliente (sem rolar pro lado). A tabela aparece a partir de md. */}
+        <div className="md:hidden divide-y divide-gray-100">
+          {linhas.map((l, i) => {
+            const tel = (l.cliente.telefone || '').replace(/\D/g, '')
+            return (
+              <div key={l.cliente.id} className="py-3 first:pt-0 last:pb-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-gray-900">
+                      <span className="text-xs font-normal text-gray-400">{i + 1}.</span> {l.cliente.nome}
+                    </div>
+                    {l.cliente.cpf && <div className="text-xs text-gray-400">{l.cliente.cpf}</div>}
+                  </div>
+                  <div className="shrink-0">
+                    <Badge variant={l.dias >= 60 ? 'red' : l.dias >= 30 ? 'amber' : 'gray'}>
+                      {l.dias} dias
+                    </Badge>
+                  </div>
+                </div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                  <span>Último treino {fmtData(l.ultimo)}</span>
+                  <span>Treinos <span className="font-semibold text-gray-700">{l.total}</span></span>
+                </div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                  {l.fontes.map(f => (
+                    <Badge key={f} variant={f === 'ct' ? 'blue' : 'green'}>
+                      {f === 'ct' ? 'CT' : 'Club'}
+                    </Badge>
+                  ))}
+                  {l.unidadesNomes.length > 0 && (
+                    <span className="text-xs text-gray-400">{l.unidadesNomes.join(', ')}</span>
+                  )}
+                </div>
+                {tel && (
+                  <a
+                    href={`https://wa.me/55${tel}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1.5 inline-block text-sm text-primary-600 hover:underline"
+                  >
+                    {l.cliente.telefone}
+                  </a>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-xs text-gray-400 uppercase tracking-wide border-b border-gray-100">
@@ -409,10 +457,10 @@ export default function ClientesInativosPage() {
               })}
             </tbody>
           </table>
-          {linhas.length === 0 && (
-            <EmptyState message="Nenhum cliente parado com os filtros atuais." />
-          )}
         </div>
+        {linhas.length === 0 && (
+          <EmptyState message="Nenhum cliente parado com os filtros atuais." />
+        )}
       </div>
     </div>
   )

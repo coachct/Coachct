@@ -234,7 +234,7 @@ export default function AnalyticsCoachesPage() {
   return (
     <div className="min-h-screen bg-gray-50">
 
-      <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
+      <div className="bg-white border-b border-gray-200 px-3 md:px-6 py-4 sticky top-0 z-10">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
             <BarChart2 size={20} className="text-primary-600" />
@@ -258,7 +258,7 @@ export default function AnalyticsCoachesPage() {
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-6 py-6 space-y-6">
+      <div className="max-w-5xl mx-auto px-0 md:px-6 py-6 space-y-6">
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
@@ -353,12 +353,12 @@ export default function AnalyticsCoachesPage() {
                         {h.coaches.map((c, i) => (
                           <div key={c.coach_id} className="flex items-center gap-2">
                             <span className="text-xs w-5">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`}</span>
-                            <span className="text-xs text-gray-700 w-28 truncate">{c.coach_nome}</span>
-                            <div className="flex-1 bg-gray-100 rounded-full h-1.5">
+                            <span className="text-xs text-gray-700 w-20 md:w-28 truncate flex-shrink-0">{c.coach_nome}</span>
+                            <div className="flex-1 min-w-0 bg-gray-100 rounded-full h-1.5">
                               <div className="h-1.5 rounded-full bg-primary-400" style={{ width: `${c.taxa_preferencia}%` }} />
                             </div>
-                            <span className="text-xs font-semibold text-primary-600 w-10 text-right">{c.taxa_preferencia}%</span>
-                            <span className="text-xs text-gray-400 w-12 text-right">{c.total_alocado}x</span>
+                            <span className="text-xs font-semibold text-primary-600 w-9 md:w-10 text-right flex-shrink-0">{c.taxa_preferencia}%</span>
+                            <span className="text-xs text-gray-400 w-8 md:w-12 text-right flex-shrink-0">{c.total_alocado}x</span>
                           </div>
                         ))}
                       </div>

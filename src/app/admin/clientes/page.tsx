@@ -1270,15 +1270,15 @@ function AdminClientesPageInner() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
-        <div className="flex items-center gap-3">
+      <div className="bg-white border-b border-gray-200 px-0 md:px-6 py-4 flex flex-wrap md:flex-nowrap items-center justify-between gap-2 md:gap-0 sticky top-0 z-10">
+        <div className="flex items-center gap-3 min-w-0 md:min-w-min">
           {clienteSel && (
-            <button onClick={() => { setClienteSel(null); setBusca(''); setClientes([]); if (searchParams.get('id')) router.replace('/admin/clientes', { scroll: false }) }} className="text-gray-400 hover:text-gray-600">
+            <button onClick={() => { setClienteSel(null); setBusca(''); setClientes([]); if (searchParams.get('id')) router.replace('/admin/clientes', { scroll: false }) }} className="text-gray-400 hover:text-gray-600 flex-shrink-0">
               <X size={18} />
             </button>
           )}
-          <div>
-            <div className="text-base font-semibold text-gray-900">{clienteSel ? clienteSel.nome : 'Clientes'}</div>
+          <div className="min-w-0 md:min-w-min">
+            <div className="text-base font-semibold text-gray-900 truncate md:overflow-visible md:whitespace-normal">{clienteSel ? clienteSel.nome : 'Clientes'}</div>
             {!clienteSel && <div className="text-xs text-gray-400">Digite para buscar</div>}
           </div>
         </div>
@@ -1292,7 +1292,7 @@ function AdminClientesPageInner() {
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-6 py-5">
+      <div className="max-w-3xl mx-auto px-0 md:px-6 py-5">
         {!clienteSel && (
           <>
             <div className="relative mb-4">
@@ -1661,7 +1661,7 @@ function AdminClientesPageInner() {
                               return (
                                 <div key={cp.id} className={`border rounded-xl p-3 ${pendente ? 'border-orange-300 bg-orange-50' : 'border-gray-200'}`}>
                                   <div className="flex items-center gap-3">
-                                    <div className="flex-1">
+                                    <div className="flex-1 min-w-0">
                                       <div className="flex items-center gap-2 flex-wrap">
                                         <span className="text-sm font-medium text-gray-900">{pd?.nome}</span>
                                         {pendente && <span className="text-xs px-2 py-0.5 rounded-full bg-orange-200 text-orange-800 font-semibold flex items-center gap-1"><Clock size={10} /> Aguardando aceite</span>}
@@ -1670,7 +1670,7 @@ function AdminClientesPageInner() {
                                       {cp.contrato_aceito_em && !pendente && <div className="text-xs text-gray-400 mt-0.5">Termo aceito em {new Date(cp.contrato_aceito_em).toLocaleDateString('pt-BR')}</div>}
                                       {pendente && cp.token_expira_em && <div className="text-xs text-orange-700 mt-1">Link válido até {new Date(cp.token_expira_em).toLocaleDateString('pt-BR')}</div>}
                                     </div>
-                                    <div className="flex flex-col gap-1">
+                                    <div className="flex flex-col gap-1 flex-shrink-0">
                                       {pendente && <button onClick={() => reenviarLinkAceite(cp)} className="btn btn-sm gap-1 bg-orange-500 text-white hover:bg-orange-600"><LinkIcon size={11} /> Ver link</button>}
                                       <button onClick={() => desativarPlano(cp.id)} className="btn btn-sm gap-1 text-red-500 hover:bg-red-50"><Trash2 size={12} /> Desativar</button>
                                     </div>
@@ -2025,18 +2025,19 @@ function AdminClientesPageInner() {
                 <div className="card">
                   <div className="flex items-center gap-2 mb-3">
                     <button onClick={() => { setSemanaOffset(o => Math.max(0, o - 1)); setDiaSel(0) }} disabled={semanaOffset === 0}
-                      className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 disabled:opacity-30">‹</button>
-                    <div className="flex gap-1 flex-1">
+                      className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 disabled:opacity-30 flex-shrink-0">‹</button>
+                    {/* mobile: os 7 dias rolam na horizontal dentro da faixa */}
+                    <div className="flex gap-1 flex-1 min-w-0 overflow-x-auto md:overflow-visible">
                       {diasSemana.map((d, i) => (
                         <button key={i} onClick={() => setDiaSel(i)}
-                          className={`flex-1 py-2 rounded-lg text-center transition-all ${i === diaSel ? 'bg-primary-600 text-white' : 'bg-gray-50 border border-gray-200 text-gray-600 hover:border-primary-300'}`}>
+                          className={`flex-1 min-w-[44px] md:min-w-min py-2 rounded-lg text-center transition-all ${i === diaSel ? 'bg-primary-600 text-white' : 'bg-gray-50 border border-gray-200 text-gray-600 hover:border-primary-300'}`}>
                           <div className="text-xs font-medium">{DIAS_SEMANA[d.getDay()]}</div>
                           <div className="text-sm font-bold">{d.getDate()}</div>
                         </button>
                       ))}
                     </div>
                     <button onClick={() => { setSemanaOffset(o => Math.min(3, o + 1)); setDiaSel(0) }} disabled={semanaOffset === 3}
-                      className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 disabled:opacity-30">›</button>
+                      className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 disabled:opacity-30 flex-shrink-0">›</button>
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     {horariosSel.length === 0 && <div className="col-span-3 text-center py-6 text-gray-400 text-sm">Nenhum horário disponível.</div>}

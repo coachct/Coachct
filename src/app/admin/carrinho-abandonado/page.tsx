@@ -82,7 +82,7 @@ export default function CarrinhoAbandonadoPage() {
         <select
           value={unidadeId}
           onChange={e => setUnidadeId(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white"
+          className="border border-gray-200 rounded-lg px-3 py-1.5 text-base md:text-sm bg-white"
         >
           <option value="">Todas as unidades</option>
           {unidades.map(u => (
@@ -92,7 +92,42 @@ export default function CarrinhoAbandonadoPage() {
       </div>
 
       <div className="card">
-        <div className="overflow-x-auto">
+        {/* Celular: um cartão por carrinho (sem rolar pro lado). A tabela aparece a partir de md. */}
+        <div className="md:hidden divide-y divide-gray-100">
+          {filtradas.map(l => {
+            const tel = (l.telefone || '').replace(/\D/g, '')
+            const etapa = ETAPAS[l.etapa] || ETAPAS.abriu
+            return (
+              <div key={`${l.cliente_id}-${l.produto_nome}-${l.visita_em}`} className="py-3 first:pt-0 last:pb-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 text-sm font-medium text-gray-900">{l.cliente_nome}</div>
+                  <div className="shrink-0 text-xs text-gray-500 whitespace-nowrap">{fmtDataHora(l.visita_em)}</div>
+                </div>
+                <div className="mt-1 text-sm text-gray-900">
+                  {l.produto_nome} <span className="text-xs text-gray-400">· {fmtValor(l.valor)}</span>
+                </div>
+                <div className="mt-0.5 text-xs text-gray-400">{l.unidade_nome || '—'}</div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                  <Badge variant={etapa.variant}>{etapa.label}</Badge>
+                  {tel ? (
+                    <a
+                      href={`https://wa.me/55${tel}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm text-primary-600 hover:underline"
+                    >
+                      {l.telefone}
+                    </a>
+                  ) : (
+                    <span className="text-xs text-gray-300">—</span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-xs text-gray-400 uppercase tracking-wide border-b border-gray-100">
@@ -139,10 +174,10 @@ export default function CarrinhoAbandonadoPage() {
               })}
             </tbody>
           </table>
-          {filtradas.length === 0 && (
-            <EmptyState message="Nenhum carrinho abandonado no período." />
-          )}
         </div>
+        {filtradas.length === 0 && (
+          <EmptyState message="Nenhum carrinho abandonado no período." />
+        )}
       </div>
     </div>
   )

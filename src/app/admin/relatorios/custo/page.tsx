@@ -67,14 +67,14 @@ export default function CustoRetornoPage() {
                 <div className="w-10 h-10 rounded-full bg-primary-100 text-primary-800 text-sm font-semibold flex items-center justify-center flex-shrink-0">
                   {m.coach.nome.slice(0,2).toUpperCase()}
                 </div>
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   <div className="font-semibold text-gray-900">{m.coach.nome}</div>
                   <div className="text-xs text-gray-400">{m.coach.contrato} · Fixo {fmt(m.custo_fixo)} + R${m.coach.adicional_por_aula}/aula · Cliente R${m.coach.valor_cliente_aula}/aula</div>
                 </div>
                 <span className={`badge badge-${p.color}`}>{p.txt}</span>
               </div>
 
-              <div className="grid grid-cols-5 gap-2 mb-4">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
                 {[
                   { l: 'Aulas', v: m.aulas_mes, c: 'text-gray-900' },
                   { l: 'Custo fixo', v: fmt(m.custo_fixo), c: 'text-danger-600' },
@@ -98,7 +98,7 @@ export default function CustoRetornoPage() {
               </div>
 
               <OccBar pct={m.ocupacao_pct} className="mb-2" />
-              <div className="flex items-center justify-between text-xs">
+              <div className="flex flex-wrap md:flex-nowrap items-center justify-between gap-x-3 gap-y-1 md:gap-0 text-xs">
                 <span className="text-gray-400">{m.aulas_mes}/{m.slots_disponiveis} slots · {m.ocupacao_pct}% ocupação</span>
                 <span className={m.breakeven_atingido ? 'text-primary-700' : 'text-danger-600'}>
                   Equilíbrio: {m.breakeven_aulas} aulas · {m.breakeven_atingido ? `✓ +${m.aulas_mes - m.breakeven_aulas} acima` : `⚠ faltam ${m.breakeven_aulas - m.aulas_mes}`}

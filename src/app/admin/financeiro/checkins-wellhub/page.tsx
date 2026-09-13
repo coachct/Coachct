@@ -254,10 +254,10 @@ export default function CheckinsWellhubPage() {
   }, [itens])
 
   const inputCls =
-    'rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20'
+    'rounded-xl border border-gray-200 px-3 py-2.5 text-base text-gray-900 outline-none focus:border-[#ff2d9b] focus:ring-2 focus:ring-[#ff2d9b]/20 md:text-sm'
 
   return (
-    <div className="min-h-screen bg-[#f3f4f6] px-4 py-6 sm:px-8">
+    <div className="min-h-screen bg-[#f3f4f6] px-0 py-6 sm:px-8">
       <div className="mx-auto max-w-5xl">
         {/* Cabeçalho */}
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -435,7 +435,67 @@ export default function CheckinsWellhubPage() {
               Nenhum check-in encontrado para os filtros selecionados.
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            {/* Celular: um cartão por check-in (sem rolar pro lado). A tabela aparece a partir de md. */}
+            <div className="md:hidden">
+              <div className="divide-y divide-gray-100">
+                {lista.map((r) => {
+                  const st = STATUS_BADGE[r.status] ?? { label: r.status, cls: 'bg-gray-100 text-gray-600' }
+                  return (
+                    <div key={r.id} className="px-4 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-sm font-medium text-gray-900">{nomeExibicao(r)}</span>
+                        <span className="shrink-0 text-sm font-semibold text-gray-900">
+                          {r.valor != null ? fmtBRL(Number(r.valor)) : <span className="text-gray-300">—</span>}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-xs text-gray-500">
+                        <span className="inline-flex items-center gap-1">
+                          <Clock size={13} className="text-gray-400" />
+                          {dataHoraSP(r.recebido_em)}
+                        </span>
+                        {' · '}
+                        {r.produto || '—'}
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${ORIGEM_BADGE[r.origem] ?? 'bg-gray-100 text-gray-600'}`}>
+                          {ORIGEM_LABEL[r.origem] ?? r.origem}
+                        </span>
+                        <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${st.cls}`}>
+                          {st.label}
+                        </span>
+                      </div>
+                      {precisaRevalidar(r) && (
+                        <div className="mt-2.5 flex">
+                          <button
+                            onClick={() => revalidar(r.id)}
+                            disabled={revalidandoId === r.id}
+                            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white py-2 text-sm font-medium text-gray-700 active:bg-gray-50 disabled:opacity-50"
+                          >
+                            {revalidandoId === r.id ? (
+                              <Loader2 size={15} className="animate-spin" />
+                            ) : (
+                              <RefreshCw size={15} />
+                            )}
+                            Revalidar
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="flex items-center justify-between gap-3 border-t border-gray-100 bg-gray-50/60 px-4 py-3">
+                <span className="text-sm font-medium text-gray-600">
+                  {lista.length} check-in{lista.length !== 1 ? 's' : ''} no filtro
+                </span>
+                <span className="shrink-0 text-base font-bold text-gray-900">
+                  {fmtBRL(lista.reduce((acc, r) => acc + Number(r.valor || 0), 0))}
+                </span>
+              </div>
+            </div>
+
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 text-xs uppercase tracking-wide text-gray-400">
@@ -507,6 +567,7 @@ export default function CheckinsWellhubPage() {
                 </tfoot>
               </table>
             </div>
+            </>
           )}
         </div>
 

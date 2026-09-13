@@ -99,7 +99,7 @@ export default function RelatorioCampanhaPage() {
   const maxVisitasDia = Math.max(1, ...dias.map(d => d.visitas))
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="py-6 md:p-6 max-w-6xl mx-auto">
       <PageHeader
         title="Funil da campanha"
         subtitle="De onde vem a visita e quanto disso vira venda. A conta é por pessoa, não por clique."
@@ -109,17 +109,17 @@ export default function RelatorioCampanhaPage() {
         <div>
           <label className="text-xs text-gray-500 block mb-1">Campanha</label>
           <input value={campanha} onChange={e => setCampanha(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            className="border border-gray-200 rounded-lg px-3 py-2 text-base md:text-sm" />
         </div>
         <div>
           <label className="text-xs text-gray-500 block mb-1">De</label>
           <input type="date" value={de} onChange={e => setDe(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            className="border border-gray-200 rounded-lg px-3 py-2 text-base md:text-sm" />
         </div>
         <div>
           <label className="text-xs text-gray-500 block mb-1">Até</label>
           <input type="date" value={ate} onChange={e => setAte(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            className="border border-gray-200 rounded-lg px-3 py-2 text-base md:text-sm" />
         </div>
       </div>
 
@@ -158,7 +158,26 @@ export default function RelatorioCampanhaPage() {
           {/* ── Por canal ── */}
           <div className="bg-white rounded-xl border border-gray-100 p-4 mb-6 mt-6">
             <SectionTitle>Por canal</SectionTitle>
-            <div className="overflow-x-auto">
+            {/* Celular: um cartão por canal com rótulo: valor. A tabela aparece a partir de md. */}
+            <div className="md:hidden divide-y divide-gray-100">
+              {canais.map(c => (
+                <div key={c.canal} className="py-3 first:pt-0 last:pb-0">
+                  <div className="text-sm font-medium text-gray-900 mb-1.5">
+                    {NOME_CANAL[c.canal] || c.canal}
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                    <div className="flex justify-between gap-2"><span className="text-xs text-gray-500">Visitas</span><span>{c.visitas}</span></div>
+                    <div className="flex justify-between gap-2"><span className="text-xs text-gray-500">Pacotes</span><span className="text-gray-500">{c.ver_pacotes}</span></div>
+                    <div className="flex justify-between gap-2"><span className="text-xs text-gray-500">Checkout</span><span className="text-gray-500">{c.checkout}</span></div>
+                    <div className="flex justify-between gap-2"><span className="text-xs text-gray-500">Compras</span><span className="font-semibold">{c.compras}</span></div>
+                    <div className="flex justify-between gap-2"><span className="text-xs text-gray-500">Conversão</span><span>{pct(c.compras, c.visitas)}</span></div>
+                    <div className="flex justify-between gap-2"><span className="text-xs text-gray-500">Receita</span><span>{brl(Number(c.receita))}</span></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-gray-500 border-b border-gray-100">

@@ -564,12 +564,12 @@ export default function PagamentosCoachesPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
+      <div className="bg-white border-b border-gray-200 px-0 md:px-6 py-4 sticky top-0 z-10">
         <h1 className="text-lg font-semibold text-gray-900">Pagamento de Coaches</h1>
         <p className="text-xs text-gray-400 mt-0.5">Relatório de bonificações por aulas ministradas</p>
       </div>
 
-      <div className="max-w-4xl mx-auto px-6 py-5 space-y-5">
+      <div className="max-w-4xl mx-auto px-0 md:px-6 py-5 space-y-5">
 
         {msg && (
           <div className={`px-4 py-3 rounded-xl text-sm font-medium border ${
@@ -639,13 +639,13 @@ export default function PagamentosCoachesPage() {
             </div>
             {filtro === 'custom' && (
               <div className="flex gap-3 mt-3">
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   <label className="label">De</label>
-                  <input type="date" className="input w-full" value={inicio} onChange={e => setInicio(e.target.value)}/>
+                  <input type="date" className="input w-full text-base md:text-sm" value={inicio} onChange={e => setInicio(e.target.value)}/>
                 </div>
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   <label className="label">Até</label>
-                  <input type="date" className="input w-full" value={fim} onChange={e => setFim(e.target.value)}/>
+                  <input type="date" className="input w-full text-base md:text-sm" value={fim} onChange={e => setFim(e.target.value)}/>
                 </div>
               </div>
             )}
@@ -689,7 +689,7 @@ export default function PagamentosCoachesPage() {
         {/* Resultado consolidado (todas as unidades) */}
         {modoMulti && (
           <div className="card overflow-hidden p-0">
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div className="px-5 py-4 border-b border-gray-100 flex flex-wrap md:flex-nowrap items-center justify-between gap-x-3 gap-y-1 md:gap-0">
               <div className="text-sm font-semibold text-gray-900">
                 Total por coach — {unidadesSel.map(u => u.nome).join(' + ')}
               </div>
@@ -809,12 +809,12 @@ export default function PagamentosCoachesPage() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-4">
-                <div className="text-xs text-gray-400">
+              <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4">
+                <div className="min-w-0 text-xs text-gray-400">
                   Não inclui salário fixo — para incluir, lance por uma unidade só.
                 </div>
                 <button onClick={lancarConsolidado} disabled={lancandoCons}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary-600 text-white text-sm font-semibold hover:bg-primary-700 transition-all disabled:opacity-60 flex-shrink-0">
+                  className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-primary-600 text-white text-sm font-semibold hover:bg-primary-700 transition-all disabled:opacity-60 flex-shrink-0">
                   <DollarSign size={15}/>
                   {lancandoCons
                     ? 'Lançando...'
@@ -829,7 +829,7 @@ export default function PagamentosCoachesPage() {
         {!modoMulti && coachSel && inicio && fim && (
           <>
             {/* Cards de resumo */}
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
               <div className="card text-center">
                 <div className="text-3xl font-bold text-gray-900">{loadingAulas ? '—' : totalAulas}</div>
                 <div className="text-xs text-gray-400 mt-1 uppercase tracking-wide">Aulas ministradas</div>
@@ -850,7 +850,7 @@ export default function PagamentosCoachesPage() {
 
             {/* Lista de aulas */}
             <div className="card overflow-hidden p-0">
-              <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div className="px-5 py-4 border-b border-gray-100 flex flex-wrap md:flex-nowrap items-center justify-between gap-x-3 gap-y-1 md:gap-0">
                 <div className="text-sm font-semibold text-gray-900">
                   Aulas de {coachSel.nome} — {unidadeSel.nome}
                 </div>
@@ -867,18 +867,19 @@ export default function PagamentosCoachesPage() {
                 </div>
               ) : (
                 <div>
-                  <div className="grid grid-cols-4 gap-4 px-5 py-2.5 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  <div className="hidden md:grid grid-cols-4 gap-4 px-5 py-2.5 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                     <div>Data</div>
                     <div>Horário</div>
                     <div>Tipo</div>
                     <div className="text-right">Valor</div>
                   </div>
+                  {/* Mobile: 2 colunas (data | horário / tipo | valor) */}
                   {aulas.map((a, i) => (
-                    <div key={i} className={`grid grid-cols-4 gap-4 px-5 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors ${a.valor === 0 ? 'bg-orange-50' : ''}`}>
+                    <div key={i} className={`grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 md:grid-cols-4 md:gap-4 px-5 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors ${a.valor === 0 ? 'bg-orange-50' : ''}`}>
                       <div className="text-sm font-medium text-gray-900">
                         {new Date(a.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday:'short', day:'numeric', month:'short' })}
                       </div>
-                      <div className="text-sm font-mono text-gray-700">{(a.horario || '').slice(0, 5)}</div>
+                      <div className="text-sm font-mono text-gray-700 text-right md:text-left">{(a.horario || '').slice(0, 5)}</div>
                       <div className="text-sm text-gray-600">{a.tipo}{a.corrigido && <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600">corrigido</span>}</div>
                       <div className={`text-sm font-semibold text-right ${a.valor === 0 ? 'text-orange-500' : 'text-gray-900'}`}>
                         {a.valor === 0 ? '⚠️ sem valor' : `R$ ${Number(a.valor).toFixed(2).replace('.', ',')}`}
@@ -887,8 +888,8 @@ export default function PagamentosCoachesPage() {
                   ))}
 
                   {/* Linha de total bonificação */}
-                  <div className="grid grid-cols-4 gap-4 px-5 py-3 bg-gray-50 border-t border-gray-200">
-                    <div className="col-span-3 text-sm font-semibold text-gray-700">Subtotal bonificação</div>
+                  <div className="grid grid-cols-[1fr_auto] gap-3 md:grid-cols-4 md:gap-4 px-5 py-3 bg-gray-50 border-t border-gray-200">
+                    <div className="md:col-span-3 text-sm font-semibold text-gray-700">Subtotal bonificação</div>
                     <div className="text-sm font-bold text-gray-900 text-right">
                       R$ {totalBonus.toFixed(2).replace('.', ',')}
                     </div>
@@ -939,8 +940,8 @@ export default function PagamentosCoachesPage() {
                   )}
 
                   {/* Total final */}
-                  <div className="grid grid-cols-4 gap-4 px-5 py-3 bg-primary-50 border-t-2 border-primary-100">
-                    <div className="col-span-3 text-sm font-bold text-primary-800">
+                  <div className="grid grid-cols-[1fr_auto] gap-3 md:grid-cols-4 md:gap-4 px-5 py-3 bg-primary-50 border-t-2 border-primary-100">
+                    <div className="md:col-span-3 text-sm font-bold text-primary-800">
                       Total a pagar{incluirFixo ? ' (bônus + fixo)' : ''}
                     </div>
                     <div className="text-sm font-bold text-primary-700 text-right">
@@ -965,15 +966,15 @@ export default function PagamentosCoachesPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
+                  <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4">
+                    <div className="min-w-0">
                       <div className="text-sm font-semibold text-gray-900">Lançar como despesa</div>
                       <div className="text-xs text-gray-400 mt-0.5">
                         Cria um registro de <strong>R$ {totalFinal.toFixed(2).replace('.', ',')}</strong> em contas a pagar para {coachSel.nome}
                       </div>
                     </div>
                     <button onClick={lancarDespesa} disabled={lancando}
-                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary-600 text-white text-sm font-semibold hover:bg-primary-700 transition-all disabled:opacity-60 flex-shrink-0">
+                      className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-primary-600 text-white text-sm font-semibold hover:bg-primary-700 transition-all disabled:opacity-60 flex-shrink-0">
                       <DollarSign size={15}/>
                       {lancando ? 'Lançando...' : 'Lançar despesa'}
                     </button>

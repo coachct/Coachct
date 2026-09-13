@@ -111,7 +111,13 @@ export default function SaudeIntegracoes() {
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 900 }}>
+    <div className="saude-pagina" style={{ padding: 24, maxWidth: 900 }}>
+      {/* Mobile: o layout já dá o respiro lateral; tira o padding duplo da página */}
+      <style>{`
+        @media (max-width: 767px) {
+          .saude-pagina { padding: 24px 0 !important; }
+        }
+      `}</style>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 6 }}>
         <h1 style={{ fontSize: 26, fontWeight: 900, margin: 0 }}>🩺 Saúde das Integrações</h1>
         <button onClick={carregar} disabled={carregando}

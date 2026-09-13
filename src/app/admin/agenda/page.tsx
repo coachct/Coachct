@@ -486,7 +486,7 @@ export default function AdminAgendaPage() {
   return (
     <div className="min-h-screen bg-gray-50">
 
-      <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
+      <div className="bg-white border-b border-gray-200 px-0 md:px-6 py-4 sticky top-0 z-10">
         <div className="flex items-center justify-between gap-3 mb-1">
           <h1 className="text-lg font-semibold text-gray-900 capitalize">{diaSemana}</h1>
           <UnidadeSelector />
@@ -499,7 +499,7 @@ export default function AdminAgendaPage() {
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-6 py-5">
+      <div className="max-w-3xl mx-auto px-0 md:px-6 py-5">
 
         <div className="card mb-4 flex items-center gap-3">
           <button onClick={() => { setData(addDias(data, -1)); setLoadingData(true) }}
@@ -529,7 +529,7 @@ export default function AdminAgendaPage() {
           </button>
         </div>
 
-        <div className="flex gap-2 mb-5">
+        <div className="flex flex-wrap md:flex-nowrap gap-2 mb-5">
           <button onClick={() => setAbaAtiva('recepcao')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${abaAtiva === 'recepcao' ? 'bg-primary-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-primary-300'}`}>
             <Tv size={14} />
@@ -745,19 +745,24 @@ export default function AdminAgendaPage() {
                     </div>
                     <div className="mt-3 space-y-2">
                       {pendentesRecepcao.map(ag => (
-                        <div key={ag.id} className="flex items-center gap-3 rounded-xl border border-orange-100 bg-white px-3 py-2">
-                          <span className="font-mono font-bold text-gray-700">{norm(ag.horario)}</span>
-                          {ag.cliente_id ? (
-                            <a href={`/admin/clientes?id=${ag.cliente_id}`} className="min-w-0 flex-1 truncate text-sm font-medium text-primary-700 hover:underline">{ag.clientes?.nome}</a>
-                          ) : (
-                            <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900">{ag.clientes?.nome}</span>
-                          )}
-                          <button onClick={() => setModalConfirmar({ ag, acao: 'presenca' })} className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
-                            <CheckCircle size={12} /> Presença
-                          </button>
-                          <button onClick={() => setModalConfirmar({ ag, acao: 'falta' })} className="btn btn-sm gap-1 text-orange-600 hover:bg-orange-50">
-                            <XCircle size={12} /> Falta
-                          </button>
+                        <div key={ag.id} className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3 rounded-xl border border-orange-100 bg-white px-3 py-2">
+                          {/* mobile: horário+nome numa linha, botões embaixo; desktop: md:contents mantém a linha única */}
+                          <div className="flex min-w-0 items-center gap-3 md:contents">
+                            <span className="font-mono font-bold text-gray-700">{norm(ag.horario)}</span>
+                            {ag.cliente_id ? (
+                              <a href={`/admin/clientes?id=${ag.cliente_id}`} className="min-w-0 flex-1 truncate text-sm font-medium text-primary-700 hover:underline">{ag.clientes?.nome}</a>
+                            ) : (
+                              <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900">{ag.clientes?.nome}</span>
+                            )}
+                          </div>
+                          <div className="flex justify-end gap-2 md:contents">
+                            <button onClick={() => setModalConfirmar({ ag, acao: 'presenca' })} className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
+                              <CheckCircle size={12} /> Presença
+                            </button>
+                            <button onClick={() => setModalConfirmar({ ag, acao: 'falta' })} className="btn btn-sm gap-1 text-orange-600 hover:bg-orange-50">
+                              <XCircle size={12} /> Falta
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -795,8 +800,10 @@ export default function AdminAgendaPage() {
                               const agsH = agendamentosPorHorario(h).filter(a => a.status !== 'cancelado')
                               const coachesLivres = coachesHorario.filter(c => !agsH.some(a => a.id !== ag.id && a.coach_id === c.coaches?.id))
                               return (
-                                <div key={ag.id} className={`flex items-start gap-4 rounded-2xl border p-4 shadow-sm border-l-4 ${viaCheckin ? 'border-emerald-200 bg-emerald-50 border-l-emerald-500' : modoErrado ? 'border-amber-200 bg-amber-50 border-l-amber-500' : feito ? 'border-gray-100 bg-white border-l-gray-300 opacity-70' : faltou ? 'border-gray-100 bg-white border-l-orange-400' : ag.coach_id ? 'border-gray-100 bg-white border-l-green-400' : 'border-gray-100 bg-white border-l-primary-400'}`}>
-                                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-primary-100 text-sm font-bold text-primary-800">
+                                <div key={ag.id} className={`flex flex-col gap-3 md:flex-row md:items-start md:gap-4 rounded-2xl border p-4 shadow-sm border-l-4 ${viaCheckin ? 'border-emerald-200 bg-emerald-50 border-l-emerald-500' : modoErrado ? 'border-amber-200 bg-amber-50 border-l-amber-500' : feito ? 'border-gray-100 bg-white border-l-gray-300 opacity-70' : faltou ? 'border-gray-100 bg-white border-l-orange-400' : ag.coach_id ? 'border-gray-100 bg-white border-l-green-400' : 'border-gray-100 bg-white border-l-primary-400'}`}>
+                                  {/* mobile: avatar+dados numa linha e ações embaixo; desktop: md:contents mantém o layout original */}
+                                  <div className="flex min-w-0 items-start gap-3 md:contents">
+                                  <div className="flex h-10 w-10 md:h-12 md:w-12 flex-shrink-0 items-center justify-center rounded-full bg-primary-100 text-sm font-bold text-primary-800">
                                     {ag.clientes?.nome?.slice(0, 2).toUpperCase()}
                                   </div>
                                   <div className="min-w-0 flex-1">
@@ -823,7 +830,7 @@ export default function AdminAgendaPage() {
                                     )}
                                     <div className="mt-2">
                                       {!ag.coach_id && coachesLivres.length > 0 && (
-                                        <select className="input input-sm text-xs max-w-[230px]" defaultValue=""
+                                        <select className="input input-sm text-base md:text-xs max-w-full md:max-w-[230px]" defaultValue=""
                                           onChange={e => { if (e.target.value) alocarCoach(ag.id, e.target.value) }}
                                           disabled={alocandoId === ag.id}>
                                           <option value="">Alocar coach...</option>
@@ -831,7 +838,7 @@ export default function AdminAgendaPage() {
                                         </select>
                                       )}
                                       {ag.coach_id && (
-                                        <select className="input input-sm text-xs max-w-[230px]" value={ag.coach_id}
+                                        <select className="input input-sm text-base md:text-xs max-w-full md:max-w-[230px]" value={ag.coach_id}
                                           onChange={e => alocarCoach(ag.id, e.target.value)} disabled={alocandoId === ag.id}>
                                           {coachesHorario.map(c => <option key={c.coaches?.id} value={c.coaches?.id}>{c.coaches?.nome}</option>)}
                                           <option value="">— Sem coach —</option>
@@ -843,8 +850,9 @@ export default function AdminAgendaPage() {
                                       <button onClick={() => { setModalCorrecao(ag); setCoachCorrecaoSel(ag.coach_id || '') }} className="ml-2 text-xs font-medium text-amber-600 hover:text-amber-700 hover:underline">Corrigir coach</button>
                                     </div>
                                   </div>
+                                  </div>
                                   {feito || faltou ? (
-                                    <div className="flex flex-shrink-0 flex-col items-end gap-1">
+                                    <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 md:flex-shrink-0 md:flex-col md:flex-nowrap md:items-end md:gap-1">
                                       {viaCheckin ? (
                                         <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700" title={`Presença confirmada pelo check-in ${ag.presenca_checkin_origem === 'totalpass' ? 'TotalPass' : 'Wellhub'}`}>
                                           <CheckCircle size={13} /> Check-in confirmado
@@ -862,8 +870,8 @@ export default function AdminAgendaPage() {
                                       </button>
                                     </div>
                                   ) : (
-                                    <div className="flex flex-shrink-0 flex-col items-end gap-2">
-                                      <div className="flex flex-col gap-2 sm:flex-row">
+                                    <div className="flex flex-wrap items-center justify-end gap-2 md:flex-shrink-0 md:flex-col md:flex-nowrap md:items-end">
+                                      <div className="flex flex-row gap-2">
                                         <button onClick={() => setModalConfirmar({ ag, acao: 'presenca' })} className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
                                           <CheckCircle size={14} /> Presença
                                         </button>

@@ -416,7 +416,7 @@ export default function CobrancaNoShowPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+      <div className="bg-white border-b border-gray-200 px-3 md:px-6 py-4 flex flex-wrap md:flex-nowrap items-center justify-between gap-3 md:gap-0 md:sticky md:top-0 z-10">
         <div>
           <div className="text-base font-semibold text-gray-900">Cobrança No-Show</div>
           <div className="text-xs text-gray-400">Faltas pendentes de cobrança</div>
@@ -424,10 +424,10 @@ export default function CobrancaNoShowPage() {
         <UnidadeSelector />
       </div>
 
-      <div className="max-w-5xl mx-auto px-6 py-5">
+      <div className="max-w-5xl mx-auto px-0 md:px-6 py-5">
 
         {/* Abas CT / JustClub */}
-        <div className="flex gap-2 mb-5">
+        <div className="flex flex-wrap md:flex-nowrap gap-2 mb-5">
           <button onClick={() => trocarAba('ct')}
             className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all border ${aba === 'ct' ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}>
             Just CT
@@ -451,7 +451,7 @@ export default function CobrancaNoShowPage() {
           ].map(s => (
             <div key={s.label} className="card">
               <div className="flex items-center gap-2 mb-1">{s.icon}<div className="text-xs text-gray-500 uppercase tracking-wide font-semibold">{s.label}</div></div>
-              <div className={`text-2xl font-bold ${s.cor}`}>{s.value}</div>
+              <div className={`text-xl md:text-2xl font-bold ${s.cor}`}>{s.value}</div>
               <div className="text-xs text-gray-400 mt-0.5">{s.sub}</div>
             </div>
           ))}
@@ -480,7 +480,7 @@ export default function CobrancaNoShowPage() {
 
         {/* Barra de ação em lote (sticky quando há seleção) */}
         {selecionados.size > 0 && (
-          <div className="sticky top-[73px] z-20 mb-3">
+          <div className="sticky top-0 md:top-[73px] z-20 mb-3">
             <div className="bg-orange-600 text-white rounded-2xl shadow-lg px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
               <div className="flex items-center gap-2 text-sm">
                 <CheckSquare size={16}/>

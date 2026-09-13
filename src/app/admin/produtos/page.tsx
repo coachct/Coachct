@@ -341,7 +341,7 @@ export default function AdminProdutosPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10 flex items-center justify-between">
+      <div className="bg-white border-b border-gray-200 px-3 md:px-6 py-4 sticky top-0 z-10 flex flex-wrap md:flex-nowrap items-center justify-between gap-3 md:gap-0">
         <div>
           <h1 className="text-lg font-semibold text-gray-900">Produtos</h1>
           <p className="text-xs text-gray-400 mt-0.5">{ativos.length} ativo(s) · {inativos.length} inativo(s)</p>
@@ -351,7 +351,7 @@ export default function AdminProdutosPage() {
         </button>
       </div>
 
-      <div className="max-w-3xl mx-auto px-6 py-5">
+      <div className="max-w-3xl mx-auto px-0 md:px-6 py-5">
         {produtos.length === 0 ? (
           <div className="card text-center py-16">
             <Package size={32} className="mx-auto text-gray-200 mb-3" />
@@ -388,7 +388,7 @@ export default function AdminProdutosPage() {
 
       {modalProduto && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl w-full max-w-md p-4 md:p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
               <div className="font-semibold text-gray-900 text-lg">
                 {modalProduto.id ? 'Editar produto' : 'Novo produto'}
@@ -401,7 +401,7 @@ export default function AdminProdutosPage() {
             <div className="space-y-4">
               <div>
                 <label className="text-xs text-gray-500 mb-1 block font-medium">Nome do produto</label>
-                <input type="text" className="input w-full"
+                <input type="text" className="input w-full text-base md:text-sm"
                   value={form.nome}
                   onChange={e => setForm({ ...form, nome: e.target.value })}
                   placeholder="Ex: Crédito Avulso Coach CT" />
@@ -501,13 +501,13 @@ export default function AdminProdutosPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs text-gray-500 mb-1 block font-medium">Valor (R$)</label>
-                      <input type="number" min={0} step="0.01" className="input w-full"
+                      <input type="number" min={0} step="0.01" className="input w-full text-base md:text-sm"
                         value={form.valor}
                         onChange={e => setForm({ ...form, valor: parseFloat(e.target.value) || 0 })} />
                     </div>
                     <div>
                       <label className="text-xs text-gray-500 mb-1 block font-medium">Créditos por venda</label>
-                      <input type="number" min={1} max={100} className="input w-full"
+                      <input type="number" min={1} max={100} className="input w-full text-base md:text-sm"
                         value={form.creditos_por_venda}
                         onChange={e => setForm({ ...form, creditos_por_venda: parseInt(e.target.value) || 1 })} />
                     </div>
@@ -521,7 +521,7 @@ export default function AdminProdutosPage() {
 
                   <div>
                     <label className="text-xs text-gray-500 mb-1 block font-medium">Validade dos créditos (dias)</label>
-                    <input type="number" min={1} className="input w-full"
+                    <input type="number" min={1} className="input w-full text-base md:text-sm"
                       value={form.dias_validade}
                       onChange={e => setForm({ ...form, dias_validade: parseInt(e.target.value) || 30 })} />
                     <div className="text-xs text-gray-400 mt-1">A partir da data da venda, cada crédito expira após X dias.</div>
@@ -533,14 +533,14 @@ export default function AdminProdutosPage() {
                 <>
                   <div>
                     <label className="text-xs text-gray-500 mb-1 block font-medium">Valor (R$)</label>
-                    <input type="number" min={0} step="0.01" className="input w-full"
+                    <input type="number" min={0} step="0.01" className="input w-full text-base md:text-sm"
                       value={form.valor}
                       onChange={e => setForm({ ...form, valor: parseFloat(e.target.value) || 0 })} />
                   </div>
 
                   <div>
                     <label className="text-xs text-gray-500 mb-1 block font-medium">Duração do acesso (dias)</label>
-                    <input type="number" min={1} className="input w-full"
+                    <input type="number" min={1} className="input w-full text-base md:text-sm"
                       value={form.dias_validade}
                       onChange={e => setForm({ ...form, dias_validade: parseInt(e.target.value) || 180 })} />
                     <div className="text-xs text-gray-400 mt-1">
@@ -567,7 +567,7 @@ export default function AdminProdutosPage() {
                         Cadastre primeiro o plano em <strong>/admin/planos</strong>.
                       </div>
                     ) : (
-                      <select className="input w-full"
+                      <select className="input w-full text-base md:text-sm"
                         value={form.plano_id}
                         onChange={e => setForm({ ...form, plano_id: e.target.value })}>
                         <option value="">Selecione o plano...</option>
@@ -585,7 +585,7 @@ export default function AdminProdutosPage() {
 
                   <div>
                     <label className="text-xs text-gray-500 mb-1 block font-medium">Valor (R$)</label>
-                    <input type="number" min={0} step="0.01" className="input w-full"
+                    <input type="number" min={0} step="0.01" className="input w-full text-base md:text-sm"
                       value={form.valor}
                       onChange={e => setForm({ ...form, valor: parseFloat(e.target.value) || 0 })} />
                     <div className="text-xs text-gray-400 mt-1">Valor TOTAL do pacote (ex: 5994 pro Semestral)</div>
@@ -603,7 +603,7 @@ export default function AdminProdutosPage() {
 
               <div>
                 <label className="text-xs text-gray-500 mb-1 block font-medium">Parcelamento máximo</label>
-                <input type="number" min={1} max={24} className="input w-full"
+                <input type="number" min={1} max={24} className="input w-full text-base md:text-sm"
                   value={form.max_parcelas}
                   onChange={e => setForm({ ...form, max_parcelas: parseInt(e.target.value) || 1 })} />
                 <div className="text-xs text-gray-400 mt-1">
@@ -613,7 +613,7 @@ export default function AdminProdutosPage() {
 
               <div>
                 <label className="text-xs text-gray-500 mb-1 block font-medium">Descrição (opcional)</label>
-                <textarea className="input w-full resize-none" rows={3}
+                <textarea className="input w-full resize-none text-base md:text-sm" rows={3}
                   value={form.descricao}
                   onChange={e => setForm({ ...form, descricao: e.target.value })}
                   placeholder="Descrição que aparece para o cliente..." />

@@ -206,7 +206,50 @@ export default function AdminLojaPage() {
       {visiveis.length === 0 ? (
         <div className="card"><EmptyState message="Nenhum produto cadastrado ainda." /></div>
       ) : (
-        <div className="card overflow-x-auto p-0">
+        <>
+        {/* Mobile: um card por produto (a tabela com uma coluna por unidade não cabe) */}
+        <div className="md:hidden space-y-2">
+          {visiveis.map(p => (
+            <div key={p.id} className={`card ${p.ativo ? '' : 'opacity-50'}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-medium text-gray-900 text-sm">{p.nome}</div>
+                  <div className="text-xs text-gray-400">
+                    {CATEGORIAS.find(c => c.key === p.categoria)?.label || p.categoria}
+                    {!p.ativo && ' · inativo'}
+                  </div>
+                </div>
+                <div className="font-mono text-sm text-gray-700 whitespace-nowrap">{moeda(p.preco)}</div>
+              </div>
+              <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-3">
+                {unidades.map(u => {
+                  const s = saldoDe(p.id, u.id)
+                  return (
+                    <div key={u.id} className="flex items-center gap-1.5 text-xs text-gray-500">
+                      <span>{u.nome}:</span>
+                      <span className={`badge ${s === 0 ? 'badge-red' : s <= 5 ? 'badge-amber' : 'badge-green'}`}>
+                        {s}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-1 mt-3">
+                <button className="btn btn-sm" onClick={() => abrirMovimento(p)} title="Lançar entrada, perda ou ajuste">
+                  <PackagePlus size={13} /> Estoque
+                </button>
+                <button className="btn btn-sm" onClick={() => abrirProduto(p)} title="Editar produto">
+                  <Edit2 size={13} />
+                </button>
+                <button className="btn btn-sm" onClick={() => alternarAtivo(p)}>
+                  {p.ativo ? 'Desativar' : 'Ativar'}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="card overflow-x-auto p-0 hidden md:block">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 text-xs text-gray-500">
@@ -257,13 +300,14 @@ export default function AdminLojaPage() {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {/* ---------- Movimentos recentes ---------- */}
       <div className="mt-8">
         <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
           <h2 className="text-base font-semibold text-gray-900">Movimentos recentes</h2>
-          <select className="input w-auto" value={unidadeMov} onChange={e => setUnidadeMov(e.target.value)}>
+          <select className="input w-auto text-base md:text-sm" value={unidadeMov} onChange={e => setUnidadeMov(e.target.value)}>
             {unidades.map(u => <option key={u.id} value={u.id}>{u.nome}</option>)}
           </select>
         </div>
@@ -323,7 +367,7 @@ export default function AdminLojaPage() {
             <div className="space-y-3">
               <div>
                 <label className="label">Nome</label>
-                <input className="input" value={fNome} onChange={e => setFNome(e.target.value)} placeholder="Ex: Água sem gás 500ml" />
+                <input className="input text-base md:text-sm" value={fNome} onChange={e => setFNome(e.target.value)} placeholder="Ex: Água sem gás 500ml" />
               </div>
               <div>
                 <label className="label">Categoria</label>
@@ -338,7 +382,7 @@ export default function AdminLojaPage() {
               </div>
               <div>
                 <label className="label">Preço de venda (mesmo em todas as unidades)</label>
-                <input className="input" value={fPreco} onChange={e => setFPreco(e.target.value)} placeholder="Ex: 5,00" inputMode="decimal" />
+                <input className="input text-base md:text-sm" value={fPreco} onChange={e => setFPreco(e.target.value)} placeholder="Ex: 5,00" inputMode="decimal" />
               </div>
             </div>
 
@@ -369,7 +413,7 @@ export default function AdminLojaPage() {
             <div className="space-y-3">
               <div>
                 <label className="label">Unidade</label>
-                <select className="input" value={mUnidade} onChange={e => setMUnidade(e.target.value)}>
+                <select className="input text-base md:text-sm" value={mUnidade} onChange={e => setMUnidade(e.target.value)}>
                   {unidades.map(u => <option key={u.id} value={u.id}>{u.nome}</option>)}
                 </select>
               </div>
@@ -405,12 +449,12 @@ export default function AdminLojaPage() {
 
               <div>
                 <label className="label">Quantidade</label>
-                <input className="input" value={mQtd} onChange={e => setMQtd(e.target.value)} placeholder="Ex: 24" inputMode="numeric" />
+                <input className="input text-base md:text-sm" value={mQtd} onChange={e => setMQtd(e.target.value)} placeholder="Ex: 24" inputMode="numeric" />
               </div>
 
               <div>
                 <label className="label">Observação (opcional)</label>
-                <input className="input" value={mMotivo} onChange={e => setMMotivo(e.target.value)} placeholder="Ex: compra no atacado" />
+                <input className="input text-base md:text-sm" value={mMotivo} onChange={e => setMMotivo(e.target.value)} placeholder="Ex: compra no atacado" />
               </div>
             </div>
 
