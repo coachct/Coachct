@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import { AuthProvider } from '@/hooks/useAuth'
@@ -9,6 +9,17 @@ const inter = Inter({ subsets: ['latin'] })
 export const metadata: Metadata = {
   title: 'Just CT — Serious Training',
   description: 'Musculação premium com Coach CT em Vila Olímpia. Agende seu personal exclusivo no horário que quiser.',
+  // Atalho na tela de início do iPhone: nome "Just" e abre em tela cheia (sem a barra do Safari).
+  // O ícone vem de src/app/apple-icon.png (o Next gera o <link> sozinho).
+  appleWebApp: {
+    capable: true,
+    title: 'Just',
+    statusBarStyle: 'black',
+  },
+}
+
+export const viewport: Viewport = {
+  themeColor: '#000000',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
