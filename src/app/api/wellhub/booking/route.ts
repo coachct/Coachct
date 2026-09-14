@@ -18,6 +18,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { assinaturaWellhubValida } from '@/lib/wellhub/assinatura';
 import { patchBookingStatus, patchSlotNumbers } from '@/lib/wellhub/booking-api';
 import { posicoesLivresClub } from '@/lib/whatsapp/acoes';
+import { parceiroSemSaldoNoMes } from '@/lib/parceiro-limite-mensal';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -123,6 +124,14 @@ async function processarRequest(supabase: SupabaseClient, payload: any): Promise
   });
   if (errCli || !clienteId) {
     console.error('[wellhub/booking] erro resolver cliente:', errCli);
+    await patchBookingStatus(gymId, bookingNumber, 'rejeitar'); return;
+  }
+
+  // Teto do mês (ex.: 12): o Wellhub não barra quem estourou o plano. Mesmo saldo
+  // do site; sem crédito no mês → recusa. Sem pote cadastrado ou erro → libera.
+  const limite = await parceiroSemSaldoNoMes(supabase, 'wellhub', clienteId as string, ocorrenciaId);
+  if (limite.bloquear) {
+    console.warn('[wellhub/booking] sem saldo no mês — rejeitando', ocorrenciaId, limite.motivo);
     await patchBookingStatus(gymId, bookingNumber, 'rejeitar'); return;
   }
 

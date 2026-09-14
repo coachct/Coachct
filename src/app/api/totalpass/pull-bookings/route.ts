@@ -6,8 +6,9 @@
 //     consumindo a vaga do pool. Não coube (corrida) → cancela o slot deles.
 //   * reserva nossa que sumiu dos slots → marca 'cancelado' (o membro cancelou).
 //
-// Sem janela de confirmar/rejeitar (a reserva já está feita no app deles). A
-// autorização é da TotalPass — não passa por saldo de plano nosso.
+// Sem janela de confirmar/rejeitar (a reserva já está feita no app deles). Mas o
+// teto do mês (ex.: 12) é conferido aqui: a TotalPass não barra quem estourou o
+// plano, então sem saldo no mês o slot é cancelado (ver parceiro-limite-mensal).
 //
 // Protegido pelo CRON_SECRET. Atrás do kill switch TOTALPASS_BOOKING_ATIVO.
 //
@@ -19,6 +20,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { listarSlots, cancelarSlot } from '@/lib/totalpass/booking-api'
 import { placesAtivos } from '@/lib/totalpass/places'
+import { parceiroSemSaldoNoMes } from '@/lib/parceiro-limite-mensal'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -531,6 +533,16 @@ async function registrarReserva(
       motivo: 'duplicada-mesma-aula', etapa: 'criacao',
     })
     return 'duplicada'
+  }
+
+  // TETO DO MÊS (ex.: 12). A TotalPass não barra quem estourou o plano — então
+  // conferimos o mesmo saldo do site e, sem crédito no mês, cancelamos o slot no
+  // app deles. Sem pote cadastrado ou erro → libera (ver parceiro-limite-mensal).
+  const limite = await parceiroSemSaldoNoMes(supabase, 'totalpass', clienteId as unknown as string, ocorrenciaId)
+  if (limite.bloquear) {
+    await cancelarSlot(apiKey, s.slotId!) // falhou? não cria; o próximo poll confere de novo
+    rejeitadas.push({ slotId: s.slotId, eventId: s.eventId, ocorrenciaId, motivo: limite.motivo, etapa: 'criacao' })
+    return 'rejeitada'
   }
 
   // Vaga real + posição (mesma regra da reativação).
