@@ -7,8 +7,8 @@ import WhatsAppButton from '@/components/WhatsAppButton'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Just CT — Serious Training',
-  description: 'Musculação premium com Coach CT em Vila Olímpia. Agende seu personal exclusivo no horário que quiser.',
+  title: 'Just Club & CT - The End Of Boring Gyms',
+  description: 'Personal ou treino coletivo: duas escolhas, um só resultado. Coach CT, Lift e Running em Vila Olímpia e Pinheiros.',
   // Atalho na tela de início do iPhone: nome "Just" e abre em tela cheia (sem a barra do Safari).
   // O ícone vem de src/app/apple-icon.png (o Next gera o <link> sozinho).
   appleWebApp: {
