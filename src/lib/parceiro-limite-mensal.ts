@@ -11,7 +11,8 @@
 //
 // Conta: reservas do cliente na unidade da aula, no mês da aula, com tipo_credito
 // do parceiro (site/recepção `<parceiro>_<slug>` + app `<parceiro>_app`), fora
-// cancelado e falta (falta de parceiro não consome — mesma regra do saldo).
+// cancelado. Falta não consome, EXCETO a de reserva do app TotalPass (eles
+// repassam o check-in mesmo na falta — conta como treino).
 // Teto: o total do pote do parceiro quando existir; senão 12.
 //
 // Erro na consulta → NÃO bloqueia (a trava nunca pode derrubar a entrada de reserva).
@@ -43,17 +44,22 @@ export async function parceiroSemSaldoNoMes(
     // aninhado de 2 níveis no PostgREST.
     const { data: reservas, error } = await supabase
       .from('club_reservas')
-      .select('id, club_ocorrencias!inner(data, club_aulas(unidade_id))')
+      .select('id, status, tipo_credito, club_ocorrencias!inner(data, club_aulas(unidade_id))')
       .eq('cliente_id', clienteId)
       .like('tipo_credito', `${parceiro}_%`)
-      .not('status', 'in', '(cancelado,falta)')
+      .neq('status', 'cancelado')
       .gte('club_ocorrencias.data', inicioMes)
       .lte('club_ocorrencias.data', fimMes)
     if (error || !reservas) {
       console.warn('[parceiro-limite-mensal] falha ao contar reservas — liberando:', error?.message)
       return { bloquear: false }
     }
-    const count = reservas.filter((r: any) => r?.club_ocorrencias?.club_aulas?.unidade_id === unidadeId).length
+    // Falta não consome — EXCETO reserva feita no app da TotalPass: a TotalPass
+    // repassa o check-in mesmo quando o aluno falta, então conta como treino.
+    const count = reservas.filter((r: any) =>
+      r?.club_ocorrencias?.club_aulas?.unidade_id === unidadeId &&
+      (r.status !== 'falta' || r.tipo_credito === 'totalpass_app')
+    ).length
 
     // Teto: o do plano cadastrado (se houver pote do parceiro na unidade), senão 12.
     let teto = TETO_PADRAO
