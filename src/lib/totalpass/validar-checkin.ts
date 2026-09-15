@@ -16,6 +16,7 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { ehModoPersonal, registrarCheckinCoachCt, marcarEntradaSemValidar } from '@/lib/coach-ct/presenca-checkin';
+import { aplicarLimiteRepasse } from '@/lib/parceiros/limite-repasse-walkin';
 
 type ValidarInput = {
   entradaId: string; // id da linha em entradas_walkin
@@ -65,10 +66,19 @@ export async function validarCheckinTotalpass(input: ValidarInput): Promise<void
   } else {
     console.warn('[totalpass/validar] payload sem endpoint de confirmacao');
   }
+  // Teto de repasse por usuário/mês: acima do limite a TotalPass não paga.
+  const { valor: valorFinal, motivo: motivoRepasse } = await aplicarLimiteRepasse(
+    supabase,
+    entradaId,
+    valor
+  );
+
   const patch: Record<string, unknown> = {
     status: 'validado',
     validado_em: startedAt ?? new Date().toISOString(),
-    valor,
+    valor: valorFinal,
+    valor_tabela: valor,
+    repasse_zerado_motivo: motivoRepasse,
     // Coach CT COM reserva (personal + agendamento casado): marca o vínculo pro
     // feed do totem esconder (tem fluxo de coach próprio). Personal SEM reserva e
     // musculação livre ficam null => aparecem no feed pra o cliente confirmar.

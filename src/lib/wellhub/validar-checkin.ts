@@ -14,6 +14,7 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { validarTicket } from './validate';
+import { aplicarLimiteRepasse } from '@/lib/parceiros/limite-repasse-walkin';
 
 type ValidarCheckinInput = {
   entradaId: string; // id da linha em entradas_walkin
@@ -70,12 +71,20 @@ export async function validarCheckin(input: ValidarCheckinInput): Promise<void> 
   // 3. Sucesso (validado agora ou já validado antes).
   if (resultado.valido || jaValidado) {
     const valor = await buscarValor(supabase, produtoId, produtoDescricao);
+    // Teto de repasse por usuário/mês (mesma regra aplicada à TotalPass).
+    const { valor: valorFinal, motivo: motivoRepasse } = await aplicarLimiteRepasse(
+      supabase,
+      entradaId,
+      valor
+    );
     const { error } = await supabase
       .from('entradas_walkin')
       .update({
         status: 'validado',
         validado_em: resultado.validatedAt ?? new Date().toISOString(),
-        valor,
+        valor: valorFinal,
+        valor_tabela: valor,
+        repasse_zerado_motivo: motivoRepasse,
         coach_ct_agendamento_id: coachCtAgendamentoId ?? null,
       })
       .eq('id', entradaId);
