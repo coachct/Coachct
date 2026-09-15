@@ -118,6 +118,7 @@ export default function ContasAPagarPage() {
   const [fUnidade, setFUnidade] = useState('todas')
   const [fStatus, setFStatus] = useState<'todas' | 'aberto' | 'pago'>('todas')
   const [fCategoria, setFCategoria] = useState('todas')
+  const [fValor, setFValor] = useState('')
 
   // ---- seleção em lote ----
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set())
@@ -147,12 +148,25 @@ export default function ContasAPagarPage() {
     setErro(null)
     setSelecionadas(new Set())
 
+    // despesas em páginas de 1000 (o PostgREST corta em 1000 linhas sem avisar)
+    async function buscarDespesas() {
+      const todas: Despesa[] = []
+      for (let de = 0; ; de += 1000) {
+        const { data, error } = await supabase
+          .from('despesas')
+          .select('*')
+          .is('excluido_em', null)
+          .order('vencimento', { ascending: true, nullsFirst: false })
+          .order('id', { ascending: true })
+          .range(de, de + 999)
+        if (error) return { data: null, error }
+        todas.push(...((data as Despesa[]) || []))
+        if (!data || data.length < 1000) return { data: todas, error: null }
+      }
+    }
+
     const [resD, resC, resU, resF] = await Promise.all([
-      supabase
-        .from('despesas')
-        .select('*')
-        .is('excluido_em', null)
-        .order('vencimento', { ascending: true, nullsFirst: false }),
+      buscarDespesas(),
       supabase
         .from('categorias_despesa')
         .select('id, nome, grupo')
@@ -217,7 +231,14 @@ export default function ContasAPagarPage() {
     return null
   }, [fPeriodo, hoje, fDataDe, fDataAte])
 
+  // busca por valor: procura em TODAS as contas, ignorando os outros filtros
+  const valorBusca = fValor.trim() ? parseValor(fValor) : 0
+
   const lista = useMemo(() => {
+    if (valorBusca > 0) {
+      const centavos = Math.round(valorBusca * 100)
+      return despesas.filter((d) => Math.round(Number(d.valor || 0) * 100) === centavos)
+    }
     return despesas.filter((d) => {
       if (periodoRange) {
         // atalhos rápidos filtram sempre por vencimento
@@ -238,7 +259,7 @@ export default function ContasAPagarPage() {
         return false
       return true
     })
-  }, [despesas, periodoRange, fTodosMeses, baseMes, fMes, fAno, fUnidade, fStatus, fCategoria])
+  }, [despesas, valorBusca, periodoRange, fTodosMeses, baseMes, fMes, fAno, fUnidade, fStatus, fCategoria])
 
   const totais = useMemo(() => {
     let aberto = 0
@@ -509,8 +530,45 @@ export default function ContasAPagarPage() {
           </div>
         </div>
 
-        {/* Filtros */}
+        {/* Busca por valor */}
         <div className="mb-4 flex flex-wrap items-end gap-3 rounded-2xl border border-gray-200 bg-white p-4">
+          <div className="w-full sm:w-56">
+            <label className="mb-1 block text-xs font-medium text-gray-500">Buscar por valor</label>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
+                R$
+              </span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={fValor}
+                onChange={(e) => setFValor(e.target.value)}
+                placeholder="0,00"
+                className={`${inputCls} pl-9`}
+              />
+            </div>
+          </div>
+          {valorBusca > 0 && (
+            <div className="flex flex-wrap items-center gap-3 pb-2.5">
+              <span className="text-sm text-gray-600">
+                Buscando {fmtBRL(valorBusca)} em todas as contas (os filtros abaixo não valem)
+              </span>
+              <button
+                onClick={() => setFValor('')}
+                className="rounded-xl px-3 py-1.5 text-sm font-medium text-gray-600 transition hover:bg-gray-100"
+              >
+                Limpar busca
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Filtros */}
+        <div
+          className={`mb-4 flex flex-wrap items-end gap-3 rounded-2xl border border-gray-200 bg-white p-4 ${
+            valorBusca > 0 ? 'pointer-events-none opacity-50' : ''
+          }`}
+        >
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-500">Base do mês</label>
             <div className="flex rounded-xl border border-gray-200 p-0.5">
@@ -706,7 +764,9 @@ export default function ContasAPagarPage() {
             </div>
           ) : lista.length === 0 ? (
             <div className="py-16 text-center text-sm text-gray-500">
-              Nenhuma despesa encontrada para os filtros selecionados.
+              {valorBusca > 0
+                ? `Nenhuma conta com o valor ${fmtBRL(valorBusca)}.`
+                : 'Nenhuma despesa encontrada para os filtros selecionados.'}
             </div>
           ) : (
             <>
