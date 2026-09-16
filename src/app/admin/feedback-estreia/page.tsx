@@ -95,6 +95,43 @@ export default function FeedbackEstreiaPage() {
   const [dias, setDias] = useState(30)
   const [aba, setAba] = useState<'responderam' | 'nao'>('responderam')
 
+  // Teste: um e-mail só, pro endereço digitado, na combinação escolhida.
+  const [emailTeste, setEmailTeste] = useState('')
+  const [modTeste, setModTeste] = useState<'running' | 'lift'>('lift')
+  const [perTeste, setPerTeste] = useState<'semana' | 'fds'>('semana')
+  const [grupoTeste, setGrupoTeste] = useState('Full Body')
+  const [enviandoTeste, setEnviandoTeste] = useState(false)
+  const [msgTeste, setMsgTeste] = useState<{ ok: boolean; texto: string } | null>(null)
+
+  // Já vem com o e-mail de quem está logado.
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user?.email) setEmailTeste(e => e || session.user.email!)
+    })
+  }, [])
+
+  async function enviarTeste() {
+    if (!emailTeste.trim()) { setMsgTeste({ ok: false, texto: 'Digite o e-mail que vai receber o teste.' }); return }
+    setEnviandoTeste(true); setMsgTeste(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) { setMsgTeste({ ok: false, texto: 'Sessão expirada. Recarregue a página e entre novamente.' }); return }
+      const res = await fetch('/api/feedback-estreia/teste', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ email: emailTeste.trim(), modalidade: modTeste, periodo: perTeste, grupo: grupoTeste }),
+      })
+      const json = await res.json()
+      if (!res.ok) setMsgTeste({ ok: false, texto: json?.error || 'Erro ao enviar o teste' })
+      else setMsgTeste({ ok: true, texto: `Teste enviado para ${json.para}. Confira a caixa de entrada (e o spam).` })
+    } catch (e: any) {
+      setMsgTeste({ ok: false, texto: e?.message || 'Erro ao enviar o teste' })
+    } finally {
+      setEnviandoTeste(false)
+    }
+  }
+
   useEffect(() => {
     let cancelado = false
     async function load() {
@@ -152,6 +189,44 @@ export default function FeedbackEstreiaPage() {
           <option value={90}>Últimos 90 dias</option>
           <option value={365}>Último ano</option>
         </select>
+      </div>
+
+      {/* Teste: não grava nada nem conta como disparo. A linha de contexto usa
+          dados de exemplo; abertura e fechamento seguem a combinação escolhida. */}
+      <div className="card mb-4">
+        <div className="text-xs text-gray-400 uppercase tracking-wide mb-2">Enviar um teste</div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
+          <select value={modTeste} onChange={e => setModTeste(e.target.value as 'running' | 'lift')}
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-base md:text-sm bg-white">
+            <option value="lift">Fez Lift</option>
+            <option value="running">Correu (Running)</option>
+          </select>
+          <select value={perTeste} onChange={e => setPerTeste(e.target.value as 'semana' | 'fds')}
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-base md:text-sm bg-white">
+            <option value="semana">Estreou na semana</option>
+            <option value="fds">Estreou no fim de semana</option>
+          </select>
+          <select value={grupoTeste} onChange={e => setGrupoTeste(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-base md:text-sm bg-white">
+            {['Inferiores', 'Superiores', 'Glúteos & Abs', 'Full Body', 'HIIT & ABS', 'HIIT & Full Body'].map(g => (
+              <option key={g} value={g}>{g}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-end gap-2 flex-wrap">
+          <input
+            type="email" value={emailTeste} placeholder="seu@email.com"
+            onChange={e => setEmailTeste(e.target.value)}
+            className="flex-1 min-w-[220px] border border-gray-200 rounded-lg px-3 py-1.5 text-base md:text-sm"
+          />
+          <button onClick={enviarTeste} disabled={enviandoTeste}
+            className="border border-gray-300 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50">
+            {enviandoTeste ? 'Enviando...' : 'Enviar e-mail de teste'}
+          </button>
+        </div>
+        {msgTeste && (
+          <div className={`mt-2 text-sm ${msgTeste.ok ? 'text-primary-700' : 'text-danger-600'}`}>{msgTeste.texto}</div>
+        )}
       </div>
 
       {loading ? <Spinner /> : !p ? null : (
