@@ -1095,7 +1095,10 @@ export default function RecepcaoClubDetalhe() {
                         ⇄
                       </button>
                     )}
-                    <button onClick={() => marcarStatus(r.id, isPresente ? 'reservado' : 'presente')} disabled={atualizando===r.id}
+                    <button onClick={() => {
+                        if (isPresente && !confirm(`Retirar a presença de ${r.clientes?.nome || 'este aluno'}?`)) return
+                        marcarStatus(r.id, isPresente ? 'reservado' : 'presente')
+                      }} disabled={atualizando===r.id}
                       title={isPresente ? 'Clique para desmarcar' : 'Marcar presença'}
                       style={{ padding:'0.35rem 0.75rem', borderRadius:8, border:`1.5px solid ${isPresente?VERDE:'#e5e7eb'}`,
                         background:isPresente?VERDE:'#fff', color:isPresente?'#fff':'#555',
