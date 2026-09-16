@@ -101,7 +101,9 @@ function Conteudo({ token }: { token: string }) {
     <div style={{
       background: '#080808', minHeight: '100vh', color: '#f0f0f0',
       fontFamily: "'DM Sans', sans-serif", display: 'flex',
-      alignItems: 'center', justifyContent: 'center', padding: '1.5rem 1rem',
+      alignItems: 'center', justifyContent: 'center',
+      // Folga embaixo pro botão do WhatsApp (que é global do site) não cobrir o Enviar.
+      padding: '1.5rem 1rem 6rem',
     }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;600;700&display=swap');
