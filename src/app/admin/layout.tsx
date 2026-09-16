@@ -75,6 +75,7 @@ const nav = [
     children: [
       { label: 'Vendas',   href: '/admin/vendas' },
       { label: 'Carrinho abandonado', href: '/admin/carrinho-abandonado' },
+      { label: 'Feedback de estreia', href: '/admin/feedback-estreia' },
       { label: 'Planos',   href: '/admin/planos' },
       { label: 'Produtos', href: '/admin/produtos' },
       { label: 'Cupons',   href: '/admin/cupons' },
