@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase'
+import { calcularHorasProfessor } from '@/lib/pagamento-coach'
 import { DollarSign, CheckCircle } from 'lucide-react'
 
 function dataLocalStr(d: Date) {
@@ -21,47 +22,10 @@ function formatarData(d: string) {
   return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR')
 }
 
-// Horas do professor (unidade CT) — mesma regra usada no relatório individual e no consolidado:
-// dia útil = grade fixa + grade extra; feriado/FDS = 5h se escalado; férias = 0h;
-// antes de data_inicio_horas = 0h.
-const HORAS_FDS = 5 // jornada 08–13
-function calcularHorasProfessor(o: {
-  inicio: string
-  fim: string
-  gradePorDia: Record<number, number>
-  ferias: any[]
-  feriadoSet: Set<string>
-  escalaSet: Set<string>
-  extra: any[]
-  inicioHoras: string | null
-}) {
-  const emFerias = (ds: string) => (o.ferias || []).some((f: any) => f.data_inicio <= ds && f.data_fim >= ds)
-  const [yi, mi, di]  = o.inicio.split('-').map(Number)
-  const [yf, mf, dff] = o.fim.split('-').map(Number)
-  const cur = new Date(yi, mi - 1, di)
-  const end = new Date(yf, mf - 1, dff)
-  const linhas: any[] = []
-  while (cur <= end) {
-    const ds  = dataLocalStr(cur)
-    const dow = cur.getDay()
-    let h = 0, fonte = ''
-    if (o.inicioHoras && ds < o.inicioHoras) {
-      h = 0
-    } else if (emFerias(ds)) {
-      h = 0
-    } else if (o.feriadoSet.has(ds) || dow === 0 || dow === 6) {
-      if (o.escalaSet.has(ds)) { h = HORAS_FDS; fonte = o.feriadoSet.has(ds) ? 'feriado' : 'fds' }
-    } else {
-      const base = o.gradePorDia[dow] || 0
-      const ex = (o.extra || []).filter((e: any) => e.data_inicio <= ds && e.data_fim >= ds && e.dia_semana === dow).length
-      h = base + ex
-      fonte = ex > 0 ? 'grade + extra' : 'grade'
-    }
-    if (h > 0) linhas.push({ data: ds, horas: h, fonte })
-    cur.setDate(cur.getDate() + 1)
-  }
-  return linhas
-}
+// Horas do professor (unidade CT) — mesma regra usada no relatório individual, no
+// consolidado e na rescisão (admin/coaches). Mora em @/lib/pagamento-coach para as
+// duas telas nunca divergirem: dia útil = grade fixa + grade extra; feriado/FDS = 5h
+// se escalado; férias = 0h; antes de data_inicio_horas = 0h.
 
 export default function PagamentosCoachesPage() {
   const { perfil, loading } = useAuth()

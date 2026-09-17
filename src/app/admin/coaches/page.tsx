@@ -3,8 +3,9 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { Coach } from '@/types'
 import { fmt, DIAS_SEMANA, HORARIOS } from '@/lib/utils'
+import { periodoRescisao, totaisCoachPorUnidade, lancarPagamentoCoachUnidade, type TotalUnidade } from '@/lib/pagamento-coach'
 import { PageHeader, Spinner, EmptyState } from '@/components/ui'
-import { Plus, ChevronDown, ChevronUp, Save, Trash2, X, ClipboardList, KeyRound, Building2, CalendarOff, Settings2 } from 'lucide-react'
+import { Plus, ChevronDown, ChevronUp, Save, Trash2, X, ClipboardList, KeyRound, Building2, CalendarOff, Settings2, DoorOpen, DollarSign } from 'lucide-react'
 
 const EMPTY = {
   nome: '', cpf: '', email: '', senha: '',
@@ -74,6 +75,16 @@ export default function CoachesPage() {
   const [salvandoExtra,   setSalvandoExtra]   = useState<string | null>(null)
   const [removendoExtra,  setRemovendoExtra]  = useState<string | null>(null)
 
+  // ─── Encerramento de contrato + rescisão ───
+  const [saidaDraft,     setSaidaDraft]     = useState('')
+  const [salvandoSaida,  setSalvandoSaida]  = useState(false)
+  const [rescLinhas,     setRescLinhas]     = useState<TotalUnidade[]>([])
+  const [rescLoading,    setRescLoading]    = useState(false)
+  const [rescGerando,    setRescGerando]    = useState(false)
+  const [rescJaGerada,   setRescJaGerada]   = useState(false)
+  const [rescPagamentos, setRescPagamentos] = useState(0)
+  const [conflitosSaida, setConflitosSaida] = useState<{ ct: any[]; club: any[] }>({ ct: [], club: [] })
+
   const supabase = createClient()
   const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 
@@ -104,6 +115,10 @@ export default function CoachesPage() {
     setExtraForm({ data_inicio: '', data_fim: '', motivo: '' })
     setExtraGrade(prev => ({ ...prev, [coach.id]: new Set() }))
     loadExtras(coach.id)
+    setSaidaDraft(coach.data_saida || '')
+    setRescLinhas([]); setRescJaGerada(false); setRescPagamentos(0)
+    setConflitosSaida({ ct: [], club: [] })
+    if (coach.data_saida) { carregarRescisao(coach, coach.data_saida); carregarConflitosSaida(coach, coach.data_saida) }
     setAulasLista([])
     buscarAulasCoach(coach, mesAulas, anoAulas)
   }
@@ -312,7 +327,10 @@ export default function CoachesPage() {
 
   // ─── Férias / Ausências ───
   async function loadFerias(coachId: string) {
-    const { data } = await supabase.from('coach_ferias').select('*').eq('coach_id', coachId).order('data_inicio', { ascending: false })
+    // A linha origem='encerramento' é gerada pelo trigger da data de saída — ela é
+    // gerenciada na seção Encerramento de contrato, não entra na lista de ausências.
+    const { data } = await supabase.from('coach_ferias').select('*').eq('coach_id', coachId)
+      .neq('origem', 'encerramento').order('data_inicio', { ascending: false })
     setFeriasPorCoach(prev => ({ ...prev, [coachId]: data || [] }))
   }
 
@@ -354,6 +372,124 @@ export default function CoachesPage() {
     setRemovendoFerias(null)
     if (error) { setMsg('Erro ao remover: ' + error.message); return }
     loadFerias(coachId)
+  }
+
+  // ─── Encerramento de contrato ───
+  // A data de saída vive em coaches.data_saida. Um trigger no banco espelha isso
+  // num período de ausência (coach_ferias, origem='encerramento') começando no dia
+  // seguinte — é o mesmo mecanismo que as telas de grade já respeitam, então a partir
+  // dali o coach não sobe mais na grade do CT nem conta horas no pagamento.
+  async function salvarSaida(coach: Coach, valor?: string | null) {
+    // `valor` explícito é usado por "Remover encerramento" (não depende do estado do input).
+    const escolhido = valor === undefined ? saidaDraft : (valor || '')
+    if (escolhido && coach.data_inicio_horas && escolhido < coach.data_inicio_horas) {
+      setMsg('A data de encerramento não pode ser anterior ao início do pagamento por hora.'); return
+    }
+    setSalvandoSaida(true); setMsg('')
+    const nova = escolhido || null
+    const { error } = await supabase.from('coaches').update({ data_saida: nova }).eq('id', coach.id)
+    setSalvandoSaida(false)
+    if (error) { setMsg('Erro ao salvar encerramento: ' + error.message); return }
+    setMsg(nova ? 'Encerramento salvo — a grade dele para no dia seguinte.' : 'Encerramento removido — a grade volta ao normal.')
+    setTimeout(() => setMsg(''), 3000)
+    loadCoaches(); loadFerias(coach.id)
+    setRescLinhas([]); setRescJaGerada(false); setRescPagamentos(0)
+    setConflitosSaida({ ct: [], club: [] })
+    if (nova) { carregarRescisao(coach, nova); carregarConflitosSaida(coach, nova) }
+  }
+
+  // Prévia da rescisão: mesmo cálculo da tela Pagamento de Coaches (horas de sala +
+  // bônus por aula), do dia 1º do mês da saída até a data de saída, por unidade.
+  async function carregarRescisao(coach: Coach, dataSaida: string) {
+    setRescLoading(true); setRescLinhas([]); setRescJaGerada(false); setRescPagamentos(0)
+    const p = periodoRescisao(dataSaida)
+
+    const { data: cu } = await supabase.from('coach_unidades')
+      .select('unidade_id').eq('coach_id', coach.id).eq('ativo', true)
+    const ids = (cu || []).map((x: any) => x.unidade_id)
+    const unids = unidades.filter(u => ids.includes(u.id))
+
+    const linhas = await totaisCoachPorUnidade(supabase, {
+      coach: { ...coach, data_saida: dataSaida }, unidades: unids, inicio: p.inicio, fim: p.fim,
+    })
+    setRescLinhas(linhas)
+
+    // Rescisão já gerada para esta data? E quantos pagamentos já cobrem o período?
+    const { data: pags } = await supabase.from('coach_pagamentos')
+      .select('id, observacao, periodo_inicio, periodo_fim')
+      .eq('coach_id', coach.id)
+      .lte('periodo_inicio', p.fim).gte('periodo_fim', p.inicio)
+    setRescJaGerada((pags || []).some((x: any) => String(x.observacao || '').startsWith('Rescisão')))
+    setRescPagamentos((pags || []).filter((x: any) => !String(x.observacao || '').startsWith('Rescisão')).length)
+    setRescLoading(false)
+  }
+
+  // Rede de segurança: mostra o que continua marcado para ele DEPOIS da saída.
+  // Não cancela nada — mesma postura do fluxo de férias/ausências.
+  async function carregarConflitosSaida(coach: Coach, dataSaida: string) {
+    const { data: ags } = await supabase.from('agendamentos')
+      .select('data, horario').eq('coach_id', coach.id)
+      .gt('data', dataSaida).neq('status', 'cancelado')
+      .order('data').order('horario').limit(50)
+
+    const { data: clubAulas } = await supabase.from('club_aulas')
+      .select('id, horario').eq('coach_id', coach.id).eq('ativo', true)
+    const idsAulas = (clubAulas || []).map((a: any) => a.id)
+    let club: any[] = []
+    if (idsAulas.length) {
+      const horaMap: Record<string, string> = {}
+      for (const a of (clubAulas || [])) horaMap[a.id] = a.horario
+      const { data: ocs } = await supabase.from('club_ocorrencias')
+        .select('data, aula_id, coach_id').in('aula_id', idsAulas)
+        .gt('data', dataSaida).eq('status', 'ativa').order('data').limit(50)
+      // Ocorrência com coach corrigido para outra pessoa já não é problema dele.
+      club = (ocs || []).filter((oc: any) => !oc.coach_id || oc.coach_id === coach.id)
+        .map((oc: any) => ({ data: oc.data, horario: horaMap[oc.aula_id] || '' }))
+    }
+    setConflitosSaida({ ct: ags || [], club })
+  }
+
+  // Lança a rescisão: uma despesa por unidade, vencendo 10 dias depois da saída.
+  async function gerarRescisao(coach: Coach) {
+    // Usa a data JÁ SALVA (não o rascunho do input): a prévia foi calculada com ela.
+    if (!coach.data_saida) return
+    const p = periodoRescisao(coach.data_saida)
+    const total = rescLinhas.reduce((s, l) => s + l.valor, 0)
+    const comValor = rescLinhas.filter(l => l.valor > 0)
+    if (!comValor.length) { setMsg('Nada a pagar no período — rescisão não lançada.'); return }
+    if (!confirm(
+      `Gerar rescisão de ${coach.nome}?\n\n` +
+      `Período: ${fmtData(p.inicio)} a ${fmtData(p.fim)}\n` +
+      `Valor: R$ ${total.toFixed(2).replace('.', ',')}\n` +
+      `Vencimento: ${fmtData(p.vencimento)}\n\n` +
+      `Sai ${comValor.length} despesa${comValor.length !== 1 ? 's' : ''} em contas a pagar (uma por unidade).`
+    )) return
+
+    setRescGerando(true)
+    const ok: string[] = []
+    const falhas: string[] = []
+    for (const l of comValor) {
+      const r = await lancarPagamentoCoachUnidade(supabase, {
+        coach,
+        unidade:     { id: l.unidade_id, nome: l.unidade_nome },
+        inicio:      p.inicio,
+        fim:         p.fim,
+        totalAulas:  l.aulas,
+        bonus:       l.bonus,
+        totalHoras:  l.horas,
+        valorHoras:  l.vhoras,
+        competencia: p.competencia,
+        vencimento:  p.vencimento,
+        rotulo:      'Rescisão',
+      })
+      if (r.pagou && !r.erro) ok.push(l.unidade_nome)
+      else falhas.push(`${l.unidade_nome}: ${r.erro}`)
+    }
+    setRescGerando(false)
+    if (falhas.length) { setMsg(`⚠️ ${ok.length} despesa(s) lançada(s). Falhou em — ${falhas.join(' · ')}`); return }
+    setRescJaGerada(true)
+    setMsg(`✅ Rescisão lançada: R$ ${total.toFixed(2).replace('.', ',')} em ${ok.length} despesa(s), vencendo ${fmtData(p.vencimento)}.`)
+    setTimeout(() => setMsg(''), 6000)
   }
 
   // ─── Grade extra por período (professor CT) ───
@@ -432,6 +568,9 @@ export default function CoachesPage() {
     const [y, m, d] = s.split('T')[0].split('-')
     return `${d}/${m}/${y}`
   }
+
+  const hoje    = new Date()
+  const hojeStr = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`
 
   // ─── Criar / editar ───
   async function handleCreate() {
@@ -543,6 +682,12 @@ export default function CoachesPage() {
                       {coach.cargo === 'professor' ? 'Professor' : 'Estagiário'}
                     </span>
                     {inativo && <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Inativo</span>}
+                    {coach.data_saida && (
+                      <span className="text-xs bg-red-50 text-red-700 border border-red-100 px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <DoorOpen size={10}/>
+                        {coach.data_saida < hojeStr ? 'Encerrado em' : 'Encerra em'} {fmtData(coach.data_saida)}
+                      </span>
+                    )}
                     {!inativo && qtdUnids > 0 && (
                       <span className="text-xs bg-cyan-50 text-cyan-700 border border-cyan-100 px-2 py-0.5 rounded-full flex items-center gap-1">
                         <Building2 size={10}/> {qtdUnids} unidade{qtdUnids!==1?'s':''}
@@ -845,6 +990,109 @@ export default function CoachesPage() {
                         {salvandoFerias===coach.id?'Salvando...':'Adicionar período'}
                       </button>
                     </div>
+                  </section>
+
+                  {/* Seção: Encerramento de contrato + rescisão */}
+                  <section className="pt-5 border-t border-gray-100">
+                    <div className="flex items-center gap-2 mb-3">
+                      <DoorOpen size={14} className="text-red-600"/>
+                      <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Encerramento de contrato</span>
+                    </div>
+                    <p className="text-xs text-gray-400 mb-3">
+                      A partir do dia seguinte à data informada a grade dele <strong>não sobe mais</strong> (CT e Club) e as <strong>horas de sala deixam de contar</strong> no Pagamento de Coaches. O acesso e o histórico continuam como estão — para bloquear o login, use “Desativar coach” no rodapé.
+                    </p>
+
+                    <div className="flex flex-wrap items-end gap-3 mb-4">
+                      <div className="max-w-xs">
+                        <label className="label">Data de encerramento</label>
+                        <input type="date" className="input" value={saidaDraft} onChange={e => setSaidaDraft(e.target.value)}/>
+                      </div>
+                      <button onClick={() => salvarSaida(coach)} disabled={salvandoSaida}
+                        className="btn btn-primary btn-sm gap-1">
+                        {salvandoSaida?<div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"/>:<Save size={12}/>}
+                        {salvandoSaida?'Salvando...':'Salvar encerramento'}
+                      </button>
+                      {coach.data_saida && (
+                        <button onClick={() => { if (confirm('Remover a data de encerramento? A grade dele volta a subir normalmente.')) { setSaidaDraft(''); salvarSaida(coach, null) } }}
+                          className="btn btn-sm text-gray-500">Remover encerramento</button>
+                      )}
+                    </div>
+
+                    {coach.data_saida && (conflitosSaida.ct.length > 0 || conflitosSaida.club.length > 0) && (
+                      <div className="mb-4 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3">
+                        <div className="text-xs font-semibold text-orange-800 mb-1">
+                          ⚠️ Ainda há compromissos marcados para ele depois de {fmtData(coach.data_saida)}
+                        </div>
+                        <p className="text-xs text-orange-700 mb-2">Nada foi cancelado. Trate manualmente (remarcar aluno / corrigir coach da aula):</p>
+                        <ul className="text-xs text-orange-800 space-y-0.5 max-h-32 overflow-y-auto">
+                          {conflitosSaida.ct.map((a, i) => <li key={`ct${i}`}>• CT — {fmtData(a.data)} às {String(a.horario).slice(0,5)}</li>)}
+                          {conflitosSaida.club.map((a, i) => <li key={`cl${i}`}>• Club — {fmtData(a.data)}{a.horario ? ` às ${String(a.horario).slice(0,5)}` : ''}</li>)}
+                        </ul>
+                      </div>
+                    )}
+
+                    {coach.data_saida && (
+                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                        <div className="flex items-center gap-2 mb-1">
+                          <DollarSign size={13} className="text-primary-600"/>
+                          <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Rescisão</span>
+                        </div>
+                        {(() => {
+                          const p = periodoRescisao(coach.data_saida!)
+                          const total = rescLinhas.reduce((s, l) => s + l.valor, 0)
+                          return (
+                            <>
+                              <p className="text-xs text-gray-400 mb-3">
+                                Horas de sala + bônus por aula de {fmtData(p.inicio)} a {fmtData(p.fim)} · vencimento {fmtData(p.vencimento)} (10 dias após a saída) · sai uma despesa por unidade.
+                              </p>
+
+                              {rescLoading ? (
+                                <div className="flex items-center justify-center py-6"><div className="w-5 h-5 border-2 border-primary-400 border-t-transparent rounded-full animate-spin"/></div>
+                              ) : rescLinhas.length === 0 ? (
+                                <p className="text-xs text-gray-400 italic mb-3">Nada a pagar no período.</p>
+                              ) : (
+                                <div className="space-y-1 mb-3">
+                                  {rescLinhas.map(l => (
+                                    <div key={l.unidade_id} className="flex items-center justify-between text-sm border-b border-gray-100 pb-1">
+                                      <div className="min-w-0">
+                                        <div className="text-gray-700">{l.unidade_nome}</div>
+                                        <div className="text-[11px] text-gray-400">
+                                          {l.aulas > 0 ? `${l.aulas} aula${l.aulas!==1?'s':''}` : ''}
+                                          {l.aulas > 0 && l.horas > 0 ? ' · ' : ''}
+                                          {l.horas > 0 ? `${l.horas} h × ${fmt(coach.valor_hora)}` : ''}
+                                        </div>
+                                      </div>
+                                      <span className="font-semibold text-gray-900">R$ {l.valor.toFixed(2).replace('.', ',')}</span>
+                                    </div>
+                                  ))}
+                                  <div className="flex items-center justify-between text-sm pt-1">
+                                    <span className="font-semibold text-primary-800">Total da rescisão</span>
+                                    <span className="font-bold text-primary-700">R$ {total.toFixed(2).replace('.', ',')}</span>
+                                  </div>
+                                </div>
+                              )}
+
+                              {rescPagamentos > 0 && (
+                                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-3">
+                                  ⚠️ Já existe {rescPagamentos} pagamento{rescPagamentos!==1?'s':''} lançado{rescPagamentos!==1?'s':''} cobrindo parte deste período. Confira em Contas a Pagar antes de gerar, para não pagar duas vezes.
+                                </p>
+                              )}
+                              {rescJaGerada && (
+                                <p className="text-xs text-green-700 bg-green-50 border border-green-100 rounded-lg px-3 py-2 mb-3">
+                                  ✅ Rescisão já lançada para esta data de saída.
+                                </p>
+                              )}
+
+                              <button onClick={() => gerarRescisao(coach)} disabled={rescGerando || rescLoading || total <= 0}
+                                className="btn btn-primary btn-sm gap-1 disabled:opacity-60">
+                                {rescGerando?<div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"/>:<DollarSign size={12}/>}
+                                {rescGerando?'Lançando...':`Gerar rescisão — R$ ${total.toFixed(2).replace('.', ',')}`}
+                              </button>
+                            </>
+                          )
+                        })()}
+                      </div>
+                    )}
                   </section>
 
                   {/* Seção: Aulas do mês (CT + Club) */}
