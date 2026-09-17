@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { Coach } from '@/types'
 import { fmt, DIAS_SEMANA, HORARIOS } from '@/lib/utils'
-import { periodoRescisao, totaisCoachPorUnidade, lancarPagamentoCoachUnidade, type TotalUnidade } from '@/lib/pagamento-coach'
+import { periodoRescisao, totaisCoachPorUnidade, lancarPagamentoCoachUnidade, fixoProporcional, type TotalUnidade } from '@/lib/pagamento-coach'
 import { PageHeader, Spinner, EmptyState } from '@/components/ui'
 import { Plus, ChevronDown, ChevronUp, Save, Trash2, X, ClipboardList, KeyRound, Building2, CalendarOff, Settings2, DoorOpen, DollarSign } from 'lucide-react'
 
@@ -79,6 +79,7 @@ export default function CoachesPage() {
   const [saidaDraft,     setSaidaDraft]     = useState('')
   const [salvandoSaida,  setSalvandoSaida]  = useState(false)
   const [rescLinhas,     setRescLinhas]     = useState<TotalUnidade[]>([])
+  const [rescUnidades,   setRescUnidades]   = useState<any[]>([])
   const [rescLoading,    setRescLoading]    = useState(false)
   const [rescGerando,    setRescGerando]    = useState(false)
   const [rescJaGerada,   setRescJaGerada]   = useState(false)
@@ -315,7 +316,9 @@ export default function CoachesPage() {
 
   // ─── Excluir coach ───
   async function excluirCoach(coach: Coach) {
-    if (!confirm(`Desativar ${coach.nome}?\n\nO histórico será preservado. O acesso será bloqueado imediatamente.`)) return
+    // Este caminho apaga coach_horarios — e a grade é o insumo do cálculo de horas da
+    // rescisão. Por isso o aviso: encerrar por data (que não apaga) é o caminho normal.
+    if (!confirm(`Desativar ${coach.nome}?\n\nO histórico será preservado. O acesso será bloqueado imediatamente.\n\nA grade de horários dele será apagada — se ainda faltar gerar a rescisão, gere ANTES de desativar.`)) return
     setExcluindoCoach(coach.id)
     const res = await fetch('/api/excluir-coach', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ coach_id: coach.id, user_id: coach.user_id }) })
     const json = await res.json()
@@ -390,8 +393,27 @@ export default function CoachesPage() {
     const { error } = await supabase.from('coaches').update({ data_saida: nova }).eq('id', coach.id)
     setSalvandoSaida(false)
     if (error) { setMsg('Erro ao salvar encerramento: ' + error.message); return }
-    setMsg(nova ? 'Encerramento salvo — a grade dele para no dia seguinte.' : 'Encerramento removido — a grade volta ao normal.')
-    setTimeout(() => setMsg(''), 3000)
+
+    // Data já vencida: bloqueia o acesso agora, sem esperar a virada do dia (o cron
+    // diário /api/coaches/encerrar-vencidos cobre os casos com data futura).
+    let bloqueou = false
+    if (nova && nova < hojeStr) {
+      try {
+        const res  = await fetch('/api/coaches/encerrar-vencidos', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ coach_id: coach.id }),
+        })
+        const json = await res.json()
+        bloqueou = !!json.ok && (json.bloqueados || []).length > 0
+      } catch { /* o cron pega no dia seguinte */ }
+    }
+
+    setMsg(nova
+      ? (bloqueou
+          ? 'Encerramento salvo — a grade parou e o acesso dele já foi bloqueado.'
+          : 'Encerramento salvo — a grade dele para no dia seguinte, e o acesso é bloqueado junto.')
+      : 'Encerramento removido — a grade volta ao normal. Se o acesso já tinha sido bloqueado, reative o coach à parte.')
+    setTimeout(() => setMsg(''), 5000)
     loadCoaches(); loadFerias(coach.id)
     setRescLinhas([]); setRescJaGerada(false); setRescPagamentos(0)
     setConflitosSaida({ ct: [], club: [] })
@@ -408,6 +430,7 @@ export default function CoachesPage() {
       .select('unidade_id').eq('coach_id', coach.id).eq('ativo', true)
     const ids = (cu || []).map((x: any) => x.unidade_id)
     const unids = unidades.filter(u => ids.includes(u.id))
+    setRescUnidades(unids)
 
     const linhas = await totaisCoachPorUnidade(supabase, {
       coach: { ...coach, data_saida: dataSaida }, unidades: unids, inicio: p.inicio, fim: p.fim,
@@ -453,37 +476,57 @@ export default function CoachesPage() {
   async function gerarRescisao(coach: Coach) {
     // Usa a data JÁ SALVA (não o rascunho do input): a prévia foi calculada com ela.
     if (!coach.data_saida) return
-    const p = periodoRescisao(coach.data_saida)
-    const total = rescLinhas.reduce((s, l) => s + l.valor, 0)
-    const comValor = rescLinhas.filter(l => l.valor > 0)
-    if (!comValor.length) { setMsg('Nada a pagar no período — rescisão não lançada.'); return }
+    const p  = periodoRescisao(coach.data_saida)
+    const fx = fixoProporcional(coach, coach.data_saida)
+
+    // Uma despesa por unidade. O salário fixo proporcional é do coach, não de uma
+    // unidade: entra junto na unidade de maior valor (ou na primeira vinculada, se ele
+    // não deu aula nem hora no período).
+    const lancamentos = rescLinhas.filter(l => l.valor > 0).map(l => ({
+      unidade: { id: l.unidade_id, nome: l.unidade_nome },
+      aulas: l.aulas, bonus: l.bonus, horas: l.horas, vhoras: l.vhoras, fixo: 0,
+    }))
+    if (fx.valor > 0) {
+      if (lancamentos.length) {
+        [...lancamentos].sort((a, b) => (b.bonus + b.vhoras) - (a.bonus + a.vhoras))[0].fixo = fx.valor
+      } else if (rescUnidades[0]) {
+        lancamentos.push({
+          unidade: { id: rescUnidades[0].id, nome: rescUnidades[0].nome },
+          aulas: 0, bonus: 0, horas: 0, vhoras: 0, fixo: fx.valor,
+        })
+      }
+    }
+    if (!lancamentos.length) { setMsg('Nada a pagar no período — rescisão não lançada.'); return }
+
+    const total = lancamentos.reduce((s, l) => s + l.bonus + l.vhoras + l.fixo, 0)
     if (!confirm(
       `Gerar rescisão de ${coach.nome}?\n\n` +
       `Período: ${fmtData(p.inicio)} a ${fmtData(p.fim)}\n` +
-      `Valor: R$ ${total.toFixed(2).replace('.', ',')}\n` +
+      `Valor: R$ ${total.toFixed(2).replace('.', ',')}${fx.valor > 0 ? ` (inclui fixo proporcional de ${fx.dias}/${fx.diasMes} dias)` : ''}\n` +
       `Vencimento: ${fmtData(p.vencimento)}\n\n` +
-      `Sai ${comValor.length} despesa${comValor.length !== 1 ? 's' : ''} em contas a pagar (uma por unidade).`
+      `Sai ${lancamentos.length} despesa${lancamentos.length !== 1 ? 's' : ''} em contas a pagar (uma por unidade).`
     )) return
 
     setRescGerando(true)
     const ok: string[] = []
     const falhas: string[] = []
-    for (const l of comValor) {
+    for (const l of lancamentos) {
       const r = await lancarPagamentoCoachUnidade(supabase, {
         coach,
-        unidade:     { id: l.unidade_id, nome: l.unidade_nome },
+        unidade:     l.unidade,
         inicio:      p.inicio,
         fim:         p.fim,
         totalAulas:  l.aulas,
         bonus:       l.bonus,
         totalHoras:  l.horas,
         valorHoras:  l.vhoras,
+        fixo:        l.fixo,
         competencia: p.competencia,
         vencimento:  p.vencimento,
         rotulo:      'Rescisão',
       })
-      if (r.pagou && !r.erro) ok.push(l.unidade_nome)
-      else falhas.push(`${l.unidade_nome}: ${r.erro}`)
+      if (r.pagou && !r.erro) ok.push(l.unidade.nome)
+      else falhas.push(`${l.unidade.nome}: ${r.erro}`)
     }
     setRescGerando(false)
     if (falhas.length) { setMsg(`⚠️ ${ok.length} despesa(s) lançada(s). Falhou em — ${falhas.join(' · ')}`); return }
@@ -999,7 +1042,7 @@ export default function CoachesPage() {
                       <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Encerramento de contrato</span>
                     </div>
                     <p className="text-xs text-gray-400 mb-3">
-                      A partir do dia seguinte à data informada a grade dele <strong>não sobe mais</strong> (CT e Club) e as <strong>horas de sala deixam de contar</strong> no Pagamento de Coaches. O acesso e o histórico continuam como estão — para bloquear o login, use “Desativar coach” no rodapé.
+                      A partir do dia seguinte à data informada a grade dele <strong>não sobe mais</strong> (CT e Club), as <strong>horas de sala deixam de contar</strong> no Pagamento de Coaches e o <strong>acesso dele é bloqueado automaticamente</strong>. O histórico é preservado. Reservas e aulas já marcadas depois da data <strong>não são canceladas</strong>.
                     </p>
 
                     <div className="flex flex-wrap items-end gap-3 mb-4">
@@ -1038,17 +1081,18 @@ export default function CoachesPage() {
                           <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Rescisão</span>
                         </div>
                         {(() => {
-                          const p = periodoRescisao(coach.data_saida!)
-                          const total = rescLinhas.reduce((s, l) => s + l.valor, 0)
+                          const p     = periodoRescisao(coach.data_saida!)
+                          const fx    = fixoProporcional(coach, coach.data_saida!)
+                          const total = rescLinhas.reduce((s, l) => s + l.valor, 0) + fx.valor
                           return (
                             <>
                               <p className="text-xs text-gray-400 mb-3">
-                                Horas de sala + bônus por aula de {fmtData(p.inicio)} a {fmtData(p.fim)} · vencimento {fmtData(p.vencimento)} (10 dias após a saída) · sai uma despesa por unidade.
+                                Horas de sala + bônus por aula{fx.valor > 0 ? ' + salário fixo proporcional' : ''} de {fmtData(p.inicio)} a {fmtData(p.fim)} · vencimento {fmtData(p.vencimento)} (10 dias após a saída) · sai uma despesa por unidade.
                               </p>
 
                               {rescLoading ? (
                                 <div className="flex items-center justify-center py-6"><div className="w-5 h-5 border-2 border-primary-400 border-t-transparent rounded-full animate-spin"/></div>
-                              ) : rescLinhas.length === 0 ? (
+                              ) : (rescLinhas.length === 0 && fx.valor <= 0) ? (
                                 <p className="text-xs text-gray-400 italic mb-3">Nada a pagar no período.</p>
                               ) : (
                                 <div className="space-y-1 mb-3">
@@ -1065,6 +1109,18 @@ export default function CoachesPage() {
                                       <span className="font-semibold text-gray-900">R$ {l.valor.toFixed(2).replace('.', ',')}</span>
                                     </div>
                                   ))}
+                                  {fx.valor > 0 && (
+                                    <div className="flex items-center justify-between text-sm border-b border-gray-100 pb-1">
+                                      <div className="min-w-0">
+                                        <div className="text-gray-700">Salário fixo proporcional</div>
+                                        <div className="text-[11px] text-gray-400">
+                                          {fmt(coach.salario_fixo)}/mês × {fx.dias}/{fx.diasMes} dias trabalhados
+                                          {rescLinhas.length > 0 ? ' · entra na despesa da unidade de maior valor' : ''}
+                                        </div>
+                                      </div>
+                                      <span className="font-semibold text-gray-900">R$ {fx.valor.toFixed(2).replace('.', ',')}</span>
+                                    </div>
+                                  )}
                                   <div className="flex items-center justify-between text-sm pt-1">
                                     <span className="font-semibold text-primary-800">Total da rescisão</span>
                                     <span className="font-bold text-primary-700">R$ {total.toFixed(2).replace('.', ',')}</span>

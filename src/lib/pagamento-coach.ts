@@ -245,6 +245,20 @@ export async function lancarPagamentoCoachUnidade(
   return { pagou: true, erro: errDesp ? errDesp.message : null, total }
 }
 
+// Salário fixo do estagiário na rescisão: proporcional aos dias trabalhados no mês
+// da saída (dias corridos do dia 1º até a data de saída, inclusive, sobre o total de
+// dias do mês). Professor não tem fixo — ele é pago por hora.
+export function fixoProporcional(coach: any, dataSaida: string) {
+  const fixo = Number(coach?.salario_fixo || 0)
+  if (coach?.cargo !== 'estagiario' || fixo <= 0 || !dataSaida) {
+    return { dias: 0, diasMes: 0, valor: 0 }
+  }
+  const [y, m, d] = dataSaida.split('-').map(Number)
+  const diasMes = new Date(y, m, 0).getDate()
+  const dias    = d
+  return { dias, diasMes, valor: Math.round((fixo * dias / diasMes) * 100) / 100 }
+}
+
 // Período e vencimento da rescisão:
 // período = dia 1º do mês da saída → data de saída; vencimento = saída + 10 dias.
 export function periodoRescisao(dataSaida: string) {

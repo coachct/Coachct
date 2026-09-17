@@ -6,6 +6,7 @@
     { "path": "/api/totalpass/pull-bookings", "schedule": "*/2 * * * *" },
     { "path": "/api/whatsapp/watchdog", "schedule": "*/15 * * * *" },
     { "path": "/api/fila/reconciliar", "schedule": "*/10 * * * *" },
-    { "path": "/api/feedback-estreia/disparar", "schedule": "0 13 * * *" }
+    { "path": "/api/feedback-estreia/disparar", "schedule": "0 13 * * *" },
+    { "path": "/api/coaches/encerrar-vencidos", "schedule": "5 3 * * *" }
   ]
 }
