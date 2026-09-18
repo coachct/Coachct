@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase'
 import { fmt } from '@/lib/utils'
 import { KpiCard, PageHeader, Spinner } from '@/components/ui'
 import CardAcompanhados from '@/components/CardAcompanhados'
+import CardAvisoFaltas from '@/components/CardAvisoFaltas'
 import Link from 'next/link'
 import { CalendarDays, Dumbbell, ShoppingCart, Receipt, MessageCircle, Instagram, Star, UserX, Music } from 'lucide-react'
 
@@ -178,6 +179,9 @@ export default function AdminDashboard() {
 
       {/* Clientes marcados pra acompanhar — some sozinho se não tiver ninguém */}
       <CardAcompanhados />
+
+      {/* Respostas NÃO ao aviso de faltas (/agendar) — some sozinho se não tiver nada */}
+      <CardAvisoFaltas />
 
       {!unidadeSelecionada ? (
         <Spinner />
