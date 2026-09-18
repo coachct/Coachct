@@ -17,6 +17,10 @@ const CYAN    = '#00e5ff'
 const AMARELO = '#ffaa00'
 const VERMELHO = '#ff4444'
 
+// Clientes que veem o aviso de faltas antes de cada reserva (decisão caso a caso).
+// Juliana Gomes: reserva e não comparece desde agosto/2026.
+const CLIENTES_AVISO_FALTAS = ['1754f8b2-0794-436e-b46c-1cebbfbf60c1']
+
 // Endereço fixo por nome de unidade (mesma fonte usada na home)
 const ENDERECOS_UNIDADES: Record<string, string> = {
   'Just CT': 'Rua Fiandeiras, 392 — Itaim Bibi, São Paulo',
@@ -212,6 +216,7 @@ export default function AgendarPage() {
   const [aceiteCheck, setAceiteCheck] = useState(false)
   const [modalSemPlano, setModalSemPlano] = useState(false)
   const [modalSemCartao, setModalSemCartao] = useState(false)
+  const [modalAvisoFaltas, setModalAvisoFaltas] = useState(false)
   const [cobrancasPendentes, setCobrancasPendentes] = useState<any[]>([])
   // Modal de telefone (Pagar.me exige telefone no customer para cobrar multa)
   const [modalTelefone, setModalTelefone] = useState(false)
@@ -549,7 +554,11 @@ export default function AgendarPage() {
       }).catch(() => {})
     } catch {}
   }
-  function handleConfirmarReserva() {
+  function handleConfirmarReserva(avisoFaltasRespondido = false) {
+    if (!avisoFaltasRespondido && cliente && CLIENTES_AVISO_FALTAS.includes(cliente.id)) {
+      setModalAvisoFaltas(true)
+      return
+    }
     const ehParceiro = tipoCredito.startsWith('wellhub_') || tipoCredito.startsWith('totalpass_')
     if (ehParceiro && !jaUsouParceiro) {
       setAceiteCertParceiro(false)
@@ -557,6 +566,21 @@ export default function AgendarPage() {
       return
     }
     confirmarAgendamento()
+  }
+  // Resposta "Não" ao aviso de faltas: não reserva e avisa a equipe (fire-and-forget).
+  async function responderAvisoFaltasNao() {
+    const slot = modalSlot
+    setModalAvisoFaltas(false)
+    setModalSlot(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token || !slot) return
+      fetch('/api/notificacoes/aviso-faltas-resposta', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ data: slot.data, hora: slot.hora, unidade: unidadeAtiva?.nome || '' }),
+      }).catch(() => {})
+    } catch {}
   }
   async function confirmarAgendamento() {
     if (!tipoCredito) { setErroModal('Selecione como vai usar esta sessão.'); return }
@@ -1179,10 +1203,25 @@ export default function AgendarPage() {
             {erroModal && <div style={{ background: '#ff2d9b15', border: '1px solid #ff2d9b44', borderRadius: 8, padding: '0.6rem 1rem', fontSize: 13, color: ACCENT, marginBottom: '1rem' }}>{erroModal}</div>}
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => setModalSlot(null)} style={{ flex: 1, background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.85rem', color: '#888', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Cancelar</button>
-              <button onClick={handleConfirmarReserva} disabled={confirmando || planosDisp.length === 0}
+              <button onClick={() => handleConfirmarReserva()} disabled={confirmando || planosDisp.length === 0}
                 style={{ flex: 2, background: planosDisp.length === 0 ? '#222' : ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 600, fontSize: 15, cursor: confirmando || planosDisp.length === 0 ? 'default' : 'pointer', fontFamily: "'DM Sans', sans-serif", opacity: confirmando ? 0.7 : 1 }}>
                 {confirmando ? 'Confirmando...' : 'Confirmar reserva ✓'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalAvisoFaltas && (
+        <div style={{ position: 'fixed', inset: 0, background: '#000000e0', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#111', border: `1px solid ${AMARELO}55`, borderRadius: 20, width: '100%', maxWidth: 420, padding: '1.5rem' }}>
+            <div style={{ fontSize: 15, color: '#ddd', lineHeight: 1.6, marginBottom: '1.5rem' }}>
+              Notamos que você tem agendado e não comparecido. Deseja continuar com o agendamento?
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={responderAvisoFaltasNao} style={{ flex: 1, background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.85rem', color: '#888', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Não</button>
+              <button onClick={() => { setModalAvisoFaltas(false); handleConfirmarReserva(true) }}
+                style={{ flex: 1, background: ACCENT, color: '#fff', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Sim</button>
             </div>
           </div>
         </div>
