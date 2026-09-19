@@ -264,6 +264,39 @@ $$;
 revoke all on function public.playlist_sugestao_erro(text, uuid) from public, anon, authenticated;
 grant execute on function public.playlist_sugestao_erro(text, uuid) to service_role;
 
+-- Admin: quantas notas de música de cada número (5, 4, 3…) cada playlist teve.
+-- A média engana: duas notas baixas derrubam uma playlist com o resto todo 5.
+create or replace function public.playlist_notas_distribuicao()
+returns table (playlist_id uuid, nota smallint, qtd int)
+language plpgsql
+stable
+security definer
+set search_path to 'public'
+as $$
+#variable_conflict use_column
+declare
+  v_hoje date := (now() at time zone 'America/Sao_Paulo')::date;
+begin
+  if not exists (select 1 from perfis where id = auth.uid() and role in ('admin', 'coordenadora')) then
+    raise exception 'NAO_AUTORIZADO';
+  end if;
+
+  return query
+  select d.playlist_id, av.nota_musica, count(*)::int
+    from playlist_dia d
+    join avaliacoes_aula av
+      on av.origem = 'club'
+     and av.data_aula = d.data
+     and playlist_modalidade(av.tipo_aula) = d.modalidade
+     and av.nota_musica is not null
+   where d.data <= v_hoje
+   group by d.playlist_id, av.nota_musica;
+end;
+$$;
+
+revoke all on function public.playlist_notas_distribuicao() from public, anon;
+grant execute on function public.playlist_notas_distribuicao() to authenticated;
+
 -- Admin: exposição das playlists já escolhidas num intervalo (selo de alerta na agenda).
 -- O número muda conforme entram reservas, então é recalculado a cada abertura.
 create or replace function public.playlist_alertas(p_inicio date, p_fim date)

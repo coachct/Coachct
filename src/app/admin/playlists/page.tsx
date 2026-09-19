@@ -85,6 +85,32 @@ function desmembrar(texto: string) {
   return { titulo: m ? m[1].trim() : resto, artista: m ? m[2].trim() : null, link }
 }
 
+// Notas de música por número: playlist_id → [_, qtd 1, qtd 2, qtd 3, qtd 4, qtd 5]
+type Dist = Map<string, number[]>
+
+async function carregarDist(supabase: any): Promise<Dist> {
+  const { data } = await supabase.rpc('playlist_notas_distribuicao')
+  const m: Dist = new Map()
+  ;(data || []).forEach((r: any) => {
+    const arr = m.get(r.playlist_id) || [0, 0, 0, 0, 0, 0]
+    arr[r.nota] = r.qtd
+    m.set(r.playlist_id, arr)
+  })
+  return m
+}
+
+// "5★ 40 · 4★ 3 · 3★ 1 · 2★ 0 · 1★ 1": a média sozinha esconde quando o resto foi 5
+function Notas({ d }: { d?: number[] }) {
+  if (!d) return <span>sem nota</span>
+  return (
+    <span className="inline-flex flex-wrap gap-x-2">
+      {[5, 4, 3, 2, 1].map(n => (
+        <span key={n} className={n <= 3 && d[n] ? 'text-amber-700' : ''}>{n}★ {d[n]}</span>
+      ))}
+    </span>
+  )
+}
+
 const inputCls = 'w-full border border-gray-200 rounded-lg px-3 py-2.5 text-base md:text-sm bg-white'
 
 export default function PlaylistsPage() {
@@ -367,6 +393,7 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
   const [salvando, setSalvando] = useState(false)
   const [posSugestao, setPosSugestao] = useState(-1)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const [dist, setDist] = useState<Dist>(new Map())
 
   useEffect(() => {
     supabase.rpc('playlists_estatisticas', { p_data: data, p_modalidade: modalidade }).then(({ data: rows, error }) => {
@@ -374,6 +401,7 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
       setStats((rows || []) as Stat[])
       setLoading(false)
     })
+    carregarDist(supabase).then(setDist)
     // Trava o fundo enquanto a tela está aberta (no celular o fundo rolava junto)
     const antes = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -537,6 +565,11 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
                       Já cadastrada · {sel.pct ?? 0}% já ouviram · {vezesMod(sel)}x no {label}
                       {sel.qtd_notas ? ` · nota ${Number(sel.nota_media).toFixed(2)} (${sel.qtd_notas})` : ''}
                       {selEhSugestao ? ` · sugestão ${posSugestao + 1} de ${sugestoes.length}` : ''}
+                      {sel.qtd_notas > 0 && (
+                        <div className="text-gray-600 mt-0.5">
+                          Notas de música: <Notas d={dist.get(sel.playlist_id)} />
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="text-primary-700">Nova playlist: será criada ao salvar</div>
@@ -566,11 +599,6 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
             {sel && sel.publico != null && sel.publico > 0 && (sel.pct ?? 0) > LIMITE_PCT && (
               <Insight variant="red">
                 {sel.ouviram} dos {sel.publico} reservados ({sel.pct}%) já fizeram aula com essa playlist nos 7 dias anteriores.
-              </Insight>
-            )}
-            {sel && sel.notas_baixas > 0 && (
-              <Insight variant="amber">
-                {sel.notas_baixas} {sel.notas_baixas === 1 ? 'nota' : 'notas'} de música 3 ou menos nos dias em que tocou.
               </Insight>
             )}
           </div>
@@ -645,15 +673,18 @@ function Ranking() {
   const [editando, setEditando] = useState<Stat | null>(null)
   // Playlists que um coach marcou como "não abriu no app"
   const [erros, setErros] = useState<Map<string, string>>(new Map())
+  const [dist, setDist] = useState<Dist>(new Map())
 
   async function carregar() {
-    const [{ data, error }, { data: comErro }] = await Promise.all([
+    const [{ data, error }, { data: comErro }, d] = await Promise.all([
       supabase.rpc('playlists_estatisticas', {}),
       supabase.from('playlists').select('id, erro_em').not('erro_em', 'is', null),
+      carregarDist(supabase),
     ])
     if (error) setErro(error.message)
     setStats((data || []) as Stat[])
     setErros(new Map((comErro || []).map((p: any) => [p.id, p.erro_em])))
+    setDist(d)
     setLoading(false)
   }
 
@@ -717,8 +748,10 @@ function Ranking() {
                 <span>Lift {s.vezes_lift}x</span>
                 <span>Running {s.vezes_running}x</span>
                 <span>última {fmtData(s.ultima_vez)}</span>
-                {s.qtd_notas ? <span>nota {Number(s.nota_media).toFixed(2)} ({s.qtd_notas})</span> : <span>sem nota</span>}
-                {s.notas_baixas ? <Badge variant="amber">{s.notas_baixas} notas ≤ 3</Badge> : null}
+                {s.qtd_notas ? <span>média {Number(s.nota_media).toFixed(2)} ({s.qtd_notas})</span> : null}
+              </div>
+              <div className="text-xs text-gray-500 mt-0.5">
+                <Notas d={dist.get(s.playlist_id)} />
               </div>
             </button>
           ))}
