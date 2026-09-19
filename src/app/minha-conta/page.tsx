@@ -258,8 +258,8 @@ export default function MinhaContaPage() {
       supabase.from('cliente_planos').select('*, planos_disponiveis(id, nome, tipo, unidade_id)')
         .eq('cliente_id', cli.id).eq('ativo', true),
       // Compras
-      supabase.from('vendas').select('*, produtos(nome, subtipo, dias_validade)')
-        .eq('cliente_id', cli.id).order('vendido_em',{ascending:false}).limit(10),
+      supabase.from('vendas').select('*, produtos(nome, subtipo, dias_validade, validade_fixa, creditos_por_venda, plano_id)')
+        .eq('cliente_id', cli.id).is('excluido_em', null).order('vendido_em',{ascending:false}).limit(10),
       // Club reservas futuras
       supabase.from('club_reservas').select(`
         id, status, tipo_credito, posicao, cancelado_em,
@@ -284,6 +284,7 @@ export default function MinhaContaPage() {
     setFilas(filasData||[])
     setClientePlanos(cliPlanos||[])
     setCompras(vendasData||[])
+    detalharCompras(vendasData||[])
     setPlanosDisponiveis(planosData||[])
     setCobrancasPendentes(cobrancasData||[])
 
@@ -334,6 +335,55 @@ export default function MinhaContaPage() {
   async function recarregarCreditosExtras() {
     if (!cliente) return
     await carregarCreditosExtras(cliente.id, clientePlanos, planosDisponiveis)
+  }
+
+  // Detalhe de cada compra (mesma regra do e-mail de compra confirmada):
+  // créditos, restantes, parcelas e validade (dias + data). Pacote/avulso lê a
+  // validade gravada no crédito; plano lê cliente_planos; ilimitado deriva dos
+  // meses do produto. Vendas antigas sem venda_id no crédito caem no cálculo
+  // pelo produto. Multa não tem crédito nem validade.
+  async function detalharCompras(vendas: any[]) {
+    if (!vendas.length) return
+    const ids = vendas.map(v => v.id)
+    const planoIds = [...new Set(vendas.map(v => v.produtos?.plano_id).filter(Boolean))]
+    const [{ data: creds }, { data: planos }, { data: pags }, { data: pds }] = await Promise.all([
+      supabase.from('creditos_avulsos').select('venda_id, validade, usado').in('venda_id', ids),
+      supabase.from('cliente_planos').select('venda_id, inicio, fim').in('venda_id', ids),
+      supabase.from('pagamentos_pendentes').select('venda_id, parcelas').in('venda_id', ids),
+      planoIds.length ? supabase.from('planos_disponiveis').select('id, total_creditos').in('id', planoIds) : Promise.resolve({ data: [] as any[] }),
+    ])
+    const hoje = dataLocalStr(new Date())
+    const dUTC = (s: string) => Date.UTC(+s.slice(0,4), +s.slice(5,7)-1, +s.slice(8,10))
+    const diasEntre = (de: string, ate: string) => Math.round((dUTC(ate) - dUTC(de)) / 86400000)
+    const somaDias = (s: string, n: number) => new Date(dUTC(s) + n * 86400000).toISOString().slice(0,10)
+
+    setCompras(vendas.map(v => {
+      const p = v.produtos || {}
+      const sub: string | null = p.subtipo ?? null
+      const dataCompra = new Date(v.vendido_em).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
+      const meus = (creds||[]).filter((c:any) => c.venda_id === v.id)
+      const parcelas = Number((pags||[]).find((x:any) => x.venda_id === v.id)?.parcelas) || 1
+      let creditos: number | null = null, restantes: number | null = null
+      let inicio: string | null = null, ate: string | null = null, dias: number | null = null
+      if (sub === 'multa') {
+        // sem crédito/validade
+      } else if (sub === 'credito' || sub === 'pacote' || sub === null) {
+        creditos = (Number(v.quantidade) || 1) * (Number(p.creditos_por_venda) || 1)
+        if (meus.length) restantes = meus.filter((c:any) => !c.usado && c.validade >= hoje).length
+        ate = meus.map((c:any) => c.validade).sort()[0]
+          || p.validade_fixa
+          || (p.dias_validade ? somaDias(dataCompra, Number(p.dias_validade)) : null)
+        if (ate) dias = p.validade_fixa ? diasEntre(dataCompra, ate) : (Number(p.dias_validade) || diasEntre(dataCompra, ate))
+      } else if (sub === 'ilimitado_club') {
+        const meses = Math.max(1, Math.round((Number(p.dias_validade) || 180) / 30))
+        inicio = dataCompra; dias = meses * 30; ate = somaDias(dataCompra, dias)
+      } else if (sub === 'acesso' || sub === 'coach_ct_pro') {
+        const cp = (planos||[]).find((x:any) => x.venda_id === v.id)
+        if (cp?.inicio && cp?.fim) { inicio = cp.inicio; ate = cp.fim; dias = diasEntre(cp.inicio, cp.fim) }
+        if (sub === 'coach_ct_pro') creditos = Number((pds||[]).find((x:any) => x.id === p.plano_id)?.total_creditos) || null
+      }
+      return { ...v, _det: { dataCompra, creditos, restantes, parcelas, inicio, ate, dias, vencido: !!ate && ate < hoje } }
+    }))
   }
 
   async function carregarTodosSaldos(clienteId: string, cliPlanos: any[]) {
@@ -639,7 +689,7 @@ export default function MinhaContaPage() {
   async function sair() { await supabase.auth.signOut(); window.location.href='/' }
   function formatarValor(v:number) { return `R$ ${Number(v).toFixed(2).replace('.',',')}` }
   function formatarData(d:string)  { return new Date(d+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}) }
-  function labelPagamento(f:string) { return f==='cartao_credito'?'Cartão':f==='pix'?'PIX':f==='dinheiro'?'Dinheiro':f==='cortesia'?'Cortesia':f }
+  function labelPagamento(f:string) { return f==='cartao_credito'?'Cartão de crédito':f==='cartao_debito'?'Cartão de débito':f==='pix'?'PIX':f==='dinheiro'?'Dinheiro':f==='cortesia'?'Cortesia':f }
 
   if (loading||loadingData) return (
     <div style={{minHeight:'100vh',background:'#080808',display:'flex',alignItems:'center',justifyContent:'center'}}>
@@ -1125,18 +1175,42 @@ export default function MinhaContaPage() {
           <div style={{marginBottom:'2rem'}}>
             <div style={{fontSize:11,color:'#aaa',fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginBottom:'0.85rem'}}>🛒 Compras recentes</div>
             <div style={{display:'flex',flexDirection:'column',gap:4}}>
-              {compras.map(c=>(
-                <div key={c.id} style={{background:'#0d0d0d',border:'1px solid #181818',borderRadius:10,padding:'0.75rem 1rem',display:'flex',alignItems:'center',justifyContent:'space-between',gap:'1rem'}}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:13,color:'#ccc',fontWeight:500,marginBottom:2}}>{c.produtos?.nome||'Produto'}</div>
-                    <div style={{fontSize:11,color:'#444'}}>{formatarData(c.vendido_em)} · {labelPagamento(c.forma_pagamento)}</div>
+              {compras.map(c=>{
+                const d = c._det
+                const br = (s:string) => s.slice(0,10).split('-').reverse().join('/')
+                const dataCompraBR = d ? br(d.dataCompra) : new Date(c.vendido_em).toLocaleDateString('pt-BR',{timeZone:'America/Sao_Paulo'})
+                const pagamento = labelPagamento(c.forma_pagamento) + (d?.parcelas>1 ? ` ${d.parcelas}x` : '')
+                const linha = (rotulo:string, valor:any, cor='#eee') => (
+                  <div style={{display:'flex',gap:8,fontSize:12,lineHeight:1.6}}>
+                    <span style={{color:'#999',minWidth:74}}>{rotulo}</span>
+                    <span style={{color:cor}}>{valor}</span>
                   </div>
-                  <div style={{textAlign:'right',flexShrink:0}}>
-                    <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:16,color:'#888'}}>{formatarValor(c.valor_total)}</div>
-                    <div style={{fontSize:10,color:VERDE,marginTop:2,fontWeight:600}}>✓ Pago</div>
+                )
+                return (
+                <div key={c.id} style={{background:'#111',border:'1px solid #222',borderRadius:10,padding:'0.85rem 1rem'}}>
+                  <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:'1rem',marginBottom:6}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:14,color:'#fff',fontWeight:600,marginBottom:2}}>{c.produtos?.nome||'Produto'}</div>
+                      <div style={{fontSize:12,color:'#bbb'}}>Comprado em {dataCompraBR} · {pagamento}</div>
+                    </div>
+                    <div style={{textAlign:'right',flexShrink:0}}>
+                      <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:18,color:'#fff'}}>{formatarValor(c.valor_total)}</div>
+                      <div style={{fontSize:10,color:VERDE,marginTop:2,fontWeight:600}}>✓ Pago</div>
+                    </div>
                   </div>
+                  {d && (d.creditos!=null || d.ate) && (
+                    <div style={{borderTop:'1px solid #222',paddingTop:6}}>
+                      {d.creditos!=null && linha('Créditos',
+                        `${d.creditos} ${d.creditos===1?'treino':'treinos'}${d.restantes!=null ? ` · ${d.restantes} ${d.restantes===1?'restante':'restantes'}` : ''}`)}
+                      {d.ate && (d.inicio
+                        ? linha('Validade', `${br(d.inicio)} até ${br(d.ate)} (${d.dias} dias)`, d.vencido ? '#ff6b6b' : '#eee')
+                        : linha('Validade', `${d.dias} ${d.dias===1?'dia':'dias'}, até ${br(d.ate)}`, d.vencido ? '#ff6b6b' : '#eee'))}
+                      {d.vencido && <div style={{fontSize:11,color:'#ff6b6b',fontWeight:600,marginTop:2}}>Vencido em {br(d.ate)}</div>}
+                    </div>
+                  )}
                 </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}
