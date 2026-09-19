@@ -30,10 +30,13 @@ type Stat = {
   publico: number | null
   ouviram: number | null
   pct: number | null
+  ouviram30: number | null
+  pct30: number | null
 }
-type Alerta = { data: string; modalidade: Modalidade; publico: number; ouviram: number }
+type Alerta = { data: string; modalidade: Modalidade; publico: number; ouviram: number; ouviram30: number }
 
-// Regra do Ricardo: alerta quando mais de 20% dos reservados ouviram nos últimos 7 dias.
+// Regra do Ricardo: alerta quando mais de 20% dos reservados ouviram. Mostra 7 e 30 dias;
+// o alerta e a ordem da sugestão usam 30 (7 dias deixava passar playlist tocada há 10 dias).
 const LIMITE_PCT = 20
 
 const MODS: { key: Modalidade; label: string }[] = [
@@ -342,6 +345,7 @@ function Slot({ label, item, alerta, onClick, grande }: {
   grande?: boolean
 }) {
   const pct = alerta ? pctDe(alerta.publico, alerta.ouviram) : null
+  const pct30 = alerta ? pctDe(alerta.publico, alerta.ouviram30) : null
   return (
     <button
       onClick={onClick}
@@ -354,12 +358,13 @@ function Slot({ label, item, alerta, onClick, grande }: {
             <div className={`text-gray-900 ${grande ? 'text-base' : 'text-sm'} line-clamp-2`}>{item.playlists?.nome}</div>
             {item.observacao && <div className="text-xs text-amber-700">{item.observacao}</div>}
             {alerta && alerta.publico > 0 && (
-              <div className="mt-0.5">
-                {pct! > LIMITE_PCT ? (
-                  <Badge variant="red">{pct}% já ouviram ({alerta.ouviram}/{alerta.publico})</Badge>
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-gray-400">
+                {pct30! > LIMITE_PCT ? (
+                  <Badge variant="red">30 dias: {pct30}% ({alerta.ouviram30}/{alerta.publico})</Badge>
                 ) : (
-                  <span className="text-xs text-gray-400">{pct}% já ouviram ({alerta.ouviram}/{alerta.publico})</span>
+                  <span>30 dias: {pct30}% ({alerta.ouviram30}/{alerta.publico})</span>
                 )}
+                <span>7 dias: {pct}%</span>
               </div>
             )}
           </>
@@ -414,7 +419,8 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
   // menos gente que já ouviu na última semana; depois melhor nota de música.
   const ordenar = (a: Stat, b: Stat) =>
     (vezesMod(b) > 0 ? 1 : 0) - (vezesMod(a) > 0 ? 1 : 0) ||
-    (a.pct ?? 0) - (b.pct ?? 0) ||
+    Number(a.pct30 ?? 0) - Number(b.pct30 ?? 0) ||
+    Number(a.pct ?? 0) - Number(b.pct ?? 0) ||
     (b.nota_media ?? 0) - (a.nota_media ?? 0) ||
     b.qtd_notas - a.qtd_notas
 
@@ -562,7 +568,7 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
                   </div>
                   {sel ? (
                     <div className="text-gray-400">
-                      Já cadastrada · {sel.pct ?? 0}% já ouviram · {vezesMod(sel)}x no {label}
+                      Já cadastrada · já ouviram: {sel.pct30 ?? 0}% em 30 dias, {sel.pct ?? 0}% em 7 · {vezesMod(sel)}x no {label}
                       {sel.qtd_notas ? ` · nota ${Number(sel.nota_media).toFixed(2)} (${sel.qtd_notas})` : ''}
                       {selEhSugestao ? ` · sugestão ${posSugestao + 1} de ${sugestoes.length}` : ''}
                       {sel.qtd_notas > 0 && (
@@ -596,9 +602,10 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
               {posSugestao < 0 ? 'Sugerir' : 'Próxima sugestão'}
             </button>
 
-            {sel && sel.publico != null && sel.publico > 0 && (sel.pct ?? 0) > LIMITE_PCT && (
+            {sel && sel.publico != null && sel.publico > 0 && Number(sel.pct30 ?? 0) > LIMITE_PCT && (
               <Insight variant="red">
-                {sel.ouviram} dos {sel.publico} reservados ({sel.pct}%) já fizeram aula com essa playlist nos 7 dias anteriores.
+                {sel.ouviram30} dos {sel.publico} reservados ({sel.pct30}%) já fizeram aula com essa playlist nos 30 dias anteriores
+                ({sel.ouviram} nos últimos 7).
               </Insight>
             )}
           </div>
@@ -620,9 +627,12 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
                       <div className="text-sm text-gray-900">{s.nome}</div>
                       <div className="text-xs text-gray-400 mt-0.5 flex flex-wrap items-center gap-x-2">
                         {s.publico ? (
-                          (s.pct ?? 0) > LIMITE_PCT
-                            ? <Badge variant="red">{s.pct}% já ouviram</Badge>
-                            : <span>{s.pct}% já ouviram</span>
+                          <>
+                            {Number(s.pct30 ?? 0) > LIMITE_PCT
+                              ? <Badge variant="red">30 dias: {s.pct30}%</Badge>
+                              : <span>30 dias: {s.pct30}%</span>}
+                            <span>7 dias: {s.pct}%</span>
+                          </>
                         ) : null}
                         <span>{vezesMod(s)}x no {label}</span>
                         <span>última {fmtData(s.ultima_vez)}</span>

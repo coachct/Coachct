@@ -328,3 +328,10 @@ revoke all on function public.playlists_estatisticas(date, text) from public, an
 grant execute on function public.playlists_estatisticas(date, text) to authenticated;
 revoke all on function public.playlist_sugerir(text) from public, anon, authenticated;
 grant execute on function public.playlist_sugerir(text) to service_role;
+
+-- 19/09/2026 (migration playlist_exposicao_7_e_30_dias): a janela de 7 dias deixava
+-- passar playlist tocada há 10 dias (JCS #35: 0% em 7 dias, 29% em 30). Agora:
+-- _playlist_exposicao(p_data, p_modalidade, p_dias) substitui a versão de 2 args;
+-- playlists_estatisticas devolve também ouviram30/pct30; playlist_alertas devolve
+-- ouviram30; playlist_sugerir ordena/filtra pelos 20% em 30 dias.
+-- O corpo atualizado das funções está na migration aplicada no Supabase.
