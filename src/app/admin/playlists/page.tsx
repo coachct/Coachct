@@ -67,15 +67,6 @@ function pctDe(publico: number, ouviram: number) {
   return publico > 0 ? Math.round((100 * ouviram) / publico) : 0
 }
 
-async function lerClipboard(): Promise<string | null> {
-  try {
-    const t = await navigator.clipboard.readText()
-    return t ? t.trim() : null
-  } catch {
-    return null
-  }
-}
-
 // Texto do "compartilhar" do SoundCloud:
 //   "Just Club Sessions #36 by Just Club on #SoundCloud https://on.soundcloud.com/..."
 // Separa link, título e artista. Sem o "on #SoundCloud", o texto todo é o nome.
@@ -467,12 +458,6 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
     escolher(sugestoes[pos])
   }
 
-  async function colar() {
-    const t = await lerClipboard()
-    if (t) { setTexto(t); setPosSugestao(-1); setErro(null) }
-    else setErro('Não foi possível colar. Toque e segure no campo para colar.')
-  }
-
   async function salvar() {
     // Campo vazio = deixar o dia em branco de novo (ex.: desfazer a sugestão que o
     // coach gerou). Apaga mesmo sem "atual": a sugestão pode ter sido gerada depois
@@ -544,22 +529,25 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto">
           <div className="p-4 space-y-3 border-b border-gray-100">
+            <button
+              onClick={sugerir}
+              disabled={loading || !sugestoes.length}
+              className="w-full py-2.5 rounded-lg border border-gray-900 text-gray-900 text-sm font-medium disabled:opacity-40"
+            >
+              {posSugestao < 0 ? 'Sugerir' : 'Próxima sugestão'}
+            </button>
+
             <div>
               <label className="block text-xs text-gray-400 uppercase tracking-wide mb-1">Playlist (nome e link)</label>
-              <div className="flex gap-2 items-stretch">
-                <textarea
-                  value={texto}
-                  onChange={e => { setTexto(e.target.value); setPosSugestao(-1) }}
-                  rows={3}
-                  autoCapitalize="off"
-                  autoCorrect="off"
-                  placeholder="Cole aqui o texto do SoundCloud ou digite o nome"
-                  className={`${inputCls} resize-none`}
-                />
-                <button onClick={colar} className="shrink-0 px-4 rounded-lg border border-gray-200 bg-white text-sm font-medium">
-                  Colar
-                </button>
-              </div>
+              <textarea
+                value={texto}
+                onChange={e => { setTexto(e.target.value); setPosSugestao(-1) }}
+                rows={3}
+                autoCapitalize="off"
+                autoCorrect="off"
+                placeholder="Cole aqui o texto do SoundCloud ou digite o nome"
+                className={`${inputCls} resize-none`}
+              />
               {nomeLimpo && (
                 <div className="mt-2 rounded-lg bg-gray-50 px-3 py-2 text-xs space-y-0.5">
                   <div className="text-gray-900"><span className="text-gray-400">Nome:</span> {nomeLimpo}</div>
@@ -594,20 +582,28 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
               />
             </div>
 
-            <button
-              onClick={sugerir}
-              disabled={loading || !sugestoes.length}
-              className="w-full py-2.5 rounded-lg border border-gray-900 text-gray-900 text-sm font-medium disabled:opacity-40"
-            >
-              {posSugestao < 0 ? 'Sugerir' : 'Próxima sugestão'}
-            </button>
-
             {sel && sel.publico != null && sel.publico > 0 && Number(sel.pct30 ?? 0) > LIMITE_PCT && (
               <Insight variant="red">
                 {sel.ouviram30} dos {sel.publico} reservados ({sel.pct30}%) já fizeram aula com essa playlist nos 30 dias anteriores
                 ({sel.ouviram} nos últimos 7).
               </Insight>
             )}
+            {erro && <Insight variant="red">{erro}</Insight>}
+
+            <div className="flex gap-2">
+              {atual && (
+                <button onClick={remover} disabled={salvando} className="px-4 py-3 rounded-lg text-sm border border-gray-200 text-red-600 bg-white">
+                  Remover
+                </button>
+              )}
+              <button
+                onClick={salvar}
+                disabled={salvando}
+                className="flex-1 py-3 rounded-lg text-base font-medium bg-gray-900 text-white disabled:opacity-40"
+              >
+                {salvando ? 'Salvando…' : nomeLimpo ? 'Salvar' : 'Salvar em branco'}
+              </button>
+            </div>
           </div>
 
           <div className="px-4 pt-3 pb-4">
@@ -644,24 +640,6 @@ function EditarDia({ data, modalidade, atual, onClose, onSaved }: {
               </div>
             )}
             {!loading && lista.length === 0 && <EmptyState message="Nenhuma playlist com esse nome." />}
-          </div>
-        </div>
-
-        <div className="shrink-0 border-t border-gray-100 p-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
-          {erro && <Insight variant="red">{erro}</Insight>}
-          <div className="flex gap-2">
-            {atual && (
-              <button onClick={remover} disabled={salvando} className="px-4 py-3 rounded-lg text-sm border border-gray-200 text-red-600 bg-white">
-                Remover
-              </button>
-            )}
-            <button
-              onClick={salvar}
-              disabled={salvando}
-              className="flex-1 py-3 rounded-lg text-base font-medium bg-gray-900 text-white disabled:opacity-40"
-            >
-              {salvando ? 'Salvando…' : nomeLimpo ? 'Salvar' : 'Salvar em branco'}
-            </button>
           </div>
         </div>
       </div>
@@ -787,12 +765,6 @@ function EditarPlaylist({ playlist, onClose, onSaved }: { playlist: Stat; onClos
   const [ativo, setAtivo] = useState(playlist.ativo)
   const [erro, setErro] = useState<string | null>(null)
 
-  async function colar() {
-    const t = await lerClipboard()
-    if (t) setLink(t)
-    else setErro('Não foi possível colar. Toque e segure no campo Link para colar.')
-  }
-
   async function salvar() {
     if (!nome.trim()) return
     const { data: upd, error } = await supabase
@@ -823,19 +795,16 @@ function EditarPlaylist({ playlist, onClose, onSaved }: { playlist: Stat; onClos
         <label className="block text-xs text-gray-400 uppercase tracking-wide mb-1">Nome</label>
         <input value={nome} onChange={e => setNome(e.target.value)} className={`${inputCls} mb-3`} />
         <label className="block text-xs text-gray-400 uppercase tracking-wide mb-1">Link</label>
-        <div className="flex gap-2 mb-3">
-          <input
-            value={link}
-            onChange={e => setLink(e.target.value)}
-            type="url"
-            inputMode="url"
-            autoCapitalize="off"
-            autoCorrect="off"
-            placeholder="https://…"
-            className={inputCls}
-          />
-          <button onClick={colar} className="shrink-0 px-4 rounded-lg border border-gray-200 bg-white text-sm font-medium">Colar</button>
-        </div>
+        <input
+          value={link}
+          onChange={e => setLink(e.target.value)}
+          type="url"
+          inputMode="url"
+          autoCapitalize="off"
+          autoCorrect="off"
+          placeholder="https://…"
+          className={`${inputCls} mb-3`}
+        />
         <label className="flex items-center gap-2 text-sm text-gray-700 mb-1">
           <input type="checkbox" checked={ativo} onChange={e => setAtivo(e.target.checked)} className="w-5 h-5" />
           Ativa
