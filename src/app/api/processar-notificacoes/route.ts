@@ -9,7 +9,10 @@ const BASE_URL  = process.env.NEXT_PUBLIC_BASE_URL || 'https://coach-ct.vercel.a
 const CRON_SECRET = process.env.CRON_SECRET || ''
 
 // ── Templates de email por tipo ────────────────────────────────────────────
-function gerarHtml(tipo: string, mensagem: string, nomeCliente: string): { subject: string; html: string } {
+function gerarHtml(
+  tipo: string, mensagem: string, nomeCliente: string,
+  pronto?: { subject: string; conteudo: string },
+): { subject: string; html: string } {
   const primeiroNome = (nomeCliente || '').split(' ')[0] || 'cliente'
 
   const wrapEmail = (conteudo: string, subject: string) => ({
@@ -54,6 +57,9 @@ function gerarHtml(tipo: string, mensagem: string, nomeCliente: string): { subje
 </body>
 </html>`,
   })
+
+  // ── Conteúdo já montado fora (ex.: compra confirmada, que lê a venda) ─────
+  if (pronto) return wrapEmail(pronto.conteudo, pronto.subject)
 
   // ── Fila confirmada ──────────────────────────────────────────────────────
   if (tipo === 'fila_confirmada') {
@@ -176,6 +182,127 @@ function gerarHtml(tipo: string, mensagem: string, nomeCliente: string): { subje
   return wrapEmail(conteudo, `Aviso — Just CT`)
 }
 
+// ── Compra confirmada ───────────────────────────────────────────────────────
+// A notificação guarda só o venda_id (gatilho trg_email_compra). Aqui lemos a
+// venda e o que ela gerou (créditos ou plano) pra mostrar a validade real.
+// Devolve null quando a venda foi excluída antes do envio.
+const FORMAS: Record<string, string> = {
+  cartao_credito: 'Cartão de crédito', cartao_debito: 'Cartão de débito',
+  pix: 'PIX', cortesia: 'Cortesia', dinheiro: 'Dinheiro',
+}
+const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+const dataBR = (iso: string) => iso.slice(0, 10).split('-').reverse().join('/')
+const diasEntre = (de: string, ate: string) =>
+  Math.round((Date.UTC(+ate.slice(0, 4), +ate.slice(5, 7) - 1, +ate.slice(8, 10)) -
+              Date.UTC(+de.slice(0, 4), +de.slice(5, 7) - 1, +de.slice(8, 10))) / 86400000)
+const somaDias = (iso: string, dias: number) => {
+  const d = new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10) + dias))
+  return d.toISOString().slice(0, 10)
+}
+const escaparHtml = (s: string) => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+async function montarEmailCompra(supabase: any, vendaId: string, nomeCliente: string) {
+  const { data: venda } = await supabase
+    .from('vendas')
+    .select('id, quantidade, valor_total, forma_pagamento, vendido_em, excluido_em, produtos(nome, subtipo, dias_validade, validade_fixa, creditos_por_venda, plano_id)')
+    .eq('id', vendaId)
+    .maybeSingle()
+  if (!venda || venda.excluido_em) return null
+
+  const prod = venda.produtos || {}
+  const subtipo: string | null = prod.subtipo ?? null
+  const qtd = Number(venda.quantidade) || 1
+  // Data da compra no fuso de São Paulo (YYYY-MM-DD)
+  const dataCompra = new Date(venda.vendido_em).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
+
+  let creditos: string | null = null
+  let validade: string | null = null
+  let expiraCredito = false
+
+  if (subtipo === 'credito' || subtipo === 'pacote' || subtipo === null) {
+    const n = qtd * (Number(prod.creditos_por_venda) || 1)
+    creditos = `${n} ${n === 1 ? 'treino' : 'treinos'}`
+    expiraCredito = true
+    const { data: cred } = await supabase
+      .from('creditos_avulsos').select('validade').eq('venda_id', vendaId)
+      .order('validade', { ascending: true }).limit(1).maybeSingle()
+    const ate: string | null = cred?.validade
+      || prod.validade_fixa
+      || (prod.dias_validade ? somaDias(dataCompra, Number(prod.dias_validade)) : null)
+    if (ate) {
+      const dias = prod.validade_fixa ? diasEntre(dataCompra, ate) : Number(prod.dias_validade) || diasEntre(dataCompra, ate)
+      validade = `${dias} ${dias === 1 ? 'dia' : 'dias'}, até <strong>${dataBR(ate)}</strong>`
+    }
+  } else if (subtipo === 'ilimitado_club') {
+    creditos = 'Ilimitado'
+    const meses = Math.max(1, Math.round((Number(prod.dias_validade) || 180) / 30))
+    const { data: ass } = await supabase
+      .from('assinaturas_ilimitado_club').select('data_inicio').eq('venda_id', vendaId).maybeSingle()
+    const inicio: string = ass?.data_inicio || dataCompra
+    const dias = meses * 30
+    validade = `Plano válido de ${dataBR(inicio)} até <strong>${dataBR(somaDias(inicio, dias))}</strong> (${dias} dias)`
+  } else if (subtipo === 'acesso' || subtipo === 'coach_ct_pro') {
+    const { data: cp } = await supabase
+      .from('cliente_planos').select('inicio, fim').eq('venda_id', vendaId).maybeSingle()
+    if (cp?.inicio && cp?.fim) {
+      validade = `Plano válido de ${dataBR(cp.inicio)} até <strong>${dataBR(cp.fim)}</strong> (${diasEntre(cp.inicio, cp.fim)} dias)`
+    }
+    if (subtipo === 'coach_ct_pro' && prod.plano_id) {
+      const { data: plano } = await supabase
+        .from('planos_disponiveis').select('total_creditos').eq('id', prod.plano_id).maybeSingle()
+      if (plano?.total_creditos) {
+        creditos = `${plano.total_creditos} treinos`
+        expiraCredito = true
+      }
+    }
+  }
+
+  // Parcelas só existem na compra pelo site (pagamentos_pendentes)
+  let parcelas = 1
+  const { data: pp } = await supabase
+    .from('pagamentos_pendentes').select('parcelas').eq('venda_id', vendaId).limit(1).maybeSingle()
+  if (pp?.parcelas) parcelas = Number(pp.parcelas) || 1
+
+  const forma = venda.forma_pagamento === 'cortesia'
+    ? 'Cortesia'
+    : `${brl(Number(venda.valor_total) || 0)} · ${FORMAS[venda.forma_pagamento] || venda.forma_pagamento}${parcelas > 1 ? ` ${parcelas}x` : ''}`
+
+  const primeiroNome = escaparHtml((nomeCliente || '').split(' ')[0] || 'cliente')
+  const nomeProduto = escaparHtml(prod.nome || 'Sua compra')
+  const linha = (rotulo: string, valor: string) => `
+        <tr>
+          <td style="padding:6px 0;font-size:13px;color:#888;width:130px;vertical-align:top;">${rotulo}</td>
+          <td style="padding:6px 0;font-size:14px;color:#222;">${valor}</td>
+        </tr>`
+
+  const conteudo = `
+      <div style="font-size:18px;font-weight:700;color:#222;margin-bottom:12px;">Obrigado pela compra, ${primeiroNome}!</div>
+      <div style="font-size:15px;line-height:1.7;color:#444;margin-bottom:24px;">
+        Sua compra foi confirmada e ${creditos ? 'os créditos já estão disponíveis' : 'o plano já está ativo'} na sua conta.
+      </div>
+      <div style="background:#fafafa;border:1px solid #eee;border-radius:12px;padding:18px 20px;margin-bottom:20px;">
+        <div style="font-size:12px;font-weight:700;color:#ff2d9b;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px;">Resumo da compra</div>
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+          ${linha('Produto', `<strong>${nomeProduto}</strong>`)}
+          ${creditos ? linha('Créditos', creditos) : ''}
+          ${linha('Valor', forma)}
+          ${linha('Data da compra', dataBR(dataCompra))}
+          ${validade ? linha('Validade', validade) : ''}
+        </table>
+      </div>
+      ${expiraCredito ? `
+      <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:12px 16px;margin-bottom:24px;font-size:13px;color:#9a3412;line-height:1.6;">
+        ⚠️ Créditos não usados até a data de validade expiram.
+      </div>` : ''}
+      <div style="text-align:center;">
+        <a href="${BASE_URL}/agendar" style="display:inline-block;background:#ff2d9b;color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:14px;letter-spacing:0.5px;">
+          Agendar meu treino →
+        </a>
+      </div>`
+
+  return { subject: `✅ Compra confirmada: ${prod.nome || 'Just Club & CT'}`, conteudo }
+}
+
 // ── Handler principal ───────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   // Valida o segredo do cron
@@ -254,7 +381,17 @@ export async function POST(req: NextRequest) {
       continue
     }
 
-    const { subject, html } = gerarHtml(notif.tipo, notif.mensagem, cliente.nome)
+    let pronto: { subject: string; conteudo: string } | undefined
+    if (notif.tipo === 'compra_confirmada') {
+      const compra = await montarEmailCompra(supabase, notif.mensagem, cliente.nome)
+      if (!compra) {
+        await marcar(notif.id, { status: 'cancelado', erro: 'Venda excluída antes do envio', enviado_em: new Date().toISOString() })
+        continue
+      }
+      pronto = compra
+    }
+
+    const { subject, html } = gerarHtml(notif.tipo, notif.mensagem, cliente.nome, pronto)
 
     const { error: errEmail } = await resend.emails.send({
       from: REMETENTE,
