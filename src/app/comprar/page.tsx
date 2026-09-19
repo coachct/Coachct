@@ -362,7 +362,7 @@ export default function ComprarPage() {
 
                     return (
                       <div key={p.id} className="card-h" style={{ ...card, border: `1px solid ${ehCoach ? ACCENT + '55' : '#222'}`, display: 'flex', flexDirection: 'column' }}>
-                        <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 2, color: ehCoach ? ACCENT : '#555', marginBottom: '0.35rem', fontFamily: "'DM Mono', monospace" }}>
+                        <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 2, color: ehCoach ? ACCENT : '#aaa', marginBottom: '0.35rem', fontFamily: "'DM Mono', monospace" }}>
                           {ehCoach ? 'just ct · coach' : ehPacote ? `pacote ${creditos} treinos` : 'todas as unidades'}
                         </div>
 
@@ -370,16 +370,16 @@ export default function ComprarPage() {
 
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.3rem', marginBottom: 2 }}>
                           <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 38, color: '#fff', lineHeight: 1 }}>{vPC.reais}<span style={{ fontSize: 19 }}>{vPC.cents}</span></div>
-                          <div style={{ fontSize: 12, color: '#777' }}>/ treino</div>
+                          <div style={{ fontSize: 12, color: '#ccc' }}>/ treino</div>
                         </div>
 
                         {ehPacote && (
-                          <div style={{ fontSize: 12, color: '#555', marginBottom: '0.5rem', fontFamily: "'DM Mono', monospace" }}>
+                          <div style={{ fontSize: 12, color: '#ccc', marginBottom: '0.5rem', fontFamily: "'DM Mono', monospace" }}>
                             {vT.reais}{vT.cents} total{p.max_parcelas > 1 ? ` · ${p.max_parcelas}x` : ''}
                           </div>
                         )}
 
-                        <div style={{ fontSize: 12, color: '#555', flex: 1, marginBottom: '1.25rem', lineHeight: 1.6 }}>
+                        <div style={{ fontSize: 13, color: '#fff', flex: 1, marginBottom: '1.25rem', lineHeight: 1.6 }}>
                           {ehCoach
                             ? `Produto exclusivo da unidade CT, para acompanhamento 1x1 dos nossos Coaches. Não válido para unidades Clubs.`
                             : ehPacote
