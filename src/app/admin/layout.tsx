@@ -1,6 +1,6 @@
 'use client'
 import SidebarLayout from '@/components/layout/SidebarLayout'
-import { Dumbbell, Footprints, Clock, Users, ShoppingCart, BarChart3, UserCog, BookOpen, Settings, MessageCircle, Instagram, Activity } from 'lucide-react'
+import { Dumbbell, Footprints, Clock, Users, ShoppingCart, BarChart3, UserCog, BookOpen, Settings, MessageCircle, Instagram, Activity, Weight } from 'lucide-react'
 const nav = [
   {
     label: 'Coach CT',
@@ -9,9 +9,18 @@ const nav = [
       { label: 'Calendário Coach CT', href: '/admin/agenda' },
       { label: 'Escala Coach CT',     href: '/admin/escala' },
       { label: 'Horários populares',  href: '/admin/horarios' },
-      { label: 'Musculação Livre',    href: '/admin/musculacao-livre' },
       { label: 'Relatório Coach CT',  href: '/admin/relatorios/coach-ct' },
       { label: 'Crédito extra por aula', href: '/admin/relatorios/credito-extra' },
+    ],
+  },
+  {
+    // Menu próprio: a tela de entradas é operacional (quem entrou hoje) e o
+    // relatório é a leitura histórica. Espaço pra crescer sem entulhar Coach CT.
+    label: 'Musculação Livre',
+    icon: Weight,
+    children: [
+      { label: 'Entradas de hoje', href: '/admin/musculacao-livre' },
+      { label: 'Relatório',        href: '/admin/musculacao-livre/relatorio' },
     ],
   },
   {
