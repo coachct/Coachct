@@ -599,9 +599,18 @@ async function escolherPosicao(
     .from('club_reservas')
     .select('posicao')
     .eq('ocorrencia_id', ocorrenciaId).in('status', ['reservado', 'presente'])
+  // Bloqueio PONTUAL (só nesta aula) conta igual ao global: equipamento parado não é
+  // vaga em canal nenhum. Sem isto, a primeira esteira "livre" podia ser justamente a
+  // que a recepção acabou de travar — o cliente do app caía num equipamento parado
+  // (VO, Running 11:00 de 20/09: R04 bloqueada às 07:16 e ocupada pelo app às 10:08).
+  const { data: bloqAula } = await supabase
+    .from('club_posicoes_bloqueios_ocorrencia')
+    .select('posicao')
+    .eq('ocorrencia_id', ocorrenciaId)
 
   const ocupadas = new Set<string>((tomadas || []).map((t: any) => t.posicao).filter(Boolean))
   for (const p of (pos || [])) if ((p as any).bloqueado) ocupadas.add(rotulo(p)) // bloqueada = indisponível
+  for (const b of (bloqAula || [])) if ((b as any).posicao) ocupadas.add((b as any).posicao)
 
   const livres = (pos || [])
     .filter((p: any) => !p.bloqueado)
