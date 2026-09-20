@@ -388,7 +388,6 @@ function AdminClientesPageInner() {
     const { data } = await supabase.from('club_reservas')
       .select('*, creditos_avulsos(observacao), club_ocorrencias(id, data, club_aulas(tipo, horario, unidade_id, unidades(nome)))')
       .eq('cliente_id', clienteId)
-      .neq('status', 'cancelado')
       .order('created_at', { ascending: false })
       .limit(50)
     setClubReservas(data || [])
@@ -1139,7 +1138,7 @@ function AdminClientesPageInner() {
 
   const clubReservasPassadas = clubReservas.filter(cr => {
     const data = cr.club_ocorrencias?.data
-    return (data && data < hoje) || ['presente','falta','realizado'].includes(cr.status)
+    return (data && data < hoje) || ['presente','falta','realizado','cancelado'].includes(cr.status)
   }).sort((a, b) => (b.club_ocorrencias?.data || '').localeCompare(a.club_ocorrencias?.data || ''))
 
   // Coach CT e Club numa lista só, ordenada por dia (chave = data+horário) —
