@@ -22,6 +22,7 @@ const nav = [
       { label: 'Calendário Club',  href: '/admin/justclub/calendario' },
       { label: 'Escala Club',      href: '/admin/justclub/escala-club' },
       { label: 'Relatório Club',   href: '/admin/justclub/relatorio' },
+      { label: 'Cancelamentos',    href: '/admin/cancelamentos' },
       { label: 'Reservas TotalPass', href: '/admin/justclub/reservas-totalpass' },
       { label: 'Reservas Wellhub', href: '/admin/justclub/reservas-wellhub' },
       { label: 'Mapa de Posições', href: '/admin/posicoes' },
