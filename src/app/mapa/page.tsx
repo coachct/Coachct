@@ -94,6 +94,10 @@ function MapaPageInner() {
   // Enquete de horário: chaves que este cliente já respondeu + opção marcada no modal aberto
   const [enqueteFeitas, setEnqueteFeitas] = useState<string[]>([])
   const [enqueteOpcao,  setEnqueteOpcao]  = useState('')
+  // Nomes dos planos ilimitados (produtos.subtipo = 'ilimitado_club'): o crédito
+  // deles mora em creditos_avulsos e cai no mesmo pote 'avulso' do pacote
+  // comprado — é por aqui que a tela separa um do outro na reserva extra.
+  const [nomesIlimitado, setNomesIlimitado] = useState<string[]>([])
 
   // Gate de telefone: já tem cartão (customer no Pagar.me existe) mas está sem telefone válido. ClassPass nunca exige.
   const precisaTelefone = () => !cliente?.is_classpass && !!cliente?.pagarme_card_id && !telefoneValido(cliente?.telefone)
@@ -117,6 +121,13 @@ function MapaPageInner() {
   useEffect(() => {
     if (cliente?.id && ocId) verificarReservaExistente(cliente.id)
   }, [cliente?.id, ocId])
+
+  useEffect(() => { carregarPlanosIlimitados() }, [])
+
+  async function carregarPlanosIlimitados() {
+    const { data } = await supabase.from('produtos').select('nome').eq('subtipo', 'ilimitado_club')
+    setNomesIlimitado((data || []).map((p: any) => p.nome).filter(Boolean))
+  }
 
   async function carregarTudo() {
     setLoading(true)
@@ -181,7 +192,7 @@ function MapaPageInner() {
     setErroModal('')
     // ClassPass usa crédito fixo 'classpass'; em reserva extra (avulso) pré-seleciona o avulso
     if (cliente?.is_classpass) setTipoCredito('classpass')
-    else if (jaReservouNaOc) setTipoCredito(avulsoDisponiveis[0] || '')
+    else if (jaReservouNaOc) setTipoCredito(avulsoParaExtra[0] || '')
     setModalAberto(true)
   }
 
@@ -296,8 +307,14 @@ function MapaPageInner() {
   const planosDisponiveis = Object.entries(saldo).filter(([,v]:any) => v?.disponivel > 0).map(([k]) => k)
   // Avulso disponível (crédito importado/legado)
   const avulsoDisponiveis = planosDisponiveis.filter(p => p.startsWith('avulso'))
+  // Reserva extra só com crédito COMPRADO: o plano ilimitado divide o pote
+  // avulso, mas vale uma posição por aula (o banco barra com ILIMITADO_1_POR_AULA).
+  // Pote com nome_pacote nulo é misto — tem crédito de pacote junto, vale.
+  const avulsoParaExtra = avulsoDisponiveis.filter(p => !nomesIlimitado.includes(String(saldo[p]?.nome_pacote || '')))
+  // Só o ilimitado sobrou? A mensagem do modal explica a regra em vez de dizer "sem crédito".
+  const soTemIlimitado = jaReservouNaOc && avulsoDisponiveis.length > 0 && avulsoParaExtra.length === 0
   // Em reserva extra, só avulso é oferecido; senão, todos
-  const planosNoMapa = jaReservouNaOc ? avulsoDisponiveis : planosDisponiveis
+  const planosNoMapa = jaReservouNaOc ? avulsoParaExtra : planosDisponiveis
   // ClassPass nunca fica "sem plano" (crédito ilimitado)
   const semPlano = !cliente?.is_classpass && planosNoMapa.length === 0
 
@@ -355,11 +372,15 @@ function MapaPageInner() {
           </div>
         </div>
 
-        {jaReservouNaOc && (
+        {jaReservouNaOc && (soTemIlimitado ? (
+          <div style={{ background:`${AMARELO}10`, border:`1px solid ${AMARELO}40`, borderRadius:12, padding:'0.75rem 1rem', marginBottom:'1.25rem', fontSize:12.5, color:AMARELO, lineHeight:1.5, textAlign:'center' }}>
+            ♾️ Você já tem sua posição nesta aula. O <strong>plano ilimitado</strong> vale só para o titular: uma posição por aula. Para levar alguém, compre um pacote de créditos avulsos.
+          </div>
+        ) : (
           <div style={{ background:`${VERDE}10`, border:`1px solid ${VERDE}40`, borderRadius:12, padding:'0.75rem 1rem', marginBottom:'1.25rem', fontSize:12.5, color:VERDE, lineHeight:1.5, textAlign:'center' }}>
             🎟️ Reserva extra — você já tem uma posição nesta aula. Escolha outra posição livre para marcar mais um treino com seu <strong>crédito avulso</strong>.
           </div>
-        )}
+        ))}
 
         <div style={{ fontSize:12, color:'#444', marginBottom:'1.5rem', textAlign:'center', lineHeight:1.5 }}>
           Escolha a posição por onde deseja iniciar o treino.
@@ -477,12 +498,16 @@ function MapaPageInner() {
               ) : planosNoMapa.length === 0 ? (
                 <div style={{ background:'#0d0d0d', border:`1px solid ${AMARELO}33`, borderRadius:12, padding:'1.25rem' }}>
                   <div style={{ fontSize:14, color:'#fff', fontWeight:700, marginBottom:6 }}>
-                    {jaReservouNaOc
-                      ? 'Você não tem crédito avulso disponível nesta unidade'
-                      : 'Você ainda não tem um plano ativo nesta unidade'}
+                    {soTemIlimitado
+                      ? 'Seu plano ilimitado já está nesta aula'
+                      : jaReservouNaOc
+                        ? 'Você não tem crédito avulso disponível nesta unidade'
+                        : 'Você ainda não tem um plano ativo nesta unidade'}
                   </div>
                   <div style={{ fontSize:13, color:'#aaa', lineHeight:1.6, marginBottom:'1.1rem' }}>
-                    Para reservar, ative o seu app parceiro (Wellhub ou TotalPass) da unidade onde quer treinar, ou compre um pacote avulso.
+                    {soTemIlimitado
+                      ? 'O plano ilimitado vale só para o titular: uma posição por aula. Para levar alguém, compre um pacote de créditos avulsos.'
+                      : 'Para reservar, ative o seu app parceiro (Wellhub ou TotalPass) da unidade onde quer treinar, ou compre um pacote avulso.'}
                   </div>
                   <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
                     <button onClick={() => router.push('/minha-conta')} style={{ flex:1, minWidth:150, background:ACCENT, color:'#fff', border:'none', borderRadius:10, padding:'0.75rem', fontWeight:700, fontSize:13, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>

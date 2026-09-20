@@ -133,6 +133,10 @@ function AulasPageInner() {
   const [cobrancasPend,   setCobrancasPend]   = useState<any[]>([])
   const [saldo,           setSaldo]           = useState<Record<string, any>>({})
   const [saldoProximo,    setSaldoProximo]    = useState<Record<string, any>>({})
+  // Nomes dos planos ilimitados (produtos.subtipo = 'ilimitado_club'). O crédito
+  // do ilimitado mora em creditos_avulsos, então cai no mesmo pote 'avulso' do
+  // pacote comprado — é por aqui que a tela separa um do outro.
+  const [nomesIlimitado,  setNomesIlimitado]  = useState<string[]>([])
   const [ocorrencias,     setOcorrencias]     = useState<any[]>([])
   const [reservasCont,    setReservasCont]    = useState<Record<string, number>>({})
   const [minhasReservas,  setMinhasReservas]  = useState<Record<string, any>>({})
@@ -209,10 +213,16 @@ function AulasPageInner() {
   useEffect(() => { if (unidadeId) carregarOcorrencias(dataSelStr) }, [dataSelStr, unidadeId, cliente?.id])
   useEffect(() => { if (!isMobile && unidadeId) carregarSemana() }, [isMobile, semanaOffset, unidadeId, cliente?.id])
   useEffect(() => { if (cliente && unidadeId) carregarSaldo() }, [cliente?.id, unidadeId])
+  useEffect(() => { carregarPlanosIlimitados() }, [])
 
   async function carregarUnidade() {
     const { data } = await supabase.from('unidades').select('id, nome, tipo').eq('id', unidadeId).maybeSingle()
     setUnidade(data)
+  }
+
+  async function carregarPlanosIlimitados() {
+    const { data } = await supabase.from('produtos').select('nome').eq('subtipo', 'ilimitado_club')
+    setNomesIlimitado((data || []).map((p: any) => p.nome).filter(Boolean))
   }
 
   async function carregarSemana() {
@@ -428,7 +438,7 @@ function AulasPageInner() {
     // pessoa confirmava o errado sem perceber. Vazio força digitar o email certo.
     setWellhubEmailInput(cliente?.wellhub_email || '')
     // ClassPass usa crédito fixo 'classpass'; em modo só-avulso pré-seleciona o avulso disponível
-    setTipoCredito(cliente?.is_classpass ? 'classpass' : (soAvulso ? (avulsoDisponiveis[0] || '') : ''))
+    setTipoCredito(cliente?.is_classpass ? 'classpass' : (soAvulso ? (avulsoParaExtra[0] || '') : ''))
     if (oc.club_aulas?.tipo === 'running_funcional') await carregarPosicoes(oc.id)
   }
   function fecharModalReserva() {
@@ -578,9 +588,17 @@ function AulasPageInner() {
   const planosDisponiveis = Object.entries(saldoParaData()).filter(([,v]: [string,any]) => v?.disponivel > 0).map(([k]) => k)
   // Avulso disponível (crédito importado/legado) — habilita a reserva-extra no mesmo dia
   const avulsoDisponiveis = planosDisponiveis.filter(p => p.startsWith('avulso'))
-  const temAvulsoDisponivel = avulsoDisponiveis.length > 0
+  // Reserva extra (acompanhante) só com crédito COMPRADO. O plano ilimitado vive
+  // no mesmo pote avulso, mas vale uma posição por aula: o banco barra
+  // (ILIMITADO_1_POR_AULA) e aqui o botão nem aparece. Pote com nome_pacote nulo
+  // é pote misto — tem crédito de pacote junto, então continua valendo.
+  const avulsoParaExtra = avulsoDisponiveis.filter(p => {
+    const nome = String(saldoParaData()[p]?.nome_pacote || '')
+    return !nomesIlimitado.includes(nome)
+  })
+  const temAvulsoDisponivel = avulsoParaExtra.length > 0
   // Planos oferecidos no modal: só-avulso quando for reserva-extra; senão todos
-  const planosNoModal = modalSoAvulso ? avulsoDisponiveis : planosDisponiveis
+  const planosNoModal = modalSoAvulso ? avulsoParaExtra : planosDisponiveis
 
   // Enquete de horário do modal aberto (null quando não se aplica ou já respondida)
   const enqueteDoModal = modalReserva ? enqueteDoHorario(unidadeId, modalReserva.club_aulas?.horario) : null

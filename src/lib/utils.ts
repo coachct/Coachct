@@ -70,14 +70,21 @@ export function perfLabel(ocupacaoPct: number): { txt: string; color: string } {
   return { txt: 'Baixo', color: 'red' }
 }
 
-// Trava "um treino por dia por app" (Wellhub/TotalPass) — triggers do banco
-// levantam a exceção com o prefixo APP_1_POR_DIA e o texto já pronto em
-// português. Aqui só tiramos o prefixo técnico pra mostrar pro aluno.
+// Travas de regra levantadas pelos triggers do banco, já com o texto pronto em
+// português depois do prefixo técnico:
+//   APP_1_POR_DIA        — um treino por dia por app (Wellhub/TotalPass)
+//   ILIMITADO_1_POR_AULA — plano ilimitado vale uma posição por aula
+// Aqui só tiramos o prefixo pra mostrar pro aluno.
+const TRAVAS_NEGOCIO: Record<string, string> = {
+  APP_1_POR_DIA: 'Você já tem um treino nesse dia com esse app. Cada app permite apenas um treino por dia, em qualquer unidade.',
+  ILIMITADO_1_POR_AULA: 'O plano ilimitado vale só para o titular — uma posição por aula.',
+}
 export function mensagemTravaApp(error: any): string | null {
   const m = String(error?.message || '')
-  if (!m.includes('APP_1_POR_DIA')) return null
-  const t = (m.split('APP_1_POR_DIA:')[1] || '').trim()
-  if (!t) return 'Você já tem um treino nesse dia com esse app. Cada app permite apenas um treino por dia, em qualquer unidade.'
+  const prefixo = Object.keys(TRAVAS_NEGOCIO).find(p => m.includes(p))
+  if (!prefixo) return null
+  const t = (m.split(prefixo + ':')[1] || '').trim()
+  if (!t) return TRAVAS_NEGOCIO[prefixo]
   return t.charAt(0).toUpperCase() + t.slice(1)
 }
 
