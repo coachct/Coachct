@@ -474,11 +474,12 @@ export default function AvaliacoesPage() {
             <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-start justify-between gap-4">
               <div>
                 <div className="text-lg font-semibold text-gray-800">{drawerCliente.nome}</div>
+                {/* A página de clientes abre a ficha pelo parâmetro ?id= (ver abrirClientePorId) */}
                 <a
-                  href={`/admin/clientes?cliente=${drawerCliente.id}`}
-                  className="text-sm text-[#ff2d9b] underline"
+                  href={`/admin/clientes?id=${drawerCliente.id}`}
+                  className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-[#ff2d9b] border border-[#ff2d9b]/30 rounded-lg px-3 py-1.5 hover:bg-[#ff2d9b]/5 transition-colors"
                 >
-                  Ver ficha completa
+                  Ver perfil do cliente →
                 </a>
               </div>
               <button
