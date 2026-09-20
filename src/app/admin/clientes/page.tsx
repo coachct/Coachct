@@ -1969,10 +1969,11 @@ function AdminClientesPageInner() {
                             {ag.unidades?.nome && <><span className="text-gray-300">·</span><span>{ag.unidades.nome}</span></>}
                           </div>
                           {cred.label && <div className="text-xs text-gray-500 mt-1">{cred.icon} {cred.label}</div>}
-                          {(() => { const o = origemReserva((ag as any).criado_via); const q = reservadoEm((ag as any).created_at); if (!o && !q) return null; return (
+                          {(() => { const o = origemReserva((ag as any).criado_via); const q = reservadoEm((ag as any).created_at); const c = ag.status === 'cancelado' ? reservadoEm((ag as any).cancelado_em) : null; if (!o && !q && !c) return null; return (
                             <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-400 mt-0.5">
                               {o && <span className={`px-1.5 py-0.5 rounded-full ${o.cls}`}>{o.label}</span>}
                               {q && <span>agendado em {q}</span>}
+                              {c && <span className="text-red-500">· cancelado em {c}</span>}
                             </div>
                           )})()}
                         </div>
@@ -2004,10 +2005,11 @@ function AdminClientesPageInner() {
                               {aula?.unidades?.nome && <><span className="text-gray-300">·</span><span>{aula.unidades.nome}</span></>}
                             </div>
                             {cred.label && <div className="text-xs text-gray-500 mt-1">{cred.icon} {(cr as any).creditos_avulsos?.observacao || cred.label}</div>}
-                            {(() => { const o = origemReserva((cr as any).criado_via); const q = reservadoEm((cr as any).created_at); if (!o && !q) return null; return (
+                            {(() => { const o = origemReserva((cr as any).criado_via); const q = reservadoEm((cr as any).created_at); const c = cr.status === 'cancelado' ? reservadoEm((cr as any).cancelado_em) : null; if (!o && !q && !c) return null; return (
                               <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-400 mt-0.5">
                                 {o && <span className={`px-1.5 py-0.5 rounded-full ${o.cls}`}>{o.label}</span>}
                                 {q && <span>reservado em {q}</span>}
+                                {c && <span className="text-red-500">· cancelado em {c}</span>}
                               </div>
                             )})()}
                           </div>
