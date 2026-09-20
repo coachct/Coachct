@@ -1885,6 +1885,7 @@ function AdminClientesPageInner() {
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-base font-bold text-gray-900">{tipoAulaLabel(aula?.tipo) || 'Club'}</span>
                                 <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">Club</span>
+                                {cr.posicao && <span title="posição na aula" className="text-xs px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 font-bold font-mono">{cr.posicao}</span>}
                                 {numeroTreino.get(cr.id) && <span title="treino do mês" className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold font-mono">{numeroTreino.get(cr.id)}</span>}
                               </div>
                               <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-500 mt-0.5">
@@ -1994,6 +1995,7 @@ function AdminClientesPageInner() {
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-base font-bold text-gray-900">{tipoAulaLabel(aula?.tipo) || 'Club'}</span>
                               <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">Club</span>
+                              {cr.posicao && <span title="posição na aula" className="text-xs px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 font-bold font-mono">{cr.posicao}</span>}
                               <span className={`text-xs px-2 py-0.5 rounded-full ${statusConfig[cr.status]?.color || 'bg-gray-100 text-gray-600'}`}>{statusConfig[cr.status]?.label || cr.status}</span>
                               {numeroTreino.get(cr.id) && <span title="treino do mês" className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold font-mono">{numeroTreino.get(cr.id)}</span>}
                             </div>
