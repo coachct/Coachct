@@ -436,7 +436,7 @@ async function registrarReserva(
         }
         const { error: errDup } = await supabase
           .from('club_reservas')
-          .update({ status: 'cancelado', cancelado_em: new Date().toISOString() })
+          .update({ status: 'cancelado', cancelado_em: new Date().toISOString(), cancelado_via: 'totalpass_duplicada' })
           .eq('id', (existente as any).id).neq('status', 'cancelado')
         if (errDup) {
           console.warn('[totalpass/pull] duplicada: falha ao cancelar a reserva', (errDup as any).message)
@@ -631,7 +631,7 @@ async function conciliarCancelamentos(
     if (ativosIds.has(sid)) continue
     const { error } = await supabase
       .from('club_reservas')
-      .update({ status: 'cancelado', cancelado_em: new Date().toISOString() })
+      .update({ status: 'cancelado', cancelado_em: new Date().toISOString(), cancelado_via: 'totalpass_pull' })
       .eq('id', (r as any).id).eq('status', 'reservado')
     if (!error) n++
   }

@@ -163,7 +163,7 @@ export async function POST(req: NextRequest) {
 
     // ── 4) Cancela as reservas e marca a ocorrência cancelada ──────────────────
     await supabase.from('club_reservas')
-      .update({ status: 'cancelado', cancelado_em: new Date().toISOString() })
+      .update({ status: 'cancelado', cancelado_em: new Date().toISOString(), cancelado_via: 'aula_cancelada' })
       .in('ocorrencia_id', ocorrenciaIds).neq('status', 'cancelado')
     await supabase.from('club_ocorrencias')
       .update({ status: 'cancelada' }).in('id', ocorrenciaIds)

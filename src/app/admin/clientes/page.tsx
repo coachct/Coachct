@@ -1007,7 +1007,7 @@ function AdminClientesPageInner() {
     if (!confirm('Cancelar esta reserva? O crédito será devolvido ao cliente.')) return
     setCancelandoId(crId)
     const { error } = await supabase.from('club_reservas').update({
-      status: 'cancelado', cancelado_em: new Date().toISOString(),
+      status: 'cancelado', cancelado_em: new Date().toISOString(), cancelado_via: 'admin',
     }).eq('id', crId)
     setCancelandoId(null)
     if (error) { alert('Erro ao cancelar: ' + error.message); return }

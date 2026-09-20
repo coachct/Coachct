@@ -766,7 +766,9 @@ export default function RecepcaoClubDetalhe() {
   // Cancelar reserva — exclusivo admin
   async function cancelarReserva(r: any) {
     if (!confirm(`Cancelar reserva de ${r.clientes?.nome}?`)) return
-    await supabase.from('club_reservas').update({ status:'cancelado' }).eq('id', r.id)
+    await supabase.from('club_reservas')
+      .update({ status:'cancelado', cancelado_em: new Date().toISOString(), cancelado_via: 'admin' })
+      .eq('id', r.id)
     await carregarDados(); showMsg('🗑️ Reserva cancelada.')
   }
 

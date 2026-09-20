@@ -425,7 +425,7 @@ export async function cancelarReservaClub(
   }
 
   const { error: e2 } = await supabase
-    .from('club_reservas').update({ status: 'cancelado', cancelado_em: agora.toISOString() }).eq('id', reservaId)
+    .from('club_reservas').update({ status: 'cancelado', cancelado_em: agora.toISOString(), cancelado_via: 'whatsapp' }).eq('id', reservaId)
   if (e2) return { ok: false, mensagem: 'Tive um erro ao cancelar. Pode tentar de novo?', erroTecnico: true }
 
   await registrarAcessoLgpd(supabase, { clienteId, acao: 'cancelar_reserva_club', detalhe: { reserva_id: reservaId } })

@@ -580,7 +580,7 @@ export default function MinhaContaPage() {
       const {error:e} = await supabase.from('agendamentos').update({status:'cancelado',cancelado_em:new Date().toISOString(),motivo_cancelamento:'Cancelado pelo cliente'}).eq('id',modalCancelar.id)
       error=e
     } else {
-      const {error:e} = await supabase.from('club_reservas').update({status:'cancelado',cancelado_em:new Date().toISOString()}).eq('id',modalCancelar.id)
+      const {error:e} = await supabase.from('club_reservas').update({status:'cancelado',cancelado_em:new Date().toISOString(),cancelado_via:'site_cliente'}).eq('id',modalCancelar.id)
       error=e
     }
     if (error) { setErroCancelar('Erro ao cancelar. Tente novamente.'); setCancelando(false); return }

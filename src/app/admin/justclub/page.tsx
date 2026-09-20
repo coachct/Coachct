@@ -274,7 +274,7 @@ export default function JustClubAdminPage() {
     const ocIds = (ocs || []).map((o: any) => o.id)
     if (!ocIds.length) return
     await supabase.from('club_reservas')
-      .update({ status: 'cancelado', cancelado_em: new Date().toISOString() })
+      .update({ status: 'cancelado', cancelado_em: new Date().toISOString(), cancelado_via: 'aula_cancelada' })
       .in('ocorrencia_id', ocIds).neq('status', 'cancelado')
     await supabase.from('club_ocorrencias').update({ status: 'cancelada' }).in('id', ocIds)
   }
@@ -337,7 +337,7 @@ export default function JustClubAdminPage() {
       const ocIds = (ocs || []).map((o: any) => o.id)
       if (ocIds.length) {
         await supabase.from('club_reservas')
-          .update({ status: 'cancelado', cancelado_em: new Date().toISOString() })
+          .update({ status: 'cancelado', cancelado_em: new Date().toISOString(), cancelado_via: 'aula_cancelada' })
           .in('ocorrencia_id', ocIds).neq('status', 'cancelado')
         await supabase.from('club_ocorrencias').delete().in('id', ocIds)
       }
@@ -365,7 +365,7 @@ export default function JustClubAdminPage() {
     const ocIds = (ocs || []).map((o: any) => o.id)
     if (ocIds.length) {
       await supabase.from('club_reservas')
-        .update({ status: 'cancelado', cancelado_em: new Date().toISOString() })
+        .update({ status: 'cancelado', cancelado_em: new Date().toISOString(), cancelado_via: 'aula_cancelada' })
         .in('ocorrencia_id', ocIds).neq('status', 'cancelado')
       await supabase.from('club_ocorrencias').delete().in('id', ocIds)
     }
@@ -493,7 +493,7 @@ export default function JustClubAdminPage() {
           const horizonte = (futuras || []).reduce((max: string, o: any) => (o.data > max ? o.data : max), hoje)
           // Derruba reservas futuras e apaga as ocorrências do dia antigo
           await supabase.from('club_reservas')
-            .update({ status: 'cancelado', cancelado_em: new Date().toISOString() })
+            .update({ status: 'cancelado', cancelado_em: new Date().toISOString(), cancelado_via: 'aula_cancelada' })
             .in('ocorrencia_id', futIds).neq('status', 'cancelado')
           await supabase.from('club_ocorrencias').delete().in('id', futIds)
           // Regenera as ocorrências futuras já no dia novo, do próximo dia válido até o horizonte

@@ -170,8 +170,14 @@ async function processarCancelamento(supabase: SupabaseClient, payload: any, lat
   const { gymId, slotId, classId, bookingNumber } = extrair(payload);
   if (!bookingNumber) { console.error('[wellhub/booking] cancelamento sem booking_number'); return; }
 
-  const patch: any = { status: late ? 'falta' : 'cancelado' };
-  if (!late) patch.cancelado_em = new Date().toISOString();
+  // cancelado_em/cancelado_via também no late: o status segue 'falta' (não devolve
+  // a vaga), mas sem o carimbo o desmarque em cima da hora ficava invisível pra
+  // medir a antecedência real dos cancelamentos vindos do app deles.
+  const patch: any = {
+    status: late ? 'falta' : 'cancelado',
+    cancelado_em: new Date().toISOString(),
+    cancelado_via: late ? 'wellhub_app_late' : 'wellhub_app',
+  };
 
   const { data: reservas } = await supabase
     .from('club_reservas').update(patch)
