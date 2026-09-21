@@ -20,6 +20,31 @@ function dataBR(d: string): string {
   return dia && m ? `${dia}/${m}` : d
 }
 
+// Convite pra avaliar no Google (só quando dá 5 em tudo). Sorteia um par
+// título/linha a cada vez pra não ficar sempre a mesma tela.
+const CONVITES_GOOGLE = [
+  {
+    titulo: '5 ESTRELAS AQUI. E NO GOOGLE?',
+    linha: 'Mesmas 5 estrelas, 30 segundos, e a gente fica famoso.',
+  },
+  {
+    titulo: 'NÃO GUARDA ESSA SÓ PRA VOCÊ.',
+    linha: 'Deixa sua avaliação no Google e ajuda mais gente a largar a academia chata.',
+  },
+  {
+    titulo: 'SÓ FALTA UMA SÉRIE.',
+    linha: '30 segundos no Google e o treino de hoje tá completo.',
+  },
+  {
+    titulo: 'VOCÊ ACABOU DE FAZER NOSSO DIA.',
+    linha: 'Faz o do Google também? Leva 30 segundos.',
+  },
+]
+
+function sortearConvite() {
+  return CONVITES_GOOGLE[Math.floor(Math.random() * CONVITES_GOOGLE.length)]
+}
+
 function Estrelas({ valor, onChange }: { valor: number | null; onChange: (v: number | null) => void }) {
   return (
     <div style={{ display: 'flex', gap: 6 }}>
@@ -63,6 +88,9 @@ export default function ModalAvaliacao() {
   const [enviando, setEnviando] = useState(false)
   const [erro, setErro] = useState('')
 
+  const [google, setGoogle] = useState<{ url: string; unidade_id: string; unidade_nome: string } | null>(null)
+  const [convite] = useState(sortearConvite)
+
   useEffect(() => { setMontado(true) }, [])
 
   useEffect(() => {
@@ -91,12 +119,12 @@ export default function ModalAvaliacao() {
     } catch { /* silencioso — não atrapalha a navegação */ }
   }
 
-  async function enviarAcao(payload: any) {
+  async function enviarAcao(payload: any): Promise<any | null> {
     setErro('')
     setEnviando(true)
     try {
       const t = await token()
-      if (!t) { setAberto(false); return }
+      if (!t) { setAberto(false); return null }
       const res = await fetch('/api/cliente/avaliar-aula', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` },
@@ -106,12 +134,21 @@ export default function ModalAvaliacao() {
         const d = await res.json().catch(() => ({}))
         setErro(d?.error || 'Erro ao salvar. Tente novamente.')
         setEnviando(false)
-        return
+        return null
+      }
+      const data = await res.json().catch(() => ({}))
+      // Nota 5 em tudo e unidade com link → segunda tela em vez de fechar.
+      if (data?.google?.url) {
+        setGoogle(data.google)
+        setEnviando(false)
+        return data
       }
       setAberto(false)
+      return data
     } catch {
       setErro('Erro ao salvar. Tente novamente.')
       setEnviando(false)
+      return null
     }
   }
 
@@ -124,6 +161,21 @@ export default function ModalAvaliacao() {
       nota_musica: notaMusica, nota_ambiente: notaAmb,
       comentario: comentario.trim() || null,
     })
+  }
+
+  // Clicou no Google: registra (sem travar a abertura do link) e fecha.
+  function cliqueGoogle() {
+    if (!google) return
+    const payload = { action: 'google_clique', unidade_id: google.unidade_id }
+    token().then(t => {
+      if (!t) return
+      fetch('/api/cliente/avaliar-aula', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` },
+        body: JSON.stringify(payload),
+      }).catch(() => { /* silencioso — o link já abriu */ })
+    })
+    setAberto(false)
   }
 
   function dispensar() {
@@ -145,22 +197,61 @@ export default function ModalAvaliacao() {
     </div>
   )
 
-  const overlay = (
-    <div
-      style={{
-        position: 'fixed', inset: 0, zIndex: 9999,
-        background: 'rgba(0,0,0,.82)', backdropFilter: 'blur(4px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem',
-      }}
-    >
-      <div
+  const conteudoGoogle = google && (
+    <>
+      <div style={{ fontSize: 30, letterSpacing: 2, color: ACCENT, marginBottom: 14 }}>★★★★★</div>
+
+      <h2 style={{
+        fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, letterSpacing: 1,
+        color: '#fff', margin: 0, lineHeight: 1.1,
+      }}>
+        {convite.titulo}
+      </h2>
+
+      <p style={{ fontSize: 13, color: '#888', margin: '10px 0 0', fontFamily: "'DM Sans', sans-serif", lineHeight: 1.55 }}>
+        {convite.linha}
+      </p>
+
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8, marginTop: 16,
+        padding: '10px 12px', background: '#080808', border: '1px solid #262626', borderRadius: 10,
+      }}>
+        <span style={{ fontSize: 13, color: '#ddd', fontFamily: "'DM Sans', sans-serif" }}>
+          {google.unidade_nome}
+        </span>
+      </div>
+
+      <a
+        href={google.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={cliqueGoogle}
         style={{
-          width: '100%', maxWidth: 420, background: '#0e0e0e',
-          border: '1px solid #1f1f1f', borderRadius: 16, padding: '1.6rem 1.5rem',
-          maxHeight: '90vh', overflowY: 'auto',
+          display: 'block', width: '100%', marginTop: 18, padding: '12px', borderRadius: 10,
+          background: ACCENT, color: '#fff', textAlign: 'center', textDecoration: 'none',
+          fontSize: 14, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, boxSizing: 'border-box',
         }}
       >
-        <h2 style={{
+        Avaliar no Google
+      </a>
+
+      <button
+        type="button"
+        onClick={() => setAberto(false)}
+        style={{
+          display: 'block', margin: '14px auto 0', background: 'none', border: 'none',
+          color: '#5a5a5a', fontSize: 12, cursor: 'pointer',
+          textDecoration: 'underline', fontFamily: "'DM Sans', sans-serif",
+        }}
+      >
+        Agora não
+      </button>
+    </>
+  )
+
+  const conteudoAvaliacao = (
+    <>
+      <h2 style={{
           fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, letterSpacing: 1,
           color: '#fff', margin: 0, lineHeight: 1.1,
         }}>
@@ -239,6 +330,25 @@ export default function ModalAvaliacao() {
         >
           Não quero avaliar aulas
         </button>
+    </>
+  )
+
+  const overlay = (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999,
+        background: 'rgba(0,0,0,.82)', backdropFilter: 'blur(4px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem',
+      }}
+    >
+      <div
+        style={{
+          width: '100%', maxWidth: 420, background: '#0e0e0e',
+          border: '1px solid #1f1f1f', borderRadius: 16, padding: '1.6rem 1.5rem',
+          maxHeight: '90vh', overflowY: 'auto',
+        }}
+      >
+        {google ? conteudoGoogle : conteudoAvaliacao}
       </div>
     </div>
   )

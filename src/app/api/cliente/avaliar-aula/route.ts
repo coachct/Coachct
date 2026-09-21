@@ -81,6 +81,24 @@ function notaValida(n: any): number | null {
   return Number.isInteger(v) && v >= 1 && v <= 5 ? v : null
 }
 
+// Convite pra avaliar no Google. Só oferece quando as QUATRO notas são 5,
+// a unidade tem link cadastrado e o cliente ainda não clicou no convite
+// daquela unidade. Nunca bloqueia nada: a avaliação já foi gravada antes.
+async function convitegoogle(registro: any, clienteId: string, unidadeNome: string) {
+  const cincoEmTudo = [registro.nota_aula, registro.nota_professor, registro.nota_musica, registro.nota_ambiente]
+    .every(n => n === 5)
+  if (!cincoEmTudo || !registro.unidade_id) return null
+
+  const [{ data: uni }, { data: clique }] = await Promise.all([
+    supabase.from('unidades').select('google_review_url').eq('id', registro.unidade_id).maybeSingle(),
+    supabase.from('google_review_cliques').select('id')
+      .eq('cliente_id', clienteId).eq('unidade_id', registro.unidade_id).maybeSingle(),
+  ])
+
+  if (!uni?.google_review_url || clique) return null
+  return { url: uni.google_review_url, unidade_id: registro.unidade_id, unidade_nome: unidadeNome }
+}
+
 // ---- GET: última aula pendente de avaliação ---------------------------------
 
 export async function GET(req: NextRequest) {
@@ -172,6 +190,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
+    // Clicou no convite do Google: registra e nunca mais oferece o daquela unidade.
+    if (action === 'google_clique') {
+      const unidadeId = String(body?.unidade_id || '')
+      if (!unidadeId) return NextResponse.json({ error: 'Dados inválidos' }, { status: 400 })
+      const { error } = await supabase
+        .from('google_review_cliques')
+        .insert({ cliente_id: cliente.id, unidade_id: unidadeId })
+      // 23505 = já registrado antes → segue ok
+      if (error && (error as any).code !== '23505') {
+        console.error('Erro ao registrar clique do Google:', error)
+      }
+      return NextResponse.json({ ok: true })
+    }
+
     const origem = String(body?.origem || '')
     const referenciaId = String(body?.referencia_id || '')
     if (!['ct', 'club'].includes(origem) || !referenciaId) {
@@ -217,6 +249,11 @@ export async function POST(req: NextRequest) {
       if ((error as any).code === '23505') return NextResponse.json({ ok: true, ja_tratada: true })
       console.error('Erro ao gravar avaliação:', error)
       return NextResponse.json({ error: 'Erro ao salvar. Tente novamente.' }, { status: 500 })
+    }
+
+    if (action === 'avaliar') {
+      const google = await convitegoogle(registro, cliente.id, sessao.unidade_nome).catch(() => null)
+      return NextResponse.json({ ok: true, google })
     }
 
     return NextResponse.json({ ok: true })
