@@ -7,6 +7,7 @@
     { "path": "/api/whatsapp/watchdog", "schedule": "*/15 * * * *" },
     { "path": "/api/fila/reconciliar", "schedule": "*/10 * * * *" },
     { "path": "/api/feedback-estreia/disparar", "schedule": "0 13 * * *" },
+    { "path": "/api/carrinho-abandonado/disparar", "schedule": "0 * * * *" },
     { "path": "/api/coaches/encerrar-vencidos", "schedule": "5 3 * * *" }
   ]
 }
