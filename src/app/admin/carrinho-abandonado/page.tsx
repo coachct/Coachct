@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase'
+import { useAuth } from '@/hooks/useAuth'
 import { PageHeader, Spinner, Badge, Insight, EmptyState } from '@/components/ui'
 
 type Etapa = 'abriu' | 'pix_nao_pago' | 'cartao_recusado'
@@ -16,6 +17,8 @@ type Linha = {
   etapa: Etapa
   produto_id: string
   email_enviado_em: string | null
+  contato_em: string | null
+  contato_por: string | null
 }
 
 type FilaItem = {
@@ -45,8 +48,43 @@ function fmtDia(s: string) {
   return new Date(s).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
 }
 
+/**
+ * Telefone no formato que o wa.me aceita (55 + DDD + número). O cadastro tem de
+ * tudo: '19993828690', '(11) 9-4141-0520', com e sem o 55 na frente. Número que
+ * não cabe em nenhum desses formatos volta '' — aí não aparece botão nenhum,
+ * em vez de abrir conversa com número errado.
+ */
+function telefoneWhatsApp(tel?: string | null): string {
+  const d = String(tel || '').replace(/\D/g, '')
+  if (d.startsWith('55') && (d.length === 12 || d.length === 13)) return d
+  if (d.length === 10 || d.length === 11) return `55${d}`
+  return ''
+}
+
+function primeiroNome(nome?: string | null): string {
+  const n = (nome || '').trim().split(/\s+/)[0] || ''
+  if (!n) return ''
+  return n.charAt(0).toUpperCase() + n.slice(1).toLowerCase()
+}
+
+// RASCUNHO — quem manda é uma pessoa da equipe, não um robô: texto curto, sem
+// urgência inventada e sem prometer nada que a gente não controla.
+function textoWhatsApp(l: Linha): string {
+  const ola = primeiroNome(l.cliente_nome)
+  const abre = ola ? `Oi, ${ola}! ` : 'Oi! '
+  const casa = 'Aqui é da Just Club & CT. '
+  if (l.etapa === 'pix_nao_pago') {
+    return `${abre}${casa}Vi que você gerou um Pix do ${l.produto_nome} e ele não consta como pago aqui. Quer que eu te ajude a finalizar?`
+  }
+  if (l.etapa === 'cartao_recusado') {
+    return `${abre}${casa}Vi que o cartão não passou na compra do ${l.produto_nome}. Acontece — quer tentar de outro jeito?`
+  }
+  return `${abre}${casa}Vi que você começou a compra do ${l.produto_nome} e não finalizou. Ficou alguma dúvida que eu possa resolver?`
+}
+
 export default function CarrinhoAbandonadoPage() {
   const supabase = createClient()
+  const { perfil } = useAuth()
 
   const [linhas, setLinhas] = useState<Linha[]>([])
   const [loading, setLoading] = useState(true)
@@ -64,6 +102,24 @@ export default function CarrinhoAbandonadoPage() {
   async function token() {
     const { data } = await supabase.auth.getSession()
     return data.session?.access_token || ''
+  }
+
+  // Marca que alguém já abriu a conversa com essa pessoa sobre esse produto —
+  // pra recepção e admin não cutucarem o mesmo cliente duas vezes. Roda junto
+  // com o clique no link; se falhar, o WhatsApp abre do mesmo jeito.
+  async function marcarContato(l: Linha) {
+    const { data, error } = await supabase.rpc('registrar_contato_carrinho', {
+      p_cliente_id: l.cliente_id,
+      p_produto_id: l.produto_id,
+      p_canal: 'whatsapp',
+    })
+    if (error) return
+    const quando = (data as unknown as string) || new Date().toISOString()
+    setLinhas(ls => ls.map(x =>
+      x.cliente_id === l.cliente_id && x.produto_id === l.produto_id
+        ? { ...x, contato_em: quando, contato_por: perfil?.nome || x.contato_por }
+        : x
+    ))
   }
 
   useEffect(() => {
@@ -238,7 +294,7 @@ export default function CarrinhoAbandonadoPage() {
         {/* Celular: um cartão por carrinho (sem rolar pro lado). A tabela aparece a partir de md. */}
         <div className="md:hidden divide-y divide-gray-100">
           {filtradas.map(l => {
-            const tel = (l.telefone || '').replace(/\D/g, '')
+            const tel = telefoneWhatsApp(l.telefone)
             const etapa = ETAPAS[l.etapa] || ETAPAS.abriu
             return (
               <div key={`${l.cliente_id}-${l.produto_nome}-${l.visita_em}`} className="py-3 first:pt-0 last:pb-0">
@@ -257,17 +313,23 @@ export default function CarrinhoAbandonadoPage() {
                   )}
                   {tel ? (
                     <a
-                      href={`https://wa.me/55${tel}`}
+                      href={`https://wa.me/${tel}?text=${encodeURIComponent(textoWhatsApp(l))}`}
                       target="_blank"
                       rel="noreferrer"
+                      onClick={() => marcarContato(l)}
                       className="text-sm text-primary-600 hover:underline"
                     >
-                      {l.telefone}
+                      Chamar no WhatsApp
                     </a>
                   ) : (
-                    <span className="text-xs text-gray-300">—</span>
+                    <span className="text-xs text-gray-300">Sem telefone</span>
                   )}
                 </div>
+                {l.contato_em && (
+                  <div className="mt-1 text-xs text-gray-400">
+                    Já falaram {fmtDia(l.contato_em)}{l.contato_por ? ` · ${l.contato_por}` : ''}
+                  </div>
+                )}
               </div>
             )
           })}
@@ -287,7 +349,7 @@ export default function CarrinhoAbandonadoPage() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {filtradas.map(l => {
-                const tel = (l.telefone || '').replace(/\D/g, '')
+                const tel = telefoneWhatsApp(l.telefone)
                 const etapa = ETAPAS[l.etapa] || ETAPAS.abriu
                 return (
                   <tr key={`${l.cliente_id}-${l.produto_nome}-${l.visita_em}`}>
@@ -295,14 +357,24 @@ export default function CarrinhoAbandonadoPage() {
                     <td className="py-2.5 pr-2 font-medium text-gray-900">{l.cliente_nome}</td>
                     <td className="py-2.5 pr-2 text-xs whitespace-nowrap">
                       {tel ? (
-                        <a
-                          href={`https://wa.me/55${tel}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-primary-600 hover:underline"
-                        >
-                          {l.telefone}
-                        </a>
+                        <>
+                          <a
+                            href={`https://wa.me/${tel}?text=${encodeURIComponent(textoWhatsApp(l))}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={() => marcarContato(l)}
+                            className="text-primary-600 hover:underline"
+                            title="Abre a conversa com a mensagem já escrita"
+                          >
+                            {l.telefone}
+                          </a>
+                          {l.contato_em && (
+                            <div className="mt-1 text-gray-400">
+                              Já falaram {fmtDia(l.contato_em)}
+                              {l.contato_por ? ` · ${l.contato_por}` : ''}
+                            </div>
+                          )}
+                        </>
                       ) : (
                         <span className="text-gray-300">—</span>
                       )}
