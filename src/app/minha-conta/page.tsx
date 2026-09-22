@@ -263,8 +263,8 @@ export default function MinhaContaPage() {
       // Club reservas futuras
       supabase.from('club_reservas').select(`
         id, status, tipo_credito, posicao, cancelado_em,
-        club_ocorrencias(id, data, club_aulas(tipo, horario, unidade_id, unidades(nome)))
-      `).eq('cliente_id', cli.id).not('status','in','("cancelado")'),
+        club_ocorrencias!inner(id, data, club_aulas(tipo, horario, unidade_id, unidades(nome)))
+      `).eq('cliente_id', cli.id).not('status','in','("cancelado")').gte('club_ocorrencias.data', hoje),
       // Club reservas passadas
       supabase.from('club_reservas').select(`
         id, status, tipo_credito, posicao,
