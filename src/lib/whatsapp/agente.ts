@@ -144,20 +144,25 @@ function finalizarTexto(texto: string): string {
   return semCanalExterno(semTelefoneInventado(limparMecanicaCancel(texto)))
 }
 
-// TRAVA DETERMINÍSTICA: NUNCA falar de multa se o cliente não perguntou — nem pra
-// dizer que NÃO tem ("não tem cobrança nem multa"). Se o cliente NÃO tocou no assunto
-// (multa/cobrança/cartão/taxa) e a resposta menciona multa/cobrança/no-show, remove as
-// frases que citam isso e mantém o resto. `clientePerguntou` vem do contexto da conversa.
-const RE_MULTA = /multa|cobran|no.?show/i
+// TRAVA DETERMINÍSTICA: NUNCA falar de multa NEM de cartão (garantia) se o cliente não
+// perguntou — nem pra dizer que NÃO tem ("não tem cobrança nem multa"). Se o cliente NÃO
+// tocou no assunto (multa/cobrança/cartão/taxa) e a resposta menciona isso, remove as
+// frases que citam e mantém o resto. `clientePerguntou` vem do contexto da conversa.
+const RE_MULTA = /multa|cobran|no.?show|cart[ãa]o|cadastrar-cartao/i
 function semMultaProativa(texto: string, clientePerguntou: boolean): string {
   const t = String(texto || '')
   if (clientePerguntou || !RE_MULTA.test(t)) return t
-  const partes = t.split(/(?<=[.!?…])\s+|\n+/)
-  const limpo = partes
-    .filter((p) => !RE_MULTA.test(p))
-    .join(' ')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\s+([.!?,])/g, '$1')
+  // Remove só as FRASES que citam multa/cartão, preservando as quebras de linha
+  // (parágrafos/negrito) do resto da mensagem.
+  const limpo = t
+    .split('\n')
+    .map((linha) =>
+      RE_MULTA.test(linha)
+        ? linha.split(/(?<=[.!?…])\s+/).filter((f) => !RE_MULTA.test(f)).join(' ').replace(/[ \t]+/g, ' ').trim()
+        : linha,
+    )
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
     .trim()
   return limpo.length >= 8 ? limpo : t
 }
