@@ -1163,9 +1163,11 @@ function AulasPageInner() {
               {cliente?.is_classpass && (
                 <CamposClassPass valor={dadosClassPass} onChange={(v) => { setDadosClassPass(v); setErroModal('') }} />
               )}
-              <div style={{ background:'#0a0a0a', border:'1px solid #1a1a1a', borderRadius:10, padding:'0.75rem 1rem', marginBottom:'1.25rem', fontSize:12, color:'#444', lineHeight:1.7 }}>
-                ⚠️ Cancelamento gratuito <strong style={{ color:'#666' }}>até 12h antes</strong>. Com fila de espera, prazo reduz para 3h. Falta sem aviso gera multa de <strong style={{ color:'#666' }}>R$49,90</strong>.
-              </div>
+              {!cliente?.is_classpass && (
+                <div style={{ background:'#0a0a0a', border:'1px solid #1a1a1a', borderRadius:10, padding:'0.75rem 1rem', marginBottom:'1.25rem', fontSize:12, color:'#444', lineHeight:1.7 }}>
+                  ⚠️ Cancelamento gratuito <strong style={{ color:'#666' }}>até 12h antes</strong>. Com fila de espera, prazo reduz para 3h. Falta sem aviso gera multa de <strong style={{ color:'#666' }}>R$49,90</strong>.
+                </div>
+              )}
               {/^wellhub/i.test(tipoCredito) && !cliente?.is_classpass && !cliente?.wellhub_id && !cliente?.wellhub_email && (
                 <div style={{ background:'#12081a', border:'1px solid #ff2d9b44', borderRadius:10, padding:'0.9rem 1rem', marginBottom:'1rem' }}>
                   <div style={{ fontSize:13, fontWeight:700, color:'#ff5aa6', marginBottom:6 }}>💜 Confirme seu email do Wellhub</div>
