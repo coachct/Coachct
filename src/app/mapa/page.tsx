@@ -7,6 +7,7 @@ import SiteHeader from '@/components/SiteHeader'
 import AvisoUnidade from '@/components/AvisoUnidade'
 import ModalTelefone from '@/components/ModalTelefone'
 import EnqueteHorario from '@/components/EnqueteHorario'
+import CamposClassPass, { CLASSPASS_VAZIO, classPassFaltando, classPassPayload } from '@/components/CamposClassPass'
 import { enqueteDoHorario } from '@/lib/enquete-horario'
 import { aulaJaComecou } from '@/lib/tempo'
 import { mensagemTravaApp } from '@/lib/utils'
@@ -94,6 +95,7 @@ function MapaPageInner() {
   // Enquete de horário: chaves que este cliente já respondeu + opção marcada no modal aberto
   const [enqueteFeitas, setEnqueteFeitas] = useState<string[]>([])
   const [enqueteOpcao,  setEnqueteOpcao]  = useState('')
+  const [dadosClassPass, setDadosClassPass] = useState(CLASSPASS_VAZIO)
   // Nomes dos planos ilimitados (produtos.subtipo = 'ilimitado_club'): o crédito
   // deles mora em creditos_avulsos e cai no mesmo pote 'avulso' do pacote
   // comprado — é por aqui que a tela separa um do outro na reserva extra.
@@ -191,7 +193,7 @@ function MapaPageInner() {
     setPosicaoSel(label)
     setErroModal('')
     // ClassPass usa crédito fixo 'classpass'; em reserva extra (avulso) pré-seleciona o avulso
-    if (cliente?.is_classpass) setTipoCredito('classpass')
+    if (cliente?.is_classpass) { setTipoCredito('classpass'); setDadosClassPass(CLASSPASS_VAZIO) }
     else if (jaReservouNaOc) setTipoCredito(avulsoParaExtra[0] || '')
     setModalAberto(true)
   }
@@ -252,6 +254,7 @@ function MapaPageInner() {
   async function confirmarReserva(continuar: boolean = false) {
     if (!tipoCredito) { setErroModal('Selecione o plano.'); return }
     if (enqueteAtiva && !enqueteOpcao) { setErroModal('Escolha uma opção na pergunta acima para continuar.'); return }
+    if (cliente?.is_classpass) { const f = classPassFaltando(dadosClassPass); if (f) { setErroModal(f); return } }
     if (!posicaoSel || !cliente) return
     setConfirmando(true); setErroModal('')
     // Trava anti-aba-velha: bloqueia reservar aula que já começou. A lista (/aulas) esconde
@@ -278,6 +281,7 @@ function MapaPageInner() {
     const { data: novaReserva, error } = await supabase.from('club_reservas').insert({
       ocorrencia_id: ocId, cliente_id: cliente.id, tipo_credito: tipoCredito,
       posicao: posicaoSel, status: 'reservado', criado_via: 'cliente',
+      ...(cliente.is_classpass ? classPassPayload(dadosClassPass) : {}),
     }).select('id').single()
     if (error) {
       const msg = mensagemTravaApp(error) || 'Erro ao reservar: '+error.message
@@ -541,6 +545,10 @@ function MapaPageInner() {
               marginBottom:'1rem', fontSize:12, color:'#444', lineHeight:1.6 }}>
               ⚠️ Cancelamento gratuito <strong style={{ color:'#666' }}>até 12h antes</strong>. Falta sem aviso gera multa de R$49,90.
             </div>
+
+            {cliente?.is_classpass && (
+              <CamposClassPass valor={dadosClassPass} onChange={(v) => { setDadosClassPass(v); setErroModal('') }} />
+            )}
 
             {enqueteAtiva && (
               <EnqueteHorario enquete={enqueteAtiva} valor={enqueteOpcao}

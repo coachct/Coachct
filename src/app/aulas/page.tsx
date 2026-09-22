@@ -8,6 +8,7 @@ import AvisoUnidade, { AvisoPopupPinheiros } from '@/components/AvisoUnidade'
 import ModalTelefone from '@/components/ModalTelefone'
 import CardCheckinExpress from '@/components/CardCheckinExpress'
 import EnqueteHorario from '@/components/EnqueteHorario'
+import CamposClassPass, { CLASSPASS_VAZIO, classPassFaltando, classPassPayload } from '@/components/CamposClassPass'
 import { enqueteDoHorario } from '@/lib/enquete-horario'
 import { aulaEncerrada, aulaJaComecou, dataHojeSP, hojeSP, filaEncerrada } from '@/lib/tempo'
 import { mensagemTravaApp } from '@/lib/utils'
@@ -181,6 +182,7 @@ function AulasPageInner() {
   // Enquete de horário: chaves que este cliente já respondeu + opção marcada no modal aberto
   const [enqueteFeitas, setEnqueteFeitas] = useState<string[]>([])
   const [enqueteOpcao,  setEnqueteOpcao]  = useState('')
+  const [dadosClassPass, setDadosClassPass] = useState(CLASSPASS_VAZIO)
 
   // Toda a grade parte do "hoje" em São Paulo, não do relógio do dispositivo: cliente
   // em outro fuso (ClassPass fora do Brasil) via o dia errado e as aulas de hoje
@@ -434,6 +436,7 @@ function AulasPageInner() {
   async function abrirModalReserva(oc: any, soAvulso: boolean = false) {
     setModalReserva(oc); setPosicaoSel(''); setErroModal(''); setModalSoAvulso(soAvulso); setAvisoLotou(false)
     setEnqueteOpcao('')
+    setDadosClassPass(CLASSPASS_VAZIO)
     // NÃO pré-preencher com o email da conta: quase nunca é o email do Wellhub, e a
     // pessoa confirmava o errado sem perceber. Vazio força digitar o email certo.
     setWellhubEmailInput(cliente?.wellhub_email || '')
@@ -491,6 +494,7 @@ function AulasPageInner() {
     if (!tipoCredito) { setErroModal('Selecione o plano para usar.'); return }
     if (modalReserva?.club_aulas?.tipo === 'running_funcional' && !posicaoSel) { setErroModal('Selecione sua posição no mapa.'); return }
     if (enqueteAtiva && !enqueteOpcao) { setErroModal('Escolha uma opção na pergunta acima para continuar.'); return }
+    if (cliente?.is_classpass) { const f = classPassFaltando(dadosClassPass); if (f) { setErroModal(f); return } }
     if (!cliente || !modalReserva) return
     setConfirmando(true); setErroModal('')
     // Wellhub sem vínculo: EXIGE o email do Wellhub (bloqueia a reserva até informar).
@@ -521,6 +525,7 @@ function AulasPageInner() {
     }
     const payload: any = { ocorrencia_id: modalReserva.id, cliente_id: cliente.id, tipo_credito: tipoCredito, status: 'reservado', criado_via: 'cliente' }
     if (posicaoSel) payload.posicao = posicaoSel
+    if (cliente.is_classpass) Object.assign(payload, classPassPayload(dadosClassPass))
     const { data: nova, error } = await supabase.from('club_reservas').insert(payload).select('id').single()
     if (error) {
       // Trava de capacidade server-side (trigger trg_club_reservas_capacidade):
@@ -1155,6 +1160,9 @@ function AulasPageInner() {
                 </div>
               )}
 
+              {cliente?.is_classpass && (
+                <CamposClassPass valor={dadosClassPass} onChange={(v) => { setDadosClassPass(v); setErroModal('') }} />
+              )}
               <div style={{ background:'#0a0a0a', border:'1px solid #1a1a1a', borderRadius:10, padding:'0.75rem 1rem', marginBottom:'1.25rem', fontSize:12, color:'#444', lineHeight:1.7 }}>
                 ⚠️ Cancelamento gratuito <strong style={{ color:'#666' }}>até 12h antes</strong>. Com fila de espera, prazo reduz para 3h. Falta sem aviso gera multa de <strong style={{ color:'#666' }}>R$49,90</strong>.
               </div>

@@ -142,6 +142,7 @@ export default function MinhaContaPage() {
   const [cobrancasPendentes, setCobrancasPendentes] = useState<any[]>([])
   const [loadingData,        setLoadingData]        = useState(true)
   const [verTodosHistorico,  setVerTodosHistorico]  = useState(false)
+  const [buscaClassPass,     setBuscaClassPass]     = useState('')
 
   const [modalCancelar, setModalCancelar] = useState<any>(null)
   const [cancelando,    setCancelando]    = useState(false)
@@ -262,7 +263,7 @@ export default function MinhaContaPage() {
         .eq('cliente_id', cli.id).is('excluido_em', null).order('vendido_em',{ascending:false}).limit(10),
       // Club reservas futuras
       supabase.from('club_reservas').select(`
-        id, status, tipo_credito, posicao, cancelado_em,
+        id, status, tipo_credito, posicao, cancelado_em, classpass_nome, classpass_reserva_id,
         club_ocorrencias!inner(id, data, club_aulas(tipo, horario, unidade_id, unidades(nome)))
       `).eq('cliente_id', cli.id).not('status','in','("cancelado")').gte('club_ocorrencias.data', hoje),
       // Club reservas passadas
@@ -461,6 +462,16 @@ export default function MinhaContaPage() {
       original: cr,
     }))),
   ].sort((a,b) => `${a.data}T${a.horario}`.localeCompare(`${b.data}T${b.horario}`))
+
+  // Conta ClassPass: busca pelo nome do cliente ou Reservation ID (sem acento/caixa)
+  const normalizar = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
+  const termoBusca = cliente?.is_classpass ? normalizar(buscaClassPass) : ''
+  const feedFuturoExibido = termoBusca
+    ? feedFuturo.filter(item => {
+        const o: any = item.original
+        return normalizar(o?.classpass_nome || '').includes(termoBusca) || normalizar(o?.classpass_reserva_id || '').includes(termoBusca)
+      })
+    : feedFuturo
 
   // Feed histórico unificado
   const feedHistorico = [
@@ -825,6 +836,17 @@ export default function MinhaContaPage() {
             <div style={{fontSize:12,color:'#555'}}>{feedFuturo.length} agendamento{feedFuturo.length!==1?'s':''}</div>
           </div>
 
+          {cliente?.is_classpass && feedFuturo.length>0 && (
+            <div style={{marginBottom:'0.85rem'}}>
+              <input value={buscaClassPass} onChange={e=>setBuscaClassPass(e.target.value)}
+                placeholder="🔍 Buscar por nome do cliente ou Reservation ID" autoComplete="off" spellCheck={false}
+                style={{width:'100%',background:'#111',border:'1px solid #2a2a2a',borderRadius:10,padding:'0.75rem 1rem',color:'#fff',fontSize:14,fontFamily:"'DM Sans', sans-serif"}}/>
+              {termoBusca && feedFuturoExibido.length===0 && (
+                <div style={{fontSize:12,color:'#555',marginTop:8}}>Nenhum agendamento encontrado para essa busca.</div>
+              )}
+            </div>
+          )}
+
           {feedFuturo.length===0 ? (
             <div style={{background:'#111',border:'1px solid #1e1e1e',borderRadius:14,padding:'2rem',textAlign:'center'}}>
               <div style={{fontSize:28,marginBottom:8}}>🏋️</div>
@@ -837,7 +859,7 @@ export default function MinhaContaPage() {
             </div>
           ) : (
             <div style={{display:'flex',flexDirection:'column',gap:6}}>
-              {feedFuturo.map(item => {
+              {feedFuturoExibido.map(item => {
                 const d = new Date(item.data+'T12:00:00')
                 const podeCancelar = ['agendado','confirmado','reservado'].includes(item.status)
                 const infoTroca = trocaInfo[`${item.tipo}-${item.id}`]
@@ -862,6 +884,14 @@ export default function MinhaContaPage() {
                         <span style={{fontSize:14,fontWeight:600,color:'#fff'}}>{item.horario}</span>
                         <span style={{fontSize:13,color:'#888'}}>· {item.unidadeNome}</span>
                       </div>
+                      {cliente?.is_classpass && isClub && (
+                        <div style={{fontSize:13,color:'#ddd',marginBottom:3,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                          {(item.original as any)?.classpass_nome || <span style={{color:'#555'}}>Sem nome</span>}
+                          {(item.original as any)?.classpass_reserva_id && (
+                            <span style={{fontSize:11,color:'#555',fontFamily:"'DM Mono', monospace",marginLeft:6}}>{(item.original as any).classpass_reserva_id}</span>
+                          )}
+                        </div>
+                      )}
                       <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
                         {isClub && item.tipoAula && (
                           <span style={{fontSize:10,color:ACCENT,background:`${ACCENT}15`,padding:'1px 7px',borderRadius:20,fontWeight:600}}>{tipoAulaLabel(item.tipoAula)}</span>
@@ -1479,6 +1509,12 @@ export default function MinhaContaPage() {
               {new Date(modalCancelar.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'})} · {modalCancelar.horario}
               {modalCancelar.tipo==='club'&&modalCancelar.tipoAula&&<span style={{marginLeft:6,color:ACCENT,fontSize:12}}>· {tipoAulaLabel(modalCancelar.tipoAula)}</span>}
             </div>
+            {cliente?.is_classpass && modalCancelar.original?.classpass_nome && (
+              <div style={{fontSize:14,color:'#fff',marginTop:-8,marginBottom:'1.25rem'}}>
+                {modalCancelar.original.classpass_nome}
+                {modalCancelar.original.classpass_reserva_id && <span style={{fontSize:11,color:'#555',fontFamily:"'DM Mono', monospace",marginLeft:6}}>{modalCancelar.original.classpass_reserva_id}</span>}
+              </div>
+            )}
             <div style={{background:modalCancelar.pode?'#0a1a0a':'#150a0a',border:`1px solid ${modalCancelar.pode?'#aaff0033':'#ff444433'}`,borderRadius:10,padding:'0.85rem',marginBottom:'1.25rem',fontSize:13,color:modalCancelar.pode?'#cfc':'#ffaaaa',lineHeight:1.6}}>
               {modalCancelar.pode?'✅ ':'❌ '}{modalCancelar.aviso}
             </div>

@@ -237,10 +237,12 @@ export default function RecepcaoClubDetalhe() {
 
     const { data: res } = await supabase
       .from('club_reservas')
-      .select('id, status, tipo_credito, posicao, credito_avulso_id, via_app, wellhub_booking_number, totalpass_slot_id, creditos_avulsos(observacao), clientes(id, nome, email, telefone)')
+      .select('id, status, tipo_credito, posicao, credito_avulso_id, via_app, wellhub_booking_number, totalpass_slot_id, classpass_nome, creditos_avulsos(observacao), clientes(id, nome, email, telefone)')
       .eq('ocorrencia_id', ocId)
       .neq('status', 'cancelado')
-    const sorted = (res || []).sort((a: any, b: any) =>
+    // Conta proxy da ClassPass: mostra o nome do cliente deles no lugar de "Reserva Classpass"
+    const comNome = (res || []).map((r: any) => r.classpass_nome ? { ...r, clientes: { ...r.clientes, nome: r.classpass_nome } } : r)
+    const sorted = comNome.sort((a: any, b: any) =>
       (a.clientes?.nome || '').localeCompare(b.clientes?.nome || '', 'pt-BR'))
     setReservas(sorted)
     setPosicoesTomadas(
