@@ -5,7 +5,8 @@
 // aluno (site) para deixar claro qual treino do mês é aquele.
 //
 // Regras:
-//  - Conta só os treinos que CONSOMEM crédito (tudo menos 'cancelado').
+//  - Conta só os treinos que CONSOMEM crédito (tudo menos 'cancelado'; e, nos
+//    pools de app Wellhub/TotalPass, tudo menos 'falta' também).
 //  - Agrupa por (ano-mês do treino, tipo_credito) — cada mês reinicia a contagem
 //    e cada pool de crédito é numerado separadamente.
 //  - Só emite o rótulo "X/N" quando há um teto mensal conhecido para aquele
@@ -33,6 +34,7 @@ export function numerarTreinosDoMes(
 ): Map<string, string> {
   const consumidores = (itens || [])
     .filter((t) => t && t.id && t.data && t.tipo_credito && t.status !== 'cancelado')
+    .filter((t) => !(t.status === 'falta' && ehPoolDeApp(String(t.tipo_credito))))
     .slice()
     .sort((a, b) => {
       if (a.data !== b.data) return a.data < b.data ? -1 : 1
@@ -53,6 +55,15 @@ export function numerarTreinosDoMes(
     if (total && total > 0) out.set(t.id, `${n}/${total}`)
   }
   return out
+}
+
+/**
+ * Pool de app parceiro (Wellhub/TotalPass). Nesses, a falta NÃO entra no "X/N":
+ * o saldo também não a conta como consumo, e contar confundia o aluno
+ * (ex.: próxima aula aparecendo "11/10" com só 9 presenças + 1 falta).
+ */
+function ehPoolDeApp(tipo: string): boolean {
+  return tipo.startsWith('wellhub') || tipo.startsWith('totalpass')
 }
 
 /** Pools SEM teto mensal — nunca recebem "X/N". */
