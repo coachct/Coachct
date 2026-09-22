@@ -541,10 +541,12 @@ function MapaPageInner() {
               })}
             </div>
 
-            <div style={{ background:'#0a0a0a', border:'1px solid #1a1a1a', borderRadius:10, padding:'0.65rem 1rem',
-              marginBottom:'1rem', fontSize:12, color:'#444', lineHeight:1.6 }}>
-              ⚠️ Cancelamento gratuito <strong style={{ color:'#666' }}>até 12h antes</strong>. Falta sem aviso gera multa de R$49,90.
-            </div>
+            {!cliente?.is_classpass && (
+              <div style={{ background:'#0a0a0a', border:'1px solid #1a1a1a', borderRadius:10, padding:'0.65rem 1rem',
+                marginBottom:'1rem', fontSize:12, color:'#444', lineHeight:1.6 }}>
+                ⚠️ Cancelamento gratuito <strong style={{ color:'#666' }}>até 12h antes</strong>. Falta sem aviso gera multa de R$49,90.
+              </div>
+            )}
 
             {cliente?.is_classpass && (
               <CamposClassPass valor={dadosClassPass} onChange={(v) => { setDadosClassPass(v); setErroModal('') }} />
