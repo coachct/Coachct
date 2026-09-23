@@ -418,17 +418,9 @@ export default function TotemPage() {
                     </div>
                   ))}
                 </div>
-                <div className="ex-sub2">Reservas Coach CT , escolha a opção abaixo:</div>
-                <div className="tiles">
-                  <button className="tile primary" onClick={() => { setFaceMsg('Olhe para a câmera'); setScreen('face') }}>
-                    <span className="tico">📷</span>
-                    <span className="tlab">Reconhecimento<br />Facial</span>
-                  </button>
-                  <button className="tile" onClick={() => abrirCpf('checkin')}>
-                    <span className="tico">🔢</span>
-                    <span className="tlab">CPF</span>
-                  </button>
-                </div>
+                <button className="tile primary coachcard" onClick={() => abrirCpf('checkin')}>
+                  <span className="tlab">Se voce tem uma reserva de Coach CT, clique aqui e digite seu cpf.</span>
+                </button>
               </section>
             )}
 
@@ -791,6 +783,8 @@ const CSS = `
 #tt .tile .tico{font-size:50px;line-height:1;color:var(--pink2)}
 #tt .tile.primary .tico{color:#fff}
 #tt .tile .tlab{font-size:18px;font-weight:800;line-height:1.2;text-align:center}
+#tt .tile.coachcard{width:100%;flex:0 0 auto;padding:30px 22px}
+#tt .tile.coachcard .tlab{font-size:22px;line-height:1.35}
 #tt .express-hdr{text-align:center;margin:8px 0 14px}
 #tt .ex-title{font-size:36px;font-weight:900;letter-spacing:1px;line-height:1}
 #tt .ex-title span{color:var(--pink)}
