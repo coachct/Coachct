@@ -406,12 +406,10 @@ export default function TotemPage() {
               <section className="screen on">
                 <div className="express-hdr" style={{ margin: '30px 0 16px' }}>
                   <div className="ex-title" style={{ fontSize: 28 }}>CHECK-IN <span>EXPRESS</span></div>
-                  <div className="ex-sub">Cliente Wellhub e Totalpass, efetue o check in no app para liberar a entrada.</div>
+                  <div className="ex-sub ct">Cliente Wellhub e Totalpass, efetue o check in no app para liberar a entrada.</div>
                 </div>
                 <div className="feed">
-                  {ctFeed.length === 0 ? (
-                    <div className="feed-empty">Faça seu check-in no app parceiro e seu nome aparece aqui.</div>
-                  ) : ctFeed.map((c) => (
+                  {ctFeed.map((c) => (
                     <div key={c.id} className="feedcard">
                       <div className="fc-nome">{c.nome}</div>
                       <div className="fc-lib"><span className="fc-ck">✓</span> ENTRADA LIBERADA</div>
@@ -799,6 +797,7 @@ const CSS = `
 #tt .ex-sub{margin-top:14px;font-size:15px;font-weight:700;color:#fcd34d;background:rgba(245,158,11,.1);
   border:1px solid rgba(245,158,11,.32);padding:14px 18px;border-radius:16px;display:inline-block;line-height:1.55}
 #tt .ex-sub b{color:#fde68a}
+#tt .ex-sub.ct{color:var(--txt);background:rgba(255,45,142,.08);border-color:rgba(255,45,142,.4)}
 #tt .idlecam{position:relative;width:300px;height:360px;border-radius:26px;margin:0 auto;overflow:hidden;
   background:linear-gradient(160deg,#14141f,#0c0c14);border:1px solid var(--line);display:flex;align-items:center;justify-content:center}
 #tt .idlecam .face{font-size:150px;opacity:.6;position:absolute}
