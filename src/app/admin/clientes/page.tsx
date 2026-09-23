@@ -269,6 +269,7 @@ function AdminClientesPageInner() {
   const [acessoBloqueado, setAcessoBloqueado] = useState(false)
   const [salvandoBloqueio, setSalvandoBloqueio] = useState(false)
   const [salvandoAcompanhar, setSalvandoAcompanhar] = useState(false)
+  const [salvandoAgendamentoCt, setSalvandoAgendamentoCt] = useState(false)
   const [modalFoto, setModalFoto] = useState(false)
   const [streamCam, setStreamCam] = useState<MediaStream | null>(null)
   const [fotoCapturada, setFotoCapturada] = useState<string | null>(null)
@@ -596,6 +597,30 @@ function AdminClientesPageInner() {
     const { error } = await supabase.from('clientes').update(patch).eq('id', clienteSel.id)
     setSalvandoAcompanhar(false)
     if (error) { alert('Erro ao salvar: ' + error.message); return }
+    setClienteSel({ ...clienteSel, ...patch })
+  }
+
+  // Bloqueio de agendamento do Coach CT (só admin — esta página já é só admin).
+  // Não é o bloqueio de acesso: o cliente continua entrando, treinando no Club e
+  // comprando. Ao ligar, as reservas FUTURAS do CT são canceladas (a vaga volta
+  // pro quadro e a fila é promovida pelo trigger de sempre).
+  async function toggleAgendamentoCt() {
+    if (!clienteSel) return
+    const ligar = !clienteSel.agendamento_ct_bloqueado
+    if (ligar && !confirm('Bloquear os agendamentos do Coach CT e cancelar as reservas futuras deste cliente?')) return
+    setSalvandoAgendamentoCt(true)
+    const patch = ligar
+      ? { agendamento_ct_bloqueado: true, agendamento_ct_bloqueado_em: new Date().toISOString(), agendamento_ct_bloqueado_por: perfil?.id || null }
+      : { agendamento_ct_bloqueado: false, agendamento_ct_bloqueado_em: null, agendamento_ct_bloqueado_por: null }
+    const { error } = await supabase.from('clientes').update(patch).eq('id', clienteSel.id)
+    if (error) { setSalvandoAgendamentoCt(false); alert('Erro ao salvar: ' + error.message); return }
+    if (ligar) {
+      const hoje = new Date().toISOString().slice(0, 10)
+      await supabase.from('agendamentos')
+        .update({ status: 'cancelado', cancelado_em: new Date().toISOString(), motivo_cancelamento: 'Agendamentos bloqueados pelo admin' })
+        .eq('cliente_id', clienteSel.id).gte('data', hoje).in('status', ['agendado', 'confirmado'])
+    }
+    setSalvandoAgendamentoCt(false)
     setClienteSel({ ...clienteSel, ...patch })
   }
 
@@ -1504,6 +1529,30 @@ function AdminClientesPageInner() {
                       className={`btn btn-sm gap-1 mt-auto w-full disabled:opacity-50 ${clienteSel.acompanhar ? 'text-amber-700 border border-amber-300 hover:bg-amber-100' : 'bg-amber-500 text-white hover:bg-amber-600'}`}
                     >
                       {clienteSel.acompanhar ? <><EyeOff size={14} /> Parar</> : <><Eye size={14} /> Acompanhar</>}
+                    </button>
+                  </div>
+
+                  {/* 5. Agendamento do Coach CT — trava só a reserva do CT (não é o bloqueio de acesso) */}
+                  <div className={`card border-l-4 flex flex-col ${clienteSel.agendamento_ct_bloqueado ? 'border-l-red-400 bg-red-50' : 'border-l-gray-200'}`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${clienteSel.agendamento_ct_bloqueado ? 'bg-red-200 text-red-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {clienteSel.agendamento_ct_bloqueado ? <Lock size={16} /> : <Dumbbell size={16} />}
+                      </div>
+                      <div className={`text-sm font-semibold leading-tight ${clienteSel.agendamento_ct_bloqueado ? 'text-red-900' : 'text-gray-800'}`}>
+                        {clienteSel.agendamento_ct_bloqueado ? 'Agendamento CT bloqueado' : 'Agendamento Coach CT'}
+                      </div>
+                    </div>
+                    <div className={`hidden md:block text-xs mb-3 ${clienteSel.agendamento_ct_bloqueado ? 'text-red-700' : 'text-gray-500'}`}>
+                      {clienteSel.agendamento_ct_bloqueado
+                        ? 'Não reserva o Coach CT e vê o aviso pedindo contato pelo WhatsApp. Entra, treina no Club e compra normal.'
+                        : 'Impede este cliente de reservar o Coach CT e cancela as reservas futuras dele.'}
+                    </div>
+                    <button
+                      onClick={toggleAgendamentoCt}
+                      disabled={salvandoAgendamentoCt}
+                      className={`btn btn-sm gap-1 mt-auto w-full disabled:opacity-50 ${clienteSel.agendamento_ct_bloqueado ? 'bg-green-600 text-white hover:bg-green-700' : 'text-red-600 border border-red-300 hover:bg-red-50'}`}
+                    >
+                      {clienteSel.agendamento_ct_bloqueado ? <><Unlock size={14} /> Liberar agendamentos</> : <><Lock size={14} /> Bloquear agendamentos</>}
                     </button>
                   </div>
                 </div>

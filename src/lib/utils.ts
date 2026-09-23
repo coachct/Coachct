@@ -78,6 +78,7 @@ export function perfLabel(ocupacaoPct: number): { txt: string; color: string } {
 const TRAVAS_NEGOCIO: Record<string, string> = {
   APP_1_POR_DIA: 'Você já tem um treino nesse dia com esse app. Cada app permite apenas um treino por dia, em qualquer unidade.',
   ILIMITADO_1_POR_AULA: 'O plano ilimitado vale só para o titular — uma posição por aula.',
+  AGENDAMENTO_CT_BLOQUEADO: 'Notamos que você não tem comparecido aos treinos, o que está ocasionando coaches sem atendimentos em horários que temos alunos querendo agendamentos. Favor entrar em contato com a equipe via whatsapp para liberarmos novamente os seus agendamentos.',
 }
 export function mensagemTravaApp(error: any): string | null {
   const m = String(error?.message || '')

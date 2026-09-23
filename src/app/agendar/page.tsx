@@ -17,6 +17,10 @@ const CYAN    = '#00e5ff'
 const AMARELO = '#ffaa00'
 const VERMELHO = '#ff4444'
 
+// Bloqueio de agendamento do Coach CT: texto que o cliente vê no lugar da grade.
+const MSG_AGENDAMENTO_CT_BLOQUEADO = 'Notamos que você não tem comparecido aos treinos, o que está ocasionando coaches sem atendimentos em horários que temos alunos querendo agendamentos. Favor entrar em contato com a equipe via whatsapp para liberarmos novamente os seus agendamentos.'
+const WHATSAPP_EQUIPE = '5511917555878'
+
 // Clientes que veem o aviso de faltas antes de cada reserva (decisão caso a caso).
 // Juliana Gomes: reserva e não comparece desde agosto/2026.
 const CLIENTES_AVISO_FALTAS = ['1754f8b2-0794-436e-b46c-1cebbfbf60c1']
@@ -242,6 +246,9 @@ export default function AgendarPage() {
   // Gate de telefone: já tem cartão (customer no Pagar.me existe) mas está sem telefone válido
   const precisaTelefone = () => !!cliente?.pagarme_card_id && !telefoneValido(cliente?.telefone)
   const clienteBloqueado = !!cliente?.bloqueado
+  const agendamentoCtBloqueado = !!cliente?.agendamento_ct_bloqueado
+  // Os dois escondem a grade do mesmo jeito; o que muda é o aviso que aparece no lugar.
+  const bloqueioAgenda = !!cliente?.bloqueado || !!cliente?.agendamento_ct_bloqueado
   const temCobrancaPendente = cobrancasPendentes.length > 0
 
   const diasSemana = Array.from({ length: 7 }, (_, i) => {
@@ -271,8 +278,8 @@ export default function AgendarPage() {
   }, [unidadeAtiva?.id, cliente?.id])
 
   useEffect(() => {
-    if (unidadeAtiva && !clienteBloqueado && unidadeConfirmada) loadHorarios()
-  }, [diaSel, semanaOffset, perfil, cliente, unidadeAtiva?.id, clienteBloqueado, unidadeConfirmada])
+    if (unidadeAtiva && !bloqueioAgenda && unidadeConfirmada) loadHorarios()
+  }, [diaSel, semanaOffset, perfil, cliente, unidadeAtiva?.id, bloqueioAgenda, unidadeConfirmada])
 
   async function loadCliente() {
     if (!perfil) return
@@ -502,7 +509,7 @@ export default function AgendarPage() {
 
   function tentarAgendar(hora: string, vagas: number, skipTel: boolean = false) {
     if (!user) { router.push('/login'); return }
-    if (clienteBloqueado) return
+    if (clienteBloqueado || agendamentoCtBloqueado) return
     if (semPlanoAtivo) { setModalSemPlano(true); return }
     if (precisaCartao) { setModalSemCartao(true); return }
     if (!skipTel && precisaTelefone()) { setPendingReserva(() => () => tentarAgendar(hora, vagas, true)); setModalTelefone(true); return }
@@ -511,7 +518,7 @@ export default function AgendarPage() {
 
   function tentarFila(hora: string, skipTel: boolean = false) {
     if (!user) { router.push('/login'); return }
-    if (clienteBloqueado) return
+    if (clienteBloqueado || agendamentoCtBloqueado) return
     // A menos de 3h do treino o cancelamento é bloqueado — nenhuma vaga abre,
     // então a fila fecha e o horário mostra só LOTADO.
     if (filaEncerrada(dataLocalStr(diasSemana[diaSel]), hora)) return
@@ -586,6 +593,7 @@ export default function AgendarPage() {
     if (!tipoCredito) { setErroModal('Selecione como vai usar esta sessão.'); return }
     if (!modalSlot || !cliente || !unidadeAtiva) return
     if (clienteBloqueado) { setErroModal('Sua conta está bloqueada.'); return }
+    if (agendamentoCtBloqueado) { setErroModal(MSG_AGENDAMENTO_CT_BLOQUEADO); return }
     if (jaAgendouNoDia(tipoCredito)) { const { label } = parsePlanoKey(tipoCredito); setErroModal(`Você já tem um agendamento com ${label} neste dia.`); return }
     const agora = new Date()
     const dataSel = diasSemana[diaSel]
@@ -641,6 +649,7 @@ export default function AgendarPage() {
     if (!filaAceite) { setErroFila('Confirme que entendeu as regras da fila.'); return }
     if (!modalFila || !cliente || !unidadeAtiva) return
     if (clienteBloqueado) { setErroFila('Sua conta está bloqueada.'); return }
+    if (agendamentoCtBloqueado) { setErroFila(MSG_AGENDAMENTO_CT_BLOQUEADO); return }
     // Fila exige telefone (o aviso de promoção é por WhatsApp). Gate independente de cartão.
     if (!skipTel && !telefoneValido(cliente?.telefone)) {
       setPendingReserva(() => () => confirmarFila(true))
@@ -686,7 +695,7 @@ export default function AgendarPage() {
   const dataSelEhProximoMes = diasSemana[diaSel].getMonth() !== new Date().getMonth() || diasSemana[diaSel].getFullYear() !== new Date().getFullYear()
   const mostrarEscolhaCoach = temBeneficiosPro
 
-  const mostrarHero = !clienteBloqueado && unidadesPermitidas.length > 1 && !unidadeConfirmada
+  const mostrarHero = !bloqueioAgenda && unidadesPermitidas.length > 1 && !unidadeConfirmada
 
   return (
     <div style={{ minHeight: '100vh', background: '#080808', fontFamily: "'DM Sans', sans-serif", color: '#f0f0f0' }}>
@@ -751,7 +760,7 @@ export default function AgendarPage() {
             <div style={{ marginBottom: '1.5rem' }}>
               <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: '#fff' }}>AGENDAR TREINO</div>
               <div style={{ fontSize: 14, color: '#555', marginTop: 4 }}>
-                {clienteBloqueado ? 'Conta com pendência — veja os detalhes abaixo' : 'Cada halter = uma vaga disponível'}
+                {agendamentoCtBloqueado ? 'Agendamentos bloqueados — veja abaixo' : clienteBloqueado ? 'Conta com pendência — veja os detalhes abaixo' : 'Cada halter = uma vaga disponível'}
               </div>
             </div>
 
@@ -865,21 +874,43 @@ export default function AgendarPage() {
               </div>
             )}
 
-            {!clienteBloqueado && tipoVisualizacao === 'visitante' && (
+            {/* Bloqueio de agendamento do Coach CT (clientes.agendamento_ct_bloqueado).
+                Não é o bloqueio de multa: ela entra, treina no Club e compra normal —
+                só não reserva o Coach CT até falar com a equipe. */}
+            {agendamentoCtBloqueado && (
+              <div style={{ background: '#1a1000', border: `2px solid ${AMARELO}`, borderRadius: 16, padding: '1.5rem', marginBottom: '1.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: '0.75rem' }}>
+                  <div style={{ fontSize: 32 }}>🔒</div>
+                  <div>
+                    <div style={{ fontSize: 18, color: AMARELO, fontWeight: 700, fontFamily: "'Bebas Neue', sans-serif", letterSpacing: 1 }}>AGENDAMENTOS BLOQUEADOS</div>
+                    <div style={{ fontSize: 13, color: '#ccc' }}>Fale com a equipe para liberar</div>
+                  </div>
+                </div>
+                <div style={{ fontSize: 14, color: '#ddd', lineHeight: 1.7, marginBottom: '1rem' }}>
+                  {MSG_AGENDAMENTO_CT_BLOQUEADO}
+                </div>
+                <a href={`https://wa.me/${WHATSAPP_EQUIPE}`} target="_blank" rel="noopener noreferrer"
+                  style={{ display: 'block', width: '100%', textAlign: 'center', background: AMARELO, color: '#000', border: 'none', borderRadius: 10, padding: '0.85rem 1.25rem', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", textDecoration: 'none' }}>
+                  Falar com a equipe no WhatsApp
+                </a>
+              </div>
+            )}
+
+            {!bloqueioAgenda &&tipoVisualizacao === 'visitante' && (
               <div style={{ background: '#0a0014', border: `1px solid ${ACCENT}33`, borderRadius: 12, padding: '0.85rem 1.25rem', marginBottom: '1.5rem', fontSize: 13, color: '#ccc', lineHeight: 1.6 }}>
                 👋 Você está navegando como visitante. Faça login para reservar treinos.
               </div>
             )}
 
             {/* ── FIX: mostra skeleton enquanto saldos carregam, evitando flash do banner errado ── */}
-            {!clienteBloqueado && loadingSaldos && cliente && (
+            {!bloqueioAgenda &&loadingSaldos && cliente && (
               <div style={{ background: '#111', border: '1px solid #1a1a1a', borderRadius: 16, padding: '1rem 1.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{ width: 16, height: 16, border: `2px solid ${ACCENT}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
                 <div style={{ fontSize: 13, color: '#444' }}>Verificando plano...</div>
               </div>
             )}
 
-            {!clienteBloqueado && !loadingSaldos && semPlanoAtivo && (
+            {!bloqueioAgenda &&!loadingSaldos && semPlanoAtivo && (
               <div style={{ background: '#110008', border: `1.5px solid ${ACCENT}55`, borderRadius: 16, padding: '1.25rem 1.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
                 <div>
                   <div style={{ fontSize: 14, color: ACCENT, fontWeight: 700, marginBottom: 4 }}>⚡ Você não tem um plano ativo</div>
@@ -889,7 +920,7 @@ export default function AgendarPage() {
               </div>
             )}
 
-            {!clienteBloqueado && !loadingSaldos && !semPlanoAtivo && precisaCartao && (
+            {!bloqueioAgenda &&!loadingSaldos && !semPlanoAtivo && precisaCartao && (
               <div style={{ background: '#1a1000', border: `1.5px solid ${AMARELO}55`, borderRadius: 16, padding: '1.25rem 1.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
                 <div>
                   <div style={{ fontSize: 14, color: AMARELO, fontWeight: 700, marginBottom: 4 }}>💳 Cadastre um cartão para liberar agendamentos</div>
@@ -899,20 +930,20 @@ export default function AgendarPage() {
               </div>
             )}
 
-            {!clienteBloqueado && janelaProximoMesAberta && cliente && (
+            {!bloqueioAgenda &&janelaProximoMesAberta && cliente && (
               <div style={{ background: '#0a0014', border: `1px solid ${ACCENT}33`, borderRadius: 12, padding: '0.85rem 1.25rem', marginBottom: '1.5rem', fontSize: 13, color: '#ccc', lineHeight: 1.6 }}>
                 ✨ Agendamentos para o próximo mês já estão liberados.
               </div>
             )}
 
-            {!clienteBloqueado && todosSemSaldo && !dataSelAposLimite && (
+            {!bloqueioAgenda &&todosSemSaldo && !dataSelAposLimite && (
               <div style={{ background: '#1a0a00', border: '1px solid #ff660033', borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1.5rem' }}>
                 <div style={{ fontSize: 14, color: AMARELO, fontWeight: 600, marginBottom: 4 }}>⚠️ Sem créditos disponíveis</div>
                 <div style={{ fontSize: 13, color: '#666', lineHeight: 1.6 }}>{dataSelEhProximoMes ? 'Você não tem créditos para o mês selecionado.' : 'Seus créditos renovam no dia 1º do próximo mês.'}</div>
               </div>
             )}
 
-            {!clienteBloqueado && cliente && Object.keys(saldoExibir).length > 0 && !dataSelAposLimite && (
+            {!bloqueioAgenda &&cliente && Object.keys(saldoExibir).length > 0 && !dataSelAposLimite && (
               <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
                 {dataSelEhProximoMes && <span style={{ fontSize: 11, color: AMARELO, fontWeight: 600, marginRight: 4 }}>Saldo do próximo mês:</span>}
                 {Object.entries(saldoExibir).map(([plano, info]: [string, any]) => {
@@ -933,7 +964,7 @@ export default function AgendarPage() {
                 (/minha-conta) — aqui não se repete. O que aparece nesta tela é
                 o operacional: saldo e atalho de compra, e só quando a regra já
                 vale. Com a chave em 'off' nada disso aparece. */}
-            {!clienteBloqueado && cliente && creditoExtra?.exige && (
+            {!bloqueioAgenda &&cliente && creditoExtra?.exige && (
               <div style={{ background: creditoExtra.saldo > 0 ? '#0a0014' : '#1a1000', border: `1.5px solid ${creditoExtra.saldo > 0 ? ACCENT + '44' : AMARELO + '55'}`, borderRadius: 16, padding: '1rem 1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: creditoExtra.saldo > 0 ? ACCENT : AMARELO, marginBottom: 4 }}>
@@ -952,20 +983,20 @@ export default function AgendarPage() {
               </div>
             )}
 
-            {!clienteBloqueado && isDiaExclusivoPro && !dataSelAposLimite && (
+            {!bloqueioAgenda &&isDiaExclusivoPro && !dataSelAposLimite && (
               <div style={{ background: `linear-gradient(90deg, ${ACCENT}22 0%, #08080800 100%)`, border: `1px solid ${ACCENT}55`, borderRadius: 10, padding: '0.75rem 1rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 12, color: ACCENT, fontWeight: 700, fontFamily: "'DM Mono', monospace", letterSpacing: 0.5 }}>🏆 AGENDAMENTOS EXCLUSIVOS COACH CT PRO</div>
                 <button onClick={() => router.push('/comprar')} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 8, padding: '0.4rem 0.85rem', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>CONHECER PLANO →</button>
               </div>
             )}
 
-            {!clienteBloqueado && !isDiaExclusivoPro && tipoVisualizacao === 'visitante' && semanaOffset === 0 && (
+            {!bloqueioAgenda &&!isDiaExclusivoPro && tipoVisualizacao === 'visitante' && semanaOffset === 0 && (
               <div style={{ background: 'linear-gradient(90deg, #0a1a14 0%, #08080800 100%)', border: `1px solid #2ddd8b33`, borderRadius: 10, padding: '0.6rem 1rem', marginBottom: '0.75rem', fontSize: 12, color: '#2ddd8b', fontWeight: 600, fontFamily: "'DM Mono', monospace", letterSpacing: 0.5 }}>
                 📅 AGENDAMENTO LIVRE · próximos 7 dias
               </div>
             )}
 
-            {!clienteBloqueado && (
+            {!bloqueioAgenda &&(
               <>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
                   <button className="nav-semana-btn" onClick={() => { setSemanaOffset(o => Math.max(0, o - 1)); setDiaSel(0) }} disabled={semanaOffset === 0}
