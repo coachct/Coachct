@@ -103,7 +103,7 @@ function parsePlanoKey(key: string): { label: string; icon: string } {
   else if (lower.startsWith('totalpass'))    { tipo = 'TotalPass'; icon = '🔵'; slugUnidade = key.split('_').slice(1).join('_') }
   else if (lower.startsWith('avulso')||lower.startsWith('credito')) { tipo = 'Crédito Avulso'; icon = '🎟️'; slugUnidade = key.split('_').slice(1).join('_') }
   else { tipo = key }
-  const nomeUnidade: Record<string,string> = { just_ct:'Just CT', just_club_vila_olimpia:'Vila Olímpia', just_club_pinheiros:'Pinheiros' }
+  const nomeUnidade: Record<string,string> = { just_ct:'Just CT', just_club_vila_olimpia:'Just Club Vila Olímpia', just_club_pinheiros:'Just Club Pinheiros' }
   return { label: `${tipo} — ${nomeUnidade[slugUnidade]||slugUnidade.replace(/_/g,' ')}`, icon }
 }
 
