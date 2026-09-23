@@ -14,9 +14,10 @@ type Screen =
   | 'loading' | 'config' | 'idle' | 'face' | 'cpf' | 'validate' | 'reserva' | 'recepcao'
   | 'waiting' | 'done' | 'enrollConsent' | 'enrollCapture' | 'enrollDone'
   | 'ctLiberado' | 'ctAguardando' | 'ctJaRegistrada'
-  | 'ctCoachAguardando' | 'ctCoachEscolher' | 'ctCoachPronto' | 'ctConfirmado'
+  | 'ctCoachAguardando' | 'ctCoachEscolher' | 'ctCoachPronto'
 
 const POLL_MS = 3000
+const FEED_CARD_MS = 10000 // card "Entrada liberada" fica 10s na tela e some sozinho
 const RESET_DONE_MS = 12000
 const INATIVIDADE_MS = 60000
 const SCAN_MS = 1600
@@ -38,9 +39,9 @@ export default function TotemPage() {
   const [confCoach, setConfCoach] = useState(false)
   const [coachMsg, setCoachMsg] = useState('')
   const [coachErro, setCoachErro] = useState(false) // bateu no modo errado (Musculação Livre)
-  // Feed de check-ins do CT (conferência do cliente na tela)
-  const [ctFeed, setCtFeed] = useState<{ id: string; nome: string; origem: string }[]>([])
-  const [confNome, setConfNome] = useState('')
+  // Feed de check-ins do CT: "Nome · Entrada liberada", some sozinho após FEED_CARD_MS
+  const [ctFeed, setCtFeed] = useState<{ id: string; nome: string; origem: string; expira: number }[]>([])
+  const feedVistosRef = useRef<Set<string>>(new Set())
   const [scale, setScale] = useState(1)
   const [faceReady, setFaceReady] = useState(false)
   const [faceMsg, setFaceMsg] = useState('Câmera ativa · olhe para reconhecer')
@@ -149,7 +150,7 @@ export default function TotemPage() {
     setCpf(''); setNome(''); setReserva(null); setRecepcaoMsg(''); setStatusMsg('')
     setConsentOk(false); setEnrollNome(''); setEnrollCpf(''); setEnrollMsg('Posicione seu rosto')
     setCtInfo(null)
-    setCoachAg(null); setCoachesCt([]); setCoachSel(''); setCoachMsg(''); setConfNome(''); setCoachErro(false)
+    setCoachAg(null); setCoachesCt([]); setCoachSel(''); setCoachMsg(''); setCoachErro(false)
     setFaceMsg('Câmera ativa · olhe para reconhecer'); setScreen('idle')
   }, [limparPoll])
   useEffect(() => {
@@ -157,8 +158,7 @@ export default function TotemPage() {
     if (screen === 'idle' || screen === 'loading' || screen === 'config') return
     if (screen === 'reserva' && reserva?.flow === 'aguardar_parceiro') return
     if (screen === 'ctCoachAguardando') return // aguardando check-in Personal, não expira
-    const ms = screen === 'ctConfirmado' ? 3000
-      : (screen === 'done' || screen === 'ctLiberado' || screen === 'ctJaRegistrada' || screen === 'ctCoachPronto') ? RESET_DONE_MS
+    const ms = (screen === 'done' || screen === 'ctLiberado' || screen === 'ctJaRegistrada' || screen === 'ctCoachPronto') ? RESET_DONE_MS
       : (screen === 'ctAguardando' || screen === 'ctCoachEscolher') ? 120000
       : INATIVIDADE_MS
     inatRef.current = setTimeout(irIdle, ms)
@@ -241,14 +241,29 @@ export default function TotemPage() {
   const carregarFeed = useCallback(async () => {
     if (!unidade || unidade.tipo !== 'ct') return
     const r = await api(`/api/totem/ct-checkins?unidade=${encodeURIComponent(unidade.slug)}`)
-    setCtFeed((r?.checkins || []) as { id: string; nome: string; origem: string }[])
+    // API vem do mais novo pro mais antigo; enfileira na ordem de chegada
+    const novos = ((r?.checkins || []) as { id: string; nome: string; origem: string }[])
+      .filter((c) => !feedVistosRef.current.has(c.id))
+      .reverse()
+    if (!novos.length) return
+    const agora = Date.now()
+    novos.forEach((c) => {
+      feedVistosRef.current.add(c.id)
+      // carimba "mostrado no totem" pra não voltar no próximo poll / recarga
+      api('/api/totem/ct-confirmar-entrada', { method: 'POST', body: JSON.stringify({ unidade: unidade.slug, entradaId: c.id }) }).catch(() => ({}))
+    })
+    setCtFeed((prev) => [...prev, ...novos.map((c) => ({ ...c, expira: agora + FEED_CARD_MS }))])
   }, [unidade, api])
-  const confirmarEntrada = async (id: string, nome: string) => {
-    setConfNome(nome)
-    setCtFeed((prev) => prev.filter((c) => c.id !== id))
-    setScreen('ctConfirmado')
-    await api('/api/totem/ct-confirmar-entrada', { method: 'POST', body: JSON.stringify({ unidade: unidade!.slug, entradaId: id }) }).catch(() => ({}))
-  }
+
+  // tira da tela os cards que já cumpriram os 10s
+  useEffect(() => {
+    if (!ctFeed.length) return
+    const t = setInterval(() => {
+      const agora = Date.now()
+      setCtFeed((prev) => (prev.some((c) => c.expira <= agora) ? prev.filter((c) => c.expira > agora) : prev))
+    }, 500)
+    return () => clearInterval(t)
+  }, [ctFeed.length])
 
   const tratarResposta = (res: any) => {
     // Coach CT (tem agendamento hoje) → fazer check-in Personal e escolher coach
@@ -393,16 +408,14 @@ export default function TotemPage() {
                   <div className="ex-title" style={{ fontSize: 28 }}>CHECK-IN <span>EXPRESS</span></div>
                 </div>
                 <div className="feed">
-                  <div className="feed-lbl">Confirme sua entrada</div>
                   {ctFeed.length === 0 ? (
-                    <div className="feed-empty">Faça seu check-in no app parceiro e seu nome aparece aqui pra confirmar.</div>
+                    <div className="feed-empty">Faça seu check-in no app parceiro e seu nome aparece aqui.</div>
                   ) : ctFeed.map((c) => (
                     <div key={c.id} className="feedcard">
-                      <div className="fc-info">
-                        <div className="fc-nome">{c.nome}</div>
-                        <div className="fc-org">check-in via {c.origem}</div>
-                      </div>
-                      <button className="fc-btn" onClick={() => confirmarEntrada(c.id, c.nome)}>Confirmar</button>
+                      <div className="fc-nome">{c.nome}</div>
+                      <div className="fc-lib"><span className="fc-ck">✓</span> ENTRADA LIBERADA</div>
+                      <div className="fc-org">check-in via {c.origem}</div>
+                      <div className="fc-bar" style={{ animationDuration: `${FEED_CARD_MS}ms` }} />
                     </div>
                   ))}
                 </div>
@@ -679,17 +692,6 @@ export default function TotemPage() {
               </section>
             )}
 
-            {/* CT: entrada confirmada pelo cliente (feed) */}
-            {screen === 'ctConfirmado' && (
-              <section className="screen on center">
-                <div className="check-badge">✓</div>
-                <div className="bigmsg">Bom treino!</div>
-                <p className="sub">{confNome} · entrada confirmada</p>
-                <div className="grow" />
-                <button className="btn ghost sm" onClick={irIdle}>Concluir</button>
-              </section>
-            )}
-
             {/* ENROLL: consentimento */}
             {screen === 'enrollConsent' && (
               <section className="screen on">
@@ -869,12 +871,13 @@ const CSS = `
 #tt .feed{flex:1 1 auto;overflow-y:auto;display:flex;flex-direction:column;gap:10px;margin-bottom:12px}
 #tt .feed-lbl{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--mut);text-align:center;margin-bottom:2px}
 #tt .feed-empty{color:var(--mut);font-size:14px;text-align:center;padding:26px 14px;line-height:1.5}
-#tt .feedcard{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
-#tt .feedcard .fc-info{flex:1;min-width:0}
-#tt .feedcard .fc-nome{font-size:16px;font-weight:800;line-height:1.15}
-#tt .feedcard .fc-org{font-size:12px;color:var(--mut);margin-top:2px}
-#tt .fc-btn{background:linear-gradient(135deg,var(--pink),#e01f7c);color:#fff;border:none;border-radius:12px;padding:12px 18px;font-size:15px;font-weight:800;cursor:pointer;flex:0 0 auto}
-#tt .fc-btn:active{transform:scale(.96)}
+#tt .feedcard{position:relative;overflow:hidden;flex:0 0 auto;text-align:center;background:rgba(34,197,94,.1);border:2px solid rgba(34,197,94,.55);border-radius:20px;padding:18px 16px 20px;animation:pop .4s ease}
+#tt .feedcard .fc-nome{font-size:28px;font-weight:900;line-height:1.15;word-break:break-word}
+#tt .feedcard .fc-lib{display:flex;align-items:center;justify-content:center;gap:10px;font-size:24px;font-weight:900;letter-spacing:.5px;color:#86efac;margin-top:8px}
+#tt .feedcard .fc-ck{width:34px;height:34px;border-radius:50%;background:var(--ok);color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;flex:0 0 auto}
+#tt .feedcard .fc-org{font-size:13px;color:var(--mut);margin-top:6px}
+#tt .feedcard .fc-bar{position:absolute;left:0;bottom:0;height:4px;width:100%;background:var(--ok);transform-origin:left;animation:fcbar linear forwards}
+@keyframes fcbar{from{transform:scaleX(1)}to{transform:scaleX(0)}}
 #tt .ex-sub2{font-size:18px;font-weight:700;color:#fcd34d;text-align:center;margin:2px 0 12px}
 #tt .modoerro{font-size:16px;font-weight:700;line-height:1.5;color:#fca5a5;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.45);border-radius:16px;padding:14px 18px;max-width:360px;margin:0 0 16px}
 #tt .modoerro b{color:#fecaca}

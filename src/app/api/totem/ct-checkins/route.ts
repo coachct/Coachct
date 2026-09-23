@@ -1,7 +1,7 @@
 // GET /api/totem/ct-checkins?unidade=
-// Feed do totem CT: check-ins de musculação recentes que a pessoa ainda NÃO
-// confirmou na tela. Serve pra ela tocar "Confirmar" e a gente ter uma
-// conferência mesmo sem catraca (a validação no parceiro já foi feita por trás).
+// Feed do totem CT: check-ins de musculação recentes que ainda NÃO apareceram
+// na tela. O totem mostra "Nome · Entrada liberada" por 10s e carimba
+// confirmado_totem_em (a validação no parceiro já foi feita por trás).
 import { NextRequest, NextResponse } from 'next/server'
 import { totemService, resolverUnidadeTotem, totemTokenOk } from '@/lib/totem/service'
 
@@ -31,7 +31,8 @@ export async function GET(req: NextRequest) {
     if (!unidade) return NextResponse.json({ erro: 'unidade_invalida' }, { status: 400 })
     if (unidade.tipo !== 'ct') return NextResponse.json({ checkins: [] })
 
-    const desde = new Date(Date.now() - 2 * 3600 * 1000).toISOString()
+    // só check-in recente: totem religado não mostra "entrada liberada" de horas atrás
+    const desde = new Date(Date.now() - 15 * 60 * 1000).toISOString()
     const { data, error } = await sb
       .from('entradas_walkin')
       .select('id, origem, produto, recebido_em, raw')

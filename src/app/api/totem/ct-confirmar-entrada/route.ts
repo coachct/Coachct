@@ -1,6 +1,6 @@
 // POST /api/totem/ct-confirmar-entrada  { unidade, entradaId }
-// A pessoa tocou "Confirmar" no feed do totem CT. Carimba confirmado_totem_em
-// (conferência do cliente — a validação no parceiro já foi feita por trás).
+// O totem CT mostrou o card "Entrada liberada" no feed. Carimba confirmado_totem_em
+// pra ele não voltar no próximo poll (a validação no parceiro já foi feita por trás).
 import { NextRequest, NextResponse } from 'next/server'
 import { totemService, resolverUnidadeTotem, totemTokenOk } from '@/lib/totem/service'
 
