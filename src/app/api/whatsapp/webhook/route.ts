@@ -54,6 +54,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 // conversa como "aguardando atendimento" pra equipe humana cuidar pelo painel.
 const BOT_ATIVO = process.env.WHATSAPP_BOT_ATIVO !== '0'
 
+// AUTO-DEVOLVER: horas sem resposta da equipe pra uma conversa "assumida" (modo_humano)
+// voltar sozinha pro assistente. Evita conversa assumida e esquecida ficar muda pra sempre.
+const HUMANO_STALE_H = parseInt(process.env.WHATSAPP_HUMANO_STALE_H || '3', 10) || 3
+
 const AVISO_LGPD =
   'E aí! 👊 Aqui é a Just Club & CT no seu WhatsApp. Pra te ajudar certinho, dou uma olhada no seu cadastro (nome, plano, treinos) — seguindo a conversa, você concorda com a nossa Política de Privacidade. Se um dia quiser parar de receber mensagens, é só mandar PARAR. Bora? Como posso te ajudar hoje? 💪'
 
@@ -255,14 +259,22 @@ async function processar(de: string, texto: string, wamid: string, botaoId: stri
     // Respeita opt-out anterior.
     if (cliente.whatsapp_opt_out) return
 
-    // Atendimento humano ativo (modo_humano) OU já escalado/aguardando equipe
-    // (aguardando_humano): guarda a mensagem (pra aparecer no painel) e NÃO aciona o
-    // agente — quem responde é o atendente. Sem isso, cada nova mensagem re-rodava o
-    // agente e re-escalava, DUPLICANDO o "Vou transferir". (O caminho do visitante já
-    // tinha esse portão; o do cliente identificado não — corrigido aqui.)
-    if (await emModoHumano(supabase, telefone) || await estaAguardandoHumano(supabase, telefone)) {
-      await salvarMensagem(supabase, { telefone, clienteId: cliente.id, role: 'user', conteudo: texto })
-      return
+    // Atendimento humano / escalado: por padrão o bot fica quieto (quem responde é a
+    // equipe). EXCEÇÃO — AUTO-DEVOLVER: se a conversa foi "assumida" (modo_humano) mas a
+    // equipe NÃO respondeu há horas (assumida e esquecida), devolve pro assistente e deixa
+    // o bot responder — pra não deixar o cliente no vácuo pra sempre. (Era o caso: 78
+    // conversas presas em modo humano por semanas, bot mudo nelas.)
+    const humano = await emModoHumano(supabase, telefone)
+    const aguardando = await estaAguardandoHumano(supabase, telefone)
+    if (humano || aguardando) {
+      const parada = humano && !aguardando && (await semRespostaEquipeHa(supabase, telefone, HUMANO_STALE_H))
+      if (parada) {
+        await devolverAoAssistente(supabase, telefone)
+        console.log(`[whatsapp/webhook] auto-devolvido ao assistente (modo humano parado ${HUMANO_STALE_H}h): ${telefone}`)
+      } else {
+        await salvarMensagem(supabase, { telefone, clienteId: cliente.id, role: 'user', conteudo: texto })
+        return
+      }
     }
 
     // Cliente pediu pra falar com um atendente: sinaliza no painel (contador/badge)
@@ -402,6 +414,29 @@ async function emModoHumano(supabase: SupabaseClient, telefone: string): Promise
     .eq('telefone', telefone)
     .maybeSingle()
   return !!(data as any)?.modo_humano
+}
+
+/** A equipe NÃO respondeu esta conversa há X horas? (última msg do assistente/equipe antiga
+ * ou inexistente). Em modo_humano o bot não responde, então msg de assistente = equipe. */
+async function semRespostaEquipeHa(supabase: SupabaseClient, telefone: string, horas: number): Promise<boolean> {
+  const { data } = await supabase
+    .from('whatsapp_mensagens')
+    .select('criado_em')
+    .eq('telefone', telefone)
+    .eq('role', 'assistant')
+    .order('criado_em', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const ult = (data as any)?.criado_em ? new Date((data as any).criado_em).getTime() : 0
+  return !ult || Date.now() - ult > horas * 3_600_000
+}
+
+/** Devolve a conversa pro assistente (tira do modo humano / aguardando). */
+async function devolverAoAssistente(supabase: SupabaseClient, telefone: string): Promise<void> {
+  await supabase
+    .from('whatsapp_controle')
+    .update({ modo_humano: false, aguardando_humano: false })
+    .eq('telefone', telefone)
 }
 
 /** Conversa já foi encaminhada/escalada pra equipe? (aguardando_humano = true) */
