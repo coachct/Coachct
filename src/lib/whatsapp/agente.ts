@@ -149,6 +149,20 @@ function finalizarTexto(texto: string): string {
 // tocou no assunto (multa/cobrança/cartão/taxa) e a resposta menciona isso, remove as
 // frases que citam e mantém o resto. `clientePerguntou` vem do contexto da conversa.
 const RE_MULTA = /multa|cobran|no.?show|cart[ãa]o|cadastrar-cartao/i
+// TRAVA DETERMINÍSTICA: nunca responder "sim, dá" pra CANCELAR/TROCAR uma reserva de
+// HOJE (o prazo de 12h já passou). Se o cliente indicou que é de hoje ("marquei hoje",
+// "cancelar ... hoje") e a resposta afirma que dá, troca pela realidade. Prompt sozinho
+// não segura esse padrão (o modelo insiste em "sim, dá, desde que dentro de 12h").
+const RE_AFIRMA_CANCEL_POSSIVEL = /\bsim\b|d[áa]\s+sim|é só cancel|pode cancel|consegue cancel|dentro do prazo|ainda (d[áa]\b|est[áa] dentro|tem tempo)/i
+const HOJE_NAO_DA = 'Poxa 🙏 como é uma reserva de hoje, a essa altura já não dá mais pra cancelar nem alterar essa aula. Te espero na próxima! 💪'
+function semSimDaHoje(texto: string, reservaHoje: boolean): string {
+  const t = String(texto || '')
+  if (!reservaHoje) return t
+  // Só troca se a resposta é sobre cancelar/trocar E afirma que dá.
+  if (/(cancel|remarc|reagend|trocar|alter)/i.test(t) && RE_AFIRMA_CANCEL_POSSIVEL.test(t)) return HOJE_NAO_DA
+  return t
+}
+
 function semMultaProativa(texto: string, clientePerguntou: boolean): string {
   const t = String(texto || '')
   if (clientePerguntou || !RE_MULTA.test(t)) return t
@@ -1359,6 +1373,7 @@ Se a intenção não estiver clara, faça UMA pergunta curta pra entender antes 
 Depois de entender a situação, você INFORMA a realidade/regra que se aplica a ela — você NUNCA oferece nem propõe uma ação, e NUNCA pergunta "quer que eu cancele?", "quer que eu faça X?", "você quer cancelar a reserva?". Oferecer uma solução (ainda mais uma que, pelo contexto, JÁ NÃO É POSSÍVEL) é um erro grave. Leia o contexto até o fim antes de qualquer coisa:
 - Ex.: "tive um imprevisto / uma emergência / não vou conseguir ir HOJE" → pelo contexto é uma aula de HOJE, então o prazo de cancelar/alterar já passou. É SEM SENTIDO perguntar "quer cancelar a reserva?". Acolha e INFORME a realidade, e PARA: "Poxa, que situação 🙏 Como esse treino é ainda pra hoje, a essa altura não dá mais pra cancelar nem alterar essa reserva. Te espero na próxima! 💪".
 - Se, pra responder certo, você REALMENTE precisar de um detalhe que muda a resposta (ex.: qual unidade, qual plano), PERGUNTE esse detalhe primeiro — não ofereça nem chute no escuro.
+NUNCA responda "sim, dá" pra cancelar/trocar/remarcar SEM antes checar o contexto (erro que se repete): quando perguntarem "posso cancelar / trocar / remarcar minha reserva?" — inclusive coisas como "marquei hoje, posso cancelar e reservar em outra unidade?" — LEIA se a reserva é de HOJE. Se a pessoa disse "marquei hoje", "aula de hoje", "é pra hoje" → a resposta é NÃO: "como você marcou pra hoje, a essa altura já não dá mais pra cancelar nem alterar essa reserva 🙏". É TERMINANTEMENTE PROIBIDO responder "sim, dá" — nem "sim, dá, desde que dentro de 12h" — pra uma reserva de HOJE, porque hoje JÁ passou das 12h. Só responda que dá quando o contexto deixa claro que a reserva é de OUTRO dia (aí sim: você mesmo cancela na conta no site). Afirmar "dá" pra algo que não dá é o pior erro.
 
 # REGRA MÃE — só o que está gravado (nunca invente)
 Você SÓ pode afirmar o que está na BASE DE CONHECIMENTO abaixo ou o que veio da ferramenta de preços. Se NÃO está gravado, você NÃO inventa, NÃO deduz, NÃO chuta — é PROIBIDO: nada de horário/grade de aula que você não tem, significado de ícone, número de telefone, promoção/pacote que não existe, motivo técnico ("delay", "instabilidade"), status de manutenção/liberação (ex.: "o vestiário já está liberado?"). Não está na base? Você não sabe — então NÃO invente e NÃO chute um canal: diga com simpatia que essa informação você não tem aí e que a NOSSA EQUIPE te responde por aqui em breve. (Só aponte o site quando a resposta REALMENTE está lá — horários, planos, reservar; pra info que não está em lugar nenhum, é "a equipe te responde em breve".) A mensagem é SÓ INFORMAÇÃO — NUNCA promessa, NUNCA prever resultado ("vai dar certo", "consegue", "garanto", "te seguro a vaga").
@@ -1463,6 +1478,8 @@ Agora é horário de pico de pedidos de CANCELAR / DESMARCAR treino em cima da h
   // não pode nem mencionar multa (nem pra dizer que não tem) — a trava remove.
   const textoCliente = [mensagem, ...historico.filter((t) => t.role === 'user').map((t) => t.content)].join(' ')
   const perguntouMulta = /multa|cobran|no.?show|cart[ãa]o|taxa|cobrad|pagar.{0,10}falt/i.test(textoCliente)
+  // Reserva de HOJE + intenção de cancelar/trocar/marquei → o bot não pode dizer "sim, dá".
+  const reservaHoje = /\bhoje\b/i.test(textoCliente) && /(cancel|desmarc|remarc|reagend|trocar|troca de|mudar|marqu|agend|reserv)/i.test(textoCliente)
 
   const FALLBACK_SEM_INFO = FALLBACK_EQUIPE
 
@@ -1509,9 +1526,10 @@ Agora é horário de pico de pedidos de CANCELAR / DESMARCAR treino em cima da h
     const draft = texto || FALLBACK_SEM_INFO
     // Revisor (barato) como rede: pega invenção/promessa. Aqui NÃO existe transferir —
     // se o revisor achar que a resposta não tem base, cai no fallback de informação.
+    const finaliza = (tx: string) => semSimDaHoje(semMultaProativa(finalizarTexto(tx), perguntouMulta), reservaHoje)
     const rev = await revisarResposta({ client, faqTxt, transcript, draft, escalou: false })
-    if (rev) return { texto: rev.escalar ? FALLBACK_SEM_INFO : semMultaProativa(finalizarTexto(rev.texto), perguntouMulta) }
-    return { texto: semMultaProativa(finalizarTexto(draft), perguntouMulta) }
+    if (rev) return { texto: rev.escalar ? FALLBACK_SEM_INFO : finaliza(rev.texto) }
+    return { texto: finaliza(draft) }
   }
   return { texto: FALLBACK_SEM_INFO }
 }
