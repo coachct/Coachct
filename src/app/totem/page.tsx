@@ -15,7 +15,7 @@ type Screen =
   | 'waiting' | 'done' | 'enrollConsent' | 'enrollCapture' | 'enrollDone'
   | 'ctLiberado' | 'ctAguardando' | 'ctJaRegistrada'
   | 'ctCoachAguardando' | 'ctCoachEscolher' | 'ctCoachPronto'
-  | 'ctEscolher' | 'ctUsarCredito'
+  | 'ctUsarCredito'
 
 const POLL_MS = 3000
 const FEED_CARD_MS = 10000 // card "Entrada liberada" fica 10s na tela e some sozinho
@@ -277,8 +277,6 @@ export default function TotemPage() {
   }
 
   const tratarResposta = (res: any) => {
-    // Coach CT + plano de acesso/crédito avulso → a pessoa escolhe o que vai fazer
-    if (res?.resultado === 'ct_escolher' && res.agendamento) { setNome(res.nome || ''); setCoachAg(res.agendamento); setScreen('ctEscolher'); return }
     // Coach CT (tem agendamento hoje) → fazer check-in Personal e escolher coach
     if (res?.resultado === 'coach_ct' && res.agendamento) { setNome(res.nome || ''); setCoachAg(res.agendamento); irParaCoachCt(res.agendamento); return }
     // Crédito avulso → pergunta antes de consumir
@@ -635,20 +633,6 @@ export default function TotemPage() {
                 <div className="stack">
                   <button className="btn" onClick={irIdle}>Voltar ao início</button>
                 </div>
-              </section>
-            )}
-
-            {/* CT: tem reserva de coach E plano/crédito → escolhe o que vai fazer hoje */}
-            {screen === 'ctEscolher' && (
-              <section className="screen on center">
-                {nome && <p className="wait-hi">Olá, {nome.split(' ')[0]} 👋</p>}
-                <h2 style={{ marginBottom: 18 }}>O que você vai fazer hoje?</h2>
-                <div className="stack" style={{ width: '100%' }}>
-                  <button className="btn" onClick={() => coachAg && irParaCoachCt(coachAg)}>Treino com coach · {coachAg?.horario}</button>
-                  <button className="btn pinkghost" onClick={() => entrarLivre(false)}>Musculação livre</button>
-                </div>
-                <div className="grow" />
-                <button className="btn ghost sm" onClick={irIdle}>Voltar ao início</button>
               </section>
             )}
 

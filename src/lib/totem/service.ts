@@ -245,14 +245,13 @@ async function acessoCtDisponivel(sb: SupabaseClient, unidade: UnidadeTotem, cli
 
 /**
  * Acesso ao CT (musculação, SEM catraca — liberação visual):
- *  - Reserva Coach CT hoje → fluxo do coach. Se a pessoa TAMBÉM tem plano de acesso
- *    ou crédito avulso, o totem pergunta: treino com coach ou musculação livre.
+ *  - Reserva Coach CT hoje → sempre fluxo do coach (sem perguntar).
  *  - Mensalista (plano open_gym) → SEMPRE libera (ilimitado).
  *  - Parceiro → 1 entrada por dia: 1ª vez libera+registra; re-scan → "já registrada".
  *  - Crédito avulso → NUNCA baixa sozinho: o totem pergunta e só consome com
  *    usarCredito=true (a pessoa tocou "Usar 1 crédito").
  *  - Sem acesso → aguardando (faz o check-in no app e espera, ou recepção).
- * modoLivre=true pula a etapa do coach (a pessoa escolheu musculação livre).
+ * modoLivre=true pula a etapa do coach (polling de musculação / confirmação do crédito).
  */
 export async function respostaCT(
   sb: SupabaseClient,
@@ -263,16 +262,11 @@ export async function respostaCT(
   if (cliente.bloqueado) return { resultado: 'bloqueado', nome: cliente.nome }
   const hoje = hojeSP()
 
-  // 0) Coach CT: se tem agendamento hoje, é fluxo Coach CT (fazer check-in Personal
-  //    e escolher o coach). Com plano de acesso ou crédito avulso → a pessoa escolhe.
+  // 0) Coach CT: se tem agendamento hoje, é SEMPRE fluxo Coach CT (check-in Personal
+  //    e escolher o coach), mesmo que tenha plano de acesso ou crédito avulso.
   if (!opts.modoLivre) {
     const agCoach = await agendamentoCoachCtHoje(sb, unidade.id, cliente.id, hoje, cliente.nome)
-    if (agCoach) {
-      const temLivre = !!(await planoOpenGymAtivo(sb, cliente.id, hoje))
-        || (await creditosTreinoDisponiveis(sb, cliente.id, hoje)) > 0
-      if (temLivre) return { resultado: 'ct_escolher', nome: cliente.nome, agendamento: agCoach }
-      return { resultado: 'coach_ct', nome: cliente.nome, agendamento: agCoach }
-    }
+    if (agCoach) return { resultado: 'coach_ct', nome: cliente.nome, agendamento: agCoach }
   }
 
   // 1) Mensalista → ilimitado (não conta como entrada única)
