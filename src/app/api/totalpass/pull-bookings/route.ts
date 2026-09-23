@@ -30,7 +30,11 @@ const CRON_SECRET = process.env.CRON_SECRET || ''
 const JANELA_DIAS = 14
 
 // Status que NÃO contam como reserva ativa (o resto tratamos como ativo).
-const STATUS_MORTOS = new Set(['expired', 'cancelled', 'canceled', 'deleted', 'no_show', 'noshow']);
+// Vistos na API: confirmed, checked, canceled, expired, denied. `denied` = a
+// própria TotalPass negou a reserva (quando NÓS cancelamos, vira `canceled`).
+// Sem ele aqui, a reserva negada seguia "reservado" do nosso lado e a guarda de
+// duplicidade derrubava cada nova tentativa do membro (23/09/2026).
+const STATUS_MORTOS = new Set(['expired', 'cancelled', 'canceled', 'deleted', 'no_show', 'noshow', 'denied']);
 
 function extrairSlot(s: any) {
   const u = s?.user ?? {}
@@ -198,6 +202,36 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Cancelamentos: reservas nossas via TotalPass, ativas, cujo slot sumiu dos
+  // ativos — SÓ dentro da janela consultada (senão cancelaria reservas futuras
+  // fora da janela, cujos slots nem foram puxados). ativosIds junta todas as unidades.
+  //
+  // Roda ANTES de registrar os slots novos: se a TotalPass negou a reserva e o
+  // membro reservou de novo no mesmo intervalo, a morta tem que sair primeiro —
+  // senão a guarda de "uma posição por aula" enxerga a morta como ativa e
+  // derruba a nova tentativa (caso 23/09: Nuria e Renata presas nesse ciclo).
+  //
+  // ⚠️ REDE DE SEGURANÇA: a API da TotalPass às vezes solta um poll vazio ou com
+  // erro (timeout/glitch). Se a gente conciliar em cima disso, "nenhum slot veio"
+  // é lido como "todo mundo cancelou" e cancela EM MASSA reservas que seguem
+  // ativas no app (incidente 26/07: 18 reservas de 14 clientes canceladas de uma
+  // vez). Poll vazio quase nunca é cancelamento real — é falha de comunicação.
+  // Então só concilia se o poll for CONFIÁVEL: nenhuma unidade falhou na API E
+  // pelo menos 1 slot ativo voltou. Senão, pula o cancelamento e espera o próximo
+  // poll (o pior caso é uma reserva de fato cancelada persistir mais alguns minutos).
+  const hojeStr = agora.toISOString().slice(0, 10)
+  const fimStr = fim.toISOString().slice(0, 10)
+  const pollConfiavel = errosApi.length === 0 && ativosIds.size > 0
+  let canceladas = 0
+  let cancelamentoPulado = false
+  if (pollConfiavel) {
+    canceladas = await conciliarCancelamentos(supabase, ativosIds, hojeStr, fimStr)
+  } else {
+    cancelamentoPulado = true
+    console.warn('[totalpass/pull] conciliação de cancelamentos PULADA — poll não confiável',
+      { errosApi: errosApi.length, ativos: ativosIds.size })
+  }
+
   // PRÉ-CARGA (latência): antes cada slot custava 2-3 idas ao banco — com ~120
   // slots, quase todos JÁ registrados, o pull levava ~9s e a reserva do cliente
   // demorava mais pra aparecer. Agora as reservas conhecidas e os cadastros delas
@@ -221,32 +255,8 @@ export async function POST(req: NextRequest) {
     else if (r === 'ja') jaTinha++
     else if (r === 'sem-mapa') semMapa++
     else if (r === 'incompleto') incompletas++
+    else if (r === 'duplicada-pendente') { /* DELETE recusado: sai em rejeitadasIds, o próximo poll tenta de novo */ }
     else erros.push(s.slotId)
-  }
-
-  // Cancelamentos: reservas nossas via TotalPass, ativas, cujo slot sumiu dos
-  // ativos — SÓ dentro da janela consultada (senão cancelaria reservas futuras
-  // fora da janela, cujos slots nem foram puxados). ativosIds junta todas as unidades.
-  //
-  // ⚠️ REDE DE SEGURANÇA: a API da TotalPass às vezes solta um poll vazio ou com
-  // erro (timeout/glitch). Se a gente conciliar em cima disso, "nenhum slot veio"
-  // é lido como "todo mundo cancelou" e cancela EM MASSA reservas que seguem
-  // ativas no app (incidente 26/07: 18 reservas de 14 clientes canceladas de uma
-  // vez). Poll vazio quase nunca é cancelamento real — é falha de comunicação.
-  // Então só concilia se o poll for CONFIÁVEL: nenhuma unidade falhou na API E
-  // pelo menos 1 slot ativo voltou. Senão, pula o cancelamento e espera o próximo
-  // poll (o pior caso é uma reserva de fato cancelada persistir mais alguns minutos).
-  const hojeStr = agora.toISOString().slice(0, 10)
-  const fimStr = fim.toISOString().slice(0, 10)
-  const pollConfiavel = errosApi.length === 0 && ativosIds.size > 0
-  let canceladas = 0
-  let cancelamentoPulado = false
-  if (pollConfiavel) {
-    canceladas = await conciliarCancelamentos(supabase, ativosIds, hojeStr, fimStr)
-  } else {
-    cancelamentoPulado = true
-    console.warn('[totalpass/pull] conciliação de cancelamentos PULADA — poll não confiável',
-      { errosApi: errosApi.length, ativos: ativosIds.size })
   }
 
   // HISTÓRICO (ver supabase/totalpass-pull-log.sql). Antes deste registro, o único
@@ -284,7 +294,7 @@ export async function GET(req: NextRequest) {
   return POST(req)
 }
 
-type ResReserva = 'criada' | 'reativada' | 'rejeitada' | 'duplicada' | 'ja' | 'sem-mapa' | 'erro' | 'incompleto'
+type ResReserva = 'criada' | 'reativada' | 'rejeitada' | 'duplicada' | 'duplicada-pendente' | 'ja' | 'sem-mapa' | 'erro' | 'incompleto'
 
 // Mapa eventId → ocorrencia_id das ocorrências dentro da janela do poll (com 1 dia
 // de folga em cada ponta, porque a janela é calculada em UTC e a aula é local).
@@ -496,12 +506,12 @@ async function registrarReserva(
       .eq('cliente_id', (existente as any).cliente_id)
       .neq('status', 'cancelado')
     if ((outraNaAula ?? 0) > 0) {
-      await cancelarSlot(apiKey, s.slotId!)
+      const del = await cancelarSlot(apiKey, s.slotId!)
       rejeitadas.push({
         slotId: s.slotId, eventId: s.eventId, ocorrenciaId: ocId,
-        motivo: 'duplicada-mesma-aula', etapa: 'reativacao',
+        motivo: del.ok ? 'duplicada-mesma-aula' : `duplicada-mesma-aula (DELETE falhou: ${del.erro})`, etapa: 'reativacao',
       })
-      return 'duplicada'
+      return del.ok ? 'duplicada' : 'duplicada-pendente'
     }
 
     const vaga = await garantirVaga(supabase, ocId, apiKey, s.slotId!)
@@ -555,12 +565,15 @@ async function registrarReserva(
     .eq('cliente_id', clienteId as unknown as string)
     .neq('status', 'cancelado')
   if ((jaNaAula ?? 0) > 0) {
-    await cancelarSlot(apiKey, s.slotId!) // falhou? não cria; o próximo poll tenta de novo
+    // Falhou? não cria; o próximo poll tenta de novo. Só conta como duplicada
+    // quando o DELETE deu certo — antes, um DELETE recusado era somado a cada
+    // minuto (21/09: 1 slot virou 243 "duplicadas" em 3h).
+    const del = await cancelarSlot(apiKey, s.slotId!)
     rejeitadas.push({
       slotId: s.slotId, eventId: s.eventId, ocorrenciaId,
-      motivo: 'duplicada-mesma-aula', etapa: 'criacao',
+      motivo: del.ok ? 'duplicada-mesma-aula' : `duplicada-mesma-aula (DELETE falhou: ${del.erro})`, etapa: 'criacao',
     })
-    return 'duplicada'
+    return del.ok ? 'duplicada' : 'duplicada-pendente'
   }
 
   // TETO DO MÊS (ex.: 12). A TotalPass não barra quem estourou o plano — então
