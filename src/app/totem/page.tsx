@@ -404,8 +404,9 @@ export default function TotemPage() {
             {/* IDLE CT — feed de check-ins (conferência) + Coach CT (rosto/CPF) */}
             {screen === 'idle' && unidade?.tipo === 'ct' && (
               <section className="screen on">
-                <div className="express-hdr" style={{ margin: '4px 0 8px' }}>
+                <div className="express-hdr" style={{ margin: '30px 0 16px' }}>
                   <div className="ex-title" style={{ fontSize: 28 }}>CHECK-IN <span>EXPRESS</span></div>
+                  <div className="ex-sub">Cliente Wellhub e Totalpass, efetue o check in no app para liberar a entrada.</div>
                 </div>
                 <div className="feed">
                   {ctFeed.length === 0 ? (
