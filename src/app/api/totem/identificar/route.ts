@@ -26,7 +26,13 @@ export async function POST(req: NextRequest) {
 
     if (!cliente) return NextResponse.json({ resultado: 'nao_encontrado' })
 
-    if (unidade.tipo === 'ct') return NextResponse.json(await respostaCT(sb, unidade, cliente))
+    if (unidade.tipo === 'ct') {
+      // modo 'livre' = escolheu musculação livre; usarCredito = tocou "Usar 1 crédito"
+      return NextResponse.json(await respostaCT(sb, unidade, cliente, {
+        modoLivre: body?.modo === 'livre',
+        usarCredito: body?.usarCredito === true,
+      }))
+    }
 
     const test = body?.test === true || body?.test === '1'
     return NextResponse.json(await respostaParaCliente(sb, unidade, cliente, { ignorarEncerrada: test }))

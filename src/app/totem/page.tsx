@@ -15,6 +15,7 @@ type Screen =
   | 'waiting' | 'done' | 'enrollConsent' | 'enrollCapture' | 'enrollDone'
   | 'ctLiberado' | 'ctAguardando' | 'ctJaRegistrada'
   | 'ctCoachAguardando' | 'ctCoachEscolher' | 'ctCoachPronto'
+  | 'ctEscolher' | 'ctUsarCredito'
 
 const POLL_MS = 3000
 const FEED_CARD_MS = 10000 // card "Entrada liberada" fica 10s na tela e some sozinho
@@ -32,6 +33,8 @@ export default function TotemPage() {
   const [recepcaoMsg, setRecepcaoMsg] = useState('')
   const [statusMsg, setStatusMsg] = useState('')
   const [ctInfo, setCtInfo] = useState<{ origem: string; produto?: string } | null>(null)
+  // Crédito avulso: só consome se a pessoa confirmar
+  const [creditoInfo, setCreditoInfo] = useState<{ clienteId: string; creditos: number } | null>(null)
   // Coach CT: agendamento + escolha do coach
   const [coachAg, setCoachAg] = useState<{ id: string; horario: string; presente: boolean; coachId: string | null; coachNome: string | null } | null>(null)
   const [coachesCt, setCoachesCt] = useState<{ id: string; nome: string }[]>([])
@@ -149,7 +152,7 @@ export default function TotemPage() {
     limparPoll(); busyRef.current = false
     setCpf(''); setNome(''); setReserva(null); setRecepcaoMsg(''); setStatusMsg('')
     setConsentOk(false); setEnrollNome(''); setEnrollCpf(''); setEnrollMsg('Posicione seu rosto')
-    setCtInfo(null)
+    setCtInfo(null); setCreditoInfo(null)
     setCoachAg(null); setCoachesCt([]); setCoachSel(''); setCoachMsg(''); setCoachErro(false)
     setFaceMsg('Câmera ativa · olhe para reconhecer'); setScreen('idle')
   }, [limparPoll])
@@ -265,9 +268,21 @@ export default function TotemPage() {
     return () => clearInterval(t)
   }, [ctFeed.length])
 
+  // Musculação livre (pula o coach); usarCredito=true só quando a pessoa toca "Usar 1 crédito"
+  const entrarLivre = async (usarCredito: boolean) => {
+    if (!unidade || cpf.length !== 11) { irIdle(); return }
+    setScreen('validate')
+    const res = await api('/api/totem/identificar', { method: 'POST', body: JSON.stringify({ unidade: unidade.slug, cpf, modo: 'livre', usarCredito }) })
+    tratarResposta(res)
+  }
+
   const tratarResposta = (res: any) => {
+    // Coach CT + plano de acesso/crédito avulso → a pessoa escolhe o que vai fazer
+    if (res?.resultado === 'ct_escolher' && res.agendamento) { setNome(res.nome || ''); setCoachAg(res.agendamento); setScreen('ctEscolher'); return }
     // Coach CT (tem agendamento hoje) → fazer check-in Personal e escolher coach
     if (res?.resultado === 'coach_ct' && res.agendamento) { setNome(res.nome || ''); setCoachAg(res.agendamento); irParaCoachCt(res.agendamento); return }
+    // Crédito avulso → pergunta antes de consumir
+    if (res?.resultado === 'ct_confirmar_credito') { setNome(res.nome || ''); setCreditoInfo({ clienteId: res.clienteId, creditos: res.creditos || 1 }); setScreen('ctUsarCredito'); return }
     // CT (musculação/acesso)
     if (res?.resultado === 'liberado') { setNome(res.nome || ''); setCtInfo({ origem: res.origem, produto: res.produto }); setScreen('ctLiberado'); return }
     if (res?.resultado === 'ct_ja_registrada') { setNome(res.nome || ''); setCtInfo({ origem: res.origem }); setScreen('ctJaRegistrada'); return }
@@ -419,7 +434,7 @@ export default function TotemPage() {
                   ))}
                 </div>
                 <button className="tile primary coachcard" onClick={() => abrirCpf('checkin')}>
-                  <span className="tlab">Se voce tem uma reserva de Coach CT, clique aqui e digite seu cpf.</span>
+                  <span className="tlab">Reservas Coach, ou clientes CT, clique aqui e digite o seu cpf</span>
                 </button>
               </section>
             )}
@@ -620,6 +635,35 @@ export default function TotemPage() {
                 <div className="stack">
                   <button className="btn" onClick={irIdle}>Voltar ao início</button>
                 </div>
+              </section>
+            )}
+
+            {/* CT: tem reserva de coach E plano/crédito → escolhe o que vai fazer hoje */}
+            {screen === 'ctEscolher' && (
+              <section className="screen on center">
+                {nome && <p className="wait-hi">Olá, {nome.split(' ')[0]} 👋</p>}
+                <h2 style={{ marginBottom: 18 }}>O que você vai fazer hoje?</h2>
+                <div className="stack" style={{ width: '100%' }}>
+                  <button className="btn" onClick={() => coachAg && irParaCoachCt(coachAg)}>Treino com coach · {coachAg?.horario}</button>
+                  <button className="btn pinkghost" onClick={() => entrarLivre(false)}>Musculação livre</button>
+                </div>
+                <div className="grow" />
+                <button className="btn ghost sm" onClick={irIdle}>Voltar ao início</button>
+              </section>
+            )}
+
+            {/* CT: crédito avulso → só consome se a pessoa confirmar */}
+            {screen === 'ctUsarCredito' && creditoInfo && (
+              <section className="screen on center">
+                {nome && <p className="wait-hi">Olá, {nome.split(' ')[0]} 👋</p>}
+                <h2 style={{ marginBottom: 6 }}>Você tem {creditoInfo.creditos} crédito{creditoInfo.creditos > 1 ? 's' : ''}.</h2>
+                <p className="sub" style={{ fontSize: 17, marginBottom: 18 }}>Usar 1 para entrar hoje?</p>
+                <div className="stack" style={{ width: '100%' }}>
+                  <button className="btn ok" onClick={() => entrarLivre(true)}>Usar 1 crédito ✓</button>
+                  <button className="btn pinkghost" onClick={() => { iniciarPollingCT(creditoInfo.clienteId); setScreen('ctAguardando') }}>Vou fazer check-in no app</button>
+                </div>
+                <div className="grow" />
+                <button className="btn ghost sm" onClick={irIdle}>Voltar ao início</button>
               </section>
             )}
 

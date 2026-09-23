@@ -213,7 +213,16 @@ async function registrarEntradaCt(sb: SupabaseClient, clienteId: string, unidade
   } catch { /* tabela ainda não criada → segue liberando normalmente */ }
 }
 
-// Acesso disponível AGORA (parceiro validado recente ou crédito avulso). null se não houver.
+// Quantos créditos avulsos de treino (walk-in) a pessoa tem válidos hoje.
+async function creditosTreinoDisponiveis(sb: SupabaseClient, clienteId: string, hoje: string): Promise<number> {
+  const { count } = await sb.from('creditos_avulsos').select('id', { count: 'exact', head: true })
+    .eq('cliente_id', clienteId).eq('tipo', 'credito_treino').eq('usado', false)
+    .gte('validade', hoje)
+  return count || 0
+}
+
+// Acesso de parceiro disponível AGORA (check-in validado recente). null se não houver.
+// Crédito avulso NÃO entra aqui: só é usado se a pessoa confirmar no totem.
 async function acessoCtDisponivel(sb: SupabaseClient, unidade: UnidadeTotem, cliente: ClienteCT, hoje: string) {
   const desdeISO = new Date(Date.now() - CT_JANELA_HORAS * 3600 * 1000).toISOString()
 
@@ -231,33 +240,40 @@ async function acessoCtDisponivel(sb: SupabaseClient, unidade: UnidadeTotem, cli
       .order('recebido_em', { ascending: false }).limit(1)
     if (data && data.length) return { origem: 'TotalPass', produto: data[0].produto || 'Musculação' }
   }
-  // Avulso: crédito de treino disponível (o CONSUMO do crédito ainda é pendência)
-  const { data: cred } = await sb.from('creditos_avulsos').select('id')
-    .eq('cliente_id', cliente.id).eq('tipo', 'credito_treino').eq('usado', false)
-    .gte('validade', hoje).limit(1)
-  if (cred && cred.length) return { origem: 'Crédito avulso', produto: 'Musculação' }
-
   return null
 }
 
 /**
  * Acesso ao CT (musculação, SEM catraca — liberação visual):
+ *  - Reserva Coach CT hoje → fluxo do coach. Se a pessoa TAMBÉM tem plano de acesso
+ *    ou crédito avulso, o totem pergunta: treino com coach ou musculação livre.
  *  - Mensalista (plano open_gym) → SEMPRE libera (ilimitado).
- *  - Parceiro/avulso → 1 entrada por dia: 1ª vez libera+registra; re-scan → "já registrada".
+ *  - Parceiro → 1 entrada por dia: 1ª vez libera+registra; re-scan → "já registrada".
+ *  - Crédito avulso → NUNCA baixa sozinho: o totem pergunta e só consome com
+ *    usarCredito=true (a pessoa tocou "Usar 1 crédito").
  *  - Sem acesso → aguardando (faz o check-in no app e espera, ou recepção).
+ * modoLivre=true pula a etapa do coach (a pessoa escolheu musculação livre).
  */
 export async function respostaCT(
   sb: SupabaseClient,
   unidade: UnidadeTotem,
-  cliente: ClienteCT
+  cliente: ClienteCT,
+  opts: { modoLivre?: boolean; usarCredito?: boolean } = {}
 ) {
   if (cliente.bloqueado) return { resultado: 'bloqueado', nome: cliente.nome }
   const hoje = hojeSP()
 
   // 0) Coach CT: se tem agendamento hoje, é fluxo Coach CT (fazer check-in Personal
-  //    e escolher o coach), NÃO musculação livre.
-  const agCoach = await agendamentoCoachCtHoje(sb, unidade.id, cliente.id, hoje, cliente.nome)
-  if (agCoach) return { resultado: 'coach_ct', nome: cliente.nome, agendamento: agCoach }
+  //    e escolher o coach). Com plano de acesso ou crédito avulso → a pessoa escolhe.
+  if (!opts.modoLivre) {
+    const agCoach = await agendamentoCoachCtHoje(sb, unidade.id, cliente.id, hoje, cliente.nome)
+    if (agCoach) {
+      const temLivre = !!(await planoOpenGymAtivo(sb, cliente.id, hoje))
+        || (await creditosTreinoDisponiveis(sb, cliente.id, hoje)) > 0
+      if (temLivre) return { resultado: 'ct_escolher', nome: cliente.nome, agendamento: agCoach }
+      return { resultado: 'coach_ct', nome: cliente.nome, agendamento: agCoach }
+    }
+  }
 
   // 1) Mensalista → ilimitado (não conta como entrada única)
   const plano = await planoOpenGymAtivo(sb, cliente.id, hoje)
@@ -267,17 +283,24 @@ export async function respostaCT(
   const log = await entradaCtHoje(sb, cliente.id, hoje)
   if (log) return { resultado: 'ct_ja_registrada', nome: cliente.nome, origem: log.origem }
 
-  // 3) Tem acesso agora? → libera e marca a entrada do dia
+  // 3) Check-in de parceiro validado → libera e marca a entrada do dia
   const acesso = await acessoCtDisponivel(sb, unidade, cliente, hoje)
   if (acesso) {
-    // Avulso: desconta 1 crédito de treino (fail-safe: sem a RPC, libera sem descontar)
-    if (acesso.origem === 'Crédito avulso') {
-      try { await sb.rpc('totem_consumir_credito_treino', { p_cliente: cliente.id }) } catch { /* ignora */ }
-    }
     await registrarEntradaCt(sb, cliente.id, unidade.id, acesso.origem, hoje)
     return { resultado: 'liberado', nome: cliente.nome, origem: acesso.origem, produto: acesso.produto }
   }
 
-  // 4) Sem acesso ainda → aguardando parceiro / recepção
+  // 4) Crédito avulso → só consome com confirmação explícita no totem
+  const creditos = await creditosTreinoDisponiveis(sb, cliente.id, hoje)
+  if (creditos > 0) {
+    if (!opts.usarCredito) return { resultado: 'ct_confirmar_credito', nome: cliente.nome, clienteId: cliente.id, creditos }
+    const { data: acessoId, error } = await sb.rpc('totem_consumir_credito_treino', { p_cliente: cliente.id })
+    if (!error && acessoId) {
+      await registrarEntradaCt(sb, cliente.id, unidade.id, 'Crédito avulso', hoje)
+      return { resultado: 'liberado', nome: cliente.nome, origem: 'Crédito avulso', produto: 'Musculação' }
+    }
+  }
+
+  // 5) Sem acesso ainda → aguardando parceiro / recepção
   return { resultado: 'aguardando_ct', nome: cliente.nome, clienteId: cliente.id }
 }

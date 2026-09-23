@@ -26,7 +26,8 @@ export async function GET(req: NextRequest) {
       .maybeSingle()
     if (!cliente) return NextResponse.json({ liberado: false })
 
-    const res: any = await respostaCT(sb, unidade, cliente)
+    // só musculação: não passa pelo coach nem consome crédito avulso
+    const res: any = await respostaCT(sb, unidade, cliente, { modoLivre: true })
     if (res?.resultado === 'liberado') return NextResponse.json({ liberado: true, origem: res.origem, produto: res.produto })
     return NextResponse.json({ liberado: false })
   } catch (e: any) {
