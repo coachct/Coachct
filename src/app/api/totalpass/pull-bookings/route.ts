@@ -123,6 +123,34 @@ export async function POST(req: NextRequest) {
     })
   }
 
+  // DIAGNÓSTICO ?historico=<slotId>: acha o membro dono desse slot e devolve TODOS
+  // os slots dele na janela, com status e carimbos (createdAt/updatedAt…), pra
+  // reconstruir a ordem dos fatos (quem cancelou/negou o quê, e quando). Só
+  // leitura. Sem PII: o objeto `user` sai só com as chaves.
+  const historico = new URL(req.url).searchParams.get('historico')
+  if (historico) {
+    const saida: any[] = []
+    for (const place of await placesAtivos(supabase)) {
+      const sl = await listarSlots(place.apiKey!, { slotDateFrom: agora.toISOString(), slotDateTo: fim.toISOString() })
+      const arr: any[] = Array.isArray(sl.body) ? sl.body : (sl.body?.data ?? [])
+      const alvo = arr.find((s: any) => extrairSlot(s).slotId === historico)
+      if (!alvo) continue
+      const userId = extrairSlot(alvo).totalpassId
+      const doMembro = userId
+        ? await listarSlots(place.apiKey!, { userId, slotDateFrom: new Date(agora.getTime() - 3 * 86400000).toISOString(), slotDateTo: fim.toISOString() })
+        : null
+      const lista: any[] = doMembro && Array.isArray(doMembro.body) ? doMembro.body : (doMembro?.body?.data ?? [alvo])
+      const semPii = (s: any) => ({ ...s, user: Object.keys(s?.user || {}), userId: undefined })
+      const ids = lista.map((s: any) => extrairSlot(s).slotId).filter(Boolean) as string[]
+      const nossas = await carregarReservas(supabase, ids)
+      saida.push({
+        unidade: place.nome, filtroPorMembro: !!doMembro?.ok,
+        slots: lista.map((s: any) => ({ ...semPii(s), nossaReserva: nossas.get(extrairSlot(s).slotId!) ?? null })),
+      })
+    }
+    return NextResponse.json({ historico, saida })
+  }
+
   if (process.env.TOTALPASS_BOOKING_ATIVO !== 'true') {
     return NextResponse.json({ ok: true, msg: 'kill switch OFF — pull pausado' })
   }
