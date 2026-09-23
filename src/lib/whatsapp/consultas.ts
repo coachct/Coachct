@@ -14,6 +14,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@supabase/supabase-js'
+import { clienteTemPlanoPro } from '@/lib/planoPro'
 
 // ---------------------------------------------------------------------------
 // Client service-role (mesmo padrão de src/lib/wellhub/validar-checkin.ts)
@@ -290,6 +291,9 @@ export async function proximosAgendamentos(
     for (const f of filas ?? []) comFila.add(`${(f as any).data}|${(f as any).horario}|${(f as any).unidade_id}`)
   }
 
+  // Coach CT Pro (inclusive App PRO): no CT cancela livre até 3h, sem fila.
+  const pro = futuros.length ? await clienteTemPlanoPro(supabase, clienteId) : false
+
   return futuros.map((a: any) => {
     const horas = horasAteSP(a.data, a.horario)
     const rot = rotuloDataPt(a.data, hoje)
@@ -299,7 +303,9 @@ export async function proximosAgendamentos(
       data_rotulo: rot.data_rotulo, // ex.: "terça-feira, 28/07" — o agente COPIA isso
       quando: rot.quando,           // "hoje" | "amanhã" | null (a partir do registro)
       horas_ate: Math.round(horas * 10) / 10,
-      cancelamento: regraCancelamento(horas),
+      cancelamento: pro && horas > 3 && horas <= 12
+        ? 'mais de 3h, cliente Coach CT Pro: cancelamento livre (não precisa de fila), o crédito volta'
+        : regraCancelamento(horas),
       tem_fila: comFila.has(`${a.data}|${a.horario}|${a.unidade_id}`),
     }
   })

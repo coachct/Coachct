@@ -10,6 +10,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { gradeExtraDoDia } from '@/lib/grade'
 import { mensagemTravaApp } from '@/lib/utils'
+import { clienteTemPlanoPro } from '@/lib/planoPro'
 import { registrarAcessoLgpd, agoraEmSaoPaulo, consultarSaldo } from './consultas'
 
 export interface ResultadoAcao {
@@ -774,7 +775,8 @@ export async function cancelarAgendamentoCt(
       mensagem: 'A essa altura não é mais possível cancelar esse treino 🙏.',
     }
   }
-  if (diffHoras <= 12) {
+  // Coach CT Pro (inclusive App PRO): livre até 3h, sem exigir fila.
+  if (diffHoras <= 12 && !(await clienteTemPlanoPro(supabase, clienteId))) {
     const { data: f } = await supabase
       .from('fila_espera')
       .select('id')

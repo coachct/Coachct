@@ -9,6 +9,7 @@ import SiteHeader from '@/components/SiteHeader'
 import ModalTelefone from '@/components/ModalTelefone'
 import CompraCreditoExtra, { type CreditoExtraStatus } from '@/components/CompraCreditoExtra'
 import { numerarTreinosDoMes, PLANOS_SEM_TETO, poolReservaClub } from '@/lib/treinos-numero'
+import { temPlanoProAtivo } from '@/lib/planoPro'
 
 const ACCENT  = '#ff2d9b'
 const CYAN    = '#00e5ff'
@@ -557,12 +558,16 @@ export default function MinhaContaPage() {
     if (diffHoras <= 3) {
       pode = false
       aviso = `Faltam ${faltaTxt} para o treino. Com menos de 3h o cancelamento não é permitido em nenhum caso. ${consequencia}`
+    } else if (diffHoras <= 12 && item.tipo==='ct' && temPlanoProAtivo(clientePlanos)) {
+      // Coach CT Pro (qualquer um dos 3 planos, inclusive App PRO): no CT cancela
+      // livre até 3h antes em QUALQUER treino — mesmo agendado com crédito do app.
+      aviso = `Faltam ${faltaTxt} para o treino. Como você tem o Coach CT Pro, o cancelamento é liberado até 3h antes — seu crédito volta integralmente.`
     } else if (diffHoras <= 12) {
       aviso = `Faltam ${faltaTxt}. Verificando fila de espera...`
     } else {
       aviso = `Faltam ${faltaTxt} para o treino. Cancelamento liberado — seu crédito volta integralmente.`
     }
-    if (pode && diffHoras <= 12) {
+    if (pode && diffHoras <= 12 && !(item.tipo==='ct' && temPlanoProAtivo(clientePlanos))) {
       let temFila = false
       if (item.tipo==='ct') {
         // Fila DESTE horário — não basta haver fila em qualquer horário do dia
