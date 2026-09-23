@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { PageHeader, Spinner, KpiCard, EmptyState } from '@/components/ui'
 
@@ -45,6 +45,7 @@ export default function AvaliacoesPage() {
   const [loading, setLoading] = useState(true)
   const [avaliacoes, setAvaliacoes] = useState<any[]>([])
   const [unidades, setUnidades] = useState<any[]>([])
+  const coachesInativos = useRef<Set<string>>(new Set())
 
   const [fUnidade, setFUnidade] = useState('')
   const [fCoach, setFCoach] = useState('')
@@ -138,11 +139,15 @@ export default function AvaliacoesPage() {
     }
 
     async function load() {
-      const [avals, { data: unis }] = await Promise.all([
+      const [avals, { data: unis }, { data: inativos }] = await Promise.all([
         carregarTodas(),
         supabase.from('unidades').select('id, nome').order('nome'),
+        supabase.from('coaches').select('id').eq('ativo', false),
       ])
-      setAvaliacoes(avals)
+      // Coach que saiu não aparece mais nas avaliações
+      const idsInativos = new Set((inativos || []).map((c: any) => c.id))
+      coachesInativos.current = idsInativos
+      setAvaliacoes(avals.filter(a => !a.coach_id || !idsInativos.has(a.coach_id)))
       setUnidades(unis || [])
       setLoading(false)
     }
@@ -159,7 +164,7 @@ export default function AvaliacoesPage() {
       .eq('dispensado', false)
       .order('criado_em', { ascending: false })
       .order('data_aula', { ascending: false })
-    setDrawerAvals(data || [])
+    setDrawerAvals((data || []).filter(a => !a.coach_id || !coachesInativos.current.has(a.coach_id)))
     setDrawerLoading(false)
   }
 
