@@ -403,12 +403,12 @@ export default function TotemPage() {
 
             {/* IDLE CT — feed de check-ins (conferência) + Coach CT (rosto/CPF) */}
             {screen === 'idle' && unidade?.tipo === 'ct' && (
-              <section className="screen on">
-                <div className="express-hdr" style={{ margin: '30px 0 16px' }}>
+              <section className="screen on ctidle">
+                <div className="express-hdr" style={{ margin: 0 }}>
                   <div className="ex-title" style={{ fontSize: 28 }}>CHECK-IN <span>EXPRESS</span></div>
                   <div className="ex-sub ct">Cliente Wellhub e Totalpass, efetue o check in no app para liberar a entrada.</div>
                 </div>
-                <div className="feed">
+                <div className="feed" style={ctFeed.length ? undefined : { display: 'none' }}>
                   {ctFeed.map((c) => (
                     <div key={c.id} className="feedcard">
                       <div className="fc-nome">{c.nome}</div>
@@ -737,6 +737,7 @@ export default function TotemPage() {
 
 // CSS escopado sob #tt (adaptado do protótipo self-checkin-club.html)
 const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@1,300;1,400&display=swap');
 #tt{position:fixed;inset:0;z-index:99999;overflow:hidden;
   --bg:#0a0a0f;--panel:#111119;--panel2:#16161f;--line:#26263a;--pink:#ff2d8e;--pink2:#ff5aa6;
   --lift:#5b8def;--run:#22c55e;--run2:#16a34a;--txt:#f5f5fa;--mut:#9a9ab0;--ok:#22c55e;--warn:#f59e0b;
@@ -783,15 +784,18 @@ const CSS = `
 #tt .tile .tico{font-size:50px;line-height:1;color:var(--pink2)}
 #tt .tile.primary .tico{color:#fff}
 #tt .tile .tlab{font-size:18px;font-weight:800;line-height:1.2;text-align:center}
-#tt .tile.coachcard{width:100%;flex:0 0 auto;padding:30px 22px}
-#tt .tile.coachcard .tlab{font-size:22px;line-height:1.35}
+#tt .tile.coachcard{width:100%;flex:0 0 auto;padding:28px 22px;border-radius:20px}
+#tt .tile.coachcard .tlab{font-family:'Montserrat',sans-serif;font-style:italic;font-weight:400;font-size:21px;line-height:1.45;letter-spacing:.2px}
 #tt .express-hdr{text-align:center;margin:8px 0 14px}
 #tt .ex-title{font-size:36px;font-weight:900;letter-spacing:1px;line-height:1}
 #tt .ex-title span{color:var(--pink)}
 #tt .ex-sub{margin-top:14px;font-size:15px;font-weight:700;color:#fcd34d;background:rgba(245,158,11,.1);
   border:1px solid rgba(245,158,11,.32);padding:14px 18px;border-radius:16px;display:inline-block;line-height:1.55}
 #tt .ex-sub b{color:#fde68a}
-#tt .ex-sub.ct{color:var(--txt);background:rgba(255,45,142,.08);border-color:rgba(255,45,142,.4)}
+#tt .ex-sub.ct{display:block;width:100%;margin-top:18px;padding:20px 22px;border-radius:20px;color:var(--txt);background:rgba(255,45,142,.08);border-color:rgba(255,45,142,.4);
+  font-family:'Montserrat',sans-serif;font-style:italic;font-weight:300;font-size:19px;line-height:1.5;letter-spacing:.2px}
+#tt .ctidle{justify-content:center;gap:22px}
+#tt .ctidle .feed{flex:0 1 auto;margin:0}
 #tt .idlecam{position:relative;width:300px;height:360px;border-radius:26px;margin:0 auto;overflow:hidden;
   background:linear-gradient(160deg,#14141f,#0c0c14);border:1px solid var(--line);display:flex;align-items:center;justify-content:center}
 #tt .idlecam .face{font-size:150px;opacity:.6;position:absolute}
