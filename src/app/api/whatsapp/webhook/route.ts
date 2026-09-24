@@ -391,13 +391,26 @@ async function processarMidia(
     })
     if (insErr) console.error('[whatsapp/webhook] insert mídia:', insErr.message)
 
-    // O bot não lê arquivos → escala pra equipe e avisa o cliente (se não estiver
-    // já em atendimento humano, pra não atropelar o atendente).
-    if (!(await emModoHumano(supabase, telefone))) {
-      await marcarAguardandoHumano(supabase, telefone)
-      if (BOT_ATIVO) {
+    // O bot ainda não LÊ arquivos, mas um print/foto NÃO pode silenciar a conversa.
+    // BUG que derrubava lead quente: ao chegar imagem, marcávamos "aguardando humano" —
+    // e a partir daí o bot ficava MUDO em todo texto seguinte (a pessoa mandava o print
+    // do erro, depois explicava por texto, e o bot não respondia mais). Agora: guardamos
+    // a imagem no painel (acima), acusamos o recebimento e SEGUIMOS conversando pelo
+    // texto normalmente. Não marca "aguardando" e não joga pro limbo da equipe.
+    // Só acusa se: bot ligado, não é atendimento humano/escalado, e não acabamos de
+    // mandar esse mesmo aviso (pra não repetir quando vêm vários prints seguidos).
+    if (
+      BOT_ATIVO &&
+      !(await emModoHumano(supabase, telefone)) &&
+      !(await estaAguardandoHumano(supabase, telefone))
+    ) {
+      const aviso =
+        'Recebi seu print aqui! 📸 Ainda não consigo abrir a imagem, mas te ajudo rapidinho: me conta em uma frase o que você precisa? 😊'
+      const ultima = await ultimaRespostaAssistente(supabase, telefone)
+      if ((ultima ?? '').trim() !== aviso) {
         try {
-          await enviarTexto(de, 'Recebi seu arquivo aqui! 👍 Já passei pra nossa equipe dar uma olhada — o atendimento é de segunda a sexta, das 09h às 18h, e dentro desse horário eles te retornam por aqui, tá? 🙏')
+          await salvarMensagem(supabase, { telefone, clienteId, role: 'assistant', conteudo: aviso })
+          await enviarTexto(de, aviso)
         } catch {}
       }
     }
