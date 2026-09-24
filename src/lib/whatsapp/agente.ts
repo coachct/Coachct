@@ -1355,8 +1355,10 @@ export async function responderInfo(params: {
   mensagem: string
   historico?: TurnoConversa[]
   cliente?: ClienteIdentificado | null
+  imagens?: Array<{ mediaType: string; dataBase64: string }>
 }): Promise<{ texto: string }> {
-  const { supabase, mensagem, historico = [], cliente = null } = params
+  const { supabase, mensagem, historico = [], cliente = null, imagens = [] } = params
+  const temImagem = imagens.length > 0
   const client = new Anthropic()
   const hoje = calcularHoje()
 
@@ -1473,14 +1475,33 @@ Agora é horário de pico de pedidos de CANCELAR / DESMARCAR treino em cima da h
 - HOJE é ${hoje.extenso} — ${hoje.dataStr}. Quando disserem "hoje", é esse dia.
 - AGORA são cerca de ${agoraHora} (horário de São Paulo). Use isso pra entender o contexto do que a pessoa fala ("hoje às 5h30", "agora", "mais tarde") — principalmente pra cancelamento (ver a regra).${alertaPico}`
 
+  // Quando vem um PRINT/imagem: mesma cabeça do balcão, mas orientando a LER a tela
+  // pra ENTENDER a situação — sem quebrar nenhuma regra (só o que está gravado, sem
+  // inventar, sem prometer, sem resolver conta). Vai no bloco dinâmico (não cacheado).
+  const guiaImagem = temImagem
+    ? `\n\n# A PESSOA MANDOU UM PRINT/IMAGEM — LEIA E ENTENDA
+A última mensagem inclui uma IMAGEM (quase sempre um print da tela do app/site: reserva, erro, pagamento, plano). LEIA a imagem pra ENTENDER a real situação/dúvida da pessoa e responda com base nisso — valendo TODAS as regras acima (só o que está gravado, NUNCA invente, sem prometer, sem resolver conta; você INFORMA). Pode mencionar de leve o que vê SE ajudar ("vi que você está na tela de reservas do TotalPass..."). Se o print não deixar claro o que ela precisa, faça UMA pergunta curta. É PROIBIDO inventar texto, número, erro, horário ou status que não dá pra ver no print nem está na base.`
+    : ''
+
   const system: Anthropic.TextBlockParam[] = [
     { type: 'text', text: estatico, cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: dinamico },
+    { type: 'text', text: dinamico + guiaImagem },
   ]
+
+  // Última mensagem do usuário: só texto, ou imagem(ns) + texto (quando veio print).
+  const conteudoUser: Anthropic.MessageParam['content'] = temImagem
+    ? [
+        ...imagens.map((img) => ({
+          type: 'image' as const,
+          source: { type: 'base64' as const, media_type: img.mediaType as any, data: img.dataBase64 },
+        })),
+        { type: 'text' as const, text: mensagem || 'Segue um print. Me ajuda com base no que aparece nele, por favor.' },
+      ]
+    : mensagem
 
   const messages: Anthropic.MessageParam[] = [
     ...historico.map((t) => ({ role: t.role, content: t.content })),
-    { role: 'user', content: mensagem },
+    { role: 'user', content: conteudoUser },
   ]
   const transcript = montarTranscript(historico, mensagem)
 

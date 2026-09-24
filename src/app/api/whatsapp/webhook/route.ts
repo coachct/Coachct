@@ -365,15 +365,20 @@ async function processarMidia(
     }
 
     // Baixa o arquivo da Meta e guarda no bucket privado. Não fatal se falhar.
+    // Guarda os bytes/mime pra reusar: se for IMAGEM, o próprio bot lê o print.
     let midiaPath: string | null = null
+    let bytesImg: ArrayBuffer | null = null
+    let mimeImg = midia.mime || ''
     try {
       const { bytes, mime } = await baixarMidiaMeta(midia.id)
+      bytesImg = bytes
+      mimeImg = midia.mime || mime || 'image/jpeg'
       const nome = midia.filename || `${midia.tipo}`
       const safe = nome.replace(/[^\w.\-]+/g, '_').slice(0, 80)
       midiaPath = `${telefone}/in-${Date.now()}-${safe}`
       await supabase.storage
         .from('whatsapp-midia')
-        .upload(midiaPath, bytes, { contentType: midia.mime || mime || 'application/octet-stream', upsert: false })
+        .upload(midiaPath, bytes, { contentType: mimeImg || 'application/octet-stream', upsert: false })
     } catch (e) {
       console.error('[whatsapp/webhook] falha ao baixar/guardar mídia:', (e as any)?.message)
     }
@@ -391,28 +396,59 @@ async function processarMidia(
     })
     if (insErr) console.error('[whatsapp/webhook] insert mídia:', insErr.message)
 
-    // O bot ainda não LÊ arquivos, mas um print/foto NÃO pode silenciar a conversa.
-    // BUG que derrubava lead quente: ao chegar imagem, marcávamos "aguardando humano" —
-    // e a partir daí o bot ficava MUDO em todo texto seguinte (a pessoa mandava o print
-    // do erro, depois explicava por texto, e o bot não respondia mais). Agora: guardamos
-    // a imagem no painel (acima), acusamos o recebimento e SEGUIMOS conversando pelo
-    // texto normalmente. Não marca "aguardando" e não joga pro limbo da equipe.
-    // Só acusa se: bot ligado, não é atendimento humano/escalado, e não acabamos de
-    // mandar esse mesmo aviso (pra não repetir quando vêm vários prints seguidos).
-    if (
-      BOT_ATIVO &&
-      !(await emModoHumano(supabase, telefone)) &&
-      !(await estaAguardandoHumano(supabase, telefone))
-    ) {
-      const aviso =
-        'Recebi seu print aqui! 📸 Ainda não consigo abrir a imagem, mas te ajudo rapidinho: me conta em uma frase o que você precisa? 😊'
-      const ultima = await ultimaRespostaAssistente(supabase, telefone)
-      if ((ultima ?? '').trim() !== aviso) {
-        try {
-          await salvarMensagem(supabase, { telefone, clienteId, role: 'assistant', conteudo: aviso })
-          await enviarTexto(de, aviso)
-        } catch {}
+    // Se a conversa está em atendimento humano/escalado, ou o bot está pausado, fica
+    // quieto (não atropela a equipe). Fora isso, uma imagem NUNCA pode silenciar o bot.
+    if (!BOT_ATIVO || (await emModoHumano(supabase, telefone)) || (await estaAguardandoHumano(supabase, telefone))) {
+      return
+    }
+
+    // IMAGEM (print): o bot LÊ a imagem e responde com o mesmo cérebro/regras do balcão.
+    // É o caso real — quase todo mundo manda print quando trava (reserva, erro, plano).
+    // Só imagem: áudio/vídeo/documento/figurinha caem no aviso simples abaixo.
+    if (midia.tipo === 'image' && bytesImg) {
+      try {
+        let cliente: ClienteIdentificado | null = null
+        if (clienteId) cliente = await buscarClientePorId(supabase, clienteId)
+        const historico = await carregarHistorico(supabase, telefone)
+        const dataB64 = Buffer.from(bytesImg).toString('base64')
+        const mt = mimeImg.toLowerCase()
+        const mediaType = mt.includes('png')
+          ? 'image/png'
+          : mt.includes('webp')
+            ? 'image/webp'
+            : mt.includes('gif')
+              ? 'image/gif'
+              : 'image/jpeg'
+        const resp = await responderInfo({
+          supabase,
+          cliente,
+          mensagem: midia.caption || '',
+          historico,
+          imagens: [{ mediaType, dataBase64: dataB64 }],
+        })
+        if (/equipe te responde/i.test(resp.texto)) await marcarAguardandoHumano(supabase, telefone)
+        await salvarMensagem(supabase, { telefone, clienteId, role: 'assistant', conteudo: resp.texto })
+        await enviarTexto(de, resp.texto)
+        return
+      } catch (e: any) {
+        console.error('[whatsapp/webhook] falha ao ler imagem com o bot (cai no aviso):', e?.message)
+        // segue pro aviso simples abaixo
       }
+    }
+
+    // Não-imagem (áudio/vídeo/documento/figurinha) OU falha ao ler a imagem: acusa o
+    // recebimento e SEGUE conversando pelo texto — sem marcar "aguardando", sem mutar.
+    // Não repete se acabamos de mandar o mesmo aviso (vários anexos seguidos).
+    const aviso =
+      midia.tipo === 'image'
+        ? 'Recebi seu print! 📸 Tive um probleminha pra abrir a imagem agora — me conta em uma frase o que você precisa que eu te ajudo por aqui 😊'
+        : 'Recebi seu arquivo aqui! 👍 Ainda não consigo abrir esse tipo de arquivo — me conta em uma frase o que você precisa que eu já te ajudo por aqui 😊'
+    const ultima = await ultimaRespostaAssistente(supabase, telefone)
+    if ((ultima ?? '').trim() !== aviso) {
+      try {
+        await salvarMensagem(supabase, { telefone, clienteId, role: 'assistant', conteudo: aviso })
+        await enviarTexto(de, aviso)
+      } catch {}
     }
   } catch (e: any) {
     console.error('[whatsapp/webhook] erro ao processar mídia:', e?.message)
