@@ -1,6 +1,6 @@
 // src/lib/contratos/termo-wellhub-totalpass.ts
 
-export const VERSAO_TERMO_WELLHUB_TOTALPASS = 'v1.1'
+export const VERSAO_TERMO_WELLHUB_TOTALPASS = 'v1.2'
 
 export const TEXTO_TERMO_WELLHUB_TOTALPASS = `**JUST CT — TERMO DE ADESÃO — WELLHUB / TOTALPASS**
 
@@ -56,7 +56,7 @@ A Just CT não se responsabiliza pela supervisão e/ou guarda de pertences ou ob
 
 **8. MULTA POR NO-SHOW — RESERVA DE POSIÇÕES E HORÁRIOS**
 
-Para as modalidades e aulas que exigem pré-reserva de posição ou horário, o não comparecimento do cliente na atividade reservada — e a consequente ausência de check-in válido pelo Wellhub — caracteriza no-show, sujeitando o cliente ao pagamento de multa no valor de R$ 99,00 (noventa e nove reais).
+Para as modalidades e aulas que exigem pré-reserva de posição ou horário, o não comparecimento do cliente na atividade reservada — e a consequente ausência de check-in válido pelo Wellhub — caracteriza no-show, sujeitando o cliente ao pagamento de multa no valor de R$ 99,00 (noventa e nove reais) para o serviço Coach CT e de R$ 49,90 (quarenta e nove reais e noventa centavos) para as aulas do JustClub.
 
 8.1 A multa de no-show será cobrada independentemente do motivo da ausência, salvo nos casos em que o cancelamento da reserva tenha sido realizado pelo cliente dentro do prazo mínimo informado no momento da reserva.
 
