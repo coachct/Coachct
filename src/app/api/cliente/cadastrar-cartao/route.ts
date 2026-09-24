@@ -68,22 +68,39 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { numero, nome, cvv, mes, ano, cpf: cpfBody, telefone: telBody } = body
 
-    if (!numero || !nome || !cvv || !mes || !ano)
-      return NextResponse.json({ error: 'Dados do cartão incompletos' }, { status: 400 })
+    const numeroLimpo = String(numero || '').replace(/\s/g, '')
 
-    const numeroLimpo = String(numero).replace(/\s/g, '')
+    // Recusa ANTES do Pagar.me também vai pro cartoes_log (operacao 'cadastro_bloqueado'),
+    // pra dar pra ver o que o cliente digitou de errado. Nunca grava número inteiro nem CVV.
+    const recusar = async (error: string, extra: Record<string, any> = {}) => {
+      await supabase.from('cartoes_log').insert({
+        cliente_id: cliente.id, operacao: 'cadastro_bloqueado', sucesso: false, erro: error,
+        motivo: 'Recusado pela validação do servidor (não chegou ao Pagar.me)',
+        request_payload: {
+          final: numeroLimpo ? '****' + numeroLimpo.slice(-4) : null, digitos: numeroLimpo.length,
+          holder_name: nome || null, exp_month: mes || null, exp_year: ano || null,
+          cvv_digitos: String(cvv || '').length,
+        },
+        operado_por: user!.id,
+      })
+      return NextResponse.json({ error, ...extra }, { status: 400 })
+    }
+
+    if (!numero || !nome || !cvv || !mes || !ano)
+      return recusar('Dados do cartão incompletos')
+
     if (numeroLimpo.length < 13 || numeroLimpo.length > 19)
-      return NextResponse.json({ error: 'Número do cartão inválido' }, { status: 400 })
+      return recusar('Número do cartão inválido')
 
     if (String(cvv).length < 3 || String(cvv).length > 4)
-      return NextResponse.json({ error: 'CVV inválido' }, { status: 400 })
+      return recusar('CVV inválido')
 
     const mesNum = parseInt(String(mes))
     const anoNum = parseInt(String(ano))
     if (mesNum < 1 || mesNum > 12)
-      return NextResponse.json({ error: 'Mês inválido' }, { status: 400 })
+      return recusar('Mês inválido')
     if (anoNum < new Date().getFullYear() || anoNum > new Date().getFullYear() + 20)
-      return NextResponse.json({ error: 'Ano inválido' }, { status: 400 })
+      return recusar('Ano inválido')
 
     // ── CPF efetivo: usa o do cadastro se for válido; senão, o informado no form ──
     const cpfCadastro  = (cliente.cpf || '').replace(/\D/g, '')
@@ -94,12 +111,10 @@ export async function POST(req: NextRequest) {
 
     if (!cpfEfetivo) {
       // Sem CPF válido em nenhum dos dois — nem chama o Pagar.me
-      return NextResponse.json({
-        error: cpfCadastro
+      return recusar(cpfCadastro
           ? 'O CPF do seu cadastro está inválido. Informe um CPF válido para cadastrar o cartão.'
           : 'Para cadastrar o cartão, informe um CPF válido.',
-        precisa_cpf: true,
-      }, { status: 400 })
+        { precisa_cpf: true })
     }
 
     // Se o cadastro não tinha CPF válido e o cliente informou um agora, salva pra resolver de vez
@@ -125,10 +140,7 @@ export async function POST(req: NextRequest) {
     if (!pagarmeCustomerId) {
       // Pagar.me PSP exige telefone no customer — não criamos um customer sem telefone
       if (!telEfetivo) {
-        return NextResponse.json({
-          error: 'Para cadastrar o cartão, informe um telefone com DDD.',
-          precisa_telefone: true,
-        }, { status: 400 })
+        return recusar('Para cadastrar o cartão, informe um telefone com DDD.', { precisa_telefone: true })
       }
 
       const customerPayload: any = {

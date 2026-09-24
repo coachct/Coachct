@@ -82,21 +82,38 @@ export default function CadastrarCartaoPage() {
     setErro('')
 
     const numeroLimpo = numero.replace(/\s/g, '')
-    if (numeroLimpo.length < 13) { setErro('Número do cartão inválido.'); return }
-    if (!nome.trim() || nome.trim().length < 3) { setErro('Digite o nome impresso no cartão.'); return }
-    if (!mes || !ano) { setErro('Digite a validade completa.'); return }
+
+    // Mostra o erro e registra pro suporte (só final do cartão, nunca número inteiro/CVV)
+    const falhar = (msg: string) => {
+      setErro(msg)
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (!session?.access_token) return
+        fetch('/api/cliente/cadastrar-cartao/log-erro', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+          body: JSON.stringify({
+            erro: msg, final: numeroLimpo.slice(-4), digitos: numeroLimpo.length,
+            nome: nome.trim(), mes, ano, cvv_digitos: cvv.length,
+          }),
+        }).catch(() => {})
+      }).catch(() => {})
+    }
+
+    if (numeroLimpo.length < 13) { falhar('Número do cartão inválido.'); return }
+    if (!nome.trim() || nome.trim().length < 3) { falhar('Digite o nome impresso no cartão.'); return }
+    if (!mes || !ano) { falhar('Digite a validade completa.'); return }
     const mesNum = parseInt(mes)
-    if (mesNum < 1 || mesNum > 12) { setErro('Mês inválido.'); return }
+    if (mesNum < 1 || mesNum > 12) { falhar('Mês inválido.'); return }
     const anoNum = parseInt(ano)
     const anoAtual = new Date().getFullYear()
-    if (anoNum < anoAtual || anoNum > anoAtual + 20) { setErro('Ano inválido.'); return }
-    if (cvv.length < 3) { setErro('CVV inválido.'); return }
+    if (anoNum < anoAtual || anoNum > anoAtual + 20) { falhar('Ano inválido.'); return }
+    if (cvv.length < 3) { falhar('CVV inválido.'); return }
 
     const cpfLimpo = cpf.replace(/\D/g, '')
-    if (mostrarCampoCpf && cpfLimpo.length !== 11) { setErro('Digite um CPF válido (11 dígitos).'); return }
+    if (mostrarCampoCpf && cpfLimpo.length !== 11) { falhar('Digite um CPF válido (11 dígitos).'); return }
 
     const telLimpo = telefone.replace(/\D/g, '')
-    if (mostrarCampoTelefone && (telLimpo.length < 10 || telLimpo.length > 11)) { setErro('Digite um telefone válido com DDD (10 ou 11 dígitos).'); return }
+    if (mostrarCampoTelefone && (telLimpo.length < 10 || telLimpo.length > 11)) { falhar('Digite um telefone válido com DDD (10 ou 11 dígitos).'); return }
 
     setSalvando(true)
 
