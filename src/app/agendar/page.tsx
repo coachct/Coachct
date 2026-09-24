@@ -1228,7 +1228,9 @@ export default function AgendarPage() {
             <div style={{ background: temFila ? '#1a1000' : '#0a0a0a', border: `1px solid ${temFila ? AMARELO + '44' : '#1a1a1a'}`, borderRadius: 10, padding: '0.75rem 1rem', marginBottom: '1.5rem', fontSize: 12, lineHeight: 1.7 }}>
               {temFila
                 ? <><div style={{ color: AMARELO, fontWeight: 600, marginBottom: 4 }}>⏳ Há fila de espera para este horário</div><div style={{ color: '#888' }}>Cancelamento gratuito <strong style={{ color: '#fff' }}>até 3h antes</strong>. Abaixo de 3h: <strong style={{ color: '#ff4444' }}>bloqueado</strong>.</div></>
-                : <div style={{ color: '#555' }}>⚠️ Cancelamento gratuito <strong style={{ color: '#888' }}>{temBeneficiosPro ? 'até 3h antes' : 'até 12h antes'}</strong>. Falta sem aviso gera bloqueio.</div>
+                : temBeneficiosPro
+                  ? <div style={{ color: '#555' }}>⚠️ Cancelamento gratuito <strong style={{ color: '#888' }}>até 3h antes</strong>. Falta sem aviso gera bloqueio.</div>
+                  : <div style={{ color: '#555' }}>⚠️ Voce pode cancelar o seu treino com 12hrs de antecedencia. Cuidado, faltas geram um valor de no-show de R$99,00</div>
               }
             </div>
             {erroModal && <div style={{ background: '#ff2d9b15', border: '1px solid #ff2d9b44', borderRadius: 8, padding: '0.6rem 1rem', fontSize: 13, color: ACCENT, marginBottom: '1rem' }}>{erroModal}</div>}
