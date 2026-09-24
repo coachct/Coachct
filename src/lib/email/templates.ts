@@ -122,7 +122,7 @@ export function emailReservaConfirmada(p: {
     </div>
     <div style="background:#f9fafb;border:1px solid #eee;border-radius:12px;padding:14px 18px;margin-bottom:24px;">
       <div style="font-size:13px;color:#555;line-height:1.6;">
-        Cancelamento gratuito até <strong>12h antes</strong> (ou 3h se houver fila). Falta sem aviso gera multa de R$49,90.
+        Cancelamento gratuito até <strong>12h antes</strong> (ou 3h se houver fila). Falta sem aviso gera multa de ${p.tipo === 'ct' ? 'R$99,00' : 'R$49,90'}.
       </div>
     </div>
     <div style="text-align:center;">
