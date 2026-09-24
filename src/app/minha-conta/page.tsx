@@ -845,6 +845,9 @@ export default function MinhaContaPage() {
             <button onClick={()=>router.push('/agendar')} style={{width:'100%',background:ACCENT,color:'#fff',border:'none',borderRadius:12,padding:'0.9rem',fontWeight:700,fontSize:14,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
               + Agendar Treino
             </button>
+            <button onClick={()=>router.push('/treinos')} style={{width:'100%',marginTop:10,background:'transparent',color:'#fff',border:'1px solid #333',borderRadius:12,padding:'0.9rem',fontWeight:700,fontSize:14,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
+              💪 Treinos · Musculação livre
+            </button>
           </div>
         )}
 

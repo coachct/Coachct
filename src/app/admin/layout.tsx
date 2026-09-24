@@ -21,6 +21,7 @@ const nav = [
     children: [
       { label: 'Entradas de hoje', href: '/admin/musculacao-livre' },
       { label: 'Relatório',        href: '/admin/musculacao-livre/relatorio' },
+      { label: 'Treinos do aluno', href: '/admin/musculacao-livre/treinos' },
     ],
   },
   {
