@@ -12,6 +12,7 @@ const CRON_SECRET = process.env.CRON_SECRET || ''
 function gerarHtml(
   tipo: string, mensagem: string, nomeCliente: string,
   pronto?: { subject: string; conteudo: string },
+  unidadeTipo?: string | null,
 ): { subject: string; html: string } {
   const primeiroNome = (nomeCliente || '').split(' ')[0] || 'cliente'
 
@@ -69,7 +70,7 @@ function gerarHtml(
       <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px 20px;margin-bottom:24px;">
         <div style="font-size:13px;font-weight:700;color:#166534;margin-bottom:6px;">✅ Agendamento confirmado</div>
         <div style="font-size:13px;color:#166534;line-height:1.6;">
-          Cancelamento gratuito até <strong>12h antes</strong> (ou 3h se houver fila). Falta sem aviso gera multa de R$49,90.
+          Cancelamento gratuito até <strong>12h antes</strong> (ou 3h se houver fila). Falta sem aviso gera multa de ${unidadeTipo === 'ct' ? 'R$99,00' : 'R$49,90'}.
         </div>
       </div>
       <div style="text-align:center;">
@@ -359,6 +360,11 @@ export async function POST(req: NextRequest) {
     clienteMap[c.id] = { nome: c.nome, email: c.email, telefone: c.telefone }
   }
 
+  // Tipo da unidade (ct | club) — define o valor da multa no e-mail da fila
+  const { data: unidades } = await supabase.from('unidades').select('id, tipo')
+  const unidadeTipoMap: Record<string, string> = {}
+  for (const u of (unidades || [])) unidadeTipoMap[u.id] = u.tipo
+
   const marcar = (id: string, campos: Record<string, any>) =>
     supabase.from('notificacoes_pendentes').update(campos).eq('id', id)
 
@@ -391,7 +397,7 @@ export async function POST(req: NextRequest) {
       pronto = compra
     }
 
-    const { subject, html } = gerarHtml(notif.tipo, notif.mensagem, cliente.nome, pronto)
+    const { subject, html } = gerarHtml(notif.tipo, notif.mensagem, cliente.nome, pronto, notif.unidade_id ? unidadeTipoMap[notif.unidade_id] : null)
 
     const { error: errEmail } = await resend.emails.send({
       from: REMETENTE,
