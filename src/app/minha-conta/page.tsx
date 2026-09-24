@@ -10,6 +10,7 @@ import ModalTelefone from '@/components/ModalTelefone'
 import CompraCreditoExtra, { type CreditoExtraStatus } from '@/components/CompraCreditoExtra'
 import { numerarTreinosDoMes, PLANOS_SEM_TETO, poolReservaClub } from '@/lib/treinos-numero'
 import { temPlanoProAtivo } from '@/lib/planoPro'
+import { TEXTO_TERMO_WELLHUB_TOTALPASS, VERSAO_TERMO_WELLHUB_TOTALPASS } from '@/lib/contratos/termo-wellhub-totalpass'
 
 const ACCENT  = '#ff2d9b'
 const CYAN    = '#00e5ff'
@@ -504,12 +505,27 @@ export default function MinhaContaPage() {
     if (!contratoAceito || !modalAtivar || ativando) return
     setAtivando(true); setErroAtivar('')
     try {
-      const { error } = await supabase.from('cliente_planos').insert({
+      const { data: novoCp, error } = await supabase.from('cliente_planos').insert({
         cliente_id: cliente.id, plano_id: modalAtivar.plano.id,
         ativo: true, contrato_aceito_em: new Date().toISOString(),
         aceite_pendente: false, inicio: dataLocalStr(new Date()),
-      })
+      }).select('id').single()
       if (error) throw error
+      // Plano do Just CT: grava o aceite do Termo de Adesão (multa R$99). Se falhar,
+      // não desfaz a ativação — a trava do /agendar pede o termo de novo na reserva.
+      if (modalAtivar.plano.unidades?.tipo === 'ct') {
+        await supabase.from('termos_aceites').insert({
+          cliente_id: cliente.id,
+          cliente_plano_id: novoCp?.id || null,
+          tipo_plano: modalAtivar.plano.tipo === 'totalpass' ? 'totalpass' : 'wellhub',
+          nome_digitado: cliente.nome || '',
+          cpf_confirmado: cliente.cpf,
+          user_agent: navigator.userAgent,
+          modo_aceite: 'online',
+          versao_contrato: VERSAO_TERMO_WELLHUB_TOTALPASS,
+          texto_contrato: TEXTO_TERMO_WELLHUB_TOTALPASS,
+        })
+      }
       // cria o crédito do mês na unidade do plano (idempotente)
       await supabase.rpc('garantir_creditos_cliente', { p_cliente_id: cliente.id, p_mes: mesAtual, p_ano: anoAtual })
       setModalAtivar(null)
@@ -1438,14 +1454,14 @@ export default function MinhaContaPage() {
               <div style={{fontSize:13,color:'#555'}}>{modalAtivar.plano.unidades?.nome} · {modalAtivar.plano.creditos_mes} treinos/mês</div>
             </div>
             <div ref={contratoRef} className="contrato-scroll" style={{flex:1,overflow:'auto',padding:'1.25rem 1.5rem',fontSize:12,color:'#bbb',lineHeight:1.8,whiteSpace:'pre-wrap',fontFamily:"'DM Mono', monospace",letterSpacing:0.3}}>
-              {CONTRATO_TEXTO}
+              {modalAtivar.plano.unidades?.tipo === 'ct' ? TEXTO_TERMO_WELLHUB_TOTALPASS : CONTRATO_TEXTO}
             </div>
             <div style={{padding:'1rem 1.5rem 1.25rem',borderTop:'1px solid #222',flexShrink:0,background:'#0d0d0d'}}>
               <label style={{display:'flex',alignItems:'flex-start',gap:10,cursor:'pointer',marginBottom:'1rem'}} onClick={()=>setContratoAceito(!contratoAceito)}>
                 <div style={{width:20,height:20,borderRadius:5,flexShrink:0,marginTop:1,border:`2px solid ${contratoAceito?VERDE:'#555'}`,background:contratoAceito?VERDE:'transparent',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',transition:'all .15s'}}>
                   {contratoAceito&&<span style={{fontSize:12,color:'#000',fontWeight:900,lineHeight:1}}>✓</span>}
                 </div>
-                <span style={{fontSize:13,color:'#ccc',lineHeight:1.5}}>Li e concordo com os Termos de Uso</span>
+                <span style={{fontSize:13,color:'#ccc',lineHeight:1.5}}>{modalAtivar.plano.unidades?.tipo === 'ct' ? 'Li e aceito integralmente o Termo de Adesão Just CT — Wellhub / TotalPass, incluindo as regras de agendamento, cancelamento, multa por no-show e conduta nas dependências da academia.' : 'Li e concordo com os Termos de Uso'}</span>
               </label>
               {erroAtivar&&<div style={{background:'#1a0a0a',border:`1px solid ${ACCENT}44`,borderRadius:8,padding:'0.6rem 1rem',fontSize:12,color:ACCENT,marginBottom:'0.75rem'}}>{erroAtivar}</div>}
               <div style={{display:'flex',gap:8}}>

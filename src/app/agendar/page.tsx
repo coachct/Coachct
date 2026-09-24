@@ -8,6 +8,7 @@ import { gradeExtraDoDia } from '@/lib/grade'
 import { dashboardDoRole } from '@/lib/auth-redirect'
 import { filaEncerrada } from '@/lib/tempo'
 import { mensagemTravaApp } from '@/lib/utils'
+import { TEXTO_TERMO_WELLHUB_TOTALPASS, VERSAO_TERMO_WELLHUB_TOTALPASS } from '@/lib/contratos/termo-wellhub-totalpass'
 import SiteHeader from '@/components/SiteHeader'
 import ModalTelefone from '@/components/ModalTelefone'
 import CompraCreditoExtra, { type CreditoExtraStatus } from '@/components/CompraCreditoExtra'
@@ -229,6 +230,15 @@ export default function AgendarPage() {
   const [jaUsouParceiro, setJaUsouParceiro] = useState(false)
   const [modalCertParceiro, setModalCertParceiro] = useState(false)
   const [aceiteCertParceiro, setAceiteCertParceiro] = useState(false)
+  // Termo de Adesão Wellhub/TotalPass (multa de no-show R$99): obrigatório pra
+  // reservar ou entrar na fila com crédito de parceiro. Quem não tem aceite
+  // gravado em termos_aceites assina aqui antes de seguir.
+  const [termoCtAssinado, setTermoCtAssinado] = useState(false)
+  const [modalTermoCt, setModalTermoCt] = useState(false)
+  const [aceiteTermoCt, setAceiteTermoCt] = useState(false)
+  const [salvandoTermoCt, setSalvandoTermoCt] = useState(false)
+  const [erroTermoCt, setErroTermoCt] = useState('')
+  const [acaoAposTermo, setAcaoAposTermo] = useState<{ tipo: string; seguir: () => void } | null>(null)
   // ── Crédito extra por aula (apps parceiros) ────────────────────────────────
   // Vive FORA do saldo_creditos_cliente de propósito: aquele RPC é iterado como
   // "lista de planos agendáveis" aqui e no /minha-conta, e uma chave a mais
@@ -290,6 +300,8 @@ export default function AgendarPage() {
       setContratoAssinado((count || 0) > 0)
       const { count: countParceiro } = await supabase.from('agendamentos').select('*', { count: 'exact', head: true }).eq('cliente_id', data.id).or('tipo_credito.ilike.wellhub*,tipo_credito.ilike.totalpass*')
       setJaUsouParceiro((countParceiro || 0) > 0)
+      const { count: countTermo } = await supabase.from('termos_aceites').select('id', { count: 'exact', head: true }).eq('cliente_id', data.id).ilike('texto_contrato', '%R$ 99,00%')
+      setTermoCtAssinado((countTermo || 0) > 0)
       setNotifFila('email')
     }
   }
@@ -561,12 +573,50 @@ export default function AgendarPage() {
       }).catch(() => {})
     } catch {}
   }
-  function handleConfirmarReserva(avisoFaltasRespondido = false) {
+  function pedirTermoCt(tipo: string, seguir: () => void) {
+    setAceiteTermoCt(false); setErroTermoCt('')
+    setAcaoAposTermo({ tipo, seguir })
+    setModalTermoCt(true)
+  }
+  async function aceitarTermoCt() {
+    if (!aceiteTermoCt || !cliente || !acaoAposTermo || salvandoTermoCt) return
+    setSalvandoTermoCt(true); setErroTermoCt('')
+    const tipoPlano = acaoAposTermo.tipo.startsWith('totalpass_') ? 'totalpass' : 'wellhub'
+    const { data: cp } = await supabase.from('cliente_planos')
+      .select('id, planos_disponiveis!inner(tipo, unidade_id)')
+      .eq('cliente_id', cliente.id).eq('ativo', true)
+      .eq('planos_disponiveis.tipo', tipoPlano)
+      .eq('planos_disponiveis.unidade_id', unidadeAtiva?.id || '')
+      .limit(1).maybeSingle()
+    const { error } = await supabase.from('termos_aceites').insert({
+      cliente_id: cliente.id,
+      cliente_plano_id: cp?.id || null,
+      tipo_plano: tipoPlano,
+      nome_digitado: cliente.nome || '',
+      cpf_confirmado: cliente.cpf,
+      user_agent: navigator.userAgent,
+      modo_aceite: 'online',
+      versao_contrato: VERSAO_TERMO_WELLHUB_TOTALPASS,
+      texto_contrato: TEXTO_TERMO_WELLHUB_TOTALPASS,
+    })
+    setSalvandoTermoCt(false)
+    if (error) { setErroTermoCt('Não foi possível registrar o aceite. Tente novamente.'); return }
+    setTermoCtAssinado(true)
+    setModalTermoCt(false)
+    const seguir = acaoAposTermo.seguir
+    setAcaoAposTermo(null)
+    seguir()
+  }
+  function handleConfirmarReserva(avisoFaltasRespondido = false, termoOk = false) {
     if (!avisoFaltasRespondido && cliente && CLIENTES_AVISO_FALTAS.includes(cliente.id)) {
       setModalAvisoFaltas(true)
       return
     }
     const ehParceiro = tipoCredito.startsWith('wellhub_') || tipoCredito.startsWith('totalpass_')
+    if (ehParceiro && !termoOk && !termoCtAssinado) {
+      pedirTermoCt(tipoCredito, () => handleConfirmarReserva(true, true))
+      return
+    }
     if (ehParceiro && !jaUsouParceiro) {
       setAceiteCertParceiro(false)
       setModalCertParceiro(true)
@@ -644,15 +694,20 @@ export default function AgendarPage() {
     router.push('/minha-conta')
   }
 
-  async function confirmarFila(skipTel: boolean = false) {
+  async function confirmarFila(skipTel: boolean = false, termoOk: boolean = false) {
     if (!tipoFilaCredito) { setErroFila('Selecione como vai usar esta sessão.'); return }
     if (!filaAceite) { setErroFila('Confirme que entendeu as regras da fila.'); return }
     if (!modalFila || !cliente || !unidadeAtiva) return
     if (clienteBloqueado) { setErroFila('Sua conta está bloqueada.'); return }
     if (agendamentoCtBloqueado) { setErroFila(MSG_AGENDAMENTO_CT_BLOQUEADO); return }
+    const filaParceiro = tipoFilaCredito.startsWith('wellhub_') || tipoFilaCredito.startsWith('totalpass_')
+    if (filaParceiro && !termoOk && !termoCtAssinado) {
+      pedirTermoCt(tipoFilaCredito, () => confirmarFila(skipTel, true))
+      return
+    }
     // Fila exige telefone (o aviso de promoção é por WhatsApp). Gate independente de cartão.
     if (!skipTel && !telefoneValido(cliente?.telefone)) {
-      setPendingReserva(() => () => confirmarFila(true))
+      setPendingReserva(() => () => confirmarFila(true, termoOk))
       setModalTelefone(true)
       return
     }
@@ -1282,6 +1337,33 @@ export default function AgendarPage() {
                 style={{ flex: 2, background: aceiteCertParceiro ? AMARELO : '#333', color: aceiteCertParceiro ? '#000' : '#666', border: 'none', borderRadius: 10, padding: '0.85rem', fontWeight: 700, fontSize: 15, cursor: aceiteCertParceiro && !confirmando ? 'pointer' : 'default', fontFamily: "'DM Sans', sans-serif" }}>
                 {confirmando ? 'Confirmando...' : 'Confirmar e reservar ✓'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalTermoCt && (
+        <div style={{ position: 'fixed', inset: 0, background: '#000000e0', zIndex: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#111', border: '1px solid #333', borderRadius: 20, width: '100%', maxWidth: 500, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '1.5rem 1.5rem 1rem', borderBottom: '1px solid #222' }}>
+              <div style={{ fontSize: 11, color: ACCENT, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' as const }}>📄 Termo de Adesão — Wellhub / TotalPass</div>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.5rem' }}>
+              <pre style={{ fontSize: 12, color: '#aaa', lineHeight: 1.8, whiteSpace: 'pre-wrap', fontFamily: "'DM Sans', sans-serif" }}>{TEXTO_TERMO_WELLHUB_TOTALPASS}</pre>
+            </div>
+            <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid #222' }}>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer', marginBottom: '1rem' }}>
+                <input type="checkbox" checked={aceiteTermoCt} onChange={e => setAceiteTermoCt(e.target.checked)} style={{ marginTop: 2, accentColor: ACCENT, width: 16, height: 16, flexShrink: 0 }} />
+                <span style={{ fontSize: 13, color: '#aaa', lineHeight: 1.5 }}>Li e aceito integralmente o Termo de Adesão Just CT — Wellhub / TotalPass, incluindo as regras de agendamento, cancelamento, multa por no-show e conduta nas dependências da academia.</span>
+              </label>
+              {erroTermoCt && <div style={{ background: '#ff2d9b15', border: '1px solid #ff2d9b44', borderRadius: 8, padding: '0.6rem 1rem', fontSize: 13, color: ACCENT, marginBottom: '1rem' }}>{erroTermoCt}</div>}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => { setModalTermoCt(false); setAcaoAposTermo(null) }} style={{ flex: 1, background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.75rem', color: '#888', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Voltar</button>
+                <button onClick={aceitarTermoCt} disabled={!aceiteTermoCt || salvandoTermoCt}
+                  style={{ flex: 2, background: aceiteTermoCt ? ACCENT : '#333', color: '#fff', border: 'none', borderRadius: 10, padding: '0.75rem', fontWeight: 600, fontSize: 14, cursor: aceiteTermoCt && !salvandoTermoCt ? 'pointer' : 'default', fontFamily: "'DM Sans', sans-serif" }}>
+                  {salvandoTermoCt ? 'Registrando...' : 'Aceitar e continuar →'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
