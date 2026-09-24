@@ -139,7 +139,7 @@ export default function AdminEscalaPage() {
       .select('coach_id').eq('unidade_id', unidadeAtiva.id).eq('ativo', true)
     const coachIds = (cu || []).map((u: any) => u.coach_id)
     const { data: coaches } = coachIds.length
-      ? await supabase.from('coaches').select('id, nome, user_id').eq('ativo', true).in('id', coachIds).order('nome')
+      ? await supabase.from('coaches').select('id, nome, user_id, data_saida').eq('ativo', true).in('id', coachIds).order('nome')
       : { data: [] as any[] }
 
     // Férias/ausências dos coaches desta unidade que tocam a janela exibida (coach_ferias.coach_id = coaches.id).
@@ -280,6 +280,10 @@ export default function AdminEscalaPage() {
   }
 
   // ─── Mês de escala (Disponibilidade / Montar / Resumo) ───
+  // Coaches do mês: some quem tem data de saída (encerramento de contrato) antes do 1º fds do mês.
+  const primeiroFdsMes = fdsDoMes(mesSel)[0]?.data || ''
+  const coachesDoMes = coachesDisponiveis.filter(c => !c.data_saida || c.data_saida > primeiroFdsMes)
+
   async function carregarMes() {
     if (!unidadeAtiva) return
     setLoadingMes(true)
@@ -334,7 +338,7 @@ export default function AdminEscalaPage() {
 
   // Coaches que podem ser escalados no dia pela montagem: marcaram disponibilidade, sem férias e ainda fora da escala.
   function candidatosMontar(data: string, escaladosUserIds: Set<string>) {
-    return coachesDisponiveis.filter(c =>
+    return coachesDoMes.filter(c =>
       c.user_id &&
       !escaladosUserIds.has(c.user_id) &&
       dispMes.has(`${c.id}|${data}`) &&
@@ -545,7 +549,7 @@ export default function AdminEscalaPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {coachesDisponiveis.map(c => (
+                  {coachesDoMes.map(c => (
                     <tr key={c.id} style={{ borderBottom: '1px solid #f9fafb' }}>
                       <td style={{ padding: '0.5rem 0.75rem', fontSize: 13, fontWeight: 500, color: '#1f2937', whiteSpace: 'nowrap', position: 'sticky', left: 0, background: '#fff', zIndex: 1 }}>{c.nome}</td>
                       {fdsDoMes(mesSel).map(f => {
@@ -612,8 +616,8 @@ export default function AdminEscalaPage() {
                   const escSet = new Set(escs.map(e => e.coach_id))
                   const cands = candidatosMontar(data, escSet)
                     .sort((a, b) => ((cont[a.user_id] || 0) - (cont[b.user_id] || 0)) || (a.nome || '').localeCompare(b.nome || ''))
-                  const semDisp = coachesDisponiveis.filter(c => c.user_id && !escSet.has(c.user_id) && !dispMes.has(`${c.id}|${data}`) && !deFeriasMes(c.id, data))
-                  const ferias = coachesDisponiveis.filter(c => !escSet.has(c.user_id) && deFeriasMes(c.id, data))
+                  const semDisp = coachesDoMes.filter(c => c.user_id && !escSet.has(c.user_id) && !dispMes.has(`${c.id}|${data}`) && !deFeriasMes(c.id, data))
+                  const ferias = coachesDoMes.filter(c => !escSet.has(c.user_id) && deFeriasMes(c.id, data))
                   const completo = escs.length >= meta
                   const dataObj = new Date(data + 'T12:00:00')
                   return (
