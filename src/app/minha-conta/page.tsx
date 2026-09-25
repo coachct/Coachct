@@ -9,6 +9,7 @@ import SiteHeader from '@/components/SiteHeader'
 import ModalTelefone from '@/components/ModalTelefone'
 import CompraCreditoExtra, { type CreditoExtraStatus } from '@/components/CompraCreditoExtra'
 import AppProCard from '@/components/AppProCard'
+import ClubExtraCard from '@/components/ClubExtraCard'
 import { numerarTreinosDoMes, PLANOS_SEM_TETO, poolReservaClub } from '@/lib/treinos-numero'
 import { temPlanoProAtivo } from '@/lib/planoPro'
 import { TEXTO_TERMO_WELLHUB_TOTALPASS, VERSAO_TERMO_WELLHUB_TOTALPASS } from '@/lib/contratos/termo-wellhub-totalpass'
@@ -854,6 +855,9 @@ export default function MinhaContaPage() {
 
         {/* Oferta do App Coach CT PRO — só para quem treina Coach CT pelo app */}
         {!estaBloqueado && cliente?.id && <AppProCard clienteId={cliente.id} onde="conta" />}
+
+        {/* Check ins Extra for Clubs — só para quem usou 70%+ do app no Club */}
+        {!estaBloqueado && cliente?.id && <ClubExtraCard clienteId={cliente.id} />}
 
         {/* ══════════════════════════════════════════
             SEÇÃO 1 — PRÓXIMOS TREINOS

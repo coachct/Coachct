@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { CAMPANHA_SUMMER, ERRO_LIMITE_POR_CLIENTE } from '@/lib/summer'
 import { APP_PRO_PRODUTO_ID } from '@/lib/appPro'
+import { CLUB_EXTRA_PRODUTO_ID, ERRO_CLUB_EXTRA_NAO_ELEGIVEL } from '@/lib/clubExtra'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -189,6 +190,21 @@ export async function POST(req: NextRequest) {
       }
       if ((Number(parcelas) || 1) > (Number(produto.max_parcelas) || 1)) {
         return NextResponse.json({ error: `Este plano pode ser parcelado em até ${produto.max_parcelas || 1}x.` }, { status: 400 })
+      }
+    }
+
+    // Check ins Extra for Clubs: só quem usou 70%+ dos check-ins do app numa
+    // Club (RPC club_extra_oferta). Um pacote por compra, só à vista.
+    if (produto.id === CLUB_EXTRA_PRODUTO_ID) {
+      const { data: oferta, error: erroOferta } = await supabase.rpc('club_extra_oferta', { p_cliente_id: cliente.id })
+      if (erroOferta || !oferta?.pode_comprar) {
+        return NextResponse.json({ error: ERRO_CLUB_EXTRA_NAO_ELEGIVEL }, { status: 403 })
+      }
+      if (quantidade !== 1) {
+        return NextResponse.json({ error: 'Quantidade inválida para este pacote.' }, { status: 400 })
+      }
+      if ((Number(parcelas) || 1) > 1) {
+        return NextResponse.json({ error: 'Este pacote é só à vista.' }, { status: 400 })
       }
     }
 

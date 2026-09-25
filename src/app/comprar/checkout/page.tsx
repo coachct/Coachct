@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { dataBR } from '@/lib/summer'
 import { rastrear, sessaoId, origemSalva } from '@/lib/rastreio'
 import { APP_PRO_PRODUTO_ID, carregarAppProOferta } from '@/lib/appPro'
+import { CLUB_EXTRA_PRODUTO_ID, carregarClubExtraOferta, ERRO_CLUB_EXTRA_NAO_ELEGIVEL } from '@/lib/clubExtra'
 
 const ACCENT = '#ff2d9b'
 
@@ -111,6 +112,14 @@ function CheckoutContent() {
     })
   }, [cliente?.id, produtoId])
 
+  // Check ins Extra for Clubs: só quem usou 70%+ dos check-ins do app no Club.
+  useEffect(() => {
+    if (!cliente?.id || produtoId !== CLUB_EXTRA_PRODUTO_ID) return
+    carregarClubExtraOferta(supabase, cliente.id).then(o => {
+      if (o && !o.pode_comprar) setErro(ERRO_CLUB_EXTRA_NAO_ELEGIVEL)
+    })
+  }, [cliente?.id, produtoId])
+
   // PIX: quem confirma o pagamento é o webhook. Enquanto o QR está na tela,
   // consulta o status a cada 4s e segue pro sucesso quando cair. Para sozinho
   // se o pagamento sair de 'pendente' sem pagar ou depois de 65 min (PIX vale 1h).
@@ -146,12 +155,13 @@ function CheckoutContent() {
     setLoading(true)
     // App Coach CT PRO fica fora da vitrine (visivel_site = false), mas é
     // vendido aqui para quem vem de /app-pro. A API confere quem pode comprar.
+    // Idem o Check ins Extra for Clubs (vem do card em /minha-conta).
     let query = supabase
       .from('produtos')
       .select('*, unidades(nome)')
       .eq('id', produtoId)
       .eq('ativo', true)
-    if (produtoId !== APP_PRO_PRODUTO_ID) query = query.eq('visivel_site', true)
+    if (produtoId !== APP_PRO_PRODUTO_ID && produtoId !== CLUB_EXTRA_PRODUTO_ID) query = query.eq('visivel_site', true)
     const { data } = await query.maybeSingle()
     setProduto(data)
     setLoading(false)

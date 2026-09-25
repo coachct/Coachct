@@ -20,7 +20,8 @@ export type AppProOferta = {
   produto_id: string
 }
 
-export type LocalOferta = 'conta' | 'conta_70' | 'agendar' | 'pagina' | 'renovacao'
+// club_* = Check ins Extra for Clubs (mesma tabela de medição)
+export type LocalOferta = 'conta' | 'conta_70' | 'agendar' | 'pagina' | 'renovacao' | 'club_70' | 'club_mes_anterior'
 
 export const NOME_PARCEIRO: Record<string, string> = { wellhub: 'Wellhub', totalpass: 'TotalPass' }
 
