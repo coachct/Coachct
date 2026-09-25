@@ -396,6 +396,22 @@ async function processarMidia(
     })
     if (insErr) console.error('[whatsapp/webhook] insert mídia:', insErr.message)
 
+    // ÁUDIO: o bot não ouve. A pedido do Ricardo, SEMPRE avisa na hora que não dá pra
+    // ouvir áudio e pede texto — INCLUSIVE quando a conversa já está com a equipe
+    // (modo humano/escalado). Respeita só o kill switch global. Não repete se acabamos
+    // de mandar esse mesmo aviso (vários áudios seguidos).
+    if (midia.tipo === 'audio' && BOT_ATIVO) {
+      const avisoAudio = 'Oi! 😊 Ainda não consigo ouvir áudios por aqui — me escreve em texto rapidinho o que você precisa que eu já te ajudo! 🙏'
+      const ultimaA = await ultimaRespostaAssistente(supabase, telefone)
+      if ((ultimaA ?? '').trim() !== avisoAudio) {
+        try {
+          await salvarMensagem(supabase, { telefone, clienteId, role: 'assistant', conteudo: avisoAudio })
+          await enviarTexto(de, avisoAudio)
+        } catch {}
+      }
+      return
+    }
+
     // Se a conversa está em atendimento humano/escalado, ou o bot está pausado, fica
     // quieto (não atropela a equipe). Fora isso, uma imagem NUNCA pode silenciar o bot.
     if (!BOT_ATIVO || (await emModoHumano(supabase, telefone)) || (await estaAguardandoHumano(supabase, telefone))) {
