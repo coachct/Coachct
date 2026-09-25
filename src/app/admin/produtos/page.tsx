@@ -595,7 +595,7 @@ export default function AdminProdutosPage() {
                     <div className="font-semibold mb-1">🏆 Como funciona "Coach CT Pro":</div>
                     <div>• Cliente paga upfront (parcelado no cartão) e ganha o pacote completo de créditos.</div>
                     <div>• Duração e créditos vêm do plano vinculado, não deste produto.</div>
-                    <div>• Ao comprar, planos agregadores (Wellhub/TotalPass) do cliente são desativados automaticamente.</div>
+                    <div>• Ao comprar, os planos Wellhub/TotalPass do cliente continuam ativos (o Pro soma, não substitui).</div>
                     <div>• Pode haver múltiplos produtos pro mesmo plano (ex: promo + cheio).</div>
                   </div>
                 </>

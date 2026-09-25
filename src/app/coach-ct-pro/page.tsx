@@ -366,7 +366,7 @@ export default function CoachCtProPage() {
             {[
               {
                 p: 'Preciso cancelar meu plano Wellhub ou TotalPass para assinar o Pro?',
-                r: 'Sim. A compra do Coach CT Pro desativa automaticamente seu plano de agregador na Just CT. Os dois planos não podem coexistir — o Pro substitui o anterior.',
+                r: 'Não. Seu plano Wellhub ou TotalPass continua ativo na Just CT — o Pro soma, não substitui. Na hora de agendar, você escolhe se usa o crédito do app ou o do Pro.',
               },
               {
                 p: 'O que acontece se eu não usar todos os créditos no mês?',
