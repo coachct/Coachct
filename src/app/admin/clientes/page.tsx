@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useRef, Suspense } from 'react'
 import { createClient } from '@/lib/supabase'
-import { gradeExtraDoDia } from '@/lib/grade'
+import { gradeExtraDoDia, coachesComFixaSubstituida } from '@/lib/grade'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -1071,15 +1071,18 @@ function AdminClientesPageInner() {
       if (qtd > 0) { for (const hora of HORARIOS_FDS) porHora[hora] = qtd }
     } else {
       const { data: hors } = await supabase.from('coach_horarios').select('hora, coach_id').eq('dia_semana', diaSemNum).eq('unidade_id', unidadeAtiva.id).eq('ativo', true)
+      // Grade extra do período: só ACRESCENTA coach novo naquela hora (dedup por coach).
+      // Extra marcada "substitui a grade fixa" tira a fixa desse coach do dia.
+      const extra = await gradeExtraDoDia(supabase, { unidadeId: unidadeAtiva.id, dataStr, diaSemana: diaSemNum })
+      const substituidos = coachesComFixaSubstituida(extra)
       const coachPorHora: Record<string, Set<string>> = {}
       for (const h of (hors || [])) {
+        if (substituidos.has(h.coach_id)) continue
         const hora = (h.hora || '').slice(0, 5)
         porHora[hora] = (porHora[hora] || 0) + 1
         if (!coachPorHora[hora]) coachPorHora[hora] = new Set()
         coachPorHora[hora].add(h.coach_id)
       }
-      // Grade extra do período: só ACRESCENTA coach novo naquela hora (dedup por coach).
-      const extra = await gradeExtraDoDia(supabase, { unidadeId: unidadeAtiva.id, dataStr, diaSemana: diaSemNum })
       for (const s of extra) {
         if (!coachPorHora[s.hora]) coachPorHora[s.hora] = new Set()
         if (coachPorHora[s.hora].has(s.coach_id)) continue

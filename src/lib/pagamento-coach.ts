@@ -54,10 +54,13 @@ export function calcularHorasProfessor(o: {
     } else if (o.feriadoSet.has(ds) || dow === 0 || dow === 6) {
       if (o.escalaSet.has(ds)) { h = HORAS_FDS; fonte = o.feriadoSet.has(ds) ? 'feriado' : 'fds' }
     } else {
-      const base = o.gradePorDia[dow] || 0
-      const ex = (o.extra || []).filter((e: any) => e.data_inicio <= ds && e.data_fim >= ds && e.dia_semana === dow).length
+      const exDia = (o.extra || []).filter((e: any) => e.data_inicio <= ds && e.data_fim >= ds && e.dia_semana === dow)
+      const ex = exDia.length
+      // Extra marcada "substitui a grade fixa": no dia só contam as horas da extra.
+      const substitui = exDia.some((e: any) => e.substitui_fixa === true)
+      const base = substitui ? 0 : (o.gradePorDia[dow] || 0)
       h = base + ex
-      fonte = ex > 0 ? 'grade + extra' : 'grade'
+      fonte = substitui ? 'extra (substitui grade)' : ex > 0 ? 'grade + extra' : 'grade'
     }
     if (h > 0) linhas.push({ data: ds, horas: h, fonte })
     cur.setDate(cur.getDate() + 1)
@@ -144,7 +147,7 @@ export async function totaisCoachPorUnidade(
           .select('data').eq('unidade_id', u.id).eq('coach_id', coach.user_id)
           .gte('data', inicio).lte('data', fim)
         const { data: extra } = await sb.from('coach_horarios_extra')
-          .select('data_inicio, data_fim, dia_semana')
+          .select('data_inicio, data_fim, dia_semana, substitui_fixa')
           .eq('coach_id', coach.id).eq('unidade_id', u.id)
           .lte('data_inicio', fim).gte('data_fim', inicio)
 

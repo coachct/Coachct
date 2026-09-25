@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase'
-import { gradeExtraDoDia } from '@/lib/grade'
+import { gradeExtraDoDia, coachesComFixaSubstituida } from '@/lib/grade'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
 import { useRouter } from 'next/navigation'
@@ -218,11 +218,13 @@ export default function AdminAgendaPage() {
         .eq('dia_semana', diaSem)
         .eq('unidade_id', unidadeAtiva.id)
         .eq('ativo', true)
-      coachsFinal = (coachs || []).filter((c: any) => !feriasSet.has(c.coach_id))
-
       // Grade extra do período (aditivo, à prova de falha, atrás do kill switch):
-      // só ACRESCENTA coach/horário nesta data — nunca remove da grade base.
+      // só ACRESCENTA coach/horário nesta data — só tira da grade base o coach
+      // cuja extra está marcada "substitui a grade fixa".
       const extra = await gradeExtraDoDia(supabase, { unidadeId: unidadeAtiva.id, dataStr: data, diaSemana: diaSem })
+      const substituidos = coachesComFixaSubstituida(extra)
+      coachsFinal = (coachs || []).filter((c: any) => !feriasSet.has(c.coach_id) && !substituidos.has(c.coach_id))
+
       if (extra.length) {
         const jaTem = new Set(coachsFinal.map((c: any) => `${c.coach_id}-${norm(c.hora)}`))
         for (const s of extra) {

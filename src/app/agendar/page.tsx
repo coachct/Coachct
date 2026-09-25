@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
 import { createClient } from '@/lib/supabase'
-import { gradeExtraDoDia } from '@/lib/grade'
+import { gradeExtraDoDia, coachesComFixaSubstituida } from '@/lib/grade'
 import { dashboardDoRole } from '@/lib/auth-redirect'
 import { filaEncerrada } from '@/lib/tempo'
 import { mensagemTravaApp } from '@/lib/utils'
@@ -393,10 +393,12 @@ export default function AgendarPage() {
         if (qtd > 0) for (const hora of HORARIOS_FDS) { if (isDiaDe && hora <= horaAtual) continue; porHora[hora] = qtd }
       } else {
         const { data: hors } = await supabase.from('coach_horarios').select('hora, coach_id').eq('dia_semana', diaSem).eq('ativo', true).eq('unidade_id', unidadeAtiva.id)
-        const coachPorHora: Record<string, Set<string>> = {}
-        for (const h of (hors || [])) { if (feriasSet.has(h.coach_id)) continue; const hora = (h.hora || '').slice(0, 5); if (isDiaDe && hora <= horaAtual) continue; porHora[hora] = (porHora[hora] || 0) + 1; if (!coachPorHora[hora]) coachPorHora[hora] = new Set(); coachPorHora[hora].add(h.coach_id) }
         // Grade extra do período: só ACRESCENTA coach novo naquela hora (dedup por coach; férias/horário passado respeitados).
+        // Se a extra estiver marcada "substitui a grade fixa", a fixa desse coach sai do dia.
         const extra = await gradeExtraDoDia(supabase, { unidadeId: unidadeAtiva.id, dataStr, diaSemana: diaSem })
+        const substituidos = coachesComFixaSubstituida(extra)
+        const coachPorHora: Record<string, Set<string>> = {}
+        for (const h of (hors || [])) { if (feriasSet.has(h.coach_id) || substituidos.has(h.coach_id)) continue; const hora = (h.hora || '').slice(0, 5); if (isDiaDe && hora <= horaAtual) continue; porHora[hora] = (porHora[hora] || 0) + 1; if (!coachPorHora[hora]) coachPorHora[hora] = new Set(); coachPorHora[hora].add(h.coach_id) }
         for (const s of extra) { if (feriasSet.has(s.coach_id)) continue; if (isDiaDe && s.hora <= horaAtual) continue; if (!coachPorHora[s.hora]) coachPorHora[s.hora] = new Set(); if (coachPorHora[s.hora].has(s.coach_id)) continue; coachPorHora[s.hora].add(s.coach_id); porHora[s.hora] = (porHora[s.hora] || 0) + 1 }
       }
       const [agsRes, filaGeralRes, bloqueadasRes, agClienteRes, filasRes] = await Promise.allSettled([
@@ -456,10 +458,12 @@ export default function AgendarPage() {
       coachIds = (resolvidos || []).map((c: any) => c.id).filter(Boolean)
     } else {
       const { data: hors } = await supabase.from('coach_horarios').select('coach_id').eq('dia_semana', diaSem).eq('hora', horaStr).eq('ativo', true).eq('unidade_id', unidadeAtiva.id)
-      coachIds = (hors || []).map((h: any) => h.coach_id).filter(Boolean)
       // Grade extra do período: acrescenta coaches escalados extra nessa hora (dedup; férias filtrada abaixo).
-      const extra = await gradeExtraDoDia(supabase, { unidadeId: unidadeAtiva.id, dataStr, diaSemana: diaSem, hora: horaStr })
-      for (const s of extra) if (!coachIds.includes(s.coach_id)) coachIds.push(s.coach_id)
+      // Busca o dia inteiro (sem filtro de hora) para enxergar quem teve a fixa substituída.
+      const extra = await gradeExtraDoDia(supabase, { unidadeId: unidadeAtiva.id, dataStr, diaSemana: diaSem })
+      const substituidos = coachesComFixaSubstituida(extra)
+      coachIds = (hors || []).map((h: any) => h.coach_id).filter((id: any) => id && !substituidos.has(id))
+      for (const s of extra) if (s.hora === horaStr && !coachIds.includes(s.coach_id)) coachIds.push(s.coach_id)
     }
     // Daqui pra baixo, coachIds são sempre coaches.id (igual a coach_ferias e agendamentos).
     coachIds = coachIds.filter(id => !feriasSet.has(id))

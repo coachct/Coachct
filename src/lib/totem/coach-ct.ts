@@ -5,7 +5,7 @@
 // Isolado; só as rotas /api/totem/coach-ct-* usam.
 
 import { SupabaseClient } from '@supabase/supabase-js'
-import { gradeExtraDoDia } from '@/lib/grade'
+import { gradeExtraDoDia, coachesComFixaSubstituida } from '@/lib/grade'
 
 const HORARIOS_FDS = ['08:00', '09:00', '10:00', '11:00', '12:00']
 
@@ -117,13 +117,14 @@ export async function coachesDisponiveis(
     const { data: coachs } = await sb
       .from('coach_horarios').select('hora, coach_id, coaches ( id, nome )')
       .eq('dia_semana', diaSem).eq('unidade_id', unidadeId).eq('ativo', true)
+    // grade extra do período (aditivo; "substitui a grade fixa" tira a fixa do coach no dia)
+    const extra = await gradeExtraDoDia(sb, { unidadeId, dataStr, diaSemana: diaSem })
+    const substituidos = coachesComFixaSubstituida(extra)
     for (const c of (coachs || []) as any[]) {
-      if (norm(c.hora) !== horarioN || feriasSet.has(c.coach_id)) continue
+      if (norm(c.hora) !== horarioN || feriasSet.has(c.coach_id) || substituidos.has(c.coach_id)) continue
       const co = c.coaches
       if (co?.id && !jaTem(co.id)) escalados.push({ id: co.id, nome: co.nome })
     }
-    // grade extra do período (aditivo)
-    const extra = await gradeExtraDoDia(sb, { unidadeId, dataStr, diaSemana: diaSem })
     for (const s of (extra || []) as any[]) {
       if (norm(s.hora) !== horarioN || feriasSet.has(s.coach_id) || jaTem(s.coach_id)) continue
       escalados.push({ id: s.coach_id, nome: s.nome })

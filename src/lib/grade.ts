@@ -20,7 +20,17 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 export const GRADE_EXTRA_ATIVO = process.env.NEXT_PUBLIC_GRADE_EXTRA_ATIVO === 'true'
 
-export type SlotExtra = { coach_id: string; hora: string; nome: string }
+// substitui = a grade extra "sobrepõe a grade fixa": naquele dia o coach fica
+// SÓ com os horários da extra (a grade fixa dele sai do dia). Exceção única à
+// regra do ADITIVO, e só vale para o coach que tem a flag marcada.
+export type SlotExtra = { coach_id: string; hora: string; nome: string; substitui: boolean }
+
+// Coaches cuja grade fixa foi substituída pela extra nesse dia. O chamador
+// pula as linhas de coach_horarios desses coaches. Precisa receber a extra do
+// DIA INTEIRO (sem filtro de hora), senão não enxerga a substituição.
+export function coachesComFixaSubstituida(extra: SlotExtra[]): Set<string> {
+  return new Set(extra.filter(s => s.substitui).map(s => s.coach_id))
+}
 
 // Retorna os slots de grade extra vigentes numa data (dia útil), para uma
 // unidade. `hora` opcional restringe a um horário específico. hora normalizada
@@ -33,7 +43,7 @@ export async function gradeExtraDoDia(
   if (!GRADE_EXTRA_ATIVO) return []
   try {
     let q = supabase.from('coach_horarios_extra')
-      .select('coach_id, hora, coaches(id, nome, ativo)')
+      .select('coach_id, hora, substitui_fixa, coaches(id, nome, ativo)')
       .eq('unidade_id', params.unidadeId)
       .eq('dia_semana', params.diaSemana)
       .lte('data_inicio', params.dataStr)
@@ -44,7 +54,7 @@ export async function gradeExtraDoDia(
     return (data || [])
       // Coach precisa existir e estar ativo — nunca escala um coach inativo.
       .filter((r: any) => r.coach_id && r.coaches?.ativo !== false)
-      .map((r: any) => ({ coach_id: r.coach_id, hora: (r.hora || '').slice(0, 5), nome: r.coaches?.nome || '' }))
+      .map((r: any) => ({ coach_id: r.coach_id, hora: (r.hora || '').slice(0, 5), nome: r.coaches?.nome || '', substitui: r.substitui_fixa === true }))
   } catch {
     return []
   }

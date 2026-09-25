@@ -71,7 +71,7 @@ export default function CoachesPage() {
   // ─── Grade extra por período (exclusivo professor CT — entra no cálculo de horas) ───
   const [extrasPorCoach,  setExtrasPorCoach]  = useState<Record<string, any[]>>({})
   const [extraGrade,      setExtraGrade]      = useState<Record<string, Set<string>>>({})
-  const [extraForm,       setExtraForm]       = useState<{ data_inicio: string; data_fim: string; motivo: string }>({ data_inicio: '', data_fim: '', motivo: '' })
+  const [extraForm,       setExtraForm]       = useState<{ data_inicio: string; data_fim: string; motivo: string; substitui_fixa: boolean }>({ data_inicio: '', data_fim: '', motivo: '', substitui_fixa: false })
   const [salvandoExtra,   setSalvandoExtra]   = useState<string | null>(null)
   const [removendoExtra,  setRemovendoExtra]  = useState<string | null>(null)
 
@@ -113,7 +113,7 @@ export default function CoachesPage() {
     loadFerias(coach.id)
     setFeriasForm({ data_inicio: '', data_fim: '', motivo: '' })
     setAvisoFerias(null)
-    setExtraForm({ data_inicio: '', data_fim: '', motivo: '' })
+    setExtraForm({ data_inicio: '', data_fim: '', motivo: '', substitui_fixa: false })
     setExtraGrade(prev => ({ ...prev, [coach.id]: new Set() }))
     loadExtras(coach.id)
     setSaidaDraft(coach.data_saida || '')
@@ -544,7 +544,7 @@ export default function CoachesPage() {
     for (const r of (data || [])) {
       if (!grupos[r.grupo_id]) grupos[r.grupo_id] = {
         grupo_id: r.grupo_id, data_inicio: r.data_inicio, data_fim: r.data_fim,
-        motivo: r.motivo, slots: [] as any[],
+        motivo: r.motivo, substitui_fixa: r.substitui_fixa === true, slots: [] as any[],
       }
       grupos[r.grupo_id].slots.push({ dia_semana: r.dia_semana, hora: r.hora })
     }
@@ -584,16 +584,26 @@ export default function CoachesPage() {
         dia_semana:  parseInt(key.substring(0, idx)),
         hora:        key.substring(idx + 1),
         motivo:      extraForm.motivo.trim() || null,
+        substitui_fixa: extraForm.substitui_fixa,
         criado_por:  user?.id || null,
       }
     })
     const { error } = await supabase.from('coach_horarios_extra').insert(rows)
     setSalvandoExtra(null)
     if (error) { setMsg('Erro ao salvar grade extra: ' + error.message); return }
-    setExtraForm({ data_inicio: '', data_fim: '', motivo: '' })
+    setExtraForm({ data_inicio: '', data_fim: '', motivo: '', substitui_fixa: false })
     setExtraGrade(prev => ({ ...prev, [coachId]: new Set() }))
     setMsg('Grade extra adicionada!')
     setTimeout(() => setMsg(''), 2500)
+    loadExtras(coachId)
+  }
+
+  // Liga/desliga "sobrepor a grade fixa" num lançamento já salvo (o grupo inteiro).
+  async function toggleSubstituiExtra(grupoId: string, coachId: string, valor: boolean) {
+    setRemovendoExtra(grupoId)
+    const { error } = await supabase.from('coach_horarios_extra').update({ substitui_fixa: valor }).eq('grupo_id', grupoId)
+    setRemovendoExtra(null)
+    if (error) { setMsg('Erro ao atualizar: ' + error.message); return }
     loadExtras(coachId)
   }
 
@@ -905,7 +915,7 @@ export default function CoachesPage() {
                       <Settings2 size={14} className="text-blue-600"/>
                       <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Grade extra por período — Coach CT</span>
                     </div>
-                    <p className="text-xs text-gray-400 mb-3">Escala o coach na grade <strong>só dentro do período informado</strong> (ex.: cobertura, reforço) — soma à grade fixa. {coach.cargo === 'professor' ? 'Para professor, também conta como horas no Pagamento de Coaches.' : 'Não altera o pagamento (estagiário segue o salário fixo).'} Feriado/FDS e férias seguem as regras normais.</p>
+                    <p className="text-xs text-gray-400 mb-3">Escala o coach na grade <strong>só dentro do período informado</strong> (ex.: cobertura, reforço) — soma à grade fixa, ou a substitui naqueles dias se marcar "Sobrepor a grade fixa". {coach.cargo === 'professor' ? 'Para professor, também conta como horas no Pagamento de Coaches.' : 'Não altera o pagamento (estagiário segue o salário fixo).'} Feriado/FDS e férias seguem as regras normais.</p>
 
                     {(extrasPorCoach[coach.id]?.length ?? 0) === 0 ? (
                       <p className="text-xs text-gray-400 italic mb-4">Nenhuma grade extra cadastrada.</p>
@@ -921,6 +931,11 @@ export default function CoachesPage() {
                                 ))}
                               </div>
                               {g.motivo && <div className="text-xs text-gray-400 mt-0.5">{g.motivo}</div>}
+                              <label className="flex items-center gap-1.5 mt-1.5 text-xs text-gray-600 cursor-pointer w-fit">
+                                <input type="checkbox" checked={!!g.substitui_fixa} disabled={removendoExtra===g.grupo_id}
+                                  onChange={e => toggleSubstituiExtra(g.grupo_id, coach.id, e.target.checked)}/>
+                                Sobrepor a grade fixa {g.substitui_fixa && <span className="text-blue-700 font-medium">— nesses dias vale só esta grade</span>}
+                              </label>
                             </div>
                             <button onClick={() => removeExtra(g.grupo_id, coach.id)} disabled={removendoExtra===g.grupo_id}
                               className="flex-shrink-0 p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50">
@@ -941,6 +956,10 @@ export default function CoachesPage() {
                         <label className="label">Motivo <span className="text-gray-400 font-normal">— opcional</span></label>
                         <input className="input" value={extraForm.motivo} placeholder="Cobertura, reforço…" onChange={e=>setExtraForm(f=>({...f,motivo:e.target.value}))}/>
                       </div>
+                      <label className="flex items-start gap-2 mb-3 text-sm text-gray-700 cursor-pointer">
+                        <input type="checkbox" className="mt-0.5" checked={extraForm.substitui_fixa} onChange={e=>setExtraForm(f=>({...f,substitui_fixa:e.target.checked}))}/>
+                        <span>Sobrepor a grade fixa <span className="block text-xs text-gray-400">Nos dias marcados, dentro do período, o coach fica só com os horários desta grade extra — a grade fixa dele sai desses dias.</span></span>
+                      </label>
                       <label className="label">Horários extras <span className="text-gray-400 font-normal">— {extraGrade[coach.id]?.size || 0} marcados</span></label>
                       <div className="overflow-x-auto mb-3">
                         <table className="text-xs w-full">

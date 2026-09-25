@@ -8,7 +8,7 @@
 // (o modelo nunca decide isso sozinho) e registra o ato em lgpd_logs.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { gradeExtraDoDia } from '@/lib/grade'
+import { gradeExtraDoDia, coachesComFixaSubstituida } from '@/lib/grade'
 import { mensagemTravaApp } from '@/lib/utils'
 import { clienteTemPlanoPro } from '@/lib/planoPro'
 import { registrarAcessoLgpd, agoraEmSaoPaulo, consultarSaldo } from './consultas'
@@ -120,8 +120,13 @@ export async function horariosDisponiveisCt(
     const { data: hors } = await supabase
       .from('coach_horarios').select('hora, coach_id')
       .eq('dia_semana', diaSem).eq('ativo', true).eq('unidade_id', unidadeId)
+    // Grade extra do período: só ACRESCENTA coach novo naquela hora (dedup por coach).
+    // Extra marcada "substitui a grade fixa" tira a fixa desse coach do dia.
+    const extra = await gradeExtraDoDia(supabase, { unidadeId, dataStr, diaSemana: diaSem })
+    const substituidos = coachesComFixaSubstituida(extra)
     const coachPorHora: Record<string, Set<string>> = {}
     for (const h of hors ?? []) {
+      if (substituidos.has((h as any).coach_id)) continue
       const hora = String(h.hora ?? '').slice(0, 5)
       if (!hora) continue
       if (isDiaDe && hora <= horaAtual) continue
@@ -129,8 +134,6 @@ export async function horariosDisponiveisCt(
       if (!coachPorHora[hora]) coachPorHora[hora] = new Set()
       coachPorHora[hora].add((h as any).coach_id)
     }
-    // Grade extra do período: só ACRESCENTA coach novo naquela hora (dedup por coach).
-    const extra = await gradeExtraDoDia(supabase, { unidadeId, dataStr, diaSemana: diaSem })
     for (const s of extra) {
       if (isDiaDe && s.hora <= horaAtual) continue
       if (!coachPorHora[s.hora]) coachPorHora[s.hora] = new Set()

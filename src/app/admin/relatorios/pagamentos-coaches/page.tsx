@@ -222,7 +222,7 @@ export default function PagamentosCoachesPage() {
         .gte('data', inicio).lte('data', fim)
       const escSet = new Set((esc || []).map((e: any) => e.data))
       const { data: extra } = await supabase.from('coach_horarios_extra')
-        .select('data_inicio, data_fim, dia_semana')
+        .select('data_inicio, data_fim, dia_semana, substitui_fixa')
         .eq('coach_id', coachSel.id).eq('unidade_id', unidadeSel.id)
         .lte('data_inicio', fim).gte('data_fim', inicio)
       // Início do pagamento por hora: vazio = conta o mês todo; preenchido = só a partir dessa data.
@@ -327,7 +327,7 @@ export default function PagamentosCoachesPage() {
           const { data: esc } = await supabase.from('escala_fds')
             .select('coach_id, data').eq('unidade_id', u.id).gte('data', inicio).lte('data', fim)
           const { data: extra } = await supabase.from('coach_horarios_extra')
-            .select('coach_id, data_inicio, data_fim, dia_semana')
+            .select('coach_id, data_inicio, data_fim, dia_semana, substitui_fixa')
             .eq('unidade_id', u.id).in('coach_id', pids)
             .lte('data_inicio', fim).gte('data_fim', inicio)
 
