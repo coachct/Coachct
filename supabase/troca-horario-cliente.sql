@@ -18,6 +18,8 @@
 --      começado ainda (não dá pra "antecipar" pras 18h se já são 19h).
 --   7. Se já bateu check-in/presença, não troca mais.
 --   8. No Club, pode trocar de modalidade (Lift ↔ Running), igual recepção.
+--      No Club também vale o vizinho da MESMA modalidade (25/09/2026): Lift
+--      11:15 oferece Running 11:00 E Lift 10:15. Teto de 2h continua.
 --
 -- SEGURANÇA: as funções são SECURITY DEFINER e só aceitam a reserva do
 -- PRÓPRIO usuário logado (auth.uid() → clientes.user_id). Passar o id de
@@ -159,6 +161,8 @@ declare
   v_cap       int;
   v_ant       text;
   v_prox      text;
+  v_ant_mod   text;
+  v_prox_mod  text;
   v_opcoes    json;
 begin
   select c.id into v_cli from clientes c where c.user_id = auth.uid();
@@ -275,6 +279,18 @@ begin
      where a.unidade_id = v_aula.unidade_id and a.ativo is true
        and o.data = v_oc.data and coalesce(o.status, 'ativa') = 'ativa'
        and to_char(a.horario, 'HH24:MI') > v_hora_orig;
+    -- Vizinhos da MESMA modalidade (ex.: Lift 11:15 → Lift 10:15, mesmo com
+    -- um Running 11:00 no meio). Continua valendo o teto de 2h.
+    select max(to_char(a.horario, 'HH24:MI')) into v_ant_mod
+      from club_ocorrencias o join club_aulas a on a.id = o.aula_id
+     where a.unidade_id = v_aula.unidade_id and a.ativo is true and a.tipo = v_aula.tipo
+       and o.data = v_oc.data and coalesce(o.status, 'ativa') = 'ativa'
+       and to_char(a.horario, 'HH24:MI') < v_hora_orig;
+    select min(to_char(a.horario, 'HH24:MI')) into v_prox_mod
+      from club_ocorrencias o join club_aulas a on a.id = o.aula_id
+     where a.unidade_id = v_aula.unidade_id and a.ativo is true and a.tipo = v_aula.tipo
+       and o.data = v_oc.data and coalesce(o.status, 'ativa') = 'ativa'
+       and to_char(a.horario, 'HH24:MI') > v_hora_orig;
 
     select coalesce(json_agg(json_build_object(
              'ocorrencia_id',   t.id,
@@ -323,7 +339,9 @@ begin
          where a.unidade_id = v_aula.unidade_id and a.ativo is true
            and o.data = v_oc.data and coalesce(o.status, 'ativa') = 'ativa'
            and o.id <> v_oc.id
-           and to_char(a.horario, 'HH24:MI') in (coalesce(v_ant, ''), coalesce(v_prox, ''))
+           and (to_char(a.horario, 'HH24:MI') in (coalesce(v_ant, ''), coalesce(v_prox, ''))
+                or (a.tipo = v_aula.tipo
+                    and to_char(a.horario, 'HH24:MI') in (coalesce(v_ant_mod, ''), coalesce(v_prox_mod, ''))))
            and abs(extract(epoch from (a.horario - v_aula.horario)) / 60) <= 120
            and (o.data + a.horario) > v_agora
            and not exists (select 1 from club_reservas r2
@@ -460,6 +478,8 @@ declare
   v_hora_dest text;
   v_ant       text;
   v_prox      text;
+  v_ant_mod   text;
+  v_prox_mod  text;
   v_usadas    int;
   v_cap       int;
   v_pos       text := nullif(trim(coalesce(p_nova_posicao, '')), '');
@@ -516,8 +536,21 @@ begin
    where a.unidade_id = v_aula.unidade_id and a.ativo is true
      and o.data = v_oc.data and coalesce(o.status, 'ativa') = 'ativa'
      and to_char(a.horario, 'HH24:MI') > v_hora_orig;
+  -- ...ou o vizinho da MESMA modalidade (Lift 11:15 → Lift 10:15)
+  select max(to_char(a.horario, 'HH24:MI')) into v_ant_mod
+    from club_ocorrencias o join club_aulas a on a.id = o.aula_id
+   where a.unidade_id = v_aula.unidade_id and a.ativo is true and a.tipo = v_aula.tipo
+     and o.data = v_oc.data and coalesce(o.status, 'ativa') = 'ativa'
+     and to_char(a.horario, 'HH24:MI') < v_hora_orig;
+  select min(to_char(a.horario, 'HH24:MI')) into v_prox_mod
+    from club_ocorrencias o join club_aulas a on a.id = o.aula_id
+   where a.unidade_id = v_aula.unidade_id and a.ativo is true and a.tipo = v_aula.tipo
+     and o.data = v_oc.data and coalesce(o.status, 'ativa') = 'ativa'
+     and to_char(a.horario, 'HH24:MI') > v_hora_orig;
   if v_hora_dest is distinct from coalesce(v_ant, '')
-     and v_hora_dest is distinct from coalesce(v_prox, '') then
+     and v_hora_dest is distinct from coalesce(v_prox, '')
+     and not (v_daula.tipo = v_aula.tipo
+              and v_hora_dest in (coalesce(v_ant_mod, ''), coalesce(v_prox_mod, ''))) then
     raise exception 'NAO_E_VIZINHO';
   end if;
   if abs(extract(epoch from (v_daula.horario - v_aula.horario)) / 60) > 120 then
