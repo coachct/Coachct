@@ -33,6 +33,14 @@ function nomePacote(key: string): string {
   return unidade ? `${tipo} — ${unidade}` : tipo
 }
 
+// Mesmo rótulo usado na recepção (tipoLabelClub em recepcao/clientes).
+function tipoAulaClub(t: string): string {
+  if (t === 'lift')              return 'Lift'
+  if (t === 'lift_for_girls')    return 'Lift for Girls'
+  if (t === 'running_funcional') return 'Running + Funcional'
+  return t
+}
+
 function formatarBR(data: string) { return new Date(data + 'T12:00:00').toLocaleDateString('pt-BR') }
 function formatarMoeda(v: number) { return `R$ ${Number(v).toFixed(2).replace('.', ',')}` }
 function hojeLocal(): string { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }
@@ -372,6 +380,7 @@ export default function CobrancaNoShowPage() {
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-sm font-semibold text-gray-900">{cliente?.nome || 'Cliente removido'}</span>
               <span className="font-mono text-xs text-gray-500">{(f.horario || '').slice(0, 5)}</span>
+              {aba === 'club' && f.tipoAula && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-900 text-white font-semibold">{tipoAulaClub(f.tipoAula)}</span>}
               {aba === 'club' && f.unidadeNome && <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-700 font-semibold">{f.unidadeNome}</span>}
               {cobrado && <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-semibold flex items-center gap-1"><Check size={10}/> Cobrado</span>}
               {!cobrado && erro && <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold flex items-center gap-1"><AlertCircle size={10}/> Erro na cobrança</span>}
@@ -570,6 +579,7 @@ export default function CobrancaNoShowPage() {
                   <div className="mt-3 pt-3 border-t border-orange-200 text-xs text-orange-800 space-y-1">
                     <div>Cartão: <strong>{modalCobranca.clientes?.pagarme_card_brand} •••• {modalCobranca.clientes?.pagarme_card_last4}</strong></div>
                     <div>Motivo: <strong>Falta em {formatarBR(modalCobranca.data)} às {(modalCobranca.horario || '').slice(0, 5)}</strong></div>
+                    {aba === 'club' && modalCobranca.tipoAula && <div>Aula: <strong>{tipoAulaClub(modalCobranca.tipoAula)}</strong></div>}
                     {aba === 'club' && modalCobranca.unidadeNome && <div>Unidade: <strong>{modalCobranca.unidadeNome}</strong></div>}
                   </div>
                 </div>
