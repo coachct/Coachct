@@ -99,15 +99,17 @@ export async function identificarClientePorTelefone(
   const tel = normalizarTelefone(telefoneRaw)
   if (tel.length < 10 || tel.length > 11) return { status: 'invalido', cliente: null }
 
-  const { data, error } = await supabase
-    .from('clientes')
-    .select('id, nome, email, telefone, bloqueado, motivo_bloqueio, whatsapp_opt_out, lgpd_consentimento_em')
-    .in('telefone', variantesTelefone(tel))
+  // Metade da base tem telefone mascarado no cadastro ("(11) 9-9977-5289"), então o
+  // .in() por dígito puro não casava e o cliente vinha como "não identificado". A RPC
+  // compara ignorando ()/-/espaço (lê só os números), com índice funcional pra ser rápida.
+  const { data: rows, error } = await supabase
+    .rpc('clientes_por_telefone', { variantes: variantesTelefone(tel) })
+  const data = (rows ?? []) as unknown as ClienteIdentificado[]
 
   if (error) return { status: 'erro', cliente: null, erro: error.message }
-  if (!data || data.length === 0) return { status: 'nao_encontrado', cliente: null }
-  if (data.length > 1) return { status: 'ambiguo', cliente: null, candidatos: data as ClienteIdentificado[] }
-  return { status: 'ok', cliente: data[0] as ClienteIdentificado }
+  if (data.length === 0) return { status: 'nao_encontrado', cliente: null }
+  if (data.length > 1) return { status: 'ambiguo', cliente: null, candidatos: data }
+  return { status: 'ok', cliente: data[0] }
 }
 
 /** Busca um cliente pelo id (mesmos campos da identificação). */

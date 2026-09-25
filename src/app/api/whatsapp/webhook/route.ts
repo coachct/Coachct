@@ -725,11 +725,13 @@ function nomeBate(texto: string, nome: string): boolean {
   const msgTokens = norm(texto).split(/\s+/).filter((w) => w.length >= 3)
   const partes = norm(nome).split(/\s+/).filter((w) => w.length >= 3)
   if (!partes.length) return false
-  // Match tolerante: igual, ou um é prefixo do outro, ou diferem nas últimas
-  // letras mantendo um prefixo comum de 4+ (cobre Gomes/Gomez, Sacchi/Sacche).
+  // Match tolerante: igual, ou um é prefixo do outro, ou compartilham um prefixo de 3+
+  // (cobre Gomes/Gomez, Sacchi/Sacche e APELIDO vs nome formal — Gabi/Gabriela, Rafa/
+  // Rafael). O CPF (11 dígitos, único) já é o identificador forte; o nome é só conferência
+  // leve pra pegar CPF digitado errado, então essa tolerância não abre brecha real.
   const aprox = (a: string, b: string) =>
     a === b ||
-    (a.length >= 4 && b.length >= 4 && (a.startsWith(b) || b.startsWith(a) || a.slice(0, 4) === b.slice(0, 4)))
+    (a.length >= 3 && b.length >= 3 && (a.startsWith(b) || b.startsWith(a) || a.slice(0, 3) === b.slice(0, 3)))
   const bate = (parte: string) => msgTokens.some((t) => aprox(t, parte))
   if (!bate(partes[0])) return false              // primeiro nome é obrigatório
   if (partes.length === 1) return true
