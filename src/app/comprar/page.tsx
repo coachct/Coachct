@@ -8,6 +8,7 @@ import SummerToggle from '@/components/SummerToggle'
 import SummerModeCards from '@/components/SummerModeCards'
 import { CAMPANHA_SUMMER, dentroDaJanela, dataBR, COMPRAR_TITULO, COMPRAR_SUB } from '@/lib/summer'
 import { rastrear } from '@/lib/rastreio'
+import { APP_PRO_PRODUTO_ID } from '@/lib/appPro'
 
 const ACCENT   = '#ff2d9b'
 const VERDE    = '#2ddd8b'
@@ -21,6 +22,7 @@ export default function ComprarPage() {
   const [produtos, setProdutos]               = useState<any[]>([])
   const [loading, setLoading]                 = useState(true)
   const [coachCtProAtivo, setCoachCtProAtivo] = useState<any | null>(null)
+  const [produtoAppPro, setProdutoAppPro]     = useState<any | null>(null)
   const visitaRegistrada = useRef(false)
 
   useEffect(() => { carregarProdutos() }, [])
@@ -39,7 +41,13 @@ export default function ComprarPage() {
       .not('subtipo', 'eq', 'multa')
       .or(`unidade_id.eq.${JUST_CT_ID},unidade_id.is.null`)
       .order('valor', { ascending: false })
+    // App Coach CT PRO fica fora da vitrine (visivel_site = false) mas aparece
+    // aqui para todos como card informativo; a compra é por /app-pro, que só
+    // libera para quem treina Coach CT pelo app.
+    const { data: appPro } = await supabase
+      .from('produtos').select('*').eq('id', APP_PRO_PRODUTO_ID).eq('ativo', true).maybeSingle()
     setProdutos(data || [])
+    setProdutoAppPro(appPro || null)
     setLoading(false)
   }
 
@@ -241,6 +249,48 @@ export default function ComprarPage() {
                       </div>
                     )
                   })}
+
+                  {/* App Coach CT PRO — visível para todos; compra só p/ quem treina pelo app */}
+                  {produtoAppPro && (() => {
+                    const total = Number(produtoAppPro.valor)
+                    const parc  = produtoAppPro.max_parcelas || 1
+                    const vM = fmt(total / 3), vT = fmt(total)
+                    const bloq = !!coachCtProAtivo
+                    return (
+                      <div className="card-pro" style={{ position: 'relative', background: '#111', border: `1.5px solid ${ACCENT}55`, borderRadius: 16, padding: '2rem', display: 'flex', flexDirection: 'column', overflow: 'hidden', opacity: bloq ? 0.6 : 1 }}>
+                        <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 2, color: ACCENT, marginBottom: '0.4rem', fontFamily: "'DM Mono', monospace" }}>app coach ct pro</div>
+                        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 30, color: '#fff', letterSpacing: 1.5, marginBottom: '0.5rem' }}>SEU APP + O MELHOR DO PRO</div>
+                        <div style={{ fontSize: 12, color: '#aaa', background: `${ACCENT}10`, border: `1px solid ${ACCENT}33`, borderRadius: 8, padding: '0.5rem 0.75rem', marginBottom: '1.25rem', lineHeight: 1.5 }}>
+                          Exclusivo para quem treina Coach CT pelo Wellhub ou TotalPass
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', marginBottom: 4 }}>
+                          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 52, color: '#fff', lineHeight: 1 }}>{vM.reais}<span style={{ fontSize: 26 }}>{vM.cents}</span></div>
+                          <div style={{ fontSize: 15, color: '#999' }}>/mês</div>
+                        </div>
+                        <div style={{ fontSize: 12, color: '#777', marginBottom: '1.5rem', fontFamily: "'DM Mono', monospace" }}>{vT.reais}{vT.cents} em {parc}x · trimestral</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', marginBottom: '2rem', flex: 1 }}>
+                          {[
+                            'Você continua com seu Wellhub ou TotalPass',
+                            '+4 treinos Coach CT por mês',
+                            '12 créditos na hora, acumulam nos 3 meses',
+                            'Escolha do coach no agendamento',
+                            'Calendário preferencial · 14 dias',
+                            'Cancelamento até 3h antes',
+                            'Prioridade na fila de espera',
+                          ].map((b, i) => (
+                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                              <div style={{ width: 17, height: 17, borderRadius: '50%', background: `${ACCENT}25`, color: ACCENT, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>✓</div>
+                              <span style={{ fontSize: 13, color: '#ddd' }}>{b}</span>
+                            </div>
+                          ))}
+                        </div>
+                        {bloq
+                          ? <div style={{ background: '#222', color: '#666', border: '1px solid #333', borderRadius: 10, padding: '0.8rem', fontSize: 13, textAlign: 'center' }}>🔒 Plano já ativo</div>
+                          : <button onClick={() => router.push('/app-pro')} className="btn-h" style={{ background: 'transparent', color: ACCENT, border: `1.5px solid ${ACCENT}`, borderRadius: 10, padding: '0.9rem', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", width: '100%', letterSpacing: 0.5 }}>COMPRAR AGORA →</button>
+                        }
+                      </div>
+                    )
+                  })()}
                 </div>
               </div>
             )}
