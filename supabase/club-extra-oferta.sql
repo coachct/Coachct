@@ -109,3 +109,23 @@ GRANT EXECUTE ON FUNCTION public.club_extra_oferta(uuid) TO authenticated, servi
 ALTER TABLE public.app_pro_oferta_eventos DROP CONSTRAINT IF EXISTS app_pro_oferta_eventos_local_check;
 ALTER TABLE public.app_pro_oferta_eventos ADD CONSTRAINT app_pro_oferta_eventos_local_check
   CHECK (local IN ('conta', 'conta_70', 'agendar', 'pagina', 'renovacao', 'club_70', 'club_mes_anterior'));
+
+-- Venda SÓ online, pelo perfil do cliente (Ricardo, 25/09/2026). Site e webhook
+-- chamam registrar_venda com p_vendido_por nulo; balcão sempre manda o vendedor.
+-- Injeta a trava no início do registrar_venda (idempotente).
+DO $mig$
+DECLARE d text;
+BEGIN
+  d := pg_get_functiondef('public.registrar_venda(uuid,uuid,integer,numeric,text,uuid,uuid,text,numeric,text)'::regprocedure);
+  IF position('club_extra_so_online' in d) > 0 THEN RETURN; END IF;
+  d := replace(d, '  IF p_quantidade < 1 OR p_quantidade > 20 THEN',
+'  -- Check ins Extra for Clubs: venda SO online, pelo perfil do cliente
+  -- (site/webhook chamam com p_vendido_por nulo). Balcao nao vende.
+  IF p_produto_id = ''4c1b7e2a-9d3f-4a61-8e25-c1ab5f0e7d99'' AND p_vendido_por IS NOT NULL THEN
+    RETURN jsonb_build_object(''sucesso'', false, ''motivo'', ''club_extra_so_online'');
+  END IF;
+
+  IF p_quantidade < 1 OR p_quantidade > 20 THEN');
+  EXECUTE d;
+END
+$mig$;

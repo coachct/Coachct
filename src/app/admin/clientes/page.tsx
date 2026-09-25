@@ -9,6 +9,7 @@ import { Search, Plus, ChevronRight, X, Check, Calendar, Lock, Unlock, AlertCirc
 import UnidadeSelector from '@/components/UnidadeSelector'
 import { numerarTreinosDoMes, PLANOS_SEM_TETO, poolReservaClub } from '@/lib/treinos-numero'
 import { CAMPANHA_SUMMER, ERRO_LIMITE_POR_CLIENTE } from '@/lib/summer'
+import { CLUB_EXTRA_PRODUTO_ID } from '@/lib/clubExtra'
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const HORARIOS_FDS = ['08:00', '09:00', '10:00', '11:00', '12:00']
@@ -791,8 +792,9 @@ function AdminClientesPageInner() {
   // ✅ PATCH: filtrar multas + inclui produtos globais
   async function abrirVenda() {
     if (!unidadeAtiva) return
+    // Check ins Extra for Clubs é vendido só pelo perfil do cliente, nunca no balcão.
     const { data } = await supabase.from('produtos').select('*').eq('ativo', true)
-      .not('subtipo', 'eq', 'multa')
+      .not('subtipo', 'eq', 'multa').neq('id', CLUB_EXTRA_PRODUTO_ID)
       .or(`unidade_id.eq.${unidadeAtiva.id},unidade_id.is.null`).order('nome')
     setProdutosDisp(data || [])
     setFormVenda({

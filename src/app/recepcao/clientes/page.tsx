@@ -10,6 +10,7 @@ import { Search, Plus, ChevronRight, X, Check, Calendar, Unlock, AlertCircle, Sh
 import UnidadeSelector from '@/components/UnidadeSelector'
 import { numerarTreinosDoMes, PLANOS_SEM_TETO, poolReservaClub } from '@/lib/treinos-numero'
 import { CAMPANHA_SUMMER, ERRO_LIMITE_POR_CLIENTE } from '@/lib/summer'
+import { CLUB_EXTRA_PRODUTO_ID } from '@/lib/clubExtra'
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
@@ -706,7 +707,8 @@ function RecepcaoClientesPageInner() {
     // Lemos os planos aqui em vez de usar o estado: o atalho ?venda=1 abre este
     // modal antes de carregarPlanosCliente() terminar.
     const [{ data }, { data: planosDoCliente }] = await Promise.all([
-      supabase.from('produtos').select('*').eq('ativo', true)
+      // Check ins Extra for Clubs é vendido só pelo perfil do cliente, nunca no balcão.
+      supabase.from('produtos').select('*').eq('ativo', true).neq('id', CLUB_EXTRA_PRODUTO_ID)
         .or(`unidade_id.eq.${unidadeAtiva.id},unidade_id.is.null`).order('nome'),
       supabase.from('cliente_planos')
         .select('ativo, planos_disponiveis!inner(tipo, unidade_id)')
