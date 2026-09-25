@@ -601,9 +601,11 @@ export default function CoachesPage() {
   // Liga/desliga "sobrepor a grade fixa" num lançamento já salvo (o grupo inteiro).
   async function toggleSubstituiExtra(grupoId: string, coachId: string, valor: boolean) {
     setRemovendoExtra(grupoId)
-    const { error } = await supabase.from('coach_horarios_extra').update({ substitui_fixa: valor }).eq('grupo_id', grupoId)
+    const { data, error } = await supabase.from('coach_horarios_extra').update({ substitui_fixa: valor }).eq('grupo_id', grupoId).select('id')
     setRemovendoExtra(null)
     if (error) { setMsg('Erro ao atualizar: ' + error.message); return }
+    // RLS bloqueando devolve 0 linhas sem erro — avisa em vez de falhar calado.
+    if (!data?.length) { setMsg('Não foi possível atualizar (sem permissão).'); return }
     loadExtras(coachId)
   }
 
