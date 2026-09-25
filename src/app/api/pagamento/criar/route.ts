@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { CAMPANHA_SUMMER, ERRO_LIMITE_POR_CLIENTE } from '@/lib/summer'
+import { APP_PRO_PRODUTO_ID } from '@/lib/appPro'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -169,6 +170,26 @@ export async function POST(req: NextRequest) {
 
     if (cliente.bloqueado) {
       return NextResponse.json({ error: 'Cliente bloqueado' }, { status: 403 })
+    }
+
+    // App Coach CT PRO: vendido online só para quem treina Coach CT pelo app
+    // (Wellhub/TotalPass). A regra mora na RPC app_pro_oferta; o link direto
+    // não pode furar. Uma unidade por compra e no máximo max_parcelas.
+    if (produto.id === APP_PRO_PRODUTO_ID) {
+      const { data: oferta, error: erroOferta } = await supabase.rpc('app_pro_oferta', { p_cliente_id: cliente.id })
+      if (erroOferta || !oferta?.pode_comprar) {
+        return NextResponse.json({
+          error: oferta?.tem_app_pro
+            ? 'Você já tem o App Coach CT PRO ativo.'
+            : 'Este plano é exclusivo para quem treina no Coach CT pelo Wellhub ou TotalPass.',
+        }, { status: 403 })
+      }
+      if (quantidade !== 1) {
+        return NextResponse.json({ error: 'Quantidade inválida para este plano.' }, { status: 400 })
+      }
+      if ((Number(parcelas) || 1) > (Number(produto.max_parcelas) || 1)) {
+        return NextResponse.json({ error: `Este plano pode ser parcelado em até ${produto.max_parcelas || 1}x.` }, { status: 400 })
+      }
     }
 
     // Um de cada por CPF (produto de campanha). Inerte para o catálogo de

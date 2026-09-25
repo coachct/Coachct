@@ -12,6 +12,7 @@ import { TEXTO_TERMO_WELLHUB_TOTALPASS, VERSAO_TERMO_WELLHUB_TOTALPASS } from '@
 import SiteHeader from '@/components/SiteHeader'
 import ModalTelefone from '@/components/ModalTelefone'
 import CompraCreditoExtra, { type CreditoExtraStatus } from '@/components/CompraCreditoExtra'
+import AppProCard from '@/components/AppProCard'
 
 const ACCENT  = '#ff2d9b'
 const CYAN    = '#00e5ff'
@@ -1012,6 +1013,11 @@ export default function AgendarPage() {
                   )
                 })}
               </div>
+            )}
+
+            {/* Check-ins do app do mês acabaram → oferta do App Coach CT PRO */}
+            {!bloqueioAgenda && cliente?.id && !dataSelEhProximoMes && !dataSelAposLimite && (
+              <AppProCard clienteId={cliente.id} onde="agendar" ocultarAvisoEsgotado={todosSemSaldo} />
             )}
 
             {/* ── Crédito extra por aula ─────────────────────────────────────

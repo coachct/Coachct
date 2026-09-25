@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { dataBR } from '@/lib/summer'
 import { rastrear, sessaoId, origemSalva } from '@/lib/rastreio'
+import { APP_PRO_PRODUTO_ID, carregarAppProOferta } from '@/lib/appPro'
 
 const ACCENT = '#ff2d9b'
 
@@ -97,6 +98,19 @@ function CheckoutContent() {
     supabase.rpc('registrar_visita_checkout', { p_produto_id: produto.id }).then(() => {}, () => {})
   }, [cliente?.id, produto?.id])
 
+  // App Coach CT PRO: só quem treina Coach CT pelo app. Avisa já na tela (a API
+  // barra de novo antes de cobrar).
+  useEffect(() => {
+    if (!cliente?.id || produtoId !== APP_PRO_PRODUTO_ID) return
+    carregarAppProOferta(supabase, cliente.id).then(o => {
+      if (o && !o.pode_comprar) {
+        setErro(o.tem_app_pro
+          ? 'Você já tem o App Coach CT PRO ativo.'
+          : 'Este plano é exclusivo para quem treina no Coach CT pelo Wellhub ou TotalPass.')
+      }
+    })
+  }, [cliente?.id, produtoId])
+
   // PIX: quem confirma o pagamento é o webhook. Enquanto o QR está na tela,
   // consulta o status a cada 4s e segue pro sucesso quando cair. Para sozinho
   // se o pagamento sair de 'pendente' sem pagar ou depois de 65 min (PIX vale 1h).
@@ -130,13 +144,15 @@ function CheckoutContent() {
 
   async function carregarProduto() {
     setLoading(true)
-    const { data } = await supabase
+    // App Coach CT PRO fica fora da vitrine (visivel_site = false), mas é
+    // vendido aqui para quem vem de /app-pro. A API confere quem pode comprar.
+    let query = supabase
       .from('produtos')
       .select('*, unidades(nome)')
       .eq('id', produtoId)
       .eq('ativo', true)
-      .eq('visivel_site', true)
-      .maybeSingle()
+    if (produtoId !== APP_PRO_PRODUTO_ID) query = query.eq('visivel_site', true)
+    const { data } = await query.maybeSingle()
     setProduto(data)
     setLoading(false)
     // Terceiro degrau do funil, só para produto de campanha.
