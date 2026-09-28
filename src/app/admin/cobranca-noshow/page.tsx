@@ -381,7 +381,7 @@ export default function CobrancaNoShowPage() {
           </div>
 
           <div className="hidden md:block w-44 flex-shrink-0 text-xs leading-5">
-            <div className="text-gray-700 truncate">{f.tipo_credito ? nomePacote(f.tipo_credito) : '—'}</div>
+            <div className="text-gray-700 truncate">{f.tipo_credito ? nomePacote(f.tipo_credito).split(' — ')[0] : '—'}</div>
             <div className="text-gray-400 truncate">
               {temCartao ? `${cliente.pagarme_card_brand} •••• ${cliente.pagarme_card_last4}` : 'Sem cartão salvo'}
             </div>
@@ -407,7 +407,7 @@ export default function CobrancaNoShowPage() {
 
         {/* Plano + cartão no mobile (a coluna some em tela estreita) */}
         <div className="md:hidden text-xs text-gray-400 mt-1 pl-[92px] truncate">
-          {f.tipo_credito ? nomePacote(f.tipo_credito) : ''}{temCartao ? ` · ${cliente.pagarme_card_brand} •••• ${cliente.pagarme_card_last4}` : ''}
+          {f.tipo_credito ? nomePacote(f.tipo_credito).split(' — ')[0] : ''}{temCartao ? ` · ${cliente.pagarme_card_brand} •••• ${cliente.pagarme_card_last4}` : ''}
         </div>
 
         {!cobrado && erro && (
@@ -430,7 +430,7 @@ export default function CobrancaNoShowPage() {
     }
     return dias.map(d => (
       <div key={d.data || 'sem-data'}>
-        <div className="text-xs font-semibold text-gray-500 mb-1.5 px-1 capitalize">
+        <div className="text-xs font-semibold text-gray-500 mb-1.5 px-1 first-letter:uppercase">
           {d.data ? new Date(d.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'short' }) : 'Sem data'}
           <span className="text-gray-400 font-normal normal-case"> · {d.itens.length} falta{d.itens.length > 1 ? 's' : ''}</span>
         </div>
