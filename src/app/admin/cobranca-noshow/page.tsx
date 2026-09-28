@@ -121,7 +121,7 @@ export default function CobrancaNoShowPage() {
       // Só plano parceiro gera multa. Crédito de pacote nosso (avulso/Coach CT Pro) só perde o crédito.
       .or('tipo_credito.ilike.wellhub*,tipo_credito.ilike.totalpass*')
       .gte('data', de).lte('data', ate)
-      .order('data', { ascending: false }).order('horario', { ascending: false })
+      .order('data', { ascending: false }).order('horario', { ascending: true })
 
     const ags: any[] = agsRaw || []
     const cobrancasMap = await buscarCobrancas(ags.map(a => a.cliente_id), ags.map(a => a.id), PRODUTO_MULTA_CT_ID, 'agendamento')
@@ -161,7 +161,7 @@ export default function CobrancaNoShowPage() {
       horario: r.club_ocorrencias?.club_aulas?.horario || '',
       unidadeNome: r.club_ocorrencias?.club_aulas?.unidades?.nome || '',
       tipoAula: r.club_ocorrencias?.club_aulas?.tipo || '',
-    })).sort((a: any, b: any) => b.data.localeCompare(a.data))
+    })).sort((a: any, b: any) => b.data.localeCompare(a.data) || a.horario.localeCompare(b.horario))
 
     const cobrancasMap = await buscarCobrancas(reservas.map(r => r.cliente_id), reservas.map(r => r.id), PRODUTO_MULTA_CLUB_ID, 'reserva')
     setFaltas(reservas.map(r => enriquecerFalta(r, cobrancasMap, r.id)))
@@ -346,6 +346,8 @@ export default function CobrancaNoShowPage() {
   }
 
   // ── Render de uma linha de falta ─────────────────────────────────────────
+  // Linha enxuta: horário | cliente + aula | plano + cartão | ação.
+  // Status só aparece quando foge do normal (erro, sem cartão, cobrado) — o botão já diz "pendente".
   function renderFalta(f: any) {
     const cliente   = f.clientes
     const temCartao = !!cliente?.pagarme_card_id
@@ -353,9 +355,12 @@ export default function CobrancaNoShowPage() {
     const eleg      = elegivel(f)
     const erro      = erroLote[f.id]
     const sel       = selecionados.has(f.id)
+    const aulaInfo  = aba === 'club'
+      ? [f.tipoAula ? tipoAulaClub(f.tipoAula) : '', f.unidadeNome].filter(Boolean).join(' · ')
+      : (f.coaches?.nome ? `Coach ${f.coaches.nome}` : '')
     return (
-      <div key={f.id} className={`card border-l-4 ${cobrado ? 'border-l-green-400' : erro ? 'border-l-red-500' : !temCartao ? 'border-l-red-400' : sel ? 'border-l-orange-500' : 'border-l-orange-400'} ${sel ? 'ring-2 ring-orange-200' : ''}`}>
-        <div className="flex items-center gap-3 flex-wrap">
+      <div key={f.id} className={`px-4 py-3 transition-colors ${sel ? 'bg-orange-50' : 'hover:bg-gray-50'}`}>
+        <div className="flex items-center gap-4">
           {/* Checkbox de seleção — só para elegíveis */}
           {eleg ? (
             <input
@@ -368,52 +373,72 @@ export default function CobrancaNoShowPage() {
             <div className="w-4 flex-shrink-0" />
           )}
 
-          <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center flex-shrink-0 ${cobrado ? 'bg-green-50' : !temCartao ? 'bg-red-50' : 'bg-orange-50'}`}>
-            <div className={`text-sm font-bold leading-none ${cobrado ? 'text-green-700' : !temCartao ? 'text-red-700' : 'text-orange-700'}`}>
-              {f.data ? new Date(f.data + 'T12:00:00').getDate() : '—'}
-            </div>
-            <div className={`text-xs uppercase ${cobrado ? 'text-green-500' : !temCartao ? 'text-red-500' : 'text-orange-500'}`}>
-              {f.data ? new Date(f.data + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' }) : ''}
-            </div>
-          </div>
+          <div className="w-11 flex-shrink-0 font-mono text-sm text-gray-500">{(f.horario || '').slice(0, 5)}</div>
+
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-semibold text-gray-900">{cliente?.nome || 'Cliente removido'}</span>
-              <span className="font-mono text-xs text-gray-500">{(f.horario || '').slice(0, 5)}</span>
-              {aba === 'club' && f.tipoAula && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-900 text-white font-semibold">{tipoAulaClub(f.tipoAula)}</span>}
-              {aba === 'club' && f.unidadeNome && <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-700 font-semibold">{f.unidadeNome}</span>}
-              {cobrado && <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-semibold flex items-center gap-1"><Check size={10}/> Cobrado</span>}
-              {!cobrado && erro && <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold flex items-center gap-1"><AlertCircle size={10}/> Erro na cobrança</span>}
-              {!cobrado && !erro && !temCartao && <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold">Sem cartão</span>}
-              {!cobrado && !erro && temCartao && <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-semibold">Pendente</span>}
-            </div>
-            <div className="text-xs text-gray-500 mt-1 flex items-center gap-2 flex-wrap">
-              {f.coaches?.nome && <span>Coach: <strong>{f.coaches.nome}</strong></span>}
-              {f.tipo_credito && <span>· {nomePacote(f.tipo_credito)}</span>}
-              {temCartao && <span>· {cliente.pagarme_card_brand} •••• {cliente.pagarme_card_last4}</span>}
-            </div>
-            {!cobrado && erro && (
-              <div className="text-xs text-red-600 mt-1 flex items-start gap-1"><AlertCircle size={11} className="mt-0.5 flex-shrink-0"/> {erro}</div>
-            )}
-            {cobrado && f.cobranca?.pago_em && (
-              <div className="text-xs text-green-600 mt-1">Cobrado em {new Date(f.cobranca.pago_em).toLocaleDateString('pt-BR')} · {formatarMoeda(f.cobranca.valor || valorMulta)}</div>
-            )}
+            <div className="text-sm font-semibold text-gray-900 truncate">{cliente?.nome || 'Cliente removido'}</div>
+            {aulaInfo && <div className="text-xs text-gray-500 truncate mt-0.5">{aulaInfo}</div>}
           </div>
-          <div className="flex-shrink-0">
+
+          <div className="hidden md:block w-44 flex-shrink-0 text-xs leading-5">
+            <div className="text-gray-700 truncate">{f.tipo_credito ? nomePacote(f.tipo_credito) : '—'}</div>
+            <div className="text-gray-400 truncate">
+              {temCartao ? `${cliente.pagarme_card_brand} •••• ${cliente.pagarme_card_last4}` : 'Sem cartão salvo'}
+            </div>
+          </div>
+
+          <div className="w-40 flex-shrink-0 flex justify-end">
             {cobrado ? (
-              <div className="text-xs text-green-700 font-bold">✓ {formatarMoeda(f.cobranca?.valor || valorMulta)}</div>
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-50 px-2.5 py-1 rounded-full">
+                <Check size={12}/> {formatarMoeda(f.cobranca?.valor || valorMulta)}
+              </span>
             ) : !temCartao ? (
-              <button disabled className="btn btn-sm bg-gray-100 text-gray-400 cursor-not-allowed">Sem cartão</button>
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-400" /> Sem cartão
+              </span>
             ) : (
               <button onClick={() => { setModalCobranca(f); setErroCobranca(''); setSucessoCobranca(null) }}
-                className="btn btn-sm gap-1 bg-orange-500 text-white hover:bg-orange-600">
-                <CreditCard size={12}/> {erro ? 'Tentar de novo' : `Cobrar ${formatarMoeda(valorMulta)}`}
+                className={`btn btn-sm gap-1.5 border bg-white ${erro ? 'border-red-300 text-red-700 hover:bg-red-50' : 'border-orange-300 text-orange-700 hover:bg-orange-50'}`}>
+                <CreditCard size={13}/> {erro ? 'Tentar de novo' : `Cobrar ${formatarMoeda(valorMulta)}`}
               </button>
             )}
           </div>
         </div>
+
+        {/* Plano + cartão no mobile (a coluna some em tela estreita) */}
+        <div className="md:hidden text-xs text-gray-400 mt-1 pl-[92px] truncate">
+          {f.tipo_credito ? nomePacote(f.tipo_credito) : ''}{temCartao ? ` · ${cliente.pagarme_card_brand} •••• ${cliente.pagarme_card_last4}` : ''}
+        </div>
+
+        {!cobrado && erro && (
+          <div className="text-xs text-red-600 mt-1.5 pl-[92px] flex items-start gap-1"><AlertCircle size={12} className="mt-0.5 flex-shrink-0"/> {erro}</div>
+        )}
+        {cobrado && f.cobranca?.pago_em && (
+          <div className="text-xs text-gray-400 mt-1 pl-[92px]">Cobrado em {new Date(f.cobranca.pago_em).toLocaleDateString('pt-BR')}</div>
+        )}
       </div>
     )
+  }
+
+  // Agrupa por dia: a data vira cabeçalho em vez de se repetir em cada linha.
+  function renderPorDia(lista: any[]) {
+    const dias: { data: string; itens: any[] }[] = []
+    for (const f of lista) {
+      const ultimo = dias[dias.length - 1]
+      if (ultimo && ultimo.data === f.data) ultimo.itens.push(f)
+      else dias.push({ data: f.data, itens: [f] })
+    }
+    return dias.map(d => (
+      <div key={d.data || 'sem-data'}>
+        <div className="text-xs font-semibold text-gray-500 mb-1.5 px-1 capitalize">
+          {d.data ? new Date(d.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'short' }) : 'Sem data'}
+          <span className="text-gray-400 font-normal normal-case"> · {d.itens.length} falta{d.itens.length > 1 ? 's' : ''}</span>
+        </div>
+        <div className="bg-white rounded-2xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+          {d.itens.map(renderFalta)}
+        </div>
+      </div>
+    ))
   }
 
   if (loading || loadingUnidade || !perfil) return (
@@ -537,8 +562,8 @@ export default function CobrancaNoShowPage() {
                     </button>
                   )}
                 </div>
-                <div className="space-y-2">
-                  {naoCobradosList.map(renderFalta)}
+                <div className="space-y-4">
+                  {renderPorDia(naoCobradosList)}
                 </div>
               </div>
             )}
@@ -549,8 +574,8 @@ export default function CobrancaNoShowPage() {
                 <div className="text-xs font-bold text-gray-500 uppercase tracking-wide flex items-center gap-2 mb-2 px-1">
                   <Check size={13} className="text-green-500"/> Cobrados ({cobradosList.length})
                 </div>
-                <div className="space-y-2">
-                  {cobradosList.map(renderFalta)}
+                <div className="space-y-4">
+                  {renderPorDia(cobradosList)}
                 </div>
               </div>
             )}
