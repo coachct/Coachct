@@ -106,6 +106,7 @@ const nav = [
       { label: 'Check-ins Apps',       href: '/admin/financeiro/checkins-wellhub' },
       { label: 'Contas a Pagar',       href: '/admin/financeiro/contas-a-pagar' },
       { label: 'Recorrentes',          href: '/admin/financeiro/recorrentes' },
+      { label: 'Parcelamentos fiscais', href: '/admin/financeiro/parcelamentos' },
       { label: 'Funcionários',         href: '/admin/financeiro/funcionarios' },
       { label: 'Fornecedores',         href: '/admin/financeiro/fornecedores' },
       { label: 'Pagamentos',           href: '/admin/relatorios/pagamentos' },
