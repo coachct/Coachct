@@ -15,6 +15,8 @@ import {
   TriangleAlert,
   CircleDollarSign,
   CalendarClock,
+  ClipboardList,
+  FileCheck2,
 } from 'lucide-react'
 
 const supabase = createClient()
@@ -118,6 +120,25 @@ type Pendencia = {
   situacao: string
   prazo: string | null
   observacao: string | null
+  guia_pedida_em: string | null
+}
+
+// Parcela em atraso de acordo ativo — o que vai para o pedido de guia
+type ParcelaCritica = {
+  id: string
+  numero: number
+  vencimento: string
+  valor: number
+  estimado: boolean
+  guia_pedida_em: string | null
+  acordo_id: string
+  fiscal_acordos: {
+    orgao: string
+    descricao: string
+    numero: string | null
+    qtd_parcelas: number | null
+    limite_rescisao: number
+  }
 }
 
 type FormAcordo = {
@@ -163,6 +184,10 @@ function parseValor(s: string): number {
   const n = parseFloat(t)
   return isNaN(n) ? 0 : n
 }
+function hojeLocalStr(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 function diasAte(d: string): number {
   const [y, m, dd] = d.split('-').map(Number)
   const alvo = new Date(y, m - 1, dd)
@@ -192,6 +217,14 @@ export default function ParcelamentosPage() {
   const [form, setForm] = useState<FormAcordo>(FORM_VAZIO)
   const [salvando, setSalvando] = useState(false)
 
+  // críticos: parcelas em atraso + pendências de risco alto, para pedir guia
+  const [criticosAberto, setCriticosAberto] = useState(false)
+  const [carregandoCrit, setCarregandoCrit] = useState(false)
+  const [parcelasCrit, setParcelasCrit] = useState<ParcelaCritica[]>([])
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
+  const [soFaltaPedir, setSoFaltaPedir] = useState(false)
+  const [marcando, setMarcando] = useState(false)
+
   async function carregar() {
     setCarregando(true)
     setErro(null)
@@ -201,7 +234,7 @@ export default function ParcelamentosPage() {
       supabase.rpc('fiscal_fluxo_futuro', { p_meses: 18, p_incluir_simulado: true }),
       supabase
         .from('fiscal_pendencias')
-        .select('id, orgao, descricao, valor, risco, situacao, prazo, observacao')
+        .select('id, orgao, descricao, valor, risco, situacao, prazo, observacao, guia_pedida_em')
         .order('risco', { ascending: true }),
       supabase.from('unidades').select('id, nome').order('nome', { ascending: true }),
     ])
@@ -309,6 +342,119 @@ export default function ParcelamentosPage() {
     carregar()
   }
 
+  // ---------------- críticos / pedido de guia ----------------
+  const pendCriticas = useMemo(
+    () => pendencias.filter((p) => p.risco === 'alto' && p.situacao !== 'resolvida'),
+    [pendencias]
+  )
+
+  // parcelas em atraso agrupadas por acordo, na ordem do vencimento
+  const gruposCrit = useMemo(() => {
+    const lista = soFaltaPedir ? parcelasCrit.filter((p) => !p.guia_pedida_em) : parcelasCrit
+    const mapa = new Map<string, { acordo: ParcelaCritica['fiscal_acordos']; parcelas: ParcelaCritica[] }>()
+    for (const p of lista) {
+      const g = mapa.get(p.acordo_id) || { acordo: p.fiscal_acordos, parcelas: [] }
+      g.parcelas.push(p)
+      mapa.set(p.acordo_id, g)
+    }
+    return Array.from(mapa.entries()).map(([id, g]) => ({ id, ...g }))
+  }, [parcelasCrit, soFaltaPedir])
+
+  const pendCritVisiveis = useMemo(
+    () => (soFaltaPedir ? pendCriticas.filter((p) => !p.guia_pedida_em) : pendCriticas),
+    [pendCriticas, soFaltaPedir]
+  )
+
+  const totalSelecionado = useMemo(() => {
+    let v = 0
+    for (const p of parcelasCrit) if (selecionados.has(`p:${p.id}`)) v += Number(p.valor || 0)
+    for (const p of pendCriticas) if (selecionados.has(`d:${p.id}`)) v += Number(p.valor || 0)
+    return v
+  }, [parcelasCrit, pendCriticas, selecionados])
+
+  async function carregarCriticos(): Promise<ParcelaCritica[]> {
+    const { data, error } = await supabase
+      .from('fiscal_parcelas')
+      .select(
+        'id, numero, vencimento, valor, estimado, guia_pedida_em, acordo_id, fiscal_acordos!inner(orgao, descricao, numero, qtd_parcelas, limite_rescisao, status)'
+      )
+      .eq('pago', false)
+      .lt('vencimento', hojeLocalStr())
+      .eq('fiscal_acordos.status', 'ativo')
+      .order('vencimento', { ascending: true })
+    if (error) {
+      setErro('Não foi possível carregar as parcelas em atraso.')
+      return []
+    }
+    const lista = (data as unknown as ParcelaCritica[]) || []
+    setParcelasCrit(lista)
+    return lista
+  }
+
+  async function abrirCriticos() {
+    setErro(null)
+    setAviso(null)
+    setSoFaltaPedir(false)
+    setCriticosAberto(true)
+    setCarregandoCrit(true)
+    const lista = await carregarCriticos()
+    // já abre com tudo o que ainda não teve guia pedida selecionado
+    const sel = new Set<string>()
+    lista.filter((p) => !p.guia_pedida_em).forEach((p) => sel.add(`p:${p.id}`))
+    pendCriticas.filter((p) => !p.guia_pedida_em).forEach((p) => sel.add(`d:${p.id}`))
+    setSelecionados(sel)
+    setCarregandoCrit(false)
+  }
+
+  function alternar(chave: string) {
+    setSelecionados((prev) => {
+      const s = new Set(prev)
+      if (s.has(chave)) s.delete(chave)
+      else s.add(chave)
+      return s
+    })
+  }
+
+  function alternarGrupo(chaves: string[]) {
+    setSelecionados((prev) => {
+      const s = new Set(prev)
+      const todos = chaves.every((c) => s.has(c))
+      chaves.forEach((c) => (todos ? s.delete(c) : s.add(c)))
+      return s
+    })
+  }
+
+  async function marcarGuia(pedida: boolean) {
+    const idsParcelas = Array.from(selecionados).filter((k) => k.startsWith('p:')).map((k) => k.slice(2))
+    const idsPend = Array.from(selecionados).filter((k) => k.startsWith('d:')).map((k) => k.slice(2))
+    if (idsParcelas.length + idsPend.length === 0) return
+
+    setMarcando(true)
+    setErro(null)
+    const valor = pedida ? hojeLocalStr() : null
+    const [r1, r2] = await Promise.all([
+      idsParcelas.length
+        ? supabase.from('fiscal_parcelas').update({ guia_pedida_em: valor }).in('id', idsParcelas)
+        : Promise.resolve({ error: null }),
+      idsPend.length
+        ? supabase.from('fiscal_pendencias').update({ guia_pedida_em: valor }).in('id', idsPend)
+        : Promise.resolve({ error: null }),
+    ])
+    setMarcando(false)
+    if (r1.error || r2.error) {
+      setErro('Não foi possível registrar o pedido de guia.')
+      return
+    }
+    const n = idsParcelas.length + idsPend.length
+    setAviso(
+      pedida
+        ? `${n} ${n === 1 ? 'item marcado' : 'itens marcados'} como guia pedida em ${fmtData(valor)}.`
+        : `Marcação de guia pedida removida de ${n} ${n === 1 ? 'item' : 'itens'}.`
+    )
+    setSelecionados(new Set())
+    await Promise.all([carregarCriticos(), carregar()])
+  }
+
   function abrirNovo() {
     setForm(FORM_VAZIO)
     setErro(null)
@@ -363,7 +509,15 @@ export default function ParcelamentosPage() {
               Acordos com a Receita, a PGFN e a Prefeitura — parcelas pagas, futuras e em atraso.
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={abrirCriticos}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-semibold text-red-700 transition hover:bg-red-100"
+              title="Parcelas em atraso e pendências de risco alto, para pedir guia à contabilidade"
+            >
+              <ClipboardList size={16} />
+              Críticos
+            </button>
             <button
               onClick={sincronizarContasAPagar}
               disabled={sincronizando}
@@ -410,6 +564,13 @@ export default function ParcelamentosPage() {
                   do acordo. Rescindido, o débito volta a ser exigível e passa a bloquear o
                   reenquadramento no Simples.
                 </p>
+                <button
+                  onClick={abrirCriticos}
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-red-700"
+                >
+                  <ClipboardList size={14} />
+                  Ver parcelas para pedir guia
+                </button>
                 <div className="mt-3 space-y-2">
                   {kpi.emRisco.map((r) => (
                     <Link
@@ -733,6 +894,12 @@ export default function ParcelamentosPage() {
                           {SITUACAO_LABEL[p.situacao]}
                         </span>
                       )}
+                      {p.guia_pedida_em && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-700">
+                          <FileCheck2 size={11} />
+                          Guia pedida em {fmtData(p.guia_pedida_em)}
+                        </span>
+                      )}
                       {prazoDias !== null && (
                         <span
                           className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
@@ -765,6 +932,228 @@ export default function ParcelamentosPage() {
           )}
         </div>
       </div>
+
+      {/* Modal — críticos / pedido de guia */}
+      {criticosAberto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6">
+          <div className="flex max-h-full w-full max-w-2xl flex-col rounded-2xl bg-white shadow-xl">
+            <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-5 py-4">
+              <div>
+                <h2 className="flex items-center gap-2 text-lg font-bold text-gray-900">
+                  <ClipboardList size={19} className="text-red-600" />
+                  Críticos — pedir guia
+                </h2>
+                <p className="mt-0.5 text-xs text-gray-500">
+                  Parcelas em atraso dos acordos ativos e pendências de risco alto. Selecione o que
+                  vai pedir à contabilidade.
+                </p>
+              </div>
+              <button
+                onClick={() => setCriticosAberto(false)}
+                className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="border-b border-gray-100 px-5 py-2.5">
+              <label className="flex items-center gap-2 text-xs text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={soFaltaPedir}
+                  onChange={(e) => setSoFaltaPedir(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-[#ff2d9b] focus:ring-[#ff2d9b]"
+                />
+                Só o que ainda não teve guia pedida
+              </label>
+            </div>
+
+            <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
+              {erro && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
+                  {erro}
+                </div>
+              )}
+              {aviso && (
+                <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-2.5 text-sm text-green-800">
+                  {aviso}
+                </div>
+              )}
+
+              {carregandoCrit ? (
+                <div className="flex items-center justify-center gap-2 py-10 text-sm text-gray-500">
+                  <Loader2 size={16} className="animate-spin" />
+                  Carregando…
+                </div>
+              ) : (
+                <>
+                  {/* Parcelas em atraso, por acordo */}
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-wide text-gray-400">
+                      Parcelas em atraso
+                    </h3>
+                    {gruposCrit.length === 0 ? (
+                      <div className="mt-2 rounded-xl bg-gray-50 px-3 py-3 text-sm text-gray-500">
+                        Nenhuma parcela em atraso{soFaltaPedir ? ' sem guia pedida' : ''}.
+                      </div>
+                    ) : (
+                      <div className="mt-2 space-y-3">
+                        {gruposCrit.map((g) => {
+                          const chaves = g.parcelas.map((p) => `p:${p.id}`)
+                          const todos = chaves.every((c) => selecionados.has(c))
+                          const soma = g.parcelas.reduce((a, p) => a + Number(p.valor || 0), 0)
+                          return (
+                            <div key={g.id} className="overflow-hidden rounded-xl border border-red-200">
+                              <label className="flex cursor-pointer items-start gap-3 bg-red-50 px-3 py-2.5">
+                                <input
+                                  type="checkbox"
+                                  checked={todos}
+                                  onChange={() => alternarGrupo(chaves)}
+                                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-[#ff2d9b] focus:ring-[#ff2d9b]"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <span
+                                      className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${ORGAO_BADGE[g.acordo.orgao]}`}
+                                    >
+                                      {g.acordo.orgao}
+                                    </span>
+                                    <span className="text-sm font-semibold text-gray-900">
+                                      {g.acordo.descricao}
+                                    </span>
+                                  </div>
+                                  {g.acordo.numero && (
+                                    <div className="mt-0.5 font-mono text-[11px] text-gray-500">
+                                      {g.acordo.numero}
+                                    </div>
+                                  )}
+                                </div>
+                                <span className="shrink-0 text-sm font-bold text-red-700">
+                                  {fmtBRL(soma)}
+                                </span>
+                              </label>
+                              <div className="divide-y divide-gray-100">
+                                {g.parcelas.map((p) => {
+                                  const chave = `p:${p.id}`
+                                  return (
+                                    <label
+                                      key={p.id}
+                                      className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-gray-50"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={selecionados.has(chave)}
+                                        onChange={() => alternar(chave)}
+                                        className="h-4 w-4 rounded border-gray-300 text-[#ff2d9b] focus:ring-[#ff2d9b]"
+                                      />
+                                      <div className="min-w-0 flex-1">
+                                        <div className="text-sm text-gray-900">
+                                          Parcela {p.numero}
+                                          {g.acordo.qtd_parcelas ? `/${g.acordo.qtd_parcelas}` : ''}
+                                          {p.estimado && (
+                                            <span className="ml-1 font-mono text-amber-600">~</span>
+                                          )}
+                                          <span className="text-gray-500"> · venc. {fmtData(p.vencimento)}</span>
+                                        </div>
+                                        {p.guia_pedida_em && (
+                                          <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-700">
+                                            <FileCheck2 size={11} />
+                                            Guia pedida em {fmtData(p.guia_pedida_em)}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <span className="shrink-0 text-sm font-medium text-gray-900">
+                                        {Number(p.valor) > 0 ? fmtBRL(Number(p.valor)) : 'valor a informar'}
+                                      </span>
+                                    </label>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Pendências de risco alto */}
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-wide text-gray-400">
+                      Pendências de risco alto (fora de acordo)
+                    </h3>
+                    {pendCritVisiveis.length === 0 ? (
+                      <div className="mt-2 rounded-xl bg-gray-50 px-3 py-3 text-sm text-gray-500">
+                        Nenhuma pendência de risco alto{soFaltaPedir ? ' sem guia pedida' : ''}.
+                      </div>
+                    ) : (
+                      <div className="mt-2 divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-200">
+                        {pendCritVisiveis.map((p) => {
+                          const chave = `d:${p.id}`
+                          return (
+                            <label
+                              key={p.id}
+                              className="flex cursor-pointer items-start gap-3 px-3 py-2.5 hover:bg-gray-50"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selecionados.has(chave)}
+                                onChange={() => alternar(chave)}
+                                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-[#ff2d9b] focus:ring-[#ff2d9b]"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span
+                                    className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${ORGAO_BADGE[p.orgao]}`}
+                                  >
+                                    {p.orgao}
+                                  </span>
+                                  <span className="text-sm text-gray-900">{p.descricao}</span>
+                                </div>
+                                {p.guia_pedida_em && (
+                                  <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-700">
+                                    <FileCheck2 size={11} />
+                                    Guia pedida em {fmtData(p.guia_pedida_em)}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="shrink-0 text-sm font-medium text-gray-900">
+                                {p.valor !== null ? fmtBRL(Number(p.valor)) : 'a apurar'}
+                              </span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 border-t border-gray-100 px-5 py-4">
+              <div className="mr-auto text-xs text-gray-500">
+                <span className="font-semibold text-gray-900">{selecionados.size}</span> selecionado
+                {selecionados.size === 1 ? '' : 's'} ·{' '}
+                <span className="font-semibold text-gray-900">{fmtBRL(totalSelecionado)}</span>
+              </div>
+              <button
+                onClick={() => marcarGuia(false)}
+                disabled={marcando || selecionados.size === 0}
+                className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+              >
+                Desmarcar guia
+              </button>
+              <button
+                onClick={() => marcarGuia(true)}
+                disabled={marcando || selecionados.size === 0}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[#ff2d9b] px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-[#e0267f] disabled:opacity-50"
+              >
+                {marcando ? <Loader2 size={15} className="animate-spin" /> : <FileCheck2 size={15} />}
+                Marcar guia pedida
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal — novo acordo */}
       {modalAberto && (

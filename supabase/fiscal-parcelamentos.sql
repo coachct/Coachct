@@ -596,3 +596,9 @@ $seed$;
 -- Joga a janela rolante em Contas a Pagar já na aplicação da migration.
 -- (Como roda pelo SQL Editor, auth.role() é service_role e passa na guarda.)
 SELECT public.fiscal_sync_contas_a_pagar() AS despesas_criadas;
+
+-- ---------------------------------------------------------------------------
+-- 12. (29/09/2026) Pedido de guia à contabilidade — botão "Críticos"
+-- ---------------------------------------------------------------------------
+ALTER TABLE public.fiscal_parcelas   ADD COLUMN IF NOT EXISTS guia_pedida_em date;
+ALTER TABLE public.fiscal_pendencias ADD COLUMN IF NOT EXISTS guia_pedida_em date;
