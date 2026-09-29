@@ -184,6 +184,31 @@ function parseValor(s: string): number {
   const n = parseFloat(t)
   return isNaN(n) ? 0 : n
 }
+// Crítico de verdade = o mínimo que tira o acordo do limite de rescisão.
+// A Receita abate a parcela mais antiga primeiro: com 3 em atraso e limite 3,
+// só a mais antiga é crítica; acordo abaixo do limite não entra.
+// `lista` vem ordenada por vencimento.
+function soCriticas(lista: ParcelaCritica[]): {
+  criticas: ParcelaCritica[]
+  foraPorAcordo: Record<string, number>
+} {
+  const porAcordo = new Map<string, ParcelaCritica[]>()
+  for (const p of lista) {
+    const arr = porAcordo.get(p.acordo_id) || []
+    arr.push(p)
+    porAcordo.set(p.acordo_id, arr)
+  }
+  const criticas: ParcelaCritica[] = []
+  const foraPorAcordo: Record<string, number> = {}
+  porAcordo.forEach((arr, acordoId) => {
+    const k = arr.length - arr[0].fiscal_acordos.limite_rescisao + 1
+    if (k <= 0) return
+    criticas.push(...arr.slice(0, k))
+    foraPorAcordo[acordoId] = arr.length - k
+  })
+  return { criticas, foraPorAcordo }
+}
+
 function hojeLocalStr(): string {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -349,8 +374,10 @@ export default function ParcelamentosPage() {
   )
 
   // parcelas em atraso agrupadas por acordo, na ordem do vencimento
+  const { criticas, foraPorAcordo } = useMemo(() => soCriticas(parcelasCrit), [parcelasCrit])
+
   const gruposCrit = useMemo(() => {
-    const lista = soFaltaPedir ? parcelasCrit.filter((p) => !p.guia_pedida_em) : parcelasCrit
+    const lista = soFaltaPedir ? criticas.filter((p) => !p.guia_pedida_em) : criticas
     const mapa = new Map<string, { acordo: ParcelaCritica['fiscal_acordos']; parcelas: ParcelaCritica[] }>()
     for (const p of lista) {
       const g = mapa.get(p.acordo_id) || { acordo: p.fiscal_acordos, parcelas: [] }
@@ -358,7 +385,7 @@ export default function ParcelamentosPage() {
       mapa.set(p.acordo_id, g)
     }
     return Array.from(mapa.entries()).map(([id, g]) => ({ id, ...g }))
-  }, [parcelasCrit, soFaltaPedir])
+  }, [criticas, soFaltaPedir])
 
   const pendCritVisiveis = useMemo(
     () => (soFaltaPedir ? pendCriticas.filter((p) => !p.guia_pedida_em) : pendCriticas),
@@ -367,10 +394,10 @@ export default function ParcelamentosPage() {
 
   const totalSelecionado = useMemo(() => {
     let v = 0
-    for (const p of parcelasCrit) if (selecionados.has(`p:${p.id}`)) v += Number(p.valor || 0)
+    for (const p of criticas) if (selecionados.has(`p:${p.id}`)) v += Number(p.valor || 0)
     for (const p of pendCriticas) if (selecionados.has(`d:${p.id}`)) v += Number(p.valor || 0)
     return v
-  }, [parcelasCrit, pendCriticas, selecionados])
+  }, [criticas, pendCriticas, selecionados])
 
   async function carregarCriticos(): Promise<ParcelaCritica[]> {
     const { data, error } = await supabase
@@ -400,7 +427,7 @@ export default function ParcelamentosPage() {
     const lista = await carregarCriticos()
     // já abre com tudo o que ainda não teve guia pedida selecionado
     const sel = new Set<string>()
-    lista.filter((p) => !p.guia_pedida_em).forEach((p) => sel.add(`p:${p.id}`))
+    soCriticas(lista).criticas.filter((p) => !p.guia_pedida_em).forEach((p) => sel.add(`p:${p.id}`))
     pendCriticas.filter((p) => !p.guia_pedida_em).forEach((p) => sel.add(`d:${p.id}`))
     setSelecionados(sel)
     setCarregandoCrit(false)
@@ -944,8 +971,8 @@ export default function ParcelamentosPage() {
                   Críticos — pedir guia
                 </h2>
                 <p className="mt-0.5 text-xs text-gray-500">
-                  Parcelas em atraso dos acordos ativos e pendências de risco alto. Selecione o que
-                  vai pedir à contabilidade.
+                  Só a parcela mais antiga que segura cada acordo no limite de rescisão, e as
+                  pendências de risco alto. Selecione o que vai pedir à contabilidade.
                 </p>
               </div>
               <button
@@ -990,11 +1017,11 @@ export default function ParcelamentosPage() {
                   {/* Parcelas em atraso, por acordo */}
                   <div>
                     <h3 className="text-xs font-bold uppercase tracking-wide text-gray-400">
-                      Parcelas em atraso
+                      Parcelas no limite da rescisão
                     </h3>
                     {gruposCrit.length === 0 ? (
                       <div className="mt-2 rounded-xl bg-gray-50 px-3 py-3 text-sm text-gray-500">
-                        Nenhuma parcela em atraso{soFaltaPedir ? ' sem guia pedida' : ''}.
+                        Nenhum acordo no limite de rescisão{soFaltaPedir ? ' sem guia pedida' : ''}.
                       </div>
                     ) : (
                       <div className="mt-2 space-y-3">
@@ -1069,6 +1096,14 @@ export default function ParcelamentosPage() {
                                   )
                                 })}
                               </div>
+                              {(foraPorAcordo[g.id] || 0) > 0 && (
+                                <div className="border-t border-gray-100 bg-gray-50 px-3 py-1.5 text-[11px] text-gray-500">
+                                  + {foraPorAcordo[g.id]} parcela{foraPorAcordo[g.id] === 1 ? '' : 's'} em
+                                  atraso mais recente{foraPorAcordo[g.id] === 1 ? '' : 's'}, ainda não
+                                  crítica{foraPorAcordo[g.id] === 1 ? '' : 's'} — não entra
+                                  {foraPorAcordo[g.id] === 1 ? '' : 'm'} aqui.
+                                </div>
+                              )}
                             </div>
                           )
                         })}
