@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import GuiasPanel from './GuiasPanel'
 import {
   Landmark,
   Plus,
@@ -678,6 +679,9 @@ export default function ParcelamentosPage() {
             </div>
           </div>
         </div>
+
+        {/* Guias da contabilidade — leitura e conferência */}
+        <GuiasPanel onAlterado={carregar} />
 
         {/* Fluxo futuro */}
         <div className="rounded-2xl border border-gray-200 bg-white p-4">

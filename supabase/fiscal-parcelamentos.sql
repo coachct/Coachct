@@ -602,3 +602,12 @@ SELECT public.fiscal_sync_contas_a_pagar() AS despesas_criadas;
 -- ---------------------------------------------------------------------------
 ALTER TABLE public.fiscal_parcelas   ADD COLUMN IF NOT EXISTS guia_pedida_em date;
 ALTER TABLE public.fiscal_pendencias ADD COLUMN IF NOT EXISTS guia_pedida_em date;
+
+-- ---------------------------------------------------------------------------
+-- 13. (29/09/2026) Guias: upload + leitura pelo Claude + conferência
+--     Aplicado via migration "fiscal_guias": tabela fiscal_guias (RLS
+--     fin_equipe_all), bucket privado "fiscal-guias" e RPC
+--     fiscal_confirmar_guia(p_guia_id, p_parcela_id, p_pendencia_id), que grava
+--     o total da guia como valor da parcela (estimado=false) ou da pendência.
+--     Rota: src/app/api/admin/fiscal/guias/route.ts
+-- ---------------------------------------------------------------------------
