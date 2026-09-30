@@ -23,7 +23,9 @@ export const NFEIO_CODIGO_SERVICO = '05657'
 export const NFEIO_DESCRICAO = 'Nota fiscal de serviço referente a treinos na Just Club CT'
 
 export function nfeioAtivo(): boolean {
-  return process.env.NFEIO_ATIVO === '1'
+  // tolera espaço/aspas colados no painel da Vercel
+  const v = (process.env.NFEIO_ATIVO || '').trim().replace(/^["']|["']$/g, '').toLowerCase()
+  return v === '1' || v === 'true' || v === 'sim'
 }
 
 export function nfeioAmbiente(): 'teste' | 'producao' {

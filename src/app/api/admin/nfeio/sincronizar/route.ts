@@ -22,6 +22,9 @@ export async function GET(req: NextRequest) {
     ativo: nfeioAtivo(),
     ambiente: nfeioAmbiente(),
     chave_configurada: !!process.env.NFEIO_API_KEY,
+    // diagnóstico: o que o servidor recebeu em NFEIO_ATIVO (não é segredo)
+    valor_ativo: process.env.NFEIO_ATIVO === undefined ? null : JSON.stringify(process.env.NFEIO_ATIVO),
+    ambiente_vercel: process.env.VERCEL_ENV || null,
   })
 }
 

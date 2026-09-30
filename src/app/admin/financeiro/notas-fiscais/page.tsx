@@ -31,7 +31,7 @@ type Linha = {
   mensagem_erro: string | null
 }
 
-type Config = { ativo: boolean; ambiente: string; chave_configurada: boolean }
+type Config = { ativo: boolean; ambiente: string; chave_configurada: boolean; valor_ativo: string | null; ambiente_vercel: string | null }
 
 const LOTE = 5
 
@@ -314,6 +314,9 @@ export default function NotasFiscaisPage() {
             <span>
               Emissão desligada: a tela lista e consulta, mas não envia nada para a NFE.io.
               {!config.chave_configurada && ' A chave NFEIO_API_KEY também não está configurada.'}
+              <span className="block text-xs text-amber-700 mt-1">
+                Servidor ({config.ambiente_vercel || '?'}) recebeu NFEIO_ATIVO = {config.valor_ativo ?? 'não existe'}
+              </span>
             </span>
           </div>
         )}
