@@ -20,6 +20,30 @@ interface TreinoCompleto extends Treino {
 
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 
+const semAcento = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+
+// O mês vive no nome ("Treino A- (Agosto)"); as colunas mes/ano de treinos não são confiáveis.
+// Ano: o da publicação mais recente; sem publicação, o ano atual.
+function agruparPorMes(treinos: TreinoCompleto[]) {
+  const grupos = new Map<string, { titulo: string; chave: number; itens: TreinoCompleto[] }>()
+  for (const t of treinos) {
+    const nome = semAcento(t.nome || '')
+    const idx = MESES.findIndex(m => nome.includes(semAcento(m)))
+    const pubs: any[] = (t as any).treino_publicacoes || []
+    const ano = pubs.length ? Math.max(...pubs.map(p => p.ano)) : new Date().getFullYear()
+    const key = idx < 0 ? 'sem' : `${ano}-${idx + 1}`
+    if (!grupos.has(key)) {
+      grupos.set(key, {
+        titulo: idx < 0 ? 'Sem mês' : `${MESES[idx]} ${ano}`,
+        chave: idx < 0 ? -1 : ano * 12 + idx,
+        itens: [],
+      })
+    }
+    grupos.get(key)!.itens.push(t)
+  }
+  return Array.from(grupos.values()).sort((a, b) => b.chave - a.chave)
+}
+
 export default function JuMontarPage() {
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [exercicios, setExercicios] = useState<Exercicio[]>([])
@@ -47,7 +71,7 @@ export default function JuMontarPage() {
     const [{ data: cats }, { data: exs }, { data: tr }] = await Promise.all([
       supabase.from('categorias').select('*').order('ordem'),
       supabase.from('exercicios').select('*, categorias(nome)').eq('ativo', true).order('nome'),
-      supabase.from('treinos').select('*, treino_exercicios(id, exercicio_id, ordem, series_override, reps_override, descanso_override, observacoes_override, conjugado, exercicios(id, nome, numero_maquina, categoria_id))').order('nome'),
+      supabase.from('treinos').select('*, treino_publicacoes(mes, ano), treino_exercicios(id, exercicio_id, ordem, series_override, reps_override, descanso_override, observacoes_override, conjugado, exercicios(id, nome, numero_maquina, categoria_id))').order('nome'),
     ])
     setCategorias(cats || [])
     setExercicios(exs || [])
@@ -58,7 +82,7 @@ export default function JuMontarPage() {
   async function loadSilencioso() {
     const { data: tr } = await supabase
       .from('treinos')
-      .select('*, treino_exercicios(id, exercicio_id, ordem, series_override, reps_override, descanso_override, observacoes_override, conjugado, exercicios(id, nome, numero_maquina, categoria_id))')
+      .select('*, treino_publicacoes(mes, ano), treino_exercicios(id, exercicio_id, ordem, series_override, reps_override, descanso_override, observacoes_override, conjugado, exercicios(id, nome, numero_maquina, categoria_id))')
       .order('nome')
     setTreinos(tr || [])
   }
@@ -241,6 +265,7 @@ export default function JuMontarPage() {
     else {
       setMsg(`Treino publicado em ${MESES[pubMes-1]} ${pubAno}!`)
       setTimeout(() => setMsg(''), 3000)
+      loadSilencioso()
     }
     setModalPublicar(null)
     setSaving(false)
@@ -470,7 +495,12 @@ export default function JuMontarPage() {
           </div>
           <div className="space-y-2">
             {treinos.length === 0 && <EmptyState message="Nenhum treino criado ainda." />}
-            {treinos.map(t => (
+            {agruparPorMes(treinos).map(g => (
+              <div key={g.titulo} className="space-y-2">
+                <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 pt-3 first:pt-0">
+                  {g.titulo} <span className="text-gray-400 font-normal">({g.itens.length})</span>
+                </div>
+            {g.itens.map(t => (
               <div key={t.id}>
                 <div
                   className={`card p-3 cursor-pointer transition-all ${editandoId === t.id ? 'border-primary-400 ring-1 ring-primary-200' : 'hover:border-gray-200'}`}
@@ -495,6 +525,8 @@ export default function JuMontarPage() {
                     {renderEditor()}
                   </div>
                 )}
+              </div>
+            ))}
               </div>
             ))}
           </div>
