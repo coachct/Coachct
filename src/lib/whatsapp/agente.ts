@@ -98,8 +98,13 @@ const FRASE_CANCEL_COACH_CT = 'Para cancelar: se o seu treino estiver com 12h de
 // A frase aprovada cita "até 3h" e "é só cancelar" de propósito — as travas de
 // cancelamento abaixo NÃO podem trocá-la pela política genérica.
 const RE_FRASE_PRO = /se voc[êe] tem o coach ct pro, o prazo [ée] at[ée] 3h antes/i
-function limparMecanicaCancel(texto: string): string {
+function limparMecanicaCancel(texto: string, ehFila = false): string {
   const t = String(texto || '')
+  // Pergunta sobre a FILA DE ESPERA responde a regra da fila — que fala em "cancelamento"
+  // e "até 3h" de propósito (a fila anda por cancelamento até 3h antes). Sem esta saída,
+  // o "até 3h" batia em RE_AFIRMA_CANCEL e a resposta da fila era trocada pela política de
+  // cancelamento (bug real: cliente pergunta da fila e recebe cancelamento).
+  if (ehFila) return t
   if (!RE_CANCEL_CTX.test(t)) return t
   if (RE_FRASE_PRO.test(t)) return t
   const recusa = RE_RECUSA_CANCEL.test(t)
@@ -147,8 +152,8 @@ function semCanalExterno(texto: string): string {
 }
 
 /** Passada determinística final aplicada a TODA resposta enviada ao cliente. */
-function finalizarTexto(texto: string): string {
-  return semCanalExterno(semTelefoneInventado(limparMecanicaCancel(texto)))
+function finalizarTexto(texto: string, ehFila = false): string {
+  return semCanalExterno(semTelefoneInventado(limparMecanicaCancel(texto, ehFila)))
 }
 
 // TRAVA DETERMINÍSTICA: NUNCA falar de multa NEM de cartão (garantia) se o cliente não
@@ -1512,6 +1517,12 @@ A última mensagem inclui uma IMAGEM (quase sempre um print da tela do app/site:
   const perguntouMulta = /multa|cobran|no.?show|cart[ãa]o|taxa|cobrad|pagar.{0,10}falt/i.test(textoCliente)
   // Reserva de HOJE + intenção de cancelar/trocar/marquei → o bot não pode dizer "sim, dá".
   const reservaHoje = /\bhoje\b/i.test(textoCliente) && /(cancel|desmarc|remarc|reagend|trocar|troca de|mudar|marqu|agend|reserv)/i.test(textoCliente)
+  // Pergunta é sobre a FILA DE ESPERA (e não pedido de cancelar)? Então a resposta certa é a
+  // regra da fila (fala em cancelamento/"até 3h" de propósito) e a trava de cancelamento
+  // NÃO pode reescrevê-la pela política genérica.
+  const perguntouFila = /\bfila(s)?\b|fila de espera|lista de espera|na fila|entrar na fila|esperar na fila|(vou|v[aã]o|ter[áa]|vai ter|tenho|tem)\s+vaga|como\s+sei[^?]{0,25}vaga/i.test(textoCliente)
+  const querCancelar = /(cancel|desmarc)/i.test(textoCliente)
+  const ehFilaContexto = perguntouFila && !querCancelar
 
   const FALLBACK_SEM_INFO = FALLBACK_EQUIPE
 
@@ -1558,7 +1569,7 @@ A última mensagem inclui uma IMAGEM (quase sempre um print da tela do app/site:
     const draft = texto || FALLBACK_SEM_INFO
     // Revisor (barato) como rede: pega invenção/promessa. Aqui NÃO existe transferir —
     // se o revisor achar que a resposta não tem base, cai no fallback de informação.
-    const finaliza = (tx: string) => semSimDaHoje(semMultaProativa(finalizarTexto(tx), perguntouMulta), reservaHoje)
+    const finaliza = (tx: string) => semSimDaHoje(semMultaProativa(finalizarTexto(tx, ehFilaContexto), perguntouMulta), reservaHoje)
     const rev = await revisarResposta({ client, faqTxt, transcript, draft, escalou: false })
     if (rev) return { texto: rev.escalar ? FALLBACK_SEM_INFO : finaliza(rev.texto) }
     return { texto: finaliza(draft) }
