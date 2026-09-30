@@ -1,4 +1,6 @@
--- Check ins Extra for Clubs (aprovado pelo Ricardo em 25/09/2026).
+-- Treinos Extras Club (aprovado pelo Ricardo em 25/09/2026; nasceu como
+-- "Check ins Extra for Clubs", renomeado em 30/09/2026 porque clientes
+-- achavam que ainda precisavam fazer check-in).
 -- Pacote de 4 treinos por R$ 99,90, à vista (cartão ou PIX), fora da vitrine.
 -- Só aparece no perfil de quem usou 70% ou mais dos check-ins do app
 -- (Wellhub/TotalPass) numa Club, no mês atual ou no anterior. Contagem por
@@ -11,7 +13,7 @@ INSERT INTO public.produtos (
   id, nome, tipo, subtipo, valor, creditos_por_venda, dias_validade,
   max_parcelas, unidade_id, visivel_site, ativo
 ) VALUES (
-  '4c1b7e2a-9d3f-4a61-8e25-c1ab5f0e7d99', 'Check ins Extra for Clubs', 'credito_treino', 'pacote',
+  '4c1b7e2a-9d3f-4a61-8e25-c1ab5f0e7d99', 'Treinos Extras Club', 'credito_treino', 'pacote',
   99.90, 4, 30, 1, NULL, false, true
 ) ON CONFLICT (id) DO NOTHING;
 
