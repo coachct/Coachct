@@ -98,13 +98,14 @@ const FRASE_CANCEL_COACH_CT = 'Para cancelar: se o seu treino estiver com 12h de
 // A frase aprovada cita "até 3h" e "é só cancelar" de propósito — as travas de
 // cancelamento abaixo NÃO podem trocá-la pela política genérica.
 const RE_FRASE_PRO = /se voc[êe] tem o coach ct pro, o prazo [ée] at[ée] 3h antes/i
-function limparMecanicaCancel(texto: string, ehFila = false): string {
+function limparMecanicaCancel(texto: string, contextoCancel = false): string {
   const t = String(texto || '')
-  // Pergunta sobre a FILA DE ESPERA responde a regra da fila — que fala em "cancelamento"
-  // e "até 3h" de propósito (a fila anda por cancelamento até 3h antes). Sem esta saída,
-  // o "até 3h" batia em RE_AFIRMA_CANCEL e a resposta da fila era trocada pela política de
-  // cancelamento (bug real: cliente pergunta da fila e recebe cancelamento).
-  if (ehFila) return t
+  // As travas de cancelamento (RE_AFIRMA/RE_MECANICA → POLICY_CANCEL) SÓ podem rodar quando
+  // a pessoa está de fato falando de CANCELAR (ou falta/imprevisto). Senão, uma resposta de
+  // OUTRO assunto — fila, PLANOS, preço — que só de passagem cita "cancelamento" e "até Xh"
+  // era trocada INTEIRA pela política de cancelamento (bugs reais: pergunta de fila e de
+  // plano recebendo resposta de cancelamento). Fora do contexto de cancelar, não mexe.
+  if (!contextoCancel) return t
   if (!RE_CANCEL_CTX.test(t)) return t
   if (RE_FRASE_PRO.test(t)) return t
   const recusa = RE_RECUSA_CANCEL.test(t)
@@ -152,8 +153,8 @@ function semCanalExterno(texto: string): string {
 }
 
 /** Passada determinística final aplicada a TODA resposta enviada ao cliente. */
-function finalizarTexto(texto: string, ehFila = false): string {
-  return semCanalExterno(semTelefoneInventado(limparMecanicaCancel(texto, ehFila)))
+function finalizarTexto(texto: string, contextoCancel = false): string {
+  return semCanalExterno(semTelefoneInventado(limparMecanicaCancel(texto, contextoCancel)))
 }
 
 // TRAVA DETERMINÍSTICA: NUNCA falar de multa NEM de cartão (garantia) se o cliente não
@@ -1517,12 +1518,10 @@ A última mensagem inclui uma IMAGEM (quase sempre um print da tela do app/site:
   const perguntouMulta = /multa|cobran|no.?show|cart[ãa]o|taxa|cobrad|pagar.{0,10}falt/i.test(textoCliente)
   // Reserva de HOJE + intenção de cancelar/trocar/marquei → o bot não pode dizer "sim, dá".
   const reservaHoje = /\bhoje\b/i.test(textoCliente) && /(cancel|desmarc|remarc|reagend|trocar|troca de|mudar|marqu|agend|reserv)/i.test(textoCliente)
-  // Pergunta é sobre a FILA DE ESPERA (e não pedido de cancelar)? Então a resposta certa é a
-  // regra da fila (fala em cancelamento/"até 3h" de propósito) e a trava de cancelamento
-  // NÃO pode reescrevê-la pela política genérica.
-  const perguntouFila = /\bfila(s)?\b|fila de espera|lista de espera|na fila|entrar na fila|esperar na fila|(vou|v[aã]o|ter[áa]|vai ter|tenho|tem)\s+vaga|como\s+sei[^?]{0,25}vaga/i.test(textoCliente)
-  const querCancelar = /(cancel|desmarc)/i.test(textoCliente)
-  const ehFilaContexto = perguntouFila && !querCancelar
+  // A trava de cancelamento SÓ vale quando a pessoa está falando de CANCELAR (ou falta/
+  // imprevisto). Fora disso (fila, planos, preço, personal...), NÃO deixamos a política de
+  // cancelamento sequestrar a resposta — foi o que derrubou os casos da fila e do plano.
+  const contextoCancel = /(cancel|desmarc|remarc|reagend|faltar|falto|imprevisto|n[ãa]o\s+(vou|consigo|poder|poderei|conseguirei|vou\s+conseguir))/i.test(textoCliente)
 
   const FALLBACK_SEM_INFO = FALLBACK_EQUIPE
 
@@ -1569,7 +1568,7 @@ A última mensagem inclui uma IMAGEM (quase sempre um print da tela do app/site:
     const draft = texto || FALLBACK_SEM_INFO
     // Revisor (barato) como rede: pega invenção/promessa. Aqui NÃO existe transferir —
     // se o revisor achar que a resposta não tem base, cai no fallback de informação.
-    const finaliza = (tx: string) => semSimDaHoje(semMultaProativa(finalizarTexto(tx, ehFilaContexto), perguntouMulta), reservaHoje)
+    const finaliza = (tx: string) => semSimDaHoje(semMultaProativa(finalizarTexto(tx, contextoCancel), perguntouMulta), reservaHoje)
     const rev = await revisarResposta({ client, faqTxt, transcript, draft, escalou: false })
     if (rev) return { texto: rev.escalar ? FALLBACK_SEM_INFO : finaliza(rev.texto) }
     return { texto: finaliza(draft) }
