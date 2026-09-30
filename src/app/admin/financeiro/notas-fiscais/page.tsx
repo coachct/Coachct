@@ -31,6 +31,16 @@ type Linha = {
   mensagem_erro: string | null
 }
 
+type BlocoResumo = { qtd: number; valor: number }
+type Resumo = {
+  mes: string
+  emitidas: { total: BlocoResumo; pagarme: BlocoResumo; balcao: BlocoResumo }
+  canceladas: BlocoResumo
+  com_erro: BlocoResumo
+  processando: BlocoResumo
+  completo: boolean
+}
+
 type Config = { ativo: boolean; ambiente: string; chave_configurada: boolean; valor_ativo: string | null; ambiente_vercel: string | null }
 
 const LOTE = 5
@@ -106,6 +116,23 @@ export default function NotasFiscaisPage() {
   const [falhas, setFalhas] = useState<{ nome: string; motivo: string }[]>([])
   const [ocupado, setOcupado] = useState<string | null>(null)
   const [sincronizando, setSincronizando] = useState(false)
+  const [resumoNfe, setResumoNfe] = useState<Resumo | null>(null)
+  const [carregandoResumo, setCarregandoResumo] = useState(false)
+  const [erroResumo, setErroResumo] = useState('')
+
+  // Resumo da NFE.io acompanha o mês do início do período
+  const mesResumo = dataInicio.slice(0, 7)
+  useEffect(() => {
+    if (perfil?.role === 'admin' && /^\d{4}-\d{2}$/.test(mesResumo)) carregarResumo()
+  }, [perfil, mesResumo])
+
+  async function carregarResumo() {
+    setCarregandoResumo(true); setErroResumo('')
+    const r = await chamarApi(`/api/admin/nfeio/resumo?mes=${mesResumo}`, 'GET')
+    if (r.ok) setResumoNfe(r.json)
+    else { setResumoNfe(null); setErroResumo(r.json?.error || 'Falha ao consultar a NFE.io') }
+    setCarregandoResumo(false)
+  }
 
   useEffect(() => {
     if (!loading && perfil?.role !== 'admin') router.push('/')
@@ -170,6 +197,7 @@ export default function NotasFiscaisPage() {
     await chamarApi('/api/admin/nfeio/sincronizar', 'POST', {})
     setSincronizando(false)
     carregar(false)
+    carregarResumo()
   }
 
   const produtos = useMemo(
@@ -236,6 +264,7 @@ export default function NotasFiscaisPage() {
     setEmitindo(false)
     setSelecionadas(new Set())
     carregar()
+    carregarResumo()
   }
 
   async function reenviar(l: Linha) {
@@ -307,7 +336,7 @@ export default function NotasFiscaisPage() {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-0 md:px-6 py-5">
+      <div className="max-w-6xl mx-auto px-0 md:px-6 pt-5 pb-28">
         {config && !config.ativo && (
           <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-800 flex gap-2">
             <AlertTriangle size={16} className="shrink-0 mt-0.5"/>
@@ -320,6 +349,49 @@ export default function NotasFiscaisPage() {
             </span>
           </div>
         )}
+
+        {/* Resumo do mês na NFE.io (todas as origens) */}
+        <div className="card mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <div className="text-sm font-semibold text-gray-900">
+                Notas na NFE.io · {mesResumo.split('-').reverse().join('/')}
+              </div>
+              <div className="text-xs text-gray-400">Tudo que a empresa emitiu no mês: Pagar.me (site e multas) + balcão</div>
+            </div>
+            <button onClick={carregarResumo} disabled={carregandoResumo} className="text-gray-400 hover:text-gray-600" title="Recarregar">
+              <RefreshCw size={14} className={carregandoResumo ? 'animate-spin' : ''}/>
+            </button>
+          </div>
+          {erroResumo && <div className="text-sm text-red-600">{erroResumo}</div>}
+          {!erroResumo && !resumoNfe && <div className="text-sm text-gray-400">Consultando a NFE.io...</div>}
+          {resumoNfe && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div>
+                <div className="text-2xl font-bold text-green-600">{resumoNfe.emitidas.total.qtd}</div>
+                <div className="text-xs text-gray-500">emitidas · {formatarValor(resumoNfe.emitidas.total.valor)}</div>
+              </div>
+              <div>
+                <div className="text-lg font-semibold text-indigo-600">{resumoNfe.emitidas.pagarme.qtd}</div>
+                <div className="text-xs text-gray-500">pelo Pagar.me · {formatarValor(resumoNfe.emitidas.pagarme.valor)}</div>
+              </div>
+              <div>
+                <div className="text-lg font-semibold text-orange-600">{resumoNfe.emitidas.balcao.qtd}</div>
+                <div className="text-xs text-gray-500">do balcão · {formatarValor(resumoNfe.emitidas.balcao.valor)}</div>
+              </div>
+              <div>
+                <div className="text-lg font-semibold text-gray-600">{resumoNfe.canceladas.qtd}</div>
+                <div className="text-xs text-gray-500">
+                  canceladas{resumoNfe.com_erro.qtd ? ` · ${resumoNfe.com_erro.qtd} com erro` : ''}
+                  {resumoNfe.processando.qtd ? ` · ${resumoNfe.processando.qtd} processando` : ''}
+                </div>
+              </div>
+            </div>
+          )}
+          {resumoNfe && !resumoNfe.completo && (
+            <div className="text-xs text-amber-600 mt-2">Mês com muitas notas: a contagem pode estar incompleta.</div>
+          )}
+        </div>
 
         {/* Resumo */}
         <div className="grid grid-cols-2 gap-3 mb-5 sm:grid-cols-4">
@@ -474,6 +546,27 @@ export default function NotasFiscaisPage() {
           </table>
         </div>
       </div>
+
+      {/* Barra flutuante: soma do que está marcado */}
+      {selecionadas.size > 0 && !modalEmitir && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[calc(100%-2rem)] max-w-xl">
+          <div className="bg-gray-900 text-white rounded-2xl shadow-2xl px-4 py-3 flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="text-xs text-gray-400">
+                {selecionadas.size} {selecionadas.size === 1 ? 'venda selecionada' : 'vendas selecionadas'}
+              </div>
+              <div className="text-xl font-bold">{formatarValor(totalEscolhido)}</div>
+            </div>
+            <button onClick={() => setSelecionadas(new Set())}
+              className="text-sm text-gray-300 hover:text-white px-2">Limpar</button>
+            <button onClick={() => { setFalhas([]); setProgresso({ feitas: 0, total: 0 }); setModalEmitir(true) }}
+              disabled={emitindo || !config?.ativo}
+              className="btn bg-emerald-500 text-white hover:bg-emerald-600 gap-1.5 text-sm disabled:opacity-40">
+              <Send size={14}/> Emitir
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Confirmação / progresso da emissão */}
       {modalEmitir && (

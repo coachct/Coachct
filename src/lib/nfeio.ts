@@ -153,6 +153,14 @@ export async function nfeioEmitir(
   return { invoiceId, dados }
 }
 
+// Uma página da lista de notas da empresa (todas as origens: Pagar.me e balcão)
+export async function nfeioListarPagina(companyId: string, pagina: number, porPagina = 50): Promise<any[]> {
+  const resp = await chamar('GET', `/companies/${companyId}/serviceinvoices?pageIndex=${pagina}&pageCount=${porPagina}`)
+  if (!resp.ok) throw new NfeioErro(resp.status, await lerErro(resp))
+  const j = await resp.json()
+  return j?.serviceInvoices || j?.serviceinvoices || j?.data || []
+}
+
 export async function nfeioConsultar(companyId: string, invoiceId: string): Promise<any> {
   const resp = await chamar('GET', `/companies/${companyId}/serviceinvoices/${invoiceId}`)
   if (!resp.ok) throw new NfeioErro(resp.status, await lerErro(resp))
