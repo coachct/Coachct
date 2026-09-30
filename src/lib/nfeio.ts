@@ -19,7 +19,7 @@ const BASE = 'https://api.nfe.io/v1'
 
 // Mesmos dados da nota que a integração Pagar.me emite (NFS-e 21333, 30/09/2026)
 export const NFEIO_CNPJ = '26625454000141'
-export const NFEIO_CODIGO_SERVICO = '05657'
+// (código de serviço: ver nfeioModeloServico — vem da última nota emitida na conta)
 export const NFEIO_DESCRICAO = 'Nota fiscal de serviço referente a treinos na Just Club CT'
 
 export function nfeioAtivo(): boolean {
@@ -95,6 +95,31 @@ export async function nfeioCompanyId(): Promise<string> {
   throw new NfeioErro(404, `Empresa CNPJ ${NFEIO_CNPJ} não encontrada na conta NFE.io`)
 }
 
+// Códigos de serviço no formato que a NFE.io usa. O "05657" impresso no PDF da
+// prefeitura NÃO é aceito na API ("city service code not found"), então copia os
+// códigos da nota mais recente já EMITIDA na conta (as do Pagar.me) — fica igual
+// por construção. NFEIO_CODIGO_SERVICO na Vercel sobrepõe, se um dia precisar.
+type ModeloServico = { cityServiceCode: string; federalServiceCode?: string; cnaeCode?: string }
+let modeloCache: ModeloServico | null = null
+export async function nfeioModeloServico(companyId: string): Promise<ModeloServico> {
+  if (process.env.NFEIO_CODIGO_SERVICO) return { cityServiceCode: process.env.NFEIO_CODIGO_SERVICO }
+  if (modeloCache) return modeloCache
+
+  const resp = await chamar('GET', `/companies/${companyId}/serviceinvoices?pageIndex=1&pageCount=50`)
+  if (!resp.ok) throw new NfeioErro(resp.status, await lerErro(resp))
+  const j = await resp.json()
+  const lista: any[] = j?.serviceInvoices || j?.serviceinvoices || j?.data || []
+  const base = lista.find(n => n?.flowStatus === 'Issued' && n?.cityServiceCode)
+  if (!base) throw new NfeioErro(404, 'Nenhuma nota emitida na conta para copiar o código de serviço')
+
+  modeloCache = {
+    cityServiceCode: String(base.cityServiceCode),
+    ...(base.federalServiceCode ? { federalServiceCode: String(base.federalServiceCode) } : {}),
+    ...(base.cnaeCode ? { cnaeCode: String(base.cnaeCode) } : {}),
+  }
+  return modeloCache
+}
+
 export type TomadorNfeio = { nome: string; cpf: string; email: string }
 
 // Emite. A NFE.io responde 202 (assíncrono) com o id no Location, ou 201 com a nota.
@@ -104,8 +129,9 @@ export async function nfeioEmitir(
   valor: number,
   externalId: string
 ): Promise<{ invoiceId: string; dados: any | null }> {
+  const modelo = await nfeioModeloServico(companyId)
   const corpo = {
-    cityServiceCode: NFEIO_CODIGO_SERVICO,
+    ...modelo,
     description: NFEIO_DESCRICAO,
     servicesAmount: Number(valor.toFixed(2)),
     externalId,
