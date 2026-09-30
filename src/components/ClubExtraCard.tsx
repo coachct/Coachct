@@ -84,7 +84,7 @@ export default function ClubExtraCard({ clienteId }: { clienteId: string }) {
           <Item icone="◷">Válidos por 30 dias</Item>
         </div>
         <div style={{ fontSize: 12, color: '#888', margin: '10px 0' }}>R$ 99,90 à vista · você mantém seu {parceiro}</div>
-        <button onClick={comprar} style={btn}>Quero 4 treinos extra</button>
+        <button onClick={comprar} style={btn}>Quero 4 treinos extras</button>
       </div>
     </div>
   )
