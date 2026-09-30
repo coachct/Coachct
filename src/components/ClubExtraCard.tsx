@@ -79,11 +79,12 @@ export default function ClubExtraCard({ clienteId }: { clienteId: string }) {
         </div>
         <div style={{ marginTop: 10 }}>
           <Item icone="+">4 treinos extras no Club</Item>
+          <Item icone="✓">Não utiliza seu check in do dia</Item>
           <Item icone="✓">Use na Vila Olímpia ou em Pinheiros</Item>
           <Item icone="◷">Válidos por 30 dias</Item>
         </div>
         <div style={{ fontSize: 12, color: '#888', margin: '10px 0' }}>R$ 99,90 à vista · você mantém seu {parceiro}</div>
-        <button onClick={comprar} style={btn}>Quero 4 check-ins extras</button>
+        <button onClick={comprar} style={btn}>Quero 4 treinos extra</button>
       </div>
     </div>
   )
