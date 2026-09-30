@@ -1418,7 +1418,7 @@ function AdminClientesPageInner() {
                   </div>
                 </div>
 
-                {/* Quatro cards num bloco só: foto, status de acesso, bloquear, acompanhar.
+                {/* Quatro cards num bloco só: foto, acesso, acompanhar, agendamento CT.
                     Celular 2x2 (sem as descrições), desktop 4 lado a lado. */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {/* 1. Foto facial */}
@@ -1460,31 +1460,16 @@ function AdminClientesPageInner() {
                     )}
                   </div>
 
-                  {/* 2. Status de acesso */}
-                  <div className={`card border-l-4 flex flex-col ${!clienteTemAcesso ? 'border-l-orange-400 bg-orange-50' : acessoBloqueado ? 'border-l-red-400 bg-red-50' : 'border-l-green-400 bg-green-50'}`}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${!clienteTemAcesso ? 'bg-orange-200 text-orange-700' : acessoBloqueado ? 'bg-red-200 text-red-700' : 'bg-green-200 text-green-700'}`}>
-                        {!clienteTemAcesso ? <KeyRound size={16} /> : acessoBloqueado ? <Lock size={16} /> : <Check size={16} />}
-                      </div>
-                      <div className={`text-sm font-semibold leading-tight ${!clienteTemAcesso ? 'text-orange-900' : acessoBloqueado ? 'text-red-900' : 'text-green-900'}`}>
-                        {!clienteTemAcesso ? 'Sem acesso' : acessoBloqueado ? 'Acesso bloqueado' : 'Acesso ativo'}
-                      </div>
-                    </div>
-                    <div className={`hidden md:block text-xs ${!clienteTemAcesso ? 'text-orange-700' : acessoBloqueado ? 'text-red-600' : 'text-green-700'}`}>
-                      {!clienteTemAcesso ? 'Este cliente ainda não tem login no sistema.' : acessoBloqueado ? 'Este cliente não consegue entrar no sistema.' : 'Este cliente entra no sistema normalmente.'}
-                    </div>
-                  </div>
-
-                  {/* 3. Ação: bloquear / desbloquear / criar acesso */}
+                  {/* 2. Acesso: status + bloquear / desbloquear, ou criar acesso */}
                   {clienteTemAcesso ? (
-                    <div className="card border-l-4 border-l-gray-200 flex flex-col">
+                    <div className={`card border-l-4 flex flex-col ${acessoBloqueado ? 'border-l-red-400 bg-red-50' : 'border-l-green-400 bg-green-50'}`}>
                       <div className="flex items-center gap-2 mb-2">
-                        <div className="w-8 h-8 rounded-lg bg-gray-100 text-gray-500 flex items-center justify-center flex-shrink-0">
-                          {acessoBloqueado ? <Unlock size={16} /> : <Lock size={16} />}
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${acessoBloqueado ? 'bg-red-200 text-red-700' : 'bg-green-200 text-green-700'}`}>
+                          {acessoBloqueado ? <Lock size={16} /> : <Check size={16} />}
                         </div>
-                        <div className="text-sm font-semibold text-gray-800 leading-tight">{acessoBloqueado ? 'Liberar acesso' : 'Bloquear acesso'}</div>
+                        <div className={`text-sm font-semibold leading-tight ${acessoBloqueado ? 'text-red-900' : 'text-green-900'}`}>{acessoBloqueado ? 'Acesso bloqueado' : 'Acesso ativo'}</div>
                       </div>
-                      <div className="hidden md:block text-xs text-gray-500 mb-3">{acessoBloqueado ? 'Devolve o acesso do cliente ao sistema.' : 'Impede o cliente de entrar no sistema.'}</div>
+                      <div className={`hidden md:block text-xs mb-3 ${acessoBloqueado ? 'text-red-600' : 'text-green-700'}`}>{acessoBloqueado ? 'Este cliente não consegue entrar no sistema.' : 'Este cliente entra no sistema normalmente.'}</div>
                       <button onClick={toggleBloqueioAcesso} disabled={salvandoBloqueio}
                         className={`btn btn-sm gap-1 mt-auto w-full ${acessoBloqueado ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-red-500 text-white hover:bg-red-600'} disabled:opacity-50`}>
                         {acessoBloqueado ? <><Unlock size={14} /> Desbloquear</> : <><Lock size={14} /> Bloquear</>}
@@ -1513,7 +1498,7 @@ function AdminClientesPageInner() {
                     </div>
                   )}
 
-                  {/* 4. Acompanhamento — coloca o cliente no card do dashboard com a próxima aula dele */}
+                  {/* 3. Acompanhamento — coloca o cliente no card do dashboard com a próxima aula dele */}
                   <div className={`card border-l-4 flex flex-col ${clienteSel.acompanhar ? 'border-l-amber-400 bg-amber-50' : 'border-l-gray-200'}`}>
                     <div className="flex items-center gap-2 mb-2">
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${clienteSel.acompanhar ? 'bg-amber-200 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>
@@ -1537,7 +1522,7 @@ function AdminClientesPageInner() {
                     </button>
                   </div>
 
-                  {/* 5. Agendamento do Coach CT — trava só a reserva do CT (não é o bloqueio de acesso) */}
+                  {/* 4. Agendamento do Coach CT — trava só a reserva do CT (não é o bloqueio de acesso) */}
                   <div className={`card border-l-4 flex flex-col ${clienteSel.agendamento_ct_bloqueado ? 'border-l-red-400 bg-red-50' : 'border-l-gray-200'}`}>
                     <div className="flex items-center gap-2 mb-2">
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${clienteSel.agendamento_ct_bloqueado ? 'bg-red-200 text-red-700' : 'bg-gray-100 text-gray-500'}`}>
