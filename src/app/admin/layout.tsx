@@ -102,6 +102,7 @@ const nav = [
     children: [
       { label: 'Visão Geral',          href: '/admin/financeiro' },
       { label: 'Receitas',             href: '/admin/financeiro/receitas' },
+      { label: 'Notas Fiscais',        href: '/admin/financeiro/notas-fiscais' },
       { label: 'Valores check-in',     href: '/admin/financeiro/valores-checkin' },
       { label: 'Check-ins Apps',       href: '/admin/financeiro/checkins-wellhub' },
       { label: 'Contas a Pagar',       href: '/admin/financeiro/contas-a-pagar' },
