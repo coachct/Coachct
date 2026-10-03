@@ -70,7 +70,7 @@ function gerarHtml(
       <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px 20px;margin-bottom:24px;">
         <div style="font-size:13px;font-weight:700;color:#166534;margin-bottom:6px;">✅ Agendamento confirmado</div>
         <div style="font-size:13px;color:#166534;line-height:1.6;">
-          Cancelamento gratuito até <strong>12h antes</strong> (ou 3h se houver fila). Falta sem aviso gera multa de ${unidadeTipo === 'ct' ? 'R$99,00' : 'R$49,90'}.
+          Cancelamento gratuito até <strong>12h antes</strong> (ou 3h se houver fila). Falta ou não realização do check-in gera no-show de ${unidadeTipo === 'ct' ? 'R$ 99,00' : 'R$ 49,90'}.
         </div>
       </div>
       <div style="text-align:center;">

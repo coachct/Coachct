@@ -1294,7 +1294,7 @@ export default function AgendarPage() {
               {temFila
                 ? <><div style={{ color: AMARELO, fontWeight: 600, marginBottom: 4 }}>⏳ Há fila de espera para este horário</div><div style={{ color: '#888' }}>Cancelamento gratuito <strong style={{ color: '#fff' }}>até 3h antes</strong>. Abaixo de 3h: <strong style={{ color: '#ff4444' }}>bloqueado</strong>.</div></>
                 : temBeneficiosPro
-                  ? <div style={{ color: '#555' }}>⚠️ Cancelamento gratuito <strong style={{ color: '#888' }}>até 3h antes</strong>. Falta sem aviso gera bloqueio.</div>
+                  ? <div style={{ color: '#555' }}>⚠️ Cancelamento gratuito <strong style={{ color: '#888' }}>até 3h antes</strong>. Falta ou não realização do check-in gera bloqueio.</div>
                   : <div style={{ color: '#555' }}>⚠️ Voce pode cancelar o seu treino com 12hrs de antecedencia. Cuidado, faltas geram um valor de no-show de R$99,00</div>
               }
             </div>
@@ -1390,7 +1390,7 @@ export default function AgendarPage() {
               <ul style={{ paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <li>Se alguém cancelar, <strong style={{ color: '#fff' }}>você será automaticamente reservado</strong> — até 3h antes.</li>
                 <li>Após confirmado, cancelamento <strong style={{ color: '#fff' }}>até 3h antes</strong> — só com outra pessoa na fila.</li>
-                <li>Falta sem aviso gera multa.</li>
+                <li>Falta ou não realização do check-in gera no-show de R$ 99,00.</li>
               </ul>
             </div>
             <div style={{ marginBottom: '1.5rem' }}>

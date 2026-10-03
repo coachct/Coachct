@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase'
 import SiteHeader from '@/components/SiteHeader'
 import AvisoUnidade from '@/components/AvisoUnidade'
 import ModalTelefone from '@/components/ModalTelefone'
+import ModalTermoApps from '@/components/ModalTermoApps'
 import EnqueteHorario from '@/components/EnqueteHorario'
 import CamposClassPass, { CLASSPASS_VAZIO, classPassFaltando, classPassPayload } from '@/components/CamposClassPass'
 import { enqueteDoHorario } from '@/lib/enquete-horario'
@@ -89,6 +90,9 @@ function MapaPageInner() {
   const [pendingReserva, setPendingReserva] = useState<(() => void) | null>(null)
   // Certificação de plano parceiro (Wellhub Gold+ / TotalPass TP3+) na 1ª reserva do Club com crédito de parceiro
   const [jaUsouParceiroClub, setJaUsouParceiroClub] = useState(false)
+  const [termoClubAssinado, setTermoClubAssinado] = useState(false)
+  const [modalTermoClub, setModalTermoClub] = useState(false)
+  const [acaoAposTermo, setAcaoAposTermo] = useState<(() => void) | null>(null)
   const [modalCertParceiro,  setModalCertParceiro]  = useState(false)
   const [aceiteCertParceiro, setAceiteCertParceiro] = useState(false)
   const [certContinuar,      setCertContinuar]      = useState(false)
@@ -164,6 +168,12 @@ function MapaPageInner() {
         .eq('cliente_id', data.id)
         .or('tipo_credito.ilike.wellhub*,tipo_credito.ilike.totalpass*')
       setJaUsouParceiroClub((countParceiro || 0) > 0)
+      // Termo v1.2 (no-show R$ 49,90 nas Clubs): quem ainda não tem aceite gravado
+      // com essa cláusula assina na próxima reserva/fila com crédito de parceiro.
+      const { count: countTermo } = await supabase.from('termos_aceites')
+        .select('id', { count: 'exact', head: true })
+        .eq('cliente_id', data.id).ilike('texto_contrato', '%49,90%')
+      setTermoClubAssinado((countTermo || 0) > 0)
       // Enquetes que este cliente já respondeu (não pergunta de novo)
       const { data: enq } = await supabase.from('enquete_respostas').select('enquete').eq('cliente_id', data.id)
       setEnqueteFeitas((enq || []).map((e: any) => e.enquete))
@@ -241,11 +251,14 @@ function MapaPageInner() {
     } catch {}
   }
   // Gate da 1ª reserva com crédito de parceiro: certifica o tier mínimo (Wellhub Gold+ / TotalPass TP3+) antes de gravar
-  function handleConfirmarReserva(continuar: boolean = false) {
+  function handleConfirmarReserva(continuar: boolean = false, termoOk: boolean = false) {
     // Enquete é obrigatória (só aparece uma vez por cliente).
     // Barra aqui também pra não abrir o modal de certificação e só depois reclamar.
     if (enqueteAtiva && !enqueteOpcao) { setErroModal('Escolha uma opção na pergunta acima para continuar.'); return }
     const ehParceiro = /^wellhub/i.test(tipoCredito) || /^totalpass/i.test(tipoCredito)
+    if (ehParceiro && !termoOk && !termoClubAssinado) {
+      setAcaoAposTermo(() => () => handleConfirmarReserva(continuar, true)); setModalTermoClub(true); return
+    }
     if (ehParceiro && !jaUsouParceiroClub) {
       setAceiteCertParceiro(false); setCertContinuar(continuar); setModalCertParceiro(true); return
     }
@@ -544,7 +557,7 @@ function MapaPageInner() {
             {!cliente?.is_classpass && (
               <div style={{ background:'#0a0a0a', border:'1px solid #1a1a1a', borderRadius:10, padding:'0.65rem 1rem',
                 marginBottom:'1rem', fontSize:12, color:'#444', lineHeight:1.6 }}>
-                ⚠️ Cancelamento gratuito <strong style={{ color:'#666' }}>até 12h antes</strong>. Falta sem aviso gera multa de R$49,90.
+                ⚠️ Cancelamento gratuito <strong style={{ color:'#666' }}>até 12h antes</strong>. Falta ou não realização do check-in gera no-show de R$ 49,90.
               </div>
             )}
 
@@ -590,6 +603,21 @@ function MapaPageInner() {
           </div>
         </div>
       )}
+
+      <ModalTermoApps
+        aberto={modalTermoClub}
+        cliente={cliente}
+        tipoCredito={tipoCredito}
+        unidadeId={unidadeId}
+        onFechar={() => { setModalTermoClub(false); setAcaoAposTermo(null) }}
+        onAceito={() => {
+          setTermoClubAssinado(true)
+          setModalTermoClub(false)
+          const acao = acaoAposTermo
+          setAcaoAposTermo(null)
+          if (acao) acao()
+        }}
+      />
 
       {modalCertParceiro && (
         <div style={{ position:'fixed', inset:0, background:'#000000e0', zIndex:110, display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}>

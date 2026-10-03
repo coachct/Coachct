@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase'
 import SiteHeader from '@/components/SiteHeader'
 import AvisoUnidade, { AvisoPopupPinheiros } from '@/components/AvisoUnidade'
 import ModalTelefone from '@/components/ModalTelefone'
+import ModalTermoApps from '@/components/ModalTermoApps'
 import CardCheckinExpress from '@/components/CardCheckinExpress'
 import EnqueteHorario from '@/components/EnqueteHorario'
 import CamposClassPass, { CLASSPASS_VAZIO, classPassFaltando, classPassPayload } from '@/components/CamposClassPass'
@@ -177,6 +178,9 @@ function AulasPageInner() {
   const [pendingReserva, setPendingReserva] = useState<(() => void) | null>(null)
   // Certificação de plano parceiro (Wellhub Gold+ / TotalPass TP3+) na 1ª reserva do Club com crédito de parceiro
   const [jaUsouParceiroClub, setJaUsouParceiroClub] = useState(false)
+  const [termoClubAssinado, setTermoClubAssinado] = useState(false)
+  const [modalTermoClub, setModalTermoClub] = useState(false)
+  const [acaoAposTermo, setAcaoAposTermo] = useState<(() => void) | null>(null)
   const [modalCertParceiro,  setModalCertParceiro]  = useState(false)
   const [aceiteCertParceiro, setAceiteCertParceiro] = useState(false)
   // Enquete de horário: chaves que este cliente já respondeu + opção marcada no modal aberto
@@ -303,6 +307,12 @@ function AulasPageInner() {
         .eq('cliente_id', data.id)
         .or('tipo_credito.ilike.wellhub*,tipo_credito.ilike.totalpass*')
       setJaUsouParceiroClub((countParceiro || 0) > 0)
+      // Termo v1.2 (no-show R$ 49,90 nas Clubs): quem ainda não tem aceite gravado
+      // com essa cláusula assina na próxima reserva/fila com crédito de parceiro.
+      const { count: countTermo } = await supabase.from('termos_aceites')
+        .select('id', { count: 'exact', head: true })
+        .eq('cliente_id', data.id).ilike('texto_contrato', '%49,90%')
+      setTermoClubAssinado((countTermo || 0) > 0)
       // Enquetes que este cliente já respondeu (não pergunta de novo)
       const { data: enq } = await supabase.from('enquete_respostas').select('enquete').eq('cliente_id', data.id)
       setEnqueteFeitas((enq || []).map((e: any) => e.enquete))
@@ -478,13 +488,16 @@ function AulasPageInner() {
   }
   // Gate da 1ª reserva com crédito de parceiro: certifica o tier mínimo (Wellhub Gold+ / TotalPass TP3+)
   // antes de gravar. Se ainda falta o email do Wellhub, deixa o confirmarReserva cobrar isso primeiro.
-  function handleConfirmarReserva() {
+  function handleConfirmarReserva(termoOk: boolean = false) {
     // Enquete é obrigatória (só aparece uma vez por cliente, e "Tanto faz" é saída válida).
     // Barra aqui também pra não abrir o modal de certificação e só depois reclamar.
     if (enqueteAtiva && !enqueteOpcao) { setErroModal('Escolha uma opção na pergunta acima para continuar.'); return }
     const ehParceiro = /^wellhub/i.test(tipoCredito) || /^totalpass/i.test(tipoCredito)
     const faltaEmailWellhub = /^wellhub/i.test(tipoCredito) && !cliente?.wellhub_id && !cliente?.wellhub_email
       && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(wellhubEmailInput.trim())
+    if (ehParceiro && !termoOk && !termoClubAssinado && !faltaEmailWellhub) {
+      setAcaoAposTermo(() => () => handleConfirmarReserva(true)); setModalTermoClub(true); return
+    }
     if (ehParceiro && !jaUsouParceiroClub && !faltaEmailWellhub) {
       setAceiteCertParceiro(false); setModalCertParceiro(true); return
     }
@@ -559,13 +572,17 @@ function AulasPageInner() {
     if (cliente?.is_classpass) { await carregarOcorrencias(dataSelStr) }
     else { router.push('/minha-conta') }
   }
-  async function confirmarFila(skipTel: boolean = false) {
+  async function confirmarFila(skipTel: boolean = false, termoOk: boolean = false) {
     if (!tipoCredito) { setErroModal('Selecione o plano para usar.'); return }
     if (!filaAceite) { setErroModal('Confirme que entendeu as regras da fila.'); return }
     if (!cliente || !modalFila) return
+    const filaParceiro = /^wellhub/i.test(tipoCredito) || /^totalpass/i.test(tipoCredito)
+    if (filaParceiro && !termoOk && !termoClubAssinado) {
+      setAcaoAposTermo(() => () => confirmarFila(skipTel, true)); setModalTermoClub(true); return
+    }
     // Fila exige telefone (o aviso de promoção é por WhatsApp). Gate independente de cartão.
     if (!skipTel && !telefoneValido(cliente?.telefone)) {
-      setPendingReserva(() => () => confirmarFila(true))
+      setPendingReserva(() => () => confirmarFila(true, termoOk))
       setModalTelefone(true)
       return
     }
@@ -1165,7 +1182,7 @@ function AulasPageInner() {
               )}
               {!cliente?.is_classpass && (
                 <div style={{ background:'#0a0a0a', border:'1px solid #1a1a1a', borderRadius:10, padding:'0.75rem 1rem', marginBottom:'1.25rem', fontSize:12, color:'#444', lineHeight:1.7 }}>
-                  ⚠️ Cancelamento gratuito <strong style={{ color:'#666' }}>até 12h antes</strong>. Com fila de espera, prazo reduz para 3h. Falta sem aviso gera multa de <strong style={{ color:'#666' }}>R$49,90</strong>.
+                  ⚠️ Cancelamento gratuito <strong style={{ color:'#666' }}>até 12h antes</strong>. Com fila de espera, prazo reduz para 3h. Falta ou não realização do check-in gera no-show de <strong style={{ color:'#666' }}>R$ 49,90</strong>.
                 </div>
               )}
               {/^wellhub/i.test(tipoCredito) && !cliente?.is_classpass && !cliente?.wellhub_id && !cliente?.wellhub_email && (
@@ -1192,7 +1209,7 @@ function AulasPageInner() {
               {erroModal && <div style={{ background:'#ff2d9b15', border:'1px solid #ff2d9b44', borderRadius:8, padding:'0.6rem 1rem', fontSize:13, color:ACCENT, marginBottom:'1rem' }}>{erroModal}</div>}
               <div style={{ display:'flex', gap:8 }}>
                 <button onClick={fecharModalReserva} style={{ flex:1, background:'transparent', border:'1px solid #2a2a2a', borderRadius:10, padding:'0.85rem', color:'#555', fontSize:14, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>Cancelar</button>
-                <button onClick={handleConfirmarReserva} disabled={confirmando||planosNoModal.length===0}
+                <button onClick={() => handleConfirmarReserva()} disabled={confirmando||planosNoModal.length===0}
                   style={{ flex:2, background:planosNoModal.length===0?'#1a1a1a':ACCENT, color:planosNoModal.length===0?'#444':'#fff', border:'none', borderRadius:10, padding:'0.85rem', fontWeight:600, fontSize:15, cursor:confirmando||planosNoModal.length===0?'default':'pointer', fontFamily:"'DM Sans', sans-serif", opacity:confirmando?0.7:1 }}>
                   {confirmando?'Confirmando...':'Confirmar reserva ✓'}
                 </button>
@@ -1250,7 +1267,7 @@ function AulasPageInner() {
               <ul style={{ paddingLeft:'1.2rem', display:'flex', flexDirection:'column', gap:5 }}>
                 <li>Cancelamentos são permitidos <strong style={{ color:'#fff' }}>até 3h antes</strong> — vagas podem abrir até esse limite.</li>
                 <li>Se uma vaga abrir, <strong style={{ color:'#fff' }}>você será confirmado automaticamente</strong> a qualquer momento até 3h antes do início.</li>
-                <li>Após confirmado, as mesmas regras se aplicam. Falta sem aviso gera multa de R$49,90.</li>
+                <li>Após confirmado, as mesmas regras se aplicam. Falta ou não realização do check-in gera no-show de R$ 49,90.</li>
               </ul>
             </div>
             <div style={{ marginBottom:'1.25rem' }}>
@@ -1344,6 +1361,21 @@ function AulasPageInner() {
           </div>
         </div>
       )}
+
+      <ModalTermoApps
+        aberto={modalTermoClub}
+        cliente={cliente}
+        tipoCredito={tipoCredito}
+        unidadeId={unidadeId}
+        onFechar={() => { setModalTermoClub(false); setAcaoAposTermo(null) }}
+        onAceito={() => {
+          setTermoClubAssinado(true)
+          setModalTermoClub(false)
+          const acao = acaoAposTermo
+          setAcaoAposTermo(null)
+          if (acao) acao()
+        }}
+      />
 
       <ModalTelefone
         aberto={modalTelefone}

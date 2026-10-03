@@ -1506,7 +1506,7 @@ export default function MinhaContaPage() {
                 <div style={{fontSize:12,color:VERDE,fontWeight:600,marginTop:2}}>treinos por mês</div>
               </div>
               <div style={{background:'#120d00',border:`1px solid ${AMARELO}33`,borderRadius:10,padding:'0.85rem',fontSize:12,color:'#ccc',lineHeight:1.7}}>
-                ⚠️ Cancele com <strong>12h de antecedência</strong> para recuperar o crédito. Falta sem aviso gera <strong>bloqueio</strong>{isClub?' e multa de R$49,90':''}.
+                ⚠️ Cancele com <strong>12h de antecedência</strong> para recuperar o crédito. Falta ou não realização do check-in gera <strong>bloqueio</strong>{isClub?' e no-show de R$ 49,90':''}.
               </div>
               {!temCartao&&(
                 <div style={{background:'#0d000a',border:`1px solid ${ACCENT}33`,borderRadius:10,padding:'0.85rem',fontSize:12,color:'#ccc',lineHeight:1.6}}>

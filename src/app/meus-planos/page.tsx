@@ -368,7 +368,7 @@ export default function MeusPlanosPage() {
                 <div style={{ fontSize: 12, color: AMARELO, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 8 }}>⚠️ Fique atento às regras</div>
                 <ul style={{ paddingLeft: '1.2rem', fontSize: 13, color: '#ddd', lineHeight: 1.8 }}>
                   <li>Cancele com <strong style={{ color: '#fff' }}>12h de antecedência</strong> pra devolver o crédito</li>
-                  <li>Falta sem aviso gera <strong style={{ color: '#fff' }}>bloqueio e multa de R$ 99</strong></li>
+                  <li>Falta ou não realização do check-in gera <strong style={{ color: '#fff' }}>bloqueio e no-show de R$ 99,00</strong></li>
                   <li>Agendamentos liberados em janela de <strong style={{ color: '#fff' }}>7 dias</strong></li>
                 </ul>
               </div>
