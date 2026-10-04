@@ -22,6 +22,13 @@ export async function POST(req: NextRequest) {
 
     const { error } = await sb.rpc('playlist_sugerir', { p_modalidade: modalidade })
     if (error) {
+      // Trava do banco: só 15 min antes da primeira aula do dia na modalidade
+      if ((error.message || '').includes('CEDO_DEMAIS')) {
+        return NextResponse.json(
+          { error: 'Sugestões apenas 15min antes do início dos treinos' },
+          { status: 409 }
+        )
+      }
       console.error('Erro na RPC playlist_sugerir:', error)
       return NextResponse.json({ error: 'Não foi possível gerar a sugestão' }, { status: 500 })
     }

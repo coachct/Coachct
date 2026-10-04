@@ -335,3 +335,8 @@ grant execute on function public.playlist_sugerir(text) to service_role;
 -- playlists_estatisticas devolve também ouviram30/pct30; playlist_alertas devolve
 -- ouviram30; playlist_sugerir ordena/filtra pelos 20% em 30 dias.
 -- O corpo atualizado das funções está na migration aplicada no Supabase.
+
+-- 04/10/2026 (migration playlist_sugerir_trava_15min): a Sugestão do dia dos coaches
+-- só libera 15 min antes da primeira aula do dia naquela modalidade (as duas unidades
+-- somadas). Antes disso a RPC levanta CEDO_DEMAIS e a rota responde
+-- "Sugestões apenas 15min antes do início dos treinos".
