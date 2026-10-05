@@ -29,6 +29,8 @@ function SucessoContent() {
   const produtoId = searchParams.get('produto')
   const metodo = searchParams.get('metodo') || 'pix'
   const totalParam = searchParams.get('total')
+  // Quantidade comprada (Treino Avulso / crédito extra podem vir em lote).
+  const qtd = Math.max(1, Number(searchParams.get('qtd')) || 1)
 
   const [produto, setProduto] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -63,7 +65,7 @@ function SucessoContent() {
   const metodoLabel = ehPix ? 'PIX' : 'Cartão de crédito'
 
   // Valor efetivamente pago (vem do checkout via ?total). Fallback: preço do produto.
-  const valorOriginal = produto ? Number(produto.valor) : 0
+  const valorOriginal = produto ? Number(produto.valor) * qtd : 0
   const valorPago = (totalParam != null && totalParam !== '') ? Number(totalParam) : valorOriginal
   const temDesconto = valorPago < valorOriginal
   const tituloSucesso = ehPix ? 'PAGAMENTO CONFIRMADO!' : 'PAGAMENTO APROVADO!'
@@ -83,7 +85,7 @@ function SucessoContent() {
   // Descrição do que foi comprado no comprovante.
   function linhaProduto(): string {
     if (ehAcesso) return `Acesso ilimitado por ${produto.dias_validade} dias`
-    const creditos = Number(produto?.creditos_por_venda) || 1
+    const creditos = (Number(produto?.creditos_por_venda) || 1) * qtd
     const quando = produto?.validade_fixa
       ? `válidos até ${dataBR(produto.validade_fixa)}`
       : `válido${creditos > 1 ? 's' : ''} por ${produto?.dias_validade || 30} dias`

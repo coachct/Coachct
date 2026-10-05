@@ -138,7 +138,7 @@ function CheckoutContent() {
         parado = true
         clearInterval(timer)
         if (status === 'pago') {
-          router.push(`/comprar/sucesso?produto=${produtoId}&metodo=pix&pagamento=${pixPagamentoId}&total=${pixTotal}`)
+          router.push(`/comprar/sucesso?produto=${produtoId}&metodo=pix&pagamento=${pixPagamentoId}&total=${pixTotal}&qtd=${quantidade}`)
         } else if (status === 'cancelado') {
           // Cliente pagou no cartão (o PIX foi cancelado no Pagar.me): tira o QR
           // da tela e volta a mostrar as formas de pagamento.
@@ -334,7 +334,7 @@ function CheckoutContent() {
       }
 
       if (metodo === 'cartao' && data.cartao?.aprovado) {
-        router.push(`/comprar/sucesso?produto=${produtoId}&metodo=cartao&pagamento=${data.pagamento_id}&total=${valorFinal.toFixed(2)}`)
+        router.push(`/comprar/sucesso?produto=${produtoId}&metodo=cartao&pagamento=${data.pagamento_id}&total=${valorFinal.toFixed(2)}&qtd=${qtdCompra}`)
         return
       }
 
@@ -406,7 +406,7 @@ function CheckoutContent() {
     return ehCoachAvulso(p) ? 'Coach CT' : p.nome
   }
 
-  function descricaoProduto(p: any): string {
+  function descricaoProduto(p: any, qtd: number): string {
     if (ehCoachAvulso(p)) {
       return 'Produto exclusivo da unidade CT, para acompanhamento 1x1 dos nossos Coaches. Não válido para unidades Clubs.'
     }
@@ -426,7 +426,9 @@ function CheckoutContent() {
           : `1 crédito de aula · sem validade · Just CT`
       case 'credito':
       default:
-        return `1 crédito · válido por ${p.dias_validade || 30} dias`
+        return qtd > 1
+          ? `${qtd} créditos · válidos por ${p.dias_validade || 30} dias`
+          : `1 crédito · válido por ${p.dias_validade || 30} dias`
     }
   }
 
@@ -464,9 +466,12 @@ function CheckoutContent() {
   const valor = Number(produto.valor)
   const maxParcelas = produto.max_parcelas || 1
   const descontoPct = (cupomAplicado && metodo === 'cartao') ? Number(cupomAplicado.desconto_percentual) : 0
-  // Crédito extra de aula (unitário) é o único produto com quantidade livre no
-  // site — os demais seguem em 1 por compra, como sempre foi.
-  const permiteQuantidade = produto.subtipo === 'credito_extra' && Number(produto.creditos_por_venda) === 1
+  // Quantidade livre no site: crédito extra de aula (unitário) e Treino Avulso
+  // (o registrar_venda gera um crédito por unidade). Os demais seguem em 1 por compra.
+  const permiteQuantidade = Number(produto.creditos_por_venda) === 1 && (
+    produto.subtipo === 'credito_extra' ||
+    (produto.subtipo === 'credito' && produto.tipo === 'credito_treino')
+  )
   const qtdCompra = permiteQuantidade ? quantidade : 1
   const valorUnitFinal = descontoPct > 0 ? Math.round(valor * (1 - descontoPct / 100) * 100) / 100 : valor
   const valorFinal = Math.round(valorUnitFinal * qtdCompra * 100) / 100
@@ -508,7 +513,7 @@ function CheckoutContent() {
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 16, fontWeight: 600, color: '#fff', marginBottom: 4 }}>{nomeProduto(produto)}</div>
               <div style={{ fontSize: 13, color: '#888', lineHeight: 1.5 }}>
-                {descricaoProduto(produto)}
+                {descricaoProduto(produto, qtdCompra)}
               </div>
             </div>
             <div style={{ textAlign: 'right' as const }}>
