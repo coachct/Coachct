@@ -18,7 +18,7 @@ type Screen =
   | 'ctUsarCredito'
 
 const POLL_MS = 3000
-const FEED_CARD_MS = 20000 // card "Entrada liberada" fica 20s na tela e some sozinho
+const FEED_CARD_MS = 30000 // card "Entrada liberada" fica 30s na tela e some sozinho
 const RESET_DONE_MS = 12000
 const INATIVIDADE_MS = 60000
 const SCAN_MS = 1600
@@ -258,7 +258,7 @@ export default function TotemPage() {
     setCtFeed((prev) => [...prev, ...novos.map((c) => ({ ...c, expira: agora + FEED_CARD_MS }))])
   }, [unidade, api])
 
-  // tira da tela os cards que já cumpriram os 20s
+  // tira da tela os cards que já cumpriram os 30s
   useEffect(() => {
     if (!ctFeed.length) return
     const t = setInterval(() => {
