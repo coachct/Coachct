@@ -483,9 +483,9 @@ export default function TotemPage() {
 
             {/* IDLE Club — feed de quem fez check-in no app (presença já marcada) + card do CPF */}
             {screen === 'idle' && unidade?.tipo !== 'ct' && (
-              <section className="screen on clubidle">
+              <section className={'screen on clubidle ' + (clubFeed.length === 0 ? 'vazio' : clubFeed.length >= CLUB_COMPACTO_DE ? 'cheio' : 'medio')}>
                 <div className="express-hdr" style={{ margin: 0 }}>
-                  <div className="ex-title" style={{ fontSize: 28 }}>CHECK-IN <span>EXPRESS</span></div>
+                  <div className="ex-title">CHECK-IN <span>EXPRESS</span></div>
                   <div className="ex-sub ct">Cliente Wellhub e Totalpass, efetue o check in no app para liberar a entrada.</div>
                 </div>
                 <div className={'feed' + (clubFeed.length >= CLUB_COMPACTO_DE ? ' compact' : '')} style={clubFeed.length ? undefined : { display: 'none' }}>
@@ -964,7 +964,24 @@ const CSS = `
 #tt .feedcard .fc-org{font-size:13px;color:var(--mut);margin-top:6px}
 #tt .feedcard .fc-bar{position:absolute;left:0;bottom:0;height:4px;width:100%;background:var(--ok);transform-origin:left;animation:fcbar linear forwards}
 @keyframes fcbar{from{transform:scaleX(1)}to{transform:scaleX(0)}}
-#tt .clubidle{justify-content:center;gap:18px}
+#tt .clubidle{justify-content:flex-start;gap:16px;padding-top:6px}
+#tt .clubidle .express-hdr{display:flex;flex-direction:column;flex:0 0 auto}
+#tt .clubidle .ex-title{font-size:38px;white-space:nowrap}
+#tt .clubidle .ex-sub.ct{display:flex;align-items:center;justify-content:center;margin-top:14px;font-weight:400;font-size:20px;line-height:1.4;padding:16px 14px}
+#tt .clubidle .tile.coachcard{padding:24px 14px}
+#tt .clubidle .tile.coachcard .tlab{font-size:22px;font-weight:400}
+#tt .clubidle.vazio .express-hdr{flex:1 1 auto;min-height:0}
+#tt .clubidle.vazio .ex-sub.ct{flex:1 1 auto;font-size:31px;line-height:1.4;padding:20px 22px;margin-top:18px}
+#tt .clubidle.vazio .tile.coachcard{padding:58px 18px}
+#tt .clubidle.vazio .tile.coachcard .tlab{font-size:33px;line-height:1.35}
+#tt .clubidle.medio .tile.coachcard,#tt .clubidle.cheio .tile.coachcard{margin-top:auto}
+#tt .clubidle.cheio{gap:12px}
+#tt .clubidle.cheio .ex-sub.ct{font-size:17px;padding:11px 12px;margin-top:10px;border-radius:16px}
+#tt .clubidle.cheio .tile.coachcard{padding:17px 14px;border-radius:16px}
+#tt .clubidle.cheio .tile.coachcard .tlab{font-size:20px}
+#tt .clubcard .chip{font-size:12px;padding:5px 8px}
+#tt .clubcard .cc-main{overflow:hidden}
+#tt .clubcard .cc-pos{min-width:80px;padding:9px 8px}
 #tt .clubidle .feed{flex:0 1 auto;margin:0;overflow:hidden;min-height:0}
 #tt .clubcard{position:relative;overflow:hidden;flex:0 0 auto;display:flex;align-items:center;gap:14px;text-align:left;background:rgba(34,197,94,.1);border:2px solid rgba(34,197,94,.55);border-radius:20px;padding:16px 16px 18px;animation:pop .4s ease}
 #tt .clubcard .cc-main{flex:1 1 auto;min-width:0}
@@ -979,14 +996,14 @@ const CSS = `
 #tt .clubcard .cc-pos .pt{font-size:11px;font-weight:800;color:#86efac}
 #tt .clubcard .fc-bar{position:absolute;left:0;bottom:0;height:4px;width:100%;background:var(--ok);transform-origin:left;animation:fcbar linear forwards}
 #tt .feed.compact{gap:8px}
-#tt .feed.compact .clubcard{padding:8px 14px 11px;border-radius:14px}
-#tt .feed.compact .cc-nome{font-size:18px}
+#tt .feed.compact .clubcard{padding:7px 14px 10px;border-radius:14px}
+#tt .feed.compact .cc-nome{font-size:21px}
 #tt .feed.compact .cc-lib{display:none}
 #tt .feed.compact .row{margin-top:4px}
-#tt .feed.compact .chip{font-size:10px;padding:3px 8px}
+#tt .feed.compact .chip{font-size:11.5px;padding:4px 7px}
 #tt .feed.compact .cc-pos{padding:5px 10px;min-width:70px;display:flex;align-items:baseline;gap:5px;justify-content:center}
 #tt .feed.compact .cc-pos .l{display:none}
-#tt .feed.compact .cc-pos .n{font-size:22px}
+#tt .feed.compact .cc-pos .n{font-size:25px}
 #tt .feed.compact .cc-pos .pt{font-size:10px}
 #tt .ex-sub2{font-size:18px;font-weight:700;color:#fcd34d;text-align:center;margin:2px 0 12px}
 #tt .modoerro{font-size:16px;font-weight:700;line-height:1.5;color:#fca5a5;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.45);border-radius:16px;padding:14px 18px;max-width:360px;margin:0 0 16px}
