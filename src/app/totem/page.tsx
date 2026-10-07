@@ -970,9 +970,11 @@ const CSS = `
 #tt .clubidle .ex-sub.ct{display:flex;align-items:center;justify-content:center;margin-top:14px;font-weight:400;font-size:20px;line-height:1.4;padding:16px 14px}
 #tt .clubidle .tile.coachcard{padding:24px 14px}
 #tt .clubidle .tile.coachcard .tlab{font-size:22px;font-weight:400}
-#tt .clubidle.vazio .express-hdr{flex:1 1 auto;min-height:0}
-#tt .clubidle.vazio .ex-sub.ct{flex:1 1 auto;font-size:31px;line-height:1.4;padding:20px 22px;margin-top:18px}
-#tt .clubidle.vazio .tile.coachcard{padding:58px 18px}
+#tt .clubidle.vazio,#tt .clubidle.medio{padding-top:38px}
+#tt .clubidle.vazio .express-hdr{display:contents}
+#tt .clubidle.vazio .ex-title{text-align:center;margin-bottom:auto}
+#tt .clubidle.vazio .ex-sub.ct{font-size:31px;line-height:1.35;padding:20px 18px;margin-top:0}
+#tt .clubidle.vazio .tile.coachcard{padding:24px 18px;margin-bottom:auto}
 #tt .clubidle.vazio .tile.coachcard .tlab{font-size:33px;line-height:1.35}
 #tt .clubidle.medio .tile.coachcard,#tt .clubidle.cheio .tile.coachcard{margin-top:auto}
 #tt .clubidle.cheio{gap:12px}
