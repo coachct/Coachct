@@ -286,7 +286,14 @@ export default function MinhaContaPage() {
 
     setAgendamentos(ags||[])
     setAgendamentosPassados(agsPassadas||[])
-    setFilas(filasData||[])
+    // Posição na fila (mesma ordem da promoção) — falha não derruba a tela
+    let filasComPosicao: any[] = filasData||[]
+    if (filasComPosicao.length > 0) {
+      const { data: pos } = await supabase.rpc('posicao_fila_espera', { p_ids: filasComPosicao.map(f => f.id) })
+      const mapaPos = new Map<string, number>((pos||[]).map((p: any) => [p.id, p.posicao]))
+      filasComPosicao = filasComPosicao.map(f => ({ ...f, posicao_fila: mapaPos.get(f.id) ?? null }))
+    }
+    setFilas(filasComPosicao)
     setClientePlanos(cliPlanos||[])
     setCompras(vendasData||[])
     detalharCompras(vendasData||[])
@@ -980,7 +987,10 @@ export default function MinhaContaPage() {
                     <div style={{width:1,height:40,background:`${AMARELO}33`,flexShrink:0}}/>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:14,fontWeight:600,color:'#fff',marginBottom:2}}>{(f.horario||'').slice(0,5)} · {f.unidades?.nome||'Just CT'}</div>
-                      <div style={{fontSize:11,color:AMARELO,opacity:0.8}}>Aguardando vaga — você será avisado</div>
+                      {f.posicao_fila && (
+                        <div style={{fontSize:12,fontWeight:700,color:AMARELO,marginBottom:2}}>Você é o {f.posicao_fila}º da fila</div>
+                      )}
+                      <div style={{fontSize:11,color:AMARELO,opacity:0.8}}>Se abrir vaga, você pode ser avisado até 3h antes do treino</div>
                     </div>
                     <button onClick={()=>setModalSairFila(f)} style={{background:'transparent',border:`1px solid ${AMARELO}55`,borderRadius:8,padding:'0.3rem 0.75rem',fontSize:11,color:AMARELO,cursor:'pointer',fontFamily:"'DM Sans', sans-serif",flexShrink:0}}>Sair</button>
                   </div>
