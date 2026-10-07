@@ -158,6 +158,8 @@ export default function TotemPage() {
   }, [limparPoll])
   useEffect(() => {
     if (inatRef.current) clearTimeout(inatRef.current)
+    // Club: teclado do CPF fica na idle — CPF digitado pela metade some após 60s parado
+    if (screen === 'idle' && cpf) { inatRef.current = setTimeout(irIdle, INATIVIDADE_MS); return () => { if (inatRef.current) clearTimeout(inatRef.current) } }
     if (screen === 'idle' || screen === 'loading' || screen === 'config') return
     if (screen === 'reserva' && reserva?.flow === 'aguardar_parceiro') return
     if (screen === 'ctCoachAguardando') return // aguardando check-in Personal, não expira
@@ -166,7 +168,7 @@ export default function TotemPage() {
       : INATIVIDADE_MS
     inatRef.current = setTimeout(irIdle, ms)
     return () => { if (inatRef.current) clearTimeout(inatRef.current) }
-  }, [screen, reserva, irIdle])
+  }, [screen, reserva, irIdle, cpf])
 
   // ---------- roteia a resposta do servidor (mesma p/ rosto e CPF) ----------
   const iniciarPolling = (r: Reserva) => {
@@ -358,7 +360,7 @@ export default function TotemPage() {
     setScreen('validate')
     const res = await api('/api/totem/identificar', { method: 'POST', body: JSON.stringify({ unidade: unidade.slug, cpf, test: testRef.current }) })
     await new Promise((r) => setTimeout(r, 700))
-    if (res?.resultado === 'cpf_invalido') { setCpf(''); setScreen('cpf'); return }
+    if (res?.resultado === 'cpf_invalido') { setCpf(''); setScreen(unidade.tipo === 'ct' ? 'cpf' : 'idle'); return }
     tratarResposta(res)
   }
 
@@ -437,22 +439,21 @@ export default function TotemPage() {
               </section>
             )}
 
-            {/* IDLE Club — menu de entrada (câmera só abre no toque) */}
+            {/* IDLE Club — direto no CPF, teclado já aberto (sem reconhecimento facial) */}
             {screen === 'idle' && unidade?.tipo !== 'ct' && (
               <section className="screen on center">
                 <div className="express-hdr">
                   <div className="ex-title">CHECK-IN <span>EXPRESS</span></div>
-                  <div className="ex-sub">Se você já possui reserva, escolha a opção abaixo</div>
+                  <div className="ex-sub">Se você já possui reserva, digite seu CPF abaixo</div>
                 </div>
-                <div className="tiles">
-                  <button className="tile primary" onClick={() => { setFaceMsg('Olhe para a câmera'); setScreen('face') }}>
-                    <span className="tico">📷</span>
-                    <span className="tlab">Reconhecimento<br />Facial</span>
-                  </button>
-                  <button className="tile" onClick={() => abrirCpf('checkin')}>
-                    <span className="tico">🔢</span>
-                    <span className="tlab">CPF</span>
-                  </button>
+                <div style={{ width: '100%' }}>
+                  <div className="cpf-disp">{cpf ? cpfFmt() : <span className="ph">000.000.000-00</span>}</div>
+                  <div className="keys">
+                    {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((n) => (<div key={n} className="key" onClick={() => kp(n)}>{n}</div>))}
+                    <div className="key" onClick={() => kp('back')}>⌫</div>
+                    <div className="key" onClick={() => kp('0')}>0</div>
+                    <div className={'key act' + (cpf.length === 11 ? '' : ' off')} onClick={cpfConfirm}>OK</div>
+                  </div>
                 </div>
               </section>
             )}
