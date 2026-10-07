@@ -19,6 +19,9 @@ type Screen =
 
 const POLL_MS = 3000
 const FEED_CARD_MS = 30000 // card "Entrada liberada" fica 30s na tela e some sozinho
+const CLUB_CARD_MS = 60000 // Club: card "Presença confirmada" fica 1 min na tela
+const CLUB_FEED_MAX = 6    // Club: no máximo 6 cards; chegando mais, o mais antigo sai
+const CLUB_COMPACTO_DE = 4 // Club: a partir de 4 cards, eles ficam compactos
 const RESET_DONE_MS = 12000
 const INATIVIDADE_MS = 60000
 const SCAN_MS = 1600
@@ -45,6 +48,8 @@ export default function TotemPage() {
   // Feed de check-ins do CT: "Nome · Entrada liberada", some sozinho após FEED_CARD_MS
   const [ctFeed, setCtFeed] = useState<{ id: string; nome: string; origem: string; expira: number }[]>([])
   const feedVistosRef = useRef<Set<string>>(new Set())
+  // Feed do Club: quem fez check-in no app parceiro e já teve a presença marcada
+  const [clubFeed, setClubFeed] = useState<{ id: string; nome: string; aulaTipo: string; horario: string; coach: string; posicao: string | null; expira: number }[]>([])
   const [scale, setScale] = useState(1)
   const [faceReady, setFaceReady] = useState(false)
   const [faceMsg, setFaceMsg] = useState('Câmera ativa · olhe para reconhecer')
@@ -260,6 +265,35 @@ export default function TotemPage() {
     setCtFeed((prev) => [...prev, ...novos.map((c) => ({ ...c, expira: agora + FEED_CARD_MS }))])
   }, [unidade, api])
 
+  // ---------- Feed de check-ins do Club ----------
+  const carregarFeedClub = useCallback(async () => {
+    if (!unidade || unidade.tipo === 'ct') return
+    const r = await api(`/api/totem/club-checkins?unidade=${encodeURIComponent(unidade.slug)}`)
+    // API vem do mais novo pro mais antigo; enfileira na ordem de chegada
+    const novos = ((r?.checkins || []) as { id: string; nome: string; aulaTipo: string; horario: string; coach: string; posicao: string | null }[])
+      .filter((c) => !feedVistosRef.current.has(c.id))
+      .reverse()
+    if (!novos.length) return
+    const agora = Date.now()
+    novos.forEach((c) => {
+      feedVistosRef.current.add(c.id)
+      // carimba "mostrado no totem" pra não voltar no próximo poll / recarga
+      api('/api/totem/ct-confirmar-entrada', { method: 'POST', body: JSON.stringify({ unidade: unidade.slug, entradaId: c.id }) }).catch(() => ({}))
+    })
+    // no máximo CLUB_FEED_MAX na tela: o mais antigo sai antes da hora
+    setClubFeed((prev) => [...prev, ...novos.map((c) => ({ ...c, expira: agora + CLUB_CARD_MS }))].slice(-CLUB_FEED_MAX))
+  }, [unidade, api])
+
+  // tira da tela os cards do Club que já cumpriram 1 min
+  useEffect(() => {
+    if (!clubFeed.length) return
+    const t = setInterval(() => {
+      const agora = Date.now()
+      setClubFeed((prev) => (prev.some((c) => c.expira <= agora) ? prev.filter((c) => c.expira > agora) : prev))
+    }, 500)
+    return () => clearInterval(t)
+  }, [clubFeed.length])
+
   // tira da tela os cards que já cumpriram os 30s
   useEffect(() => {
     if (!ctFeed.length) return
@@ -343,6 +377,14 @@ export default function TotemPage() {
     return () => clearInterval(id)
   }, [screen, unidade?.tipo, carregarFeed])
 
+  // ---------- feed de check-ins: atualiza na idle do Club ----------
+  useEffect(() => {
+    if (screen !== 'idle' || !unidade || unidade.tipo === 'ct') return
+    carregarFeedClub()
+    const id = setInterval(carregarFeedClub, 4000)
+    return () => clearInterval(id)
+  }, [screen, unidade, carregarFeedClub])
+
   // ---------- CPF ----------
   const kp = (k: string) => setCpf((c) => (k === 'back' ? c.slice(0, -1) : c.length < 11 ? c + k : c))
   const cpfFmt = () => { const p = cpf.padEnd(11, '•'); return `${p.slice(0, 3)}.${p.slice(3, 6)}.${p.slice(6, 9)}-${p.slice(9, 11)}` }
@@ -360,7 +402,7 @@ export default function TotemPage() {
     setScreen('validate')
     const res = await api('/api/totem/identificar', { method: 'POST', body: JSON.stringify({ unidade: unidade.slug, cpf, test: testRef.current }) })
     await new Promise((r) => setTimeout(r, 700))
-    if (res?.resultado === 'cpf_invalido') { setCpf(''); setScreen(unidade.tipo === 'ct' ? 'cpf' : 'idle'); return }
+    if (res?.resultado === 'cpf_invalido') { setCpf(''); setScreen('cpf'); return }
     tratarResposta(res)
   }
 
@@ -439,22 +481,39 @@ export default function TotemPage() {
               </section>
             )}
 
-            {/* IDLE Club — direto no CPF, teclado já aberto (sem reconhecimento facial) */}
+            {/* IDLE Club — feed de quem fez check-in no app (presença já marcada) + card do CPF */}
             {screen === 'idle' && unidade?.tipo !== 'ct' && (
-              <section className="screen on center">
-                <div className="express-hdr">
-                  <div className="ex-title">CHECK-IN <span>EXPRESS</span></div>
-                  <div className="ex-sub">Se você já possui reserva, digite seu CPF abaixo</div>
+              <section className="screen on clubidle">
+                <div className="express-hdr" style={{ margin: 0 }}>
+                  <div className="ex-title" style={{ fontSize: 28 }}>CHECK-IN <span>EXPRESS</span></div>
+                  <div className="ex-sub ct">Cliente Wellhub e Totalpass, efetue o check in no app para liberar a entrada.</div>
                 </div>
-                <div style={{ width: '100%' }}>
-                  <div className="cpf-disp">{cpf ? cpfFmt() : <span className="ph">000.000.000-00</span>}</div>
-                  <div className="keys">
-                    {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((n) => (<div key={n} className="key" onClick={() => kp(n)}>{n}</div>))}
-                    <div className="key" onClick={() => kp('back')}>⌫</div>
-                    <div className="key" onClick={() => kp('0')}>0</div>
-                    <div className={'key act' + (cpf.length === 11 ? '' : ' off')} onClick={cpfConfirm}>OK</div>
-                  </div>
+                <div className={'feed' + (clubFeed.length >= CLUB_COMPACTO_DE ? ' compact' : '')} style={clubFeed.length ? undefined : { display: 'none' }}>
+                  {clubFeed.map((c) => (
+                    <div key={c.id} className="clubcard">
+                      <div className="cc-main">
+                        <div className="cc-nome">{c.nome}</div>
+                        <div className="cc-lib"><span className="cc-ck">✓</span> PRESENÇA CONFIRMADA</div>
+                        <div className="row">
+                          <span className={'chip ' + tipoClasse(c.aulaTipo)}>{tipoLabel(c.aulaTipo)}</span>
+                          <span className="chip time">{c.horario}</span>
+                          {c.coach && <span className="chip time">{c.coach}</span>}
+                        </div>
+                      </div>
+                      {c.posicao && (
+                        <div className="cc-pos">
+                          <div className="l">Sua posição</div>
+                          <div className="n">{c.posicao}</div>
+                          <div className="pt">{c.posicao.toUpperCase().startsWith('F') ? 'Funcional' : 'Esteira'}</div>
+                        </div>
+                      )}
+                      <div className="fc-bar" style={{ animationDuration: `${CLUB_CARD_MS}ms` }} />
+                    </div>
+                  ))}
                 </div>
+                <button className="tile primary coachcard" onClick={() => abrirCpf('checkin')}>
+                  <span className="tlab">Clientes Just, digite seu CPF</span>
+                </button>
               </section>
             )}
 
@@ -905,6 +964,30 @@ const CSS = `
 #tt .feedcard .fc-org{font-size:13px;color:var(--mut);margin-top:6px}
 #tt .feedcard .fc-bar{position:absolute;left:0;bottom:0;height:4px;width:100%;background:var(--ok);transform-origin:left;animation:fcbar linear forwards}
 @keyframes fcbar{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+#tt .clubidle{justify-content:center;gap:18px}
+#tt .clubidle .feed{flex:0 1 auto;margin:0;overflow:hidden;min-height:0}
+#tt .clubcard{position:relative;overflow:hidden;flex:0 0 auto;display:flex;align-items:center;gap:14px;text-align:left;background:rgba(34,197,94,.1);border:2px solid rgba(34,197,94,.55);border-radius:20px;padding:16px 16px 18px;animation:pop .4s ease}
+#tt .clubcard .cc-main{flex:1 1 auto;min-width:0}
+#tt .clubcard .cc-nome{font-size:25px;font-weight:900;line-height:1.15;word-break:break-word}
+#tt .clubcard .cc-lib{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:900;letter-spacing:.5px;color:#86efac;margin-top:7px}
+#tt .clubcard .cc-ck{width:22px;height:22px;border-radius:50%;background:var(--ok);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;flex:0 0 auto}
+#tt .clubcard .row{margin-top:9px;gap:6px;flex-wrap:nowrap}
+#tt .clubcard .chip{white-space:nowrap}
+#tt .clubcard .cc-pos{flex:0 0 auto;text-align:center;background:rgba(34,197,94,.14);border:1px solid rgba(34,197,94,.45);border-radius:14px;padding:9px 12px;min-width:86px}
+#tt .clubcard .cc-pos .l{font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--mut)}
+#tt .clubcard .cc-pos .n{font-size:34px;font-weight:900;color:#86efac;line-height:1.05}
+#tt .clubcard .cc-pos .pt{font-size:11px;font-weight:800;color:#86efac}
+#tt .clubcard .fc-bar{position:absolute;left:0;bottom:0;height:4px;width:100%;background:var(--ok);transform-origin:left;animation:fcbar linear forwards}
+#tt .feed.compact{gap:8px}
+#tt .feed.compact .clubcard{padding:8px 14px 11px;border-radius:14px}
+#tt .feed.compact .cc-nome{font-size:18px}
+#tt .feed.compact .cc-lib{display:none}
+#tt .feed.compact .row{margin-top:4px}
+#tt .feed.compact .chip{font-size:10px;padding:3px 8px}
+#tt .feed.compact .cc-pos{padding:5px 10px;min-width:70px;display:flex;align-items:baseline;gap:5px;justify-content:center}
+#tt .feed.compact .cc-pos .l{display:none}
+#tt .feed.compact .cc-pos .n{font-size:22px}
+#tt .feed.compact .cc-pos .pt{font-size:10px}
 #tt .ex-sub2{font-size:18px;font-weight:700;color:#fcd34d;text-align:center;margin:2px 0 12px}
 #tt .modoerro{font-size:16px;font-weight:700;line-height:1.5;color:#fca5a5;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.45);border-radius:16px;padding:14px 18px;max-width:360px;margin:0 0 16px}
 #tt .modoerro b{color:#fecaca}
