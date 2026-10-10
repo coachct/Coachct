@@ -216,7 +216,13 @@ export async function carregarHistorico(
     .limit(limite)
   if (error || !data) return []
   // veio do mais novo pro mais antigo; inverte pra ordem cronológica
-  return data.reverse().map((m: any) => ({ role: m.role, content: m.conteudo }))
+  // Anexo sem legenda fica com conteudo vazio no banco. Mensagem vazia no histórico faz
+  // a API do modelo rejeitar a chamada (o bot caía no "Tive um erro aqui" pra sempre
+  // naquela conversa). Troca por um marcador — o histórico nunca leva turno vazio.
+  return data.reverse().map((m: any) => ({
+    role: m.role,
+    content: String(m.conteudo ?? '').trim() || (m.role === 'assistant' ? '[equipe enviou um anexo]' : '[cliente enviou um anexo]'),
+  }))
 }
 
 /** Salva um turno (user ou assistant) no histórico. */
