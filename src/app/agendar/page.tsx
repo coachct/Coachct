@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
 import { createClient } from '@/lib/supabase'
 import { gradeExtraDoDia, coachesComFixaSubstituida } from '@/lib/grade'
+import { coachesFdsPorHora, coachFdsAtende } from '@/lib/fds-ct'
 import { dashboardDoRole } from '@/lib/auth-redirect'
 import { filaEncerrada } from '@/lib/tempo'
 import { mensagemTravaApp } from '@/lib/utils'
@@ -35,7 +36,6 @@ const ENDERECOS_UNIDADES: Record<string, string> = {
 }
 
 const DIAS_SEMANA  = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
-const HORARIOS_FDS = ['08:00', '09:00', '10:00', '11:00', '12:00']
 const JANELA_DIAS  = 14
 
 function dentroDaJanelaProximoMes(): boolean {
@@ -388,9 +388,10 @@ export default function AgendarPage() {
       const feriasSet = new Set((feriasRows || []).map((f: any) => f.coach_id))
       let porHora: Record<string, number> = {}
       if (usaEscalaFds) {
-        const { data: escala } = await supabase.from('escala_fds').select('coach_id').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr)
-        const qtd = (escala || []).filter((e: any) => !feriasSet.has(e.coach_id)).length
-        if (qtd > 0) for (const hora of HORARIOS_FDS) { if (isDiaDe && hora <= horaAtual) continue; porHora[hora] = qtd }
+        const { data: escala } = await supabase.from('escala_fds').select('coach_id, turno').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr)
+        // Sábado tem dois turnos; domingo/feriado turno único (src/lib/fds-ct.ts).
+        const qtdPorHora = coachesFdsPorHora(dataStr, ehFeriado, (escala || []).filter((e: any) => !feriasSet.has(e.coach_id)))
+        for (const [hora, qtd] of Object.entries(qtdPorHora)) { if (isDiaDe && hora <= horaAtual) continue; porHora[hora] = qtd }
       } else {
         const { data: hors } = await supabase.from('coach_horarios').select('hora, coach_id').eq('dia_semana', diaSem).eq('ativo', true).eq('unidade_id', unidadeAtiva.id)
         // Grade extra do período: só ACRESCENTA coach novo naquela hora (dedup por coach; férias/horário passado respeitados).
@@ -451,8 +452,9 @@ export default function AgendarPage() {
     //  - coach_horarios.coach_id já é coaches.id
     let coachIds: string[] = []
     if (usaEscalaFds) {
-      const { data: escala } = await supabase.from('escala_fds').select('coach_id').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr)
-      const userIds = (escala || []).map((e: any) => e.coach_id).filter(Boolean)
+      const { data: escala } = await supabase.from('escala_fds').select('coach_id, turno').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr)
+      // Só quem atende esse horário (turno do sábado; domingo/feriado todos).
+      const userIds = (escala || []).filter((e: any) => coachFdsAtende(dataStr, !!feriadoData, e.turno, horaStr)).map((e: any) => e.coach_id).filter(Boolean)
       if (userIds.length === 0) { setCoachesDisponiveis([]); return }
       const { data: resolvidos } = await supabase.from('coaches').select('id').in('user_id', userIds).eq('ativo', true)
       coachIds = (resolvidos || []).map((c: any) => c.id).filter(Boolean)

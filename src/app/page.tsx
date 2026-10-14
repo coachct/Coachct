@@ -13,14 +13,14 @@ const ACCENT = '#ff2d9b'
 // O id real vem do banco; aqui só mapeamos pelo nome.
 const DADOS_UNIDADES: Record<string, {
   endereco: string
-  horariosFixos: { semana: string; fds: string } | null
+  horariosFixos: { semana: string; fds: string[] } | null
   aulas: string
   bairro: string
 }> = {
   'Just CT': {
     endereco: 'Rua Fiandeiras, 392 — Itaim Bibi, São Paulo',
     bairro: 'Itaim Bibi',
-    horariosFixos: { semana: 'Seg a Sex · 05:30 às 21:00', fds: 'Sáb, Dom e Feriados · 08:00 às 13:00' },
+    horariosFixos: { semana: 'Seg a Sex · 05:30 às 21:00', fds: ['Sáb · 08:00 às 15:00', 'Dom e Feriados · 09:00 às 14:00'] },
     aulas: 'Coach CT · Musculação livre',
   },
   'JustClub Vila Olímpia': {
@@ -502,8 +502,8 @@ export default function LandingPage() {
                   <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                     <div style={{ fontSize: 14, flexShrink: 0 }}>🕐</div>
                     <div style={{ fontSize: 13, color: '#aaa', lineHeight: 1.6 }}>
-                      {dados.horariosFixos.semana}<br />
-                      {dados.horariosFixos.fds}
+                      {dados.horariosFixos.semana}
+                      {dados.horariosFixos.fds.map(l => <span key={l}><br />{l}</span>)}
                     </div>
                   </div>
                 ) : (

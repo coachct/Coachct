@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, Suspense } from 'react'
 import { createClient } from '@/lib/supabase'
 import { gradeExtraDoDia, coachesComFixaSubstituida } from '@/lib/grade'
+import { coachesFdsPorHora } from '@/lib/fds-ct'
 import { mensagemTravaApp } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
@@ -15,7 +16,6 @@ import { CLUB_EXTRA_PRODUTO_ID } from '@/lib/clubExtra'
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
 // Fim de semana e feriado no CT rodam com esta grade reduzida (mesma lista de /admin/agenda)
-const HORARIOS_FDS = ['08:00', '09:00', '10:00', '11:00', '12:00']
 
 const statusConfig: Record<string, { label: string; color: string }> = {
   agendado:   { label: 'Agendado',   color: 'bg-blue-100 text-blue-700' },
@@ -410,7 +410,7 @@ function RecepcaoClientesPageInner() {
     const diaSemNum = dataSel.getDay()
     const dataStr = dataLocalStr(dataSel)
 
-    // No CT, feriado roda como fim de semana: escala vem de escala_fds e a grade é HORARIOS_FDS.
+    // No CT, feriado roda como fim de semana: escala vem de escala_fds e a grade sai de src/lib/fds-ct.ts.
     const { data: feriado } = await supabase.from('feriados')
       .select('id').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr).eq('ativo', true).maybeSingle()
     const ehFds = diaSemNum === 0 || diaSemNum === 6 || !!feriado
@@ -424,10 +424,9 @@ function RecepcaoClientesPageInner() {
 
     const porHora: Record<string, number> = {}
     if (ehFds) {
-      const { data: escala } = await supabase.from('escala_fds').select('coach_id')
+      const { data: escala } = await supabase.from('escala_fds').select('coach_id, turno')
         .eq('data', dataStr).eq('unidade_id', unidadeAtiva.id)
-      const qtd = (escala || []).length
-      if (qtd > 0) { for (const hora of HORARIOS_FDS) porHora[hora] = qtd }
+      Object.assign(porHora, coachesFdsPorHora(dataStr, !!feriado, escala || []))
     } else {
       const { data: hors } = await supabase.from('coach_horarios').select('hora, coach_id')
         .eq('dia_semana', diaSemNum).eq('unidade_id', unidadeAtiva.id).eq('ativo', true)

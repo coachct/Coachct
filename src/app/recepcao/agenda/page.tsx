@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase'
 import { gradeExtraDoDia, coachesComFixaSubstituida } from '@/lib/grade'
+import { horariosFdsDia, horariosFdsCoach } from '@/lib/fds-ct'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
 import { useRouter } from 'next/navigation'
@@ -16,8 +17,6 @@ const HORARIOS = [
   '19:30','20:00'
 ]
 
-// Fim de semana e feriado no CT rodam com esta grade reduzida (mesma lista de /admin/agenda)
-const HORARIOS_FDS = ['08:00', '09:00', '10:00', '11:00', '12:00']
 
 // 🔧 Crédito legível a partir da chave (ex.: totalpass_just_ct → 🔵 TotalPass TP6 — Just CT)
 function parsePlanoKey(key: string): { label: string; icon: string } {
@@ -51,6 +50,7 @@ export default function RecepcaoAgendaPage() {
   const [coaches, setCoaches] = useState<any[]>([])
   const [coachesFds, setCoachesFds] = useState<any[]>([])
   const [usaEscalaFds, setUsaEscalaFds] = useState(false)
+  const [horariosFds, setHorariosFds] = useState<string[]>([])
   const [bloqueios, setBloqueios] = useState<any[]>([])
   const [loadingData, setLoadingData] = useState(true)
   const [alocandoId, setAlocandoId] = useState<string | null>(null)
@@ -178,18 +178,22 @@ export default function RecepcaoAgendaPage() {
       // FDS/feriado: a escala vem do escala_fds. ATENÇÃO: escala_fds.coach_id guarda o
       // user_id do coach, não o coaches.id — por isso a busca em coaches é por user_id.
       const { data: esc } = await supabase.from('escala_fds')
-        .select('coach_id')
+        .select('coach_id, turno')
         .eq('unidade_id', unidadeAtiva.id)
         .eq('data', data)
-      const userIds = Array.from(new Set((esc || []).map((e: any) => e.coach_id).filter(Boolean)))
+      // Horários que cada coach atende (sábado por turno; domingo/feriado todos).
+      const horasPorUser: Record<string, string[]> = {}
+      for (const e of (esc || []) as any[]) if (e.coach_id) horasPorUser[e.coach_id] = horariosFdsCoach(data, !!feriado, e.turno)
+      const userIds = Object.keys(horasPorUser)
       let coachesEscala: any[] = []
       if (userIds.length > 0) {
         const { data: cs } = await supabase.from('coaches')
-          .select('id, nome')
+          .select('id, nome, user_id')
           .in('user_id', userIds)
-        coachesEscala = (cs || []).filter((c: any) => !feriasSet.has(c.id)).map((c: any) => ({ coaches: { id: c.id, nome: c.nome } }))
+        coachesEscala = (cs || []).filter((c: any) => !feriasSet.has(c.id)).map((c: any) => ({ coaches: { id: c.id, nome: c.nome }, horas: horasPorUser[c.user_id] || [] }))
       }
       setCoachesFds(coachesEscala)
+      setHorariosFds(horariosFdsDia(data, !!feriado))
     } else {
       setCoachesFds([])
     }
@@ -222,7 +226,11 @@ export default function RecepcaoAgendaPage() {
   }
 
   function norm(hora: string) { return (hora || '').slice(0, 5) }
-  function coachesPorHorario(horario: string) { return coaches.filter(c => norm(c.hora) === horario) }
+  // FDS/feriado: coaches da escala_fds que atendem esse horário (sábado por turno).
+  function coachesPorHorario(horario: string) {
+    if (usaEscalaFds) return coachesFds.filter(c => c.horas.includes(horario))
+    return coaches.filter(c => norm(c.hora) === horario)
+  }
   function agendamentosPorHorario(horario: string) { return agendamentos.filter(a => norm(a.horario) === horario) }
   function bloqueiosPorHorario(horario: string) { return bloqueios.filter(b => norm(b.horario) === horario) }
 
@@ -396,10 +404,9 @@ export default function RecepcaoAgendaPage() {
     falta:      { label: 'Falta',      color: 'bg-orange-100 text-orange-700' },
   }
 
-  // Em FDS/feriado a grade base é HORARIOS_FDS e os coaches vêm de escala_fds
-  // (cobrem o dia inteiro), então não se filtra por coachesPorHorario.
-  const horariosAtivos = (usaEscalaFds ? HORARIOS_FDS : HORARIOS).filter(h =>
-    (usaEscalaFds ? coachesFds.length > 0 : coachesPorHorario(h).length > 0)
+  // Em FDS/feriado a grade base é horariosFds (src/lib/fds-ct.ts) e os coaches vêm de escala_fds.
+  const horariosAtivos = (usaEscalaFds ? horariosFds : HORARIOS).filter(h =>
+    coachesPorHorario(h).length > 0
     || agendamentosPorHorario(h).length > 0
   )
 
@@ -585,7 +592,7 @@ export default function RecepcaoAgendaPage() {
                   <div className="space-y-3">
                     {(agendamentosFiltrados || agendamentosAtivos).map(ag => {
                       const horario = norm(ag.horario)
-                      const coachesHorario = usaEscalaFds ? coachesFds : coachesPorHorario(horario)
+                      const coachesHorario = coachesPorHorario(horario)
                       const ags = agendamentosPorHorario(horario).filter(a => a.status !== 'cancelado')
                       const coachesLivres = coachesHorario.filter(
                         c => !ags.some(a => a.id !== ag.id && a.coach_id === c.coaches?.id)
@@ -813,7 +820,7 @@ export default function RecepcaoAgendaPage() {
                               const faltou = ag.status === 'falta'
                               const viaCheckin = feito && ag.presenca_checkin
                               const modoErrado = !feito && !faltou && ag.checkin_modo_errado
-                              const coachesHorario = usaEscalaFds ? coachesFds : coachesPorHorario(h)
+                              const coachesHorario = coachesPorHorario(h)
                               const agsH = agendamentosPorHorario(h).filter(a => a.status !== 'cancelado')
                               const coachesLivres = coachesHorario.filter(c => !agsH.some(a => a.id !== ag.id && a.coach_id === c.coaches?.id))
                               return (

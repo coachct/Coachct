@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useUnidade } from '@/hooks/useUnidade'
 import { PageHeader, Spinner } from '@/components/ui'
+import { fdsUsaTurno, horariosFdsDia, TURNOS_SABADO, rotuloTurnoFds, type TurnoFds } from '@/lib/fds-ct'
 
 const DIAS_SEMANA_LABEL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
 
@@ -71,7 +72,9 @@ export default function AdminEscalaPage() {
 
   const [modalAdicionar, setModalAdicionar] = useState<{ data: string } | null>(null)
   const [coachesSelecionados, setCoachesSelecionados] = useState<Set<string>>(new Set())
+  const [turnoSel, setTurnoSel] = useState<TurnoFds | null>(null) // sábado: turno dos coaches adicionados
   const [salvandoCoach, setSalvandoCoach] = useState(false)
+  const [salvandoTurno, setSalvandoTurno] = useState<string | null>(null) // escala_fds.id
 
   const [modalNovoFeriado, setModalNovoFeriado] = useState(false)
   const [novoFeriadoData, setNovoFeriadoData] = useState('')
@@ -208,16 +211,71 @@ export default function AdminEscalaPage() {
   function abrirModalAdicionar(data: string) {
     setModalAdicionar({ data })
     setCoachesSelecionados(new Set())
+    setTurnoSel(null)
+  }
+
+  // ─── Turnos (src/lib/fds-ct.ts): sábado tem turno 1 e 2; domingo e feriado, turno único ───
+  function ehFeriadoAtivo(data: string): boolean {
+    return feriados.some(f => f.data === data && f.ativo)
+  }
+  function precisaTurno(data: string): boolean {
+    return fdsUsaTurno(data, ehFeriadoAtivo(data))
+  }
+  function textoHorariosDia(data: string): string {
+    return horariosFdsDia(data, ehFeriadoAtivo(data)).map(h => h.slice(0, 2) + 'h').join(', ')
+  }
+
+  async function definirTurno(escalaId: string, turno: TurnoFds) {
+    setSalvandoTurno(escalaId)
+    await supabase.from('escala_fds').update({ turno }).eq('id', escalaId)
+    await Promise.all([loadDados(true), aba === 'montar' || aba === 'resumo' ? carregarMes() : Promise.resolve()])
+    setSalvandoTurno(null)
+  }
+
+  // Botões Turno 1 / Turno 2 de um coach escalado no sábado (o marcado fica verde).
+  function seletorTurno(e: any) {
+    return (
+      <span style={{ display: 'inline-flex', gap: 4, marginLeft: 'auto', flexShrink: 0 }}>
+        {TURNOS_SABADO.map(t => {
+          const on = e.turno === t.turno
+          return (
+            <button key={t.turno} onClick={() => !on && definirTurno(e.id, t.turno)} disabled={salvandoTurno === e.id}
+              title={`${t.rotulo} · ${t.horario}`}
+              style={{
+                border: `1.5px solid ${on ? VERDE : '#e5e7eb'}`, background: on ? VERDE_LIGHT : '#fff',
+                color: on ? '#15803d' : '#6b7280', borderRadius: 6, padding: '1px 7px', fontSize: 11, fontWeight: 600,
+                cursor: on ? 'default' : 'pointer', opacity: salvandoTurno === e.id ? 0.5 : 1,
+              }}>
+              T{t.turno}
+            </button>
+          )
+        })}
+      </span>
+    )
+  }
+  function avisoSemTurno(e: any, data: string) {
+    if (!precisaTurno(data) || e.turno) return null
+    return <span style={{ fontSize: 11, fontWeight: 600, color: '#b91c1c', background: '#fee2e2', borderRadius: 6, padding: '1px 6px' }}>sem turno</span>
+  }
+  // Resumo do card do sábado: quantos em cada turno.
+  function contagemTurnos(escs: any[]): string {
+    const t1 = escs.filter(e => e.turno === 1).length
+    const t2 = escs.filter(e => e.turno === 2).length
+    const sem = escs.length - t1 - t2
+    return `Turno 1: ${t1} · Turno 2: ${t2}${sem ? ` · ${sem} sem turno` : ''}`
   }
 
   async function adicionarCoachesNaEscala() {
     if (coachesSelecionados.size === 0 || !modalAdicionar || !unidadeAtiva) return
+    const comTurno = precisaTurno(modalAdicionar.data)
+    if (comTurno && !turnoSel) return
     setSalvandoCoach(true)
 
     const registros = Array.from(coachesSelecionados).map(userId => ({
       unidade_id: unidadeAtiva.id,
       data: modalAdicionar.data,
       coach_id: userId,
+      turno: comTurno ? turnoSel : null,
     }))
 
     const { error } = await supabase.from('escala_fds').insert(registros)
@@ -397,8 +455,12 @@ export default function AdminEscalaPage() {
     const datas = fdsDoMes(mesSel).map(f => f.data)
     const mesTxt = competenciaLabel(mesSel)
     const nomeUnid = (unidadeAtiva?.nome || 'Coach CT').toUpperCase()
+    // Sábado: cada coach com o turno dele (" — Turno 1 · 08h às 12h"), ordenado por turno.
+    const sufixoTurno = (e: any) => precisaTurno(e.data) ? ` — ${rotuloTurnoFds(e.turno)}` : ''
     const nomesDoDia = (data: string) =>
-      escalasMes.filter(e => e.data === data).map(e => nomeCoach(e.coach_id)).sort((a, b) => a.localeCompare(b))
+      escalasMes.filter(e => e.data === data)
+        .sort((a, b) => ((a.turno || 9) - (b.turno || 9)) || nomeCoach(a.coach_id).localeCompare(nomeCoach(b.coach_id)))
+        .map(e => nomeCoach(e.coach_id) + sufixoTurno(e))
     const plural = (n: number) => `${n} dia${n === 1 ? '' : 's'}`
     const linhasDia = (data: string) => {
       const nomes = nomesDoDia(data)
@@ -418,16 +480,16 @@ export default function AdminEscalaPage() {
       return { id: `fds:${sab}`, titulo, sub: plural(dias.length), texto: linhas.join('\n').trim() }
     })
 
-    const porCoach: Record<string, string[]> = {}
+    const porCoach: Record<string, any[]> = {}
     for (const e of escalasMes) {
       if (!porCoach[e.coach_id]) porCoach[e.coach_id] = []
-      porCoach[e.coach_id].push(e.data)
+      porCoach[e.coach_id].push(e)
     }
     const bCoach = Object.keys(porCoach)
       .sort((a, b) => nomeCoach(a).localeCompare(nomeCoach(b)))
       .map(uid => {
-        const dias = porCoach[uid].sort()
-        const linhas = [`*${nomeCoach(uid)} — ${mesTxt}*`, '', ...dias.map(d => `• ${rotuloDia(d)}`), '', `Total: ${plural(dias.length)}`]
+        const dias = porCoach[uid].sort((a, b) => a.data.localeCompare(b.data))
+        const linhas = [`*${nomeCoach(uid)} — ${mesTxt}*`, '', ...dias.map(e => `• ${rotuloDia(e.data)}${sufixoTurno(e)}`), '', `Total: ${plural(dias.length)}`]
         return { id: `coach:${uid}`, titulo: nomeCoach(uid), sub: plural(dias.length), texto: linhas.join('\n').trim() }
       })
 
@@ -632,6 +694,9 @@ export default function AdminEscalaPage() {
                           <div style={{ fontSize: 12, fontWeight: 600, marginTop: 2, color: completo ? VERDE : '#ea580c' }}>
                             {escs.length}/{meta} coaches
                           </div>
+                          {precisaTurno(data) && escs.length > 0 && (
+                            <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>{contagemTurnos(escs)}</div>
+                          )}
                         </div>
                       </div>
 
@@ -643,10 +708,12 @@ export default function AdminEscalaPage() {
                               : real && !dispMes.has(`${real}|${data}`) ? 'sem disponibilidade' : ''
                             return (
                               <div key={e.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 text-sm">
-                                <span className="text-gray-800 flex items-center gap-2">
+                                <span className="text-gray-800 flex items-center gap-2" style={{ flexWrap: 'wrap' }}>
                                   {nomeCoach(e.coach_id)}
                                   {aviso && <span style={{ fontSize: 11, fontWeight: 600, color: '#ea580c', background: '#ffedd5', borderRadius: 6, padding: '1px 6px' }}>{aviso}</span>}
+                                  {avisoSemTurno(e, data)}
                                 </span>
+                                {precisaTurno(data) && seletorTurno(e)}
                                 <button onClick={() => removerDoDia(e.id)}
                                   style={{ background: 'transparent', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 4px' }}>
                                   ×
@@ -744,7 +811,8 @@ export default function AdminEscalaPage() {
         <>
           <div style={{ background: '#eff6ff', border: '1px solid #dbeafe', borderRadius: 12, padding: '0.75rem 1rem', marginBottom: '1rem' }}>
             <p style={{ fontSize: 14, color: '#1d4ed8' }}>
-              💡 Horários no FDS: <strong>08:00, 09:00, 10:00, 11:00, 12:00</strong>. Cada coach escalado cobre todos os 5 horários.
+              💡 <strong>Sábado</strong>: Turno 1 (08h às 12h) atende 08h, 09h, 10h e 11h · Turno 2 (11h às 15h) atende 11h, 12h, 13h e 14h. Coach sem turno não abre vaga.
+              {' '}<strong>Domingo e feriado</strong>: 09h às 14h, atende 09h, 10h, 11h, 12h e 13h.
             </p>
           </div>
 
@@ -768,21 +836,28 @@ export default function AdminEscalaPage() {
                       <div className="text-xs text-gray-400 mt-0.5">
                         {coachesEsc.length === 0
                           ? 'Nenhum coach escalado'
-                          : `${coachesEsc.length} coach${coachesEsc.length > 1 ? 'es' : ''} · ${coachesEsc.length} vaga${coachesEsc.length > 1 ? 's' : ''}/horário`}
+                          : precisaTurno(data)
+                            ? contagemTurnos(coachesEsc)
+                            : `${coachesEsc.length} coach${coachesEsc.length > 1 ? 'es' : ''} · ${coachesEsc.length} vaga${coachesEsc.length > 1 ? 's' : ''}/horário`}
                       </div>
+                      <div className="text-xs text-gray-400 mt-0.5">{textoHorariosDia(data)}</div>
                     </div>
                   </div>
 
                   {coachesEsc.length > 0 && (
                     <div className="space-y-1.5 mb-3">
-                      {coachesEsc.map(e => (
-                        <div key={e.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 text-sm">
-                          <span className="text-gray-800 flex items-center gap-2">
+                      {coachesEsc
+                        .slice().sort((a, b) => precisaTurno(data) ? (a.turno || 9) - (b.turno || 9) : 0)
+                        .map(e => (
+                        <div key={e.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 text-sm" style={{ gap: 8 }}>
+                          <span className="text-gray-800 flex items-center gap-2" style={{ flexWrap: 'wrap' }}>
                             {nomeCoach(e.coach_id)}
                             {estaDeFerias(coachIdReal(e.coach_id), e.data) && (
                               <span style={{ fontSize: 11, fontWeight: 600, color: '#ea580c', background: '#ffedd5', borderRadius: 6, padding: '1px 6px' }}>de férias</span>
                             )}
+                            {avisoSemTurno(e, data)}
                           </span>
+                          {precisaTurno(data) && seletorTurno(e)}
                           <button onClick={() => removerCoachDaEscala(e.id)}
                             style={{ background: 'transparent', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 4px' }}>
                             ×
@@ -811,7 +886,7 @@ export default function AdminEscalaPage() {
         <>
           <div style={{ background: '#eff6ff', border: '1px solid #dbeafe', borderRadius: 12, padding: '0.75rem 1rem', marginBottom: '1rem' }}>
             <p style={{ fontSize: 14, color: '#1d4ed8' }}>
-              💡 Datas marcadas como <strong>feriado ativo</strong> ignoram a grade fixa e usam só os coaches escalados aqui, com horários de FDS.
+              💡 Datas marcadas como <strong>feriado ativo</strong> ignoram a grade fixa e usam só os coaches escalados aqui, no horário de domingo: 09h às 14h (atende 09h, 10h, 11h, 12h e 13h), sem turno.
             </p>
           </div>
 
@@ -923,6 +998,27 @@ export default function AdminEscalaPage() {
               Marque um ou mais coaches para escalar neste dia.
             </p>
 
+            {precisaTurno(modalAdicionar.data) && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 500, color: '#4b5563', marginBottom: 6 }}>Turno</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {TURNOS_SABADO.map(t => {
+                    const on = turnoSel === t.turno
+                    return (
+                      <button key={t.turno} onClick={() => setTurnoSel(t.turno)}
+                        style={{
+                          flex: 1, padding: '0.5rem', borderRadius: 8, cursor: 'pointer', textAlign: 'center',
+                          border: `1.5px solid ${on ? VERDE : '#e5e7eb'}`, background: on ? VERDE_LIGHT : '#fff',
+                        }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: on ? '#15803d' : '#1f2937' }}>{t.rotulo}</div>
+                        <div style={{ fontSize: 12, color: '#6b7280' }}>{t.horario}</div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16, maxHeight: 320, overflowY: 'auto' }}>
               {coachesNaoEscalados(modalAdicionar.data)
                 .map(c => ({ c, bloqueado: aba === 'fds' && semDisponibilidade(c.id, modalAdicionar.data) }))
@@ -973,24 +1069,32 @@ export default function AdminEscalaPage() {
                 style={{ flex: 1, background: '#fff', border: '1px solid #e5e7eb', color: '#4b5563', borderRadius: 8, padding: '0.5rem', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>
                 Cancelar
               </button>
-              <button onClick={adicionarCoachesNaEscala} disabled={coachesSelecionados.size === 0 || salvandoCoach}
+              {(() => {
+                const faltaTurno = precisaTurno(modalAdicionar.data) && !turnoSel
+                const pode = coachesSelecionados.size > 0 && !faltaTurno && !salvandoCoach
+                return (
+              <button onClick={adicionarCoachesNaEscala} disabled={!pode}
                 style={{
                   flex: 2,
-                  background: coachesSelecionados.size > 0 && !salvandoCoach ? VERDE : '#d1d5db',
+                  background: pode ? VERDE : '#d1d5db',
                   color: '#fff',
                   border: 'none',
                   borderRadius: 8,
                   padding: '0.5rem',
                   fontSize: 14,
                   fontWeight: 600,
-                  cursor: coachesSelecionados.size > 0 && !salvandoCoach ? 'pointer' : 'default',
+                  cursor: pode ? 'pointer' : 'default',
                 }}>
                 {salvandoCoach
                   ? 'Salvando...'
                   : coachesSelecionados.size === 0
                     ? 'Adicionar'
-                    : `Adicionar ${coachesSelecionados.size} coach${coachesSelecionados.size > 1 ? 'es' : ''}`}
+                    : faltaTurno
+                      ? 'Escolha o turno'
+                      : `Adicionar ${coachesSelecionados.size} coach${coachesSelecionados.size > 1 ? 'es' : ''}`}
               </button>
+                )
+              })()}
             </div>
           </div>
         </div>

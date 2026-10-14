@@ -9,6 +9,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { gradeExtraDoDia, coachesComFixaSubstituida } from '@/lib/grade'
+import { coachesFdsPorHora } from '@/lib/fds-ct'
 import { mensagemTravaApp } from '@/lib/utils'
 import { clienteTemPlanoPro } from '@/lib/planoPro'
 import { registrarAcessoLgpd, agoraEmSaoPaulo, consultarSaldo } from './consultas'
@@ -23,9 +24,6 @@ export interface ResultadoAcao {
 
 // Unidade Just CT (personal) — mesma constante usada no app.
 export const JUST_CT_UNIDADE_ID = 'c28bf4bb-56f8-44ff-818a-c7836e58bcef'
-
-// Horários de fim de semana / feriado no CT (mesma lista do app).
-const HORARIOS_FDS = ['08:00', '09:00', '10:00', '11:00', '12:00']
 
 const LINK_CARTAO = 'https://www.justclubct.com.br/cadastrar-cartao'
 
@@ -108,13 +106,11 @@ export async function horariosDisponiveisCt(
   const porHora: Record<string, number> = {}
   if (usaEscalaFds) {
     const { data: escala } = await supabase
-      .from('escala_fds').select('coach_id').eq('unidade_id', unidadeId).eq('data', dataStr)
-    const qtd = (escala ?? []).length
-    if (qtd > 0) {
-      for (const hora of HORARIOS_FDS) {
-        if (isDiaDe && hora <= horaAtual) continue
-        porHora[hora] = qtd
-      }
+      .from('escala_fds').select('coach_id, turno').eq('unidade_id', unidadeId).eq('data', dataStr)
+    // Sábado tem dois turnos; domingo/feriado turno único (src/lib/fds-ct.ts).
+    for (const [hora, qtd] of Object.entries(coachesFdsPorHora(dataStr, !!feriado, escala ?? []))) {
+      if (isDiaDe && hora <= horaAtual) continue
+      porHora[hora] = qtd
     }
   } else {
     const { data: hors } = await supabase

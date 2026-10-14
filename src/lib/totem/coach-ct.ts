@@ -6,8 +6,7 @@
 
 import { SupabaseClient } from '@supabase/supabase-js'
 import { gradeExtraDoDia, coachesComFixaSubstituida } from '@/lib/grade'
-
-const HORARIOS_FDS = ['08:00', '09:00', '10:00', '11:00', '12:00']
+import { horariosFdsDia, coachFdsAtende } from '@/lib/fds-ct'
 
 function norm(h: string): string { return (h || '').slice(0, 5) }
 
@@ -86,7 +85,7 @@ export async function coachesDisponiveis(
 ): Promise<{ id: string; nome: string }[]> {
   const horarioN = norm(horario)
   const diaSem = new Date(dataStr + 'T12:00:00').getDay()
-  // No CT, feriado roda como fim de semana: escala vem de escala_fds e a grade é HORARIOS_FDS.
+  // No CT, feriado roda como fim de semana: escala vem de escala_fds e a grade sai de src/lib/fds-ct.ts.
   const { data: feriado } = await sb
     .from('feriados').select('id')
     .eq('unidade_id', unidadeId).eq('data', dataStr).eq('ativo', true).maybeSingle()
@@ -101,13 +100,15 @@ export async function coachesDisponiveis(
   const jaTem = (id: string) => escalados.some((e) => e.id === id)
 
   if (ehFds) {
-    if (!HORARIOS_FDS.includes(horarioN)) return []
+    if (!horariosFdsDia(dataStr, !!feriado).includes(horarioN)) return []
     // escala_fds.coach_id = user_id → mapeia p/ coaches.id via coaches.user_id
     const { data: coachesList } = await sb.from('coaches').select('id, nome, user_id, ativo')
     const byUser: Record<string, { id: string; nome: string }> = {}
     for (const c of (coachesList || []) as any[]) if (c.ativo && c.user_id) byUser[c.user_id] = { id: c.id, nome: c.nome }
-    const { data: escala } = await sb.from('escala_fds').select('coach_id').eq('data', dataStr).eq('unidade_id', unidadeId)
+    const { data: escala } = await sb.from('escala_fds').select('coach_id, turno').eq('data', dataStr).eq('unidade_id', unidadeId)
     for (const e of (escala || []) as any[]) {
+      // Sábado: só o turno que cobre esse horário.
+      if (!coachFdsAtende(dataStr, !!feriado, e.turno, horarioN)) continue
       const info = byUser[e.coach_id]
       const cid = info?.id || e.coach_id
       if (feriasSet.has(cid) || jaTem(cid)) continue
