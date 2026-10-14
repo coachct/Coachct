@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { horasFdsCoach } from '@/lib/fds-ct'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Cálculo do que um coach tem a receber num período + lançamento da despesa.
@@ -13,8 +14,6 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 // sendo decisão manual na tela de pagamento.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const HORAS_FDS = 5 // jornada 08–13
-
 export function dataLocalStr(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
@@ -25,15 +24,16 @@ export function formatarData(d: string) {
 }
 
 // Horas do professor (unidade CT):
-// dia útil = grade fixa + grade extra; feriado/FDS = 5h se escalado; férias = 0h;
-// antes de data_inicio_horas = 0h.
+// dia útil = grade fixa + grade extra; feriado/FDS = horas do turno se escalado
+// (sábado 4h, domingo/feriado 5h, sábado sem turno 0h — src/lib/fds-ct.ts);
+// férias = 0h; antes de data_inicio_horas = 0h.
 export function calcularHorasProfessor(o: {
   inicio: string
   fim: string
   gradePorDia: Record<number, number>
   ferias: any[]
   feriadoSet: Set<string>
-  escalaSet: Set<string>
+  escalaTurno: Map<string, number | null> // data → escala_fds.turno do professor
   extra: any[]
   inicioHoras: string | null
 }) {
@@ -52,7 +52,11 @@ export function calcularHorasProfessor(o: {
     } else if (emFerias(ds)) {
       h = 0
     } else if (o.feriadoSet.has(ds) || dow === 0 || dow === 6) {
-      if (o.escalaSet.has(ds)) { h = HORAS_FDS; fonte = o.feriadoSet.has(ds) ? 'feriado' : 'fds' }
+      if (o.escalaTurno.has(ds)) {
+        const turno = o.escalaTurno.get(ds)
+        h = horasFdsCoach(ds, o.feriadoSet.has(ds), turno)
+        fonte = o.feriadoSet.has(ds) ? 'feriado' : turno ? `fds turno ${turno}` : 'fds'
+      }
     } else {
       const exDia = (o.extra || []).filter((e: any) => e.data_inicio <= ds && e.data_fim >= ds && e.dia_semana === dow)
       const ex = exDia.length
@@ -144,7 +148,7 @@ export async function totaisCoachPorUnidade(
           .select('data').eq('unidade_id', u.id).eq('ativo', true).gte('data', inicio).lte('data', fim)
         // ATENÇÃO: escala_fds.coach_id guarda o user_id do coach, não o coaches.id
         const { data: esc } = await sb.from('escala_fds')
-          .select('data').eq('unidade_id', u.id).eq('coach_id', coach.user_id)
+          .select('data, turno').eq('unidade_id', u.id).eq('coach_id', coach.user_id)
           .gte('data', inicio).lte('data', fim)
         const { data: extra } = await sb.from('coach_horarios_extra')
           .select('data_inicio, data_fim, dia_semana, substitui_fixa')
@@ -155,7 +159,7 @@ export async function totaisCoachPorUnidade(
           inicio, fim, gradePorDia,
           ferias:      fer || [],
           feriadoSet:  new Set((feriados || []).map((f: any) => f.data)),
-          escalaSet:   new Set((esc || []).map((e: any) => e.data)),
+          escalaTurno: new Map((esc || []).map((e: any) => [e.data, e.turno ?? null])),
           extra:       extra || [],
           inicioHoras: coach.data_inicio_horas || null,
         })

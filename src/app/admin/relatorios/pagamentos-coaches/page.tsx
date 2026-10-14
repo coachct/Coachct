@@ -24,8 +24,8 @@ function formatarData(d: string) {
 
 // Horas do professor (unidade CT) — mesma regra usada no relatório individual, no
 // consolidado e na rescisão (admin/coaches). Mora em @/lib/pagamento-coach para as
-// duas telas nunca divergirem: dia útil = grade fixa + grade extra; feriado/FDS = 5h
-// se escalado; férias = 0h; antes de data_inicio_horas = 0h.
+// duas telas nunca divergirem: dia útil = grade fixa + grade extra; feriado/FDS = horas
+// do turno se escalado (sábado 4h, domingo/feriado 5h, sábado sem turno 0h); férias = 0h; antes de data_inicio_horas = 0h.
 
 export default function PagamentosCoachesPage() {
   const { perfil, loading } = useAuth()
@@ -202,7 +202,7 @@ export default function PagamentosCoachesPage() {
     }
     // ===== HORAS DO PROFESSOR (só unidade CT + cargo professor) =====
     // Regra: dia útil = grade fixa (coach_horarios) + grade extra (coach_horarios_extra);
-    // feriado/FDS = ignora grade e usa escala_fds (5h fixas se escalado); férias = 0h.
+    // feriado/FDS = ignora grade e usa escala_fds (sábado 4h pelo turno, domingo/feriado 5h); férias = 0h.
     if (unidadeSel.tipo === 'ct' && coachSel.cargo === 'professor') {
       const { data: grade } = await supabase.from('coach_horarios')
         .select('dia_semana, hora')
@@ -218,9 +218,9 @@ export default function PagamentosCoachesPage() {
       const feriadoSet = new Set((feriados || []).map((f: any) => f.data))
       // ATENÇÃO: escala_fds.coach_id guarda o user_id do coach, não o coaches.id
       const { data: esc } = await supabase.from('escala_fds')
-        .select('data').eq('unidade_id', unidadeSel.id).eq('coach_id', coachSel.user_id)
+        .select('data, turno').eq('unidade_id', unidadeSel.id).eq('coach_id', coachSel.user_id)
         .gte('data', inicio).lte('data', fim)
-      const escSet = new Set((esc || []).map((e: any) => e.data))
+      const escTurno = new Map<string, number | null>((esc || []).map((e: any) => [e.data, e.turno ?? null]))
       const { data: extra } = await supabase.from('coach_horarios_extra')
         .select('data_inicio, data_fim, dia_semana, substitui_fixa')
         .eq('coach_id', coachSel.id).eq('unidade_id', unidadeSel.id)
@@ -231,7 +231,7 @@ export default function PagamentosCoachesPage() {
         gradePorDia,
         ferias:      fer || [],
         feriadoSet,
-        escalaSet:   escSet,
+        escalaTurno: escTurno,
         extra:       extra || [],
         inicioHoras: coachSel.data_inicio_horas || null,
       }))
@@ -325,7 +325,7 @@ export default function PagamentosCoachesPage() {
           const feriadoSet = new Set((feriados || []).map((f: any) => f.data))
           // ATENÇÃO: escala_fds.coach_id guarda o user_id do coach
           const { data: esc } = await supabase.from('escala_fds')
-            .select('coach_id, data').eq('unidade_id', u.id).gte('data', inicio).lte('data', fim)
+            .select('coach_id, data, turno').eq('unidade_id', u.id).gte('data', inicio).lte('data', fim)
           const { data: extra } = await supabase.from('coach_horarios_extra')
             .select('coach_id, data_inicio, data_fim, dia_semana, substitui_fixa')
             .eq('unidade_id', u.id).in('coach_id', pids)
@@ -339,7 +339,7 @@ export default function PagamentosCoachesPage() {
               inicio, fim, gradePorDia,
               ferias:      (fer || []).filter((f: any) => f.coach_id === p.id),
               feriadoSet,
-              escalaSet:   new Set((esc || []).filter((e: any) => e.coach_id === p.user_id).map((e: any) => e.data)),
+              escalaTurno: new Map<string, number | null>((esc || []).filter((e: any) => e.coach_id === p.user_id).map((e: any) => [e.data, e.turno ?? null])),
               extra:       (extra || []).filter((e: any) => e.coach_id === p.id),
               inicioHoras: p.data_inicio_horas || null,
             })

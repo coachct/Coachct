@@ -70,6 +70,13 @@ export function coachesFdsPorHora(
   return porHora
 }
 
+// Horas pagas ao professor pelo dia escalado = jornada de entrada a saída, que é
+// igual ao nº de horários que ele atende: sábado com turno 4h (08–12 ou 11–15),
+// domingo/feriado 5h (09–14), grade antiga 5h (08–13). Sábado sem turno = 0h.
+export function horasFdsCoach(dataStr: string, ehFeriado: boolean, turno: number | null | undefined): number {
+  return horariosFdsCoach(dataStr, ehFeriado, turno).length
+}
+
 // Texto curto do turno para as telas da equipe ("Turno 1 · 08h às 12h").
 export function rotuloTurnoFds(turno: number | null | undefined): string {
   const t = TURNOS_SABADO.find(x => x.turno === turno)
