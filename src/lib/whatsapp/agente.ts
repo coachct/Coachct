@@ -1532,7 +1532,10 @@ A última mensagem inclui uma IMAGEM (quase sempre um print da tela do app/site:
   // O cliente tocou no assunto multa/cobrança/cartão em ALGUM momento? Se NÃO, o bot
   // não pode nem mencionar multa (nem pra dizer que não tem) — a trava remove.
   const textoCliente = [mensagem, ...historico.filter((t) => t.role === 'user').map((t) => t.content)].join(' ')
-  const perguntouMulta = /multa|cobran|no.?show|cart[ãa]o|taxa|cobrad|pagar.{0,10}falt/i.test(textoCliente)
+  // "pra não pagar", "isento", etc. TAMBÉM contam como perguntar de multa/cobrança — senão
+  // a trava semMultaProativa apagava a resposta certa (ex.: "faz o check-in que fica isento
+  // da multa") quando a pessoa pediu "cancelar pra não pagar" sem usar a palavra "multa".
+  const perguntouMulta = /multa|cobran|no.?show|cart[ãa]o|taxa|cobrad|pagar.{0,10}falt|n[ãa]o\s+(vou\s+)?pagar|isen[çtc]|isento|isenta/i.test(textoCliente)
   // Reserva de HOJE + intenção de cancelar/trocar/marquei → o bot não pode dizer "sim, dá".
   const reservaHoje = /\bhoje\b/i.test(textoCliente) && /(cancel|desmarc|remarc|reagend|trocar|troca de|mudar|marqu|agend|reserv)/i.test(textoCliente)
   // A trava de cancelamento SÓ vale quando a pessoa está falando de CANCELAR (ou falta/
