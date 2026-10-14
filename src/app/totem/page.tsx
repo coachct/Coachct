@@ -486,7 +486,12 @@ export default function TotemPage() {
               <section className={'screen on clubidle ' + (clubFeed.length === 0 ? 'vazio' : clubFeed.length >= CLUB_COMPACTO_DE ? 'cheio' : 'medio')}>
                 <div className="express-hdr" style={{ margin: 0 }}>
                   <div className="ex-title">CHECK-IN <span>EXPRESS</span></div>
-                  <div className="ex-sub ct">Cliente Wellhub e Totalpass, efetue o check in no app para liberar a entrada.</div>
+                  {/* Aviso principal (90% são clientes de app): quebras fixas, sempre 3 linhas */}
+                  <div className="ex-sub ct apps">
+                    <span className="ln">Cliente Wellhub e TotalPass,</span>
+                    <span className="ln">faça o check-in no app</span>
+                    <span className="ln">para confirmar sua reserva.</span>
+                  </div>
                 </div>
                 <div className={'feed' + (clubFeed.length >= CLUB_COMPACTO_DE ? ' compact' : '')} style={clubFeed.length ? undefined : { display: 'none' }}>
                   {clubFeed.map((c) => (
@@ -511,8 +516,8 @@ export default function TotemPage() {
                     </div>
                   ))}
                 </div>
-                <button className="tile primary coachcard" onClick={() => abrirCpf('checkin')}>
-                  <span className="tlab">Clientes Just, digite seu CPF</span>
+                <button className="tile coachcard cpfsoft" onClick={() => abrirCpf('checkin')}>
+                  <span className="tlab">Clientes Just, <b>digite seu CPF</b></span>
                 </button>
               </section>
             )}
@@ -981,6 +986,18 @@ const CSS = `
 #tt .clubidle.cheio .ex-sub.ct{font-size:17px;padding:11px 12px;margin-top:10px;border-radius:16px}
 #tt .clubidle.cheio .tile.coachcard{padding:17px 14px;border-radius:16px}
 #tt .clubidle.cheio .tile.coachcard .tlab{font-size:20px}
+#tt .clubidle .ex-sub.apps{flex-direction:column;background:#7b3ff2;border:2px solid #b9a4ff;color:#fff;font-weight:400;font-size:22px;line-height:1.35;padding:22px 8px;text-wrap:initial}
+#tt .clubidle .ex-sub.apps .ln{display:block;white-space:nowrap}
+#tt .clubidle.vazio .ex-sub.apps{font-size:25px;padding:30px 8px}
+#tt .clubidle.cheio .ex-sub.apps{font-size:17px;padding:12px 8px}
+#tt .tile.cpfsoft{background:#3a2c66;border:1px solid #a87fa6;color:#f3dcec;box-shadow:none}
+#tt .tile.cpfsoft .tlab b{color:#fff;font-weight:400}
+#tt .clubidle .tile.cpfsoft{padding:16px 14px}
+#tt .clubidle .tile.cpfsoft .tlab{font-size:19px}
+#tt .clubidle.vazio .tile.cpfsoft{padding:18px 14px}
+#tt .clubidle.vazio .tile.cpfsoft .tlab{font-size:21px}
+#tt .clubidle.cheio .tile.cpfsoft{padding:13px 14px}
+#tt .clubidle.cheio .tile.cpfsoft .tlab{font-size:17px}
 #tt .clubcard .chip{font-size:12px;padding:5px 8px}
 #tt .clubcard .cc-main{overflow:hidden}
 #tt .clubcard .cc-pos{min-width:80px;padding:9px 8px}
