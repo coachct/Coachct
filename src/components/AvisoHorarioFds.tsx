@@ -71,7 +71,7 @@ export default function AvisoHorarioFds() {
           <circle cx="12" cy="12" r="9" />
           <path d="M12 7v5l3 3" />
         </svg>
-        <div style={{ color: ACCENT, fontSize: 13, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', margin: '12px 0 8px' }}>
+        <div style={{ color: ACCENT, fontSize: 20, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', margin: '12px 0 8px' }}>
           Just CT
         </div>
         <div style={{ color: '#fff', fontSize: 18, fontWeight: 600, lineHeight: 1.4, marginBottom: 14 }}>
