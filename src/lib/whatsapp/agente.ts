@@ -1366,6 +1366,20 @@ export async function responderInfo(params: {
 }): Promise<{ texto: string }> {
   const { supabase, mensagem, historico = [], cliente = null, imagens = [] } = params
   const temImagem = imagens.length > 0
+
+  // AULA GRÁTIS/GRATUITA (pergunta ESPECÍFICA): o Ricardo quer uma resposta com bom humor,
+  // sorteada entre 3 variações fixas, sempre puxando pro treino avulso. Determinístico (o
+  // modelo não sorteia de verdade nem mantém a copy exata). Só dispara quando a mensagem
+  // ATUAL fala de grátis E não é outro contexto (estacionamento/wifi/reserva/taxa...).
+  if (!temImagem && /(gr[áa]tis|gratuit|de\s+gra[çc]a)/i.test(mensagem) && !/(estacion|wi-?fi|reserva|cancel|taxa|frete|entrega)/i.test(mensagem)) {
+    const LINK = 'https://www.justclubct.com.br/comprar'
+    const variacoesGratis = [
+      `Ahh, o famoso grátis! 😏 De graça aqui só o bom dia da recepção e a água pra se hidratar 💧. Nosso treino é diferenciado demais pra sair de graça — alta intensidade, coaches excelentes e cada detalhe pensado pra te dar resultado de verdade 💪. Pra sentir na pele, o caminho é o treino avulso 👉 ${LINK}`,
+      `Grátis? 😄 Grátis é o alongamento no fim, o abraço quando você bate meta 🤗 e a vontade de voltar no dia seguinte. Agora o treino… esse é intenso e diferenciado demais pra ser de graça — coaches de primeira e aquele suor que vicia 🔥. Vem conhecer pelo treino avulso 👉 ${LINK}`,
+      `Hahah de graça só a vontade de voltar! 😂 Treino bom assim a gente faz questão que você viva por completo, não de dar de amostra 😅. Intenso, diferenciado e com coaches excelentes — garante o seu no treino avulso 👉 ${LINK}`,
+    ]
+    return { texto: variacoesGratis[Math.floor(Math.random() * variacoesGratis.length)] }
+  }
   const client = new Anthropic()
   const hoje = calcularHoje()
 
