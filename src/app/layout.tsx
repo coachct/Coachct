@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google'
 import './globals.css'
 import { AuthProvider } from '@/hooks/useAuth'
 import WhatsAppButton from '@/components/WhatsAppButton'
+import AvisoHorarioFds from '@/components/AvisoHorarioFds'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -34,6 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AuthProvider>
           {children}
           <WhatsAppButton />
+          <AvisoHorarioFds />
         </AuthProvider>
       </body>
     </html>
