@@ -1,5 +1,5 @@
 'use client'
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { Perfil } from '@/types'
 import { User } from '@supabase/supabase-js'
@@ -19,6 +19,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [perfil, setPerfil] = useState<Perfil | null>(null)
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
+  // id do usuário já carregado — usado pra ignorar renovações de sessão do mesmo usuário
+  const userIdRef = useRef<string | null>(null)
 
   async function loadPerfil(userId: string, tentativas = 0): Promise<void> {
     const { data } = await supabase
@@ -39,6 +41,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Primeiro carrega a sessão atual
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setUser(session?.user ?? null)
+      userIdRef.current = session?.user?.id ?? null
       if (session?.user) {
         await loadPerfil(session.user.id)
       }
@@ -46,7 +49,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })
 
     // Escuta mudanças de auth (login/logout) — sem await aqui
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      // Renovação de sessão (ou volta à aba) do MESMO usuário: nada mudou, não recarrega.
+      // Antes, cada renovação recarregava o perfil e, com ele, todos os dados da tela.
+      const novoId = session?.user?.id ?? null
+      if (novoId && novoId === userIdRef.current && event !== 'USER_UPDATED') return
+      userIdRef.current = novoId
       setUser(session?.user ?? null)
       if (session?.user) {
         // Carrega perfil em background sem bloquear

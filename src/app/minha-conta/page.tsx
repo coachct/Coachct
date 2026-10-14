@@ -640,6 +640,9 @@ export default function MinhaContaPage() {
   // e a página segue funcionando exatamente como antes.
   // ───────────────────────────────────────────────────────────────────────────
   useEffect(() => {
+    // Conta do ClassPass: a troca não vale pra eles (nunca usaram) e, com dezenas de
+    // reservas abertas, essa checagem item a item sobrecarregava o banco.
+    if (cliente?.is_classpass) { setTrocaInfo({}); return }
     const itens = [
       ...agendamentos.filter((a:any) => ['agendado','confirmado'].includes(a.status))
         .map((a:any) => ({ chave:`ct-${a.id}`,   tipo:'ct',   id:a.id })),
@@ -661,7 +664,7 @@ export default function MinhaContaPage() {
       setTrocaInfo(mapa)
     })()
     return () => { vivo = false }
-  }, [agendamentos, clubReservas])
+  }, [agendamentos, clubReservas, cliente?.is_classpass])
 
   function abrirModalTroca(item: any, info: any) {
     setModalTroca({ item, info })
