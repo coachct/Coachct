@@ -373,7 +373,7 @@ export default function TotemPage() {
   useEffect(() => {
     if (screen !== 'idle' || unidade?.tipo !== 'ct') return
     carregarFeed()
-    const id = setInterval(carregarFeed, 4000)
+    const id = setInterval(carregarFeed, 10000)
     return () => clearInterval(id)
   }, [screen, unidade?.tipo, carregarFeed])
 
@@ -381,7 +381,7 @@ export default function TotemPage() {
   useEffect(() => {
     if (screen !== 'idle' || !unidade || unidade.tipo === 'ct') return
     carregarFeedClub()
-    const id = setInterval(carregarFeedClub, 4000)
+    const id = setInterval(carregarFeedClub, 10000)
     return () => clearInterval(id)
   }, [screen, unidade, carregarFeedClub])
 

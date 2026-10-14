@@ -88,9 +88,8 @@ export default function RecepcaoWalkIn() {
   useEffect(() => {
     setCarregando(true)
     buscar()
-    // Atualiza a cada 3s — garante o "quase instantâneo" pra recepção, sem
-    // depender de config de Realtime/RLS. É a fonte confiável de atualização.
-    const intervalo = setInterval(buscar, 3000)
+    // Atualiza a cada 15s como rede de segurança; o Realtime abaixo traz o evento na hora.
+    const intervalo = setInterval(buscar, 15000)
     const aoFocar = () => buscar()
     window.addEventListener('focus', aoFocar)
 
