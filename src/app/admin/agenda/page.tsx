@@ -62,6 +62,8 @@ export default function AdminAgendaPage() {
   const [abaAtiva, setAbaAtiva] = useState<'agendamentos' | 'grade' | 'recepcao'>('recepcao')
   // 🔧 Relógio interno da aba Recepção: dispara a regra de "sumir 15 min após o horário"
   const [agora, setAgora] = useState<Date>(() => new Date())
+  // 🔧 id do agendamento → momento em que a presença foi marcada à mão nesta tela (faixa fixa)
+  const [presencaManualEm, setPresencaManualEm] = useState<Record<string, number>>({})
   // 🔧 Mapa user_id → { id: coaches.id, nome } — igual à tela de Escala
   const [coachMap, setCoachMap] = useState<Record<string, { id: string; nome: string }>>({})
   // 🔧 Mapa coaches.id → nome (TODOS os coaches, inclusive inativos) — fonte do nome exibido no card
@@ -319,6 +321,8 @@ export default function AdminAgendaPage() {
   async function marcarPresenca(agendamentoId: string) {
     // Aviso ao coach sai pelo trigger do banco (aluno presente + com coach).
     await supabase.from('agendamentos').update({ status: 'realizado' }).eq('id', agendamentoId)
+    setPresencaManualEm(m => ({ ...m, [agendamentoId]: Date.now() }))
+    setAgora(new Date())
     await loadData(true)
   }
 
@@ -457,10 +461,25 @@ export default function AdminAgendaPage() {
   const horariosComAgendamento = Array.from(new Set(agendamentosAtivos.map(a => norm(a.horario)))).sort()
   // treino resolvido: presença já marcada (manual ou check-in) E coach alocado → some da tela
   const treinoResolvido = (a: any) => a.status === 'realizado' && !!a.coach_id
+  // 🔧 Faixa fixa no topo: presença (check-in do app ou manual) fica FIXADO_MIN minutos
+  // antes de sumir, pra dar tempo de ver o aluno e alocar/corrigir o coach.
+  // Check-in usa presenca_checkin_em; manual usa o horário do clique nesta tela.
+  const FIXADO_MIN = 5
+  const momentoPresenca = (a: any): number | null => {
+    if (a.status !== 'realizado') return null
+    if (a.presenca_checkin && a.presenca_checkin_em) return new Date(a.presenca_checkin_em).getTime()
+    return presencaManualEm[a.id] ?? null
+  }
+  const fixadosRecepcao = ehHoje
+    ? agendamentosAtivos
+        .filter(a => { const t = momentoPresenca(a); return t !== null && agora.getTime() - t < FIXADO_MIN * 60000 })
+        .sort((a, b) => (momentoPresenca(b) || 0) - (momentoPresenca(a) || 0))
+    : []
+  const fixadoIds = new Set(fixadosRecepcao.map(a => a.id))
   // próximos treinos: hoje aplica a janela; em outros dias mostra tudo
   const horariosRecepcao = horariosComAgendamento
     .filter(h => !ehHoje || agoraMin < horaParaMin(h) + JANELA_MIN)
-    .filter(h => agendamentosPorHorario(h).some(a => a.status !== 'cancelado' && !treinoResolvido(a)))
+    .filter(h => agendamentosPorHorario(h).some(a => a.status !== 'cancelado' && !treinoResolvido(a) && !fixadoIds.has(a.id)))
   // pendentes: horários já vencidos (hoje) com treino ainda sem presença/falta
   const pendentesRecepcao = ehHoje
     ? agendamentosAtivos.filter(a =>
@@ -471,6 +490,108 @@ export default function AdminAgendaPage() {
   const agendamentosFiltrados = busca
     ? agendamentos.filter(a => a.clientes?.nome?.toLowerCase().includes(busca.toLowerCase()) || a.clientes?.cpf?.includes(busca))
     : null
+
+  // 🔧 Card de um aluno na aba Próximos Treinos (usado na lista por horário e na faixa fixa de check-in)
+  function cardRecepcao(ag: any) {
+    const h = norm(ag.horario)
+    const { label: planoLabel, icon: planoIcon } = parsePlanoKey(ag.tipo_credito || '')
+    const feito = ag.status === 'realizado'
+    const faltou = ag.status === 'falta'
+    const viaCheckin = feito && ag.presenca_checkin
+    const modoErrado = !feito && !faltou && ag.checkin_modo_errado
+    const coachesHorario = coachesPorHorario(h)
+    const agsH = agendamentosPorHorario(h).filter(a => a.status !== 'cancelado')
+    const coachesLivres = coachesHorario.filter(c => !agsH.some(a => a.id !== ag.id && a.coach_id === c.coaches?.id))
+    return (
+      <div key={ag.id} className={`flex flex-col gap-3 md:flex-row md:items-start md:gap-4 rounded-2xl border p-4 shadow-sm border-l-4 ${viaCheckin ? 'border-emerald-200 bg-emerald-50 border-l-emerald-500' : modoErrado ? 'border-amber-200 bg-amber-50 border-l-amber-500' : feito ? 'border-gray-100 bg-white border-l-gray-300 opacity-70' : faltou ? 'border-gray-100 bg-white border-l-orange-400' : ag.coach_id ? 'border-gray-100 bg-white border-l-green-400' : 'border-gray-100 bg-white border-l-primary-400'}`}>
+        {/* mobile: avatar+dados numa linha e ações embaixo; desktop: md:contents mantém o layout original */}
+        <div className="flex min-w-0 items-start gap-3 md:contents">
+        <div className="flex h-10 w-10 md:h-12 md:w-12 flex-shrink-0 items-center justify-center rounded-full bg-primary-100 text-sm font-bold text-primary-800">
+          {ag.clientes?.nome?.slice(0, 2).toUpperCase()}
+        </div>
+        <div className="min-w-0 flex-1">
+          {ag.cliente_id ? (
+            <a href={`/admin/clientes?id=${ag.cliente_id}`} className="block truncate text-lg font-bold text-primary-700 hover:underline">{ag.clientes?.nome || '—'}</a>
+          ) : (
+            <div className="truncate text-lg font-bold text-gray-900">{ag.clientes?.nome || '—'}</div>
+          )}
+          <div className="mt-0.5 text-sm text-gray-500">{planoIcon} {planoLabel}</div>
+          {modoErrado && (
+            <div className="mt-1.5 flex items-start gap-1.5 rounded-lg bg-amber-100/70 px-2 py-1 text-xs font-medium text-amber-800">
+              <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
+              <span>Check-in feito no modo <strong>Musculação Livre</strong> — o certo é <strong>Personal</strong>. Peça pra refazer no app ou marque a presença manual.</span>
+            </div>
+          )}
+          {ag.checkin_fora_janela && (
+            <div className="mt-1.5 flex items-start gap-1.5 rounded-lg bg-sky-100/70 px-2 py-1 text-xs font-medium text-sky-800">
+              <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
+              <span>Check-in às <strong>{horaDe(ag.checkin_fora_janela_em)}</strong> — treinou fora do horário reservado ({h}). Registre o treino no horário real (libera esta vaga) ou cancele a reserva.</span>
+            </div>
+          )}
+          {ag.movido_horario_real_de && (
+            <div className="mt-1 text-xs text-gray-400">Treino movido de {norm(ag.movido_horario_real_de)}</div>
+          )}
+          <div className="mt-2">
+            {!ag.coach_id && coachesLivres.length > 0 && (
+              <select className="input input-sm text-base md:text-xs max-w-full md:max-w-[230px]" defaultValue=""
+                onChange={e => { if (e.target.value) alocarCoach(ag.id, e.target.value) }}
+                disabled={alocandoId === ag.id}>
+                <option value="">Alocar coach...</option>
+                {coachesLivres.map(c => <option key={c.coaches?.id} value={c.coaches?.id}>{c.coaches?.nome}</option>)}
+              </select>
+            )}
+            {ag.coach_id && (
+              <select className="input input-sm text-base md:text-xs max-w-full md:max-w-[230px]" value={ag.coach_id}
+                onChange={e => alocarCoach(ag.id, e.target.value)} disabled={alocandoId === ag.id}>
+                {coachesHorario.map(c => <option key={c.coaches?.id} value={c.coaches?.id}>{c.coaches?.nome}</option>)}
+                <option value="">— Sem coach —</option>
+              </select>
+            )}
+            {!ag.coach_id && coachesLivres.length === 0 && (
+              <span className="text-xs text-gray-400">Nenhum coach livre neste horário</span>
+            )}
+            <button onClick={() => { setModalCorrecao(ag); setCoachCorrecaoSel(ag.coach_id || '') }} className="ml-2 text-xs font-medium text-amber-600 hover:text-amber-700 hover:underline">Corrigir coach</button>
+          </div>
+        </div>
+        </div>
+        {feito || faltou ? (
+          <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 md:flex-shrink-0 md:flex-col md:flex-nowrap md:items-end md:gap-1">
+            {viaCheckin ? (
+              <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700" title={`Presença confirmada pelo check-in ${ag.presenca_checkin_origem === 'totalpass' ? 'TotalPass' : 'Wellhub'}`}>
+                <CheckCircle size={13} /> Check-in confirmado
+              </span>
+            ) : (
+              <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusConfig[ag.status]?.color}`}>
+                {statusConfig[ag.status]?.label}
+              </span>
+            )}
+            <button onClick={() => setModalConfirmar({ ag, acao: feito ? 'falta' : 'presenca' })} className="text-xs font-medium text-gray-500 hover:text-primary-700 hover:underline">
+              Ajustar
+            </button>
+            <button onClick={() => abrirModalHorarioReal(ag)} className="text-xs font-medium text-sky-600 hover:text-sky-700 hover:underline">
+              Treinou em outro horário
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center justify-end gap-2 md:flex-shrink-0 md:flex-col md:flex-nowrap md:items-end">
+            <div className="flex flex-row gap-2">
+              <button onClick={() => setModalConfirmar({ ag, acao: 'presenca' })} className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
+                <CheckCircle size={14} /> Presença
+              </button>
+              <button onClick={() => setModalConfirmar({ ag, acao: 'falta' })} className="btn btn-sm gap-1 text-orange-600 hover:bg-orange-50">
+                <XCircle size={14} /> Falta
+              </button>
+            </div>
+            {ag.checkin_fora_janela && (
+              <button onClick={() => abrirModalHorarioReal(ag)} className="text-xs font-medium text-sky-600 hover:text-sky-700 hover:underline">
+                Treinou em outro horário
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   if (loading || loadingUnidade) return (
     <div className="flex items-center justify-center h-screen">
@@ -774,6 +895,28 @@ export default function AdminAgendaPage() {
                   </div>
                 )}
 
+                {/* Faixa fixa: presença recém-marcada (check-in ou manual) fica FIXADO_MIN min no topo */}
+                {fixadosRecepcao.length > 0 && (
+                  <div className="mb-7 rounded-2xl border-2 border-emerald-300 bg-emerald-50/50 p-3 md:p-4">
+                    <div className="mb-3 flex items-center gap-2 font-semibold text-emerald-800">
+                      <CheckCircle size={18} className="flex-shrink-0" />
+                      Check-in realizado
+                      <span className="text-xs font-normal text-emerald-700/70">fica aqui por {FIXADO_MIN} min</span>
+                    </div>
+                    <div className="space-y-4">
+                      {fixadosRecepcao.map(ag => (
+                        <div key={ag.id}>
+                          <div className="mb-1.5 flex items-baseline gap-2 text-sm text-emerald-900">
+                            <span className="font-mono text-lg font-extrabold text-primary-700">{norm(ag.horario)}</span>
+                            <span>presença às <strong>{new Date(momentoPresenca(ag) || 0).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</strong></span>
+                          </div>
+                          {cardRecepcao(ag)}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {horariosRecepcao.length === 0 ? (
                   <div className="card py-12 text-center text-sm text-gray-400">
                     {ehHoje ? 'Nenhum próximo treino no momento. 🎉' : 'Nenhum agendamento para este dia.'}
@@ -782,8 +925,8 @@ export default function AdminAgendaPage() {
                   <div className="space-y-7">
                     {horariosRecepcao.map(h => {
                       const todosDoHorario = agendamentosPorHorario(h).filter(a => a.status !== 'cancelado')
-                      const cards = todosDoHorario.filter(a => !treinoResolvido(a))
-                      const resolvidos = todosDoHorario.length - cards.length
+                      const cards = todosDoHorario.filter(a => !treinoResolvido(a) && !fixadoIds.has(a.id))
+                      const resolvidos = todosDoHorario.filter(a => treinoResolvido(a)).length
                       if (cards.length === 0) return null
                       return (
                         <div key={h}>
@@ -795,105 +938,7 @@ export default function AdminAgendaPage() {
                             )}
                           </div>
                           <div className="space-y-3">
-                            {cards.map(ag => {
-                              const { label: planoLabel, icon: planoIcon } = parsePlanoKey(ag.tipo_credito || '')
-                              const feito = ag.status === 'realizado'
-                              const faltou = ag.status === 'falta'
-                              const viaCheckin = feito && ag.presenca_checkin
-                              const modoErrado = !feito && !faltou && ag.checkin_modo_errado
-                              const coachesHorario = coachesPorHorario(h)
-                              const agsH = agendamentosPorHorario(h).filter(a => a.status !== 'cancelado')
-                              const coachesLivres = coachesHorario.filter(c => !agsH.some(a => a.id !== ag.id && a.coach_id === c.coaches?.id))
-                              return (
-                                <div key={ag.id} className={`flex flex-col gap-3 md:flex-row md:items-start md:gap-4 rounded-2xl border p-4 shadow-sm border-l-4 ${viaCheckin ? 'border-emerald-200 bg-emerald-50 border-l-emerald-500' : modoErrado ? 'border-amber-200 bg-amber-50 border-l-amber-500' : feito ? 'border-gray-100 bg-white border-l-gray-300 opacity-70' : faltou ? 'border-gray-100 bg-white border-l-orange-400' : ag.coach_id ? 'border-gray-100 bg-white border-l-green-400' : 'border-gray-100 bg-white border-l-primary-400'}`}>
-                                  {/* mobile: avatar+dados numa linha e ações embaixo; desktop: md:contents mantém o layout original */}
-                                  <div className="flex min-w-0 items-start gap-3 md:contents">
-                                  <div className="flex h-10 w-10 md:h-12 md:w-12 flex-shrink-0 items-center justify-center rounded-full bg-primary-100 text-sm font-bold text-primary-800">
-                                    {ag.clientes?.nome?.slice(0, 2).toUpperCase()}
-                                  </div>
-                                  <div className="min-w-0 flex-1">
-                                    {ag.cliente_id ? (
-                                      <a href={`/admin/clientes?id=${ag.cliente_id}`} className="block truncate text-lg font-bold text-primary-700 hover:underline">{ag.clientes?.nome || '—'}</a>
-                                    ) : (
-                                      <div className="truncate text-lg font-bold text-gray-900">{ag.clientes?.nome || '—'}</div>
-                                    )}
-                                    <div className="mt-0.5 text-sm text-gray-500">{planoIcon} {planoLabel}</div>
-                                    {modoErrado && (
-                                      <div className="mt-1.5 flex items-start gap-1.5 rounded-lg bg-amber-100/70 px-2 py-1 text-xs font-medium text-amber-800">
-                                        <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
-                                        <span>Check-in feito no modo <strong>Musculação Livre</strong> — o certo é <strong>Personal</strong>. Peça pra refazer no app ou marque a presença manual.</span>
-                                      </div>
-                                    )}
-                                    {ag.checkin_fora_janela && (
-                                      <div className="mt-1.5 flex items-start gap-1.5 rounded-lg bg-sky-100/70 px-2 py-1 text-xs font-medium text-sky-800">
-                                        <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
-                                        <span>Check-in às <strong>{horaDe(ag.checkin_fora_janela_em)}</strong> — treinou fora do horário reservado ({h}). Registre o treino no horário real (libera esta vaga) ou cancele a reserva.</span>
-                                      </div>
-                                    )}
-                                    {ag.movido_horario_real_de && (
-                                      <div className="mt-1 text-xs text-gray-400">Treino movido de {norm(ag.movido_horario_real_de)}</div>
-                                    )}
-                                    <div className="mt-2">
-                                      {!ag.coach_id && coachesLivres.length > 0 && (
-                                        <select className="input input-sm text-base md:text-xs max-w-full md:max-w-[230px]" defaultValue=""
-                                          onChange={e => { if (e.target.value) alocarCoach(ag.id, e.target.value) }}
-                                          disabled={alocandoId === ag.id}>
-                                          <option value="">Alocar coach...</option>
-                                          {coachesLivres.map(c => <option key={c.coaches?.id} value={c.coaches?.id}>{c.coaches?.nome}</option>)}
-                                        </select>
-                                      )}
-                                      {ag.coach_id && (
-                                        <select className="input input-sm text-base md:text-xs max-w-full md:max-w-[230px]" value={ag.coach_id}
-                                          onChange={e => alocarCoach(ag.id, e.target.value)} disabled={alocandoId === ag.id}>
-                                          {coachesHorario.map(c => <option key={c.coaches?.id} value={c.coaches?.id}>{c.coaches?.nome}</option>)}
-                                          <option value="">— Sem coach —</option>
-                                        </select>
-                                      )}
-                                      {!ag.coach_id && coachesLivres.length === 0 && (
-                                        <span className="text-xs text-gray-400">Nenhum coach livre neste horário</span>
-                                      )}
-                                      <button onClick={() => { setModalCorrecao(ag); setCoachCorrecaoSel(ag.coach_id || '') }} className="ml-2 text-xs font-medium text-amber-600 hover:text-amber-700 hover:underline">Corrigir coach</button>
-                                    </div>
-                                  </div>
-                                  </div>
-                                  {feito || faltou ? (
-                                    <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 md:flex-shrink-0 md:flex-col md:flex-nowrap md:items-end md:gap-1">
-                                      {viaCheckin ? (
-                                        <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700" title={`Presença confirmada pelo check-in ${ag.presenca_checkin_origem === 'totalpass' ? 'TotalPass' : 'Wellhub'}`}>
-                                          <CheckCircle size={13} /> Check-in confirmado
-                                        </span>
-                                      ) : (
-                                        <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusConfig[ag.status]?.color}`}>
-                                          {statusConfig[ag.status]?.label}
-                                        </span>
-                                      )}
-                                      <button onClick={() => setModalConfirmar({ ag, acao: feito ? 'falta' : 'presenca' })} className="text-xs font-medium text-gray-500 hover:text-primary-700 hover:underline">
-                                        Ajustar
-                                      </button>
-                                      <button onClick={() => abrirModalHorarioReal(ag)} className="text-xs font-medium text-sky-600 hover:text-sky-700 hover:underline">
-                                        Treinou em outro horário
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <div className="flex flex-wrap items-center justify-end gap-2 md:flex-shrink-0 md:flex-col md:flex-nowrap md:items-end">
-                                      <div className="flex flex-row gap-2">
-                                        <button onClick={() => setModalConfirmar({ ag, acao: 'presenca' })} className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
-                                          <CheckCircle size={14} /> Presença
-                                        </button>
-                                        <button onClick={() => setModalConfirmar({ ag, acao: 'falta' })} className="btn btn-sm gap-1 text-orange-600 hover:bg-orange-50">
-                                          <XCircle size={14} /> Falta
-                                        </button>
-                                      </div>
-                                      {ag.checkin_fora_janela && (
-                                        <button onClick={() => abrirModalHorarioReal(ag)} className="text-xs font-medium text-sky-600 hover:text-sky-700 hover:underline">
-                                          Treinou em outro horário
-                                        </button>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              )
-                            })}
+                            {cards.map(ag => cardRecepcao(ag))}
                           </div>
                         </div>
                       )
