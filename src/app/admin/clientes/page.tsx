@@ -1704,11 +1704,13 @@ function AdminClientesPageInner() {
                                         {pendente && <span className="text-xs px-2 py-0.5 rounded-full bg-orange-200 text-orange-800 font-semibold flex items-center gap-1"><Clock size={10} /> Aguardando aceite</span>}
                                       </div>
                                       <div className="text-xs text-gray-500 mt-0.5">{pd?.creditos_mes} sessões/mês{!pendente && saldo && <> · <span className="font-bold text-primary-600">{saldo.disponivel}</span> disponível este mês</>}</div>
+                                      {pd?.tipo === 'coach_ct_pro' && <div className="text-xs text-gray-500 mt-0.5">Vencimento: <strong className={cp.fim && cp.fim < dataLocalStr(new Date()) ? 'text-red-600' : 'text-amber-700'}>{cp.fim ? formatarBR(cp.fim) : '—'}</strong></div>}
                                       {cp.contrato_aceito_em && !pendente && <div className="text-xs text-gray-400 mt-0.5">Termo aceito em {new Date(cp.contrato_aceito_em).toLocaleDateString('pt-BR')}</div>}
                                       {pendente && cp.token_expira_em && <div className="text-xs text-orange-700 mt-1">Link válido até {new Date(cp.token_expira_em).toLocaleDateString('pt-BR')}</div>}
                                     </div>
                                     <div className="flex flex-col gap-1 flex-shrink-0">
                                       {pendente && <button onClick={() => reenviarLinkAceite(cp)} className="btn btn-sm gap-1 bg-orange-500 text-white hover:bg-orange-600"><LinkIcon size={11} /> Ver link</button>}
+                                      {pd?.tipo === 'coach_ct_pro' && <button onClick={() => abrirAjusteVencimento(cp)} className="btn btn-sm gap-1 text-amber-700 hover:bg-amber-50"><Edit2 size={11} /> Ajustar</button>}
                                       <button onClick={() => desativarPlano(cp.id)} className="btn btn-sm gap-1 text-red-500 hover:bg-red-50"><Trash2 size={12} /> Desativar</button>
                                     </div>
                                   </div>
@@ -2435,7 +2437,7 @@ function AdminClientesPageInner() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <div className="font-bold text-gray-900 flex items-center gap-2"><CalendarClock size={18} className="text-amber-600" /> Ajustar vencimento</div>
-                <div className="text-xs text-gray-400 mt-0.5">{modalVencimento.produtos?.nome}</div>
+                <div className="text-xs text-gray-400 mt-0.5">{modalVencimento.produtos?.nome || modalVencimento.planos_disponiveis?.nome}</div>
               </div>
               <button onClick={() => setModalVencimento(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
