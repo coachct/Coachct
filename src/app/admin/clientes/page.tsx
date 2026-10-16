@@ -199,6 +199,7 @@ function AdminClientesPageInner() {
   const [saldoMes, setSaldoMes] = useState<Record<string, any>>({})
   const [vendas, setVendas] = useState<any[]>([])
   const [planosCliente, setPlanosCliente] = useState<any[]>([])
+  const [usoPro, setUsoPro] = useState<Record<string, number>>({})
   const [planosDisponiveis, setPlanosDisponiveis] = useState<any[]>([])
   const [todasUnidades, setTodasUnidades] = useState<any[]>([])
 
@@ -416,12 +417,27 @@ function AdminClientesPageInner() {
 
   async function carregarPlanosCliente(clienteId: string) {
     const { data } = await supabase.from('cliente_planos').select(`
-      id, ativo, contrato_aceito_em, inicio, fim, produto_id, venda_id,
+      id, ativo, contrato_aceito_em, inicio, fim, contar_desde, produto_id, venda_id,
       aceite_pendente, token_aceite, token_expira_em,
-      planos_disponiveis(id, nome, tipo, creditos_mes, unidade_id, unidades(id, nome, tipo)),
+      planos_disponiveis(id, nome, tipo, creditos_mes, total_creditos, unidade_id, unidades(id, nome, tipo)),
       produtos(id, nome, subtipo, unidade_id, unidades(id, nome, tipo), dias_validade)
     `).eq('cliente_id', clienteId).order('contrato_aceito_em', { ascending: false })
     setPlanosCliente(data || [])
+
+    // Uso do PRO: mesma conta da RPC app_pro_oferta — reservas coach_ct_pro_* da unidade
+    // entre início e fim, menos canceladas (falta conta), a partir de contar_desde.
+    const uso: Record<string, number> = {}
+    for (const cp of (data || []) as any[]) {
+      const pd = cp.planos_disponiveis
+      if (!cp.ativo || pd?.tipo !== 'coach_ct_pro' || !pd.total_creditos || !cp.inicio || !cp.fim) continue
+      let q = supabase.from('agendamentos').select('id', { count: 'exact', head: true })
+        .eq('cliente_id', clienteId).eq('unidade_id', pd.unidade_id).like('tipo_credito', 'coach_ct_pro_%')
+        .gte('data', cp.inicio).lte('data', cp.fim).neq('status', 'cancelado')
+      if (cp.contar_desde) q = q.gte('criado_em', cp.contar_desde)
+      const { count } = await q
+      uso[cp.id] = count || 0
+    }
+    setUsoPro(uso)
   }
 
   async function carregarAvulsos(clienteId: string) {
@@ -1703,7 +1719,9 @@ function AdminClientesPageInner() {
                                         <span className="text-sm font-medium text-gray-900">{pd?.nome}</span>
                                         {pendente && <span className="text-xs px-2 py-0.5 rounded-full bg-orange-200 text-orange-800 font-semibold flex items-center gap-1"><Clock size={10} /> Aguardando aceite</span>}
                                       </div>
-                                      <div className="text-xs text-gray-500 mt-0.5">{pd?.creditos_mes} sessões/mês{!pendente && saldo && <> · <span className="font-bold text-primary-600">{saldo.disponivel}</span> disponível este mês</>}</div>
+                                      {pd?.tipo === 'coach_ct_pro' && pd.total_creditos
+                                        ? <div className="text-xs text-gray-500 mt-0.5"><span className="font-bold text-primary-600">{Math.max(0, pd.total_creditos - (usoPro[cp.id] || 0))}</span> de {pd.total_creditos} disponíveis</div>
+                                        : <div className="text-xs text-gray-500 mt-0.5">{pd?.creditos_mes} sessões/mês{!pendente && saldo && <> · <span className="font-bold text-primary-600">{saldo.disponivel}</span> disponível este mês</>}</div>}
                                       {pd?.tipo === 'coach_ct_pro' && <div className="text-xs text-gray-500 mt-0.5">Vencimento: <strong className={cp.fim && cp.fim < dataLocalStr(new Date()) ? 'text-red-600' : 'text-amber-700'}>{cp.fim ? formatarBR(cp.fim) : '—'}</strong></div>}
                                       {cp.contrato_aceito_em && !pendente && <div className="text-xs text-gray-400 mt-0.5">Termo aceito em {new Date(cp.contrato_aceito_em).toLocaleDateString('pt-BR')}</div>}
                                       {pendente && cp.token_expira_em && <div className="text-xs text-orange-700 mt-1">Link válido até {new Date(cp.token_expira_em).toLocaleDateString('pt-BR')}</div>}
