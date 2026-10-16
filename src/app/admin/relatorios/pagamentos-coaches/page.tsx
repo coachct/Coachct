@@ -22,6 +22,20 @@ function formatarData(d: string) {
   return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR')
 }
 
+// Club fecha no dia 15: ciclo = dia 16 de um mês → dia 15 do mês seguinte.
+// Transição: o primeiro ciclo é proporcional, de 01/10/2026 a 15/10/2026.
+// O CT continua fechando por mês cheio.
+const INICIO_CICLO_CLUB = '2026-10-01'
+
+function cicloClub(ref: Date, voltar = 0) {
+  // Ciclo que contém `ref`; `voltar` = quantos ciclos para trás
+  const base = ref.getDate() >= 16 ? ref.getMonth() : ref.getMonth() - 1
+  const ini = new Date(ref.getFullYear(), base - voltar, 16)
+  const fim = new Date(ref.getFullYear(), base - voltar + 1, 15)
+  const inicio = dataLocalStr(ini)
+  return { inicio: inicio < INICIO_CICLO_CLUB ? INICIO_CICLO_CLUB : inicio, fim: dataLocalStr(fim) }
+}
+
 // Horas do professor (unidade CT) — mesma regra usada no relatório individual, no
 // consolidado e na rescisão (admin/coaches). Mora em @/lib/pagamento-coach para as
 // duas telas nunca divergirem: dia útil = grade fixa + grade extra; feriado/FDS = horas
@@ -38,7 +52,9 @@ export default function PagamentosCoachesPage() {
   const [unidadesSel,  setUnidadesSel]  = useState<any[]>([])
   const [coaches,      setCoaches]      = useState<any[]>([])
   const [coachSel,     setCoachSel]     = useState<any>(null)
-  const [filtro,       setFiltro]       = useState<'hoje'|'7dias'|'mes'|'mes_ant'|'custom'>('mes')
+  const [filtro,       setFiltro]       = useState<'hoje'|'7dias'|'mes'|'mes_ant'|'ciclo'|'ciclo_ant'|'custom'>('mes')
+  // Vencimento da despesa do Club: escolhido na hora de lançar
+  const [vencClub,     setVencClub]     = useState('')
   const [inicio,       setInicio]       = useState('')
   const [fim,          setFim]          = useState('')
   const [aulas,        setAulas]        = useState<any[]>([])
@@ -56,6 +72,9 @@ export default function PagamentosCoachesPage() {
   const modoMulti  = unidadesSel.length > 1
   const unidadeSel = unidadesSel.length === 1 ? unidadesSel[0] : null
   const chaveUnidades = unidadesSel.map(u => u.id).join(',')
+  // Só unidades Club marcadas → período por ciclo (16→15) em vez de mês
+  const soClub = unidadesSel.length > 0 && unidadesSel.every(u => u.tipo !== 'ct')
+  const faltaVencClub = soClub && !vencClub
 
   useEffect(() => {
     if (!loading && perfil && perfil.role !== 'admin' && perfil.role !== 'coordenadora') router.push('/')
@@ -64,6 +83,12 @@ export default function PagamentosCoachesPage() {
   useEffect(() => { if (perfil) carregarUnidades() }, [perfil])
   useEffect(() => { if (unidadesSel.length) carregarCoaches() }, [chaveUnidades])
   useEffect(() => { aplicarFiltroRapido(filtro) }, [filtro])
+  useEffect(() => {
+    // Troca o filtro padrão quando muda entre Club e CT
+    setFiltro(f => soClub
+      ? (f === 'mes' ? 'ciclo' : f === 'mes_ant' ? 'ciclo_ant' : f)
+      : (f === 'ciclo' ? 'mes' : f === 'ciclo_ant' ? 'mes_ant' : f))
+  }, [soClub])
   useEffect(() => { if (coachSel && inicio && fim) carregarAulas() }, [coachSel?.id, inicio, fim])
   useEffect(() => {
     if (modoMulti && inicio && fim) carregarConsolidado()
@@ -121,6 +146,9 @@ export default function PagamentosCoachesPage() {
       const ini = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1)
       const fim = new Date(hoje.getFullYear(), hoje.getMonth(), 0)
       setInicio(dataLocalStr(ini)); setFim(dataLocalStr(fim))
+    } else if (f === 'ciclo' || f === 'ciclo_ant') {
+      const c = cicloClub(hoje, f === 'ciclo_ant' ? 1 : 0)
+      setInicio(c.inicio); setFim(c.fim)
     }
   }
 
@@ -433,12 +461,15 @@ export default function PagamentosCoachesPage() {
     if (error) return { pagou: false, erro: error.message, total }
 
     // 2) Reflete no financeiro como despesa (origem=coach)
-    // competência = mês trabalhado (do início do período); vencimento = dia 01 do mês seguinte
+    // competência = mês trabalhado (do início do período)
+    // vencimento: CT = dia 01 do mês seguinte; Club = data escolhida na hora de lançar
     const [iy, im] = inicio.split('-').map(Number)
     const competencia = `${iy}-${String(im).padStart(2, '0')}-01`
     const proxAno = im === 12 ? iy + 1 : iy
     const proxMes = im === 12 ? 1 : im + 1
-    const vencimento = `${proxAno}-${String(proxMes).padStart(2, '0')}-01`
+    const vencimento = p.unidade.tipo !== 'ct' && vencClub
+      ? vencClub
+      : `${proxAno}-${String(proxMes).padStart(2, '0')}-01`
 
     const { data: catCoach } = await supabase.from('categorias_despesa')
       .select('id').eq('nome', 'Coaches').maybeSingle()
@@ -459,7 +490,7 @@ export default function PagamentosCoachesPage() {
   }
 
   async function lancarDespesa() {
-    if (!coachSel || !unidadeSel || totalFinal <= 0) return
+    if (!coachSel || !unidadeSel || totalFinal <= 0 || faltaVencClub) return
     setLancando(true)
 
     const r = await lancarPagamentoUnidade({
@@ -487,7 +518,7 @@ export default function PagamentosCoachesPage() {
   // cada uma com o valor daquela unidade.
   async function lancarConsolidado() {
     const l = consolidado.find((c: any) => c.id === coachSel?.id)
-    if (!coachSel || !l) return
+    if (!coachSel || !l || faltaVencClub) return
     setLancandoCons(true)
 
     const ok: string[] = []
@@ -519,6 +550,14 @@ export default function PagamentosCoachesPage() {
   }
 
   function showMsg(texto: string) { setMsg(texto); setTimeout(() => setMsg(''), 5000) }
+
+  const campoVencClub = soClub && (
+    <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-3">
+      <label className="text-xs font-medium text-gray-600">Vencimento da despesa</label>
+      <input type="date" className="input text-base md:text-sm md:w-48" value={vencClub} onChange={e => setVencClub(e.target.value)}/>
+      {!vencClub && <span className="text-xs text-orange-600">Escolha o vencimento para lançar.</span>}
+    </div>
+  )
 
   if (loading) return (
     <div className="flex items-center justify-center h-screen">
@@ -586,8 +625,13 @@ export default function PagamentosCoachesPage() {
               {([
                 { key: 'hoje',   label: 'Hoje' },
                 { key: '7dias',  label: 'Últimos 7 dias' },
-                { key: 'mes',    label: 'Mês atual' },
-                { key: 'mes_ant',label: 'Mês anterior' },
+                ...(soClub ? [
+                  { key: 'ciclo',     label: 'Ciclo atual (16→15)' },
+                  { key: 'ciclo_ant', label: 'Ciclo anterior' },
+                ] as const : [
+                  { key: 'mes',    label: 'Mês atual' },
+                  { key: 'mes_ant',label: 'Mês anterior' },
+                ] as const),
                 { key: 'custom', label: 'Personalizado' },
               ] as const).map(f => (
                 <button key={f.key}
@@ -773,11 +817,13 @@ export default function PagamentosCoachesPage() {
                 </div>
               </div>
 
+              {campoVencClub}
+
               <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4">
                 <div className="min-w-0 text-xs text-gray-400">
                   Não inclui salário fixo — para incluir, lance por uma unidade só.
                 </div>
-                <button onClick={lancarConsolidado} disabled={lancandoCons}
+                <button onClick={lancarConsolidado} disabled={lancandoCons || faltaVencClub}
                   className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-primary-600 text-white text-sm font-semibold hover:bg-primary-700 transition-all disabled:opacity-60 flex-shrink-0">
                   <DollarSign size={15}/>
                   {lancandoCons
@@ -930,6 +976,8 @@ export default function PagamentosCoachesPage() {
                     </div>
                   </div>
                 ) : (
+                  <div className="space-y-3">
+                  {campoVencClub}
                   <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4">
                     <div className="min-w-0">
                       <div className="text-sm font-semibold text-gray-900">Lançar como despesa</div>
@@ -937,11 +985,12 @@ export default function PagamentosCoachesPage() {
                         Cria um registro de <strong>R$ {totalFinal.toFixed(2).replace('.', ',')}</strong> em contas a pagar para {coachSel.nome}
                       </div>
                     </div>
-                    <button onClick={lancarDespesa} disabled={lancando}
+                    <button onClick={lancarDespesa} disabled={lancando || faltaVencClub}
                       className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-primary-600 text-white text-sm font-semibold hover:bg-primary-700 transition-all disabled:opacity-60 flex-shrink-0">
                       <DollarSign size={15}/>
                       {lancando ? 'Lançando...' : 'Lançar despesa'}
                     </button>
+                  </div>
                   </div>
                 )}
               </div>
