@@ -152,9 +152,23 @@ function semCanalExterno(texto: string): string {
   return t
 }
 
+// TRAVA DETERMINÍSTICA: promessa de opções/valores SEM conteúdo. O modelo às vezes escreve
+// "Aqui estão as opções que se aplicam pra você!" e NÃO lista nada (nem preço, nem link) —
+// promessa vazia. Se a resposta promete mostrar opções/valores mas não traz nenhum "R$" nem
+// o link do site, a gente anexa o link do /comprar pra nunca deixar o cliente no vácuo.
+const RE_PROMETE_LISTA = /(aqui est[ãa]o as op[çc][õo]es|seguem as op[çc][õo]es|as op[çc][õo]es que se aplicam|vou te (mostrar|passar|listar)\s+(os|as)\s+(valores|op[çc][õo]es|planos)|te mostr[oa]\s+(os|as)\s+(valores|op[çc][õo]es|planos)|segue(m)? os valores)/i
+const RE_TEM_PRECO_OU_LINK = /R\$|justclubct\.com\.br/i
+function garantirLinkPlanos(texto: string): string {
+  const t = String(texto || '')
+  if (RE_PROMETE_LISTA.test(t) && !RE_TEM_PRECO_OU_LINK.test(t)) {
+    return t.replace(/\s*$/, '') + '\n\nDá uma olhada em todos os valores (e já dá pra comprar) aqui 👉 https://www.justclubct.com.br/comprar 😊'
+  }
+  return t
+}
+
 /** Passada determinística final aplicada a TODA resposta enviada ao cliente. */
 function finalizarTexto(texto: string, contextoCancel = false): string {
-  return semCanalExterno(semTelefoneInventado(limparMecanicaCancel(texto, contextoCancel)))
+  return garantirLinkPlanos(semCanalExterno(semTelefoneInventado(limparMecanicaCancel(texto, contextoCancel))))
 }
 
 // TRAVA DETERMINÍSTICA: NUNCA falar de multa NEM de cartão (garantia) se o cliente não
@@ -1208,7 +1222,7 @@ Duas regras andam JUNTAS: (A) NUNCA invente — só afirme um fato se ele veio d
 
 # O que fazer
 - Responda dúvidas GERAIS normalmente: modalidades (Lift, Lift for Girls, Running + Funcional, Coach CT, musculação livre), endereços, horários e a base abaixo.
-- PLANOS/PREÇOS (REGRA): quando perguntarem de forma GERAL sobre planos/valores, NÃO despeje uma tabela enorme — mande o LINK da página de planos: "Dá uma olhada nos planos aqui 👉 https://www.justclubct.com.br/comprar — lá tem todos os valores e dá pra comprar! 😊". Só cite um valor específico se perguntarem de UM item (use consultar_precos — nunca chute; ela já traz só o que é vendido no site).
+- PLANOS/PREÇOS (REGRA): quando perguntarem de forma GERAL sobre planos/valores, NÃO despeje uma tabela enorme — mande o LINK da página de planos: "Dá uma olhada nos planos aqui 👉 https://www.justclubct.com.br/comprar — lá tem todos os valores e dá pra comprar! 😊". Só cite um valor específico se perguntarem de UM item (use consultar_precos — nunca chute; ela já traz só o que é vendido no site). É PROIBIDO oferecer "quer que eu te mostre os valores?" e PROIBIDO escrever "aqui estão as opções"/"seguem os valores" sem de fato listar — pra valores de planos/pacotes a resposta é SEMPRE o link do /comprar. Se a pessoa pedir pra ver os valores, mande o link (não prometa uma lista que você não vai escrever).
 - REGRA DE CANCELAMENTO na ORDEM CERTA (pergunta geral): "quanto tempo antes posso cancelar sem multa?" → responda curto e na ordem: "cancela SEM multa até 12h antes; se tiver fila de espera, exceção até 3h antes". NUNCA lidere com "3 horas" nem diga que 3h antes é o prazo sem multa (o grátis é 12h; 3h é só a exceção com fila). Vale igual pro Coach CT e pras aulas do JustClub.
 - NÃO OFEREÇA CANCELAR NO VÁCUO (REGRA): se a pessoa diz que tem uma aula e não vai conseguir ir, NÃO recite a regra das 3h/12h como se cancelar fosse uma opção nem peça CPF pra "cancelar" antes de saber se dá. Se a aula é DAQUI A POUCO — falta menos de 3h (ex.: te escreve 18:01 sobre uma aula das 18:30) — é FATO que o prazo de cancelamento (mínimo 3h) já passou: responda UMA linha curta e gentil ("poxa 🙏 pelo horário, não dá mais pra cancelar essa reserva"), sem oferecer cancelar nem pedir CPF. É PROIBIDO emendar multa, valor de multa (R$ 99 / R$ 49,90) ou "vai contar como falta" — isso é proativo e chateia. Só fale de multa/cobrança SE a pessoa PERGUNTAR.
 - OBJETO ESQUECIDO / PERDIDO (resposta pronta e ÚNICA, NÃO transfira): se a pessoa disser que esqueceu/perdeu algo no Studio (garrafa, roupa, chave...), NÃO transfira pra equipe nem fique perguntando unidade — responda direto: itens esquecidos ficam guardados na recepção da unidade, é só passar lá pessoalmente pra retirar. Encerre nisso. PROIBIDO INVENTAR LOGÍSTICA: a gente NÃO oferece retirada/entrega do objeto — NUNCA sugira "chamar um Uber pra buscar", motoboy, delivery, "a equipe entrega/resolve" nem "manda alguém que a gente entrega". Nada disso existe: retirada é SÓ pessoalmente na recepção. Se perguntarem de Uber/mandar outra pessoa, seja honesto: guardamos na recepção, mas a retirada é por conta da pessoa — não coordenamos entrega nem passamos o objeto a terceiros. NUNCA embeleze com uma "opção a mais" inventada.
