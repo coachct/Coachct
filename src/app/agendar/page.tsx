@@ -1331,7 +1331,9 @@ export default function AgendarPage() {
                 ? <><div style={{ color: AMARELO, fontWeight: 600, marginBottom: 4 }}>⏳ Há fila de espera para este horário</div><div style={{ color: '#888' }}>Cancelamento gratuito <strong style={{ color: '#fff' }}>até 3h antes</strong>. Abaixo de 3h: <strong style={{ color: '#ff4444' }}>bloqueado</strong>.</div></>
                 : temBeneficiosPro
                   ? <div style={{ color: '#555' }}>⚠️ Cancelamento gratuito <strong style={{ color: '#888' }}>até 3h antes</strong>. Falta ou não realização do check-in gera bloqueio.</div>
-                  : <div style={{ color: '#555' }}>⚠️ Voce pode cancelar o seu treino com 12hrs de antecedencia. Cuidado, faltas geram um valor de no-show de R$99,00</div>
+                  : (tipoCredito && !tipoCredito.startsWith('wellhub_') && !tipoCredito.startsWith('totalpass_'))
+                    ? <div style={{ color: '#555' }}>⚠️ Cancelamento em <strong style={{ color: '#888' }}>até 12hr</strong> o crédito volta para você, após esse prazo <strong style={{ color: '#aaa' }}>o crédito será consumido</strong> em caso de falta.</div>
+                    : <div style={{ color: '#555' }}>⚠️ Voce pode cancelar o seu treino com 12hrs de antecedencia. Cuidado, faltas geram um valor de no-show de R$99,00</div>
               }
             </div>
             {faltaVinculoWellhub(tipoCredito) && (
