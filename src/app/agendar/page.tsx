@@ -207,6 +207,7 @@ export default function AgendarPage() {
   const [filaGeral, setFilaGeral] = useState<any[]>([])
   const [modalSlot, setModalSlot] = useState<{ data: string; hora: string; vagas: number } | null>(null)
   const [tipoCredito, setTipoCredito] = useState<string>('')
+  const [wellhubEmailInput, setWellhubEmailInput] = useState('')
   const [coachEscolhido, setCoachEscolhido] = useState<string>('')
   const [coachesDisponiveis, setCoachesDisponiveis] = useState<{ id: string; nome: string }[]>([])
   const [confirmando, setConfirmando] = useState(false)
@@ -551,8 +552,18 @@ export default function AgendarPage() {
     const dataStr = dataLocalStr(diasSemana[diaSel])
     setModalSlot({ data: dataStr, hora, vagas })
     setTipoCredito(''); setCoachEscolhido(''); setCoachesDisponiveis([]); setErroModal('')
+    // NÃO pré-preencher com o email da conta (mesma regra do /aulas): quase nunca é o
+    // email do Wellhub, e a pessoa confirmava o errado sem perceber.
+    setWellhubEmailInput(cliente?.wellhub_email || '')
     if (!contratoAssinado) setMostrarContrato(true)
   }
+
+  // Wellhub sem vínculo (sem wellhub_id nem wellhub_email): o check-in não casa com a
+  // reserva e a trava do modo errado (Musculação no lugar de Personal) não pega.
+  function faltaVinculoWellhub(tipo: string) {
+    return tipo.startsWith('wellhub_') && !cliente?.wellhub_id && !cliente?.wellhub_email
+  }
+  const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
 
   function abrirModalFila(hora: string) {
     const dataStr = dataLocalStr(diasSemana[diaSel])
@@ -619,6 +630,10 @@ export default function AgendarPage() {
       setModalAvisoFaltas(true)
       return
     }
+    if (faltaVinculoWellhub(tipoCredito) && !EMAIL_RE.test(wellhubEmailInput.trim())) {
+      setErroModal('Informe o email que você usa no Wellhub — é o que valida seu check-in na chegada.')
+      return
+    }
     const ehParceiro = tipoCredito.startsWith('wellhub_') || tipoCredito.startsWith('totalpass_')
     if (ehParceiro && !termoOk && !termoCtAssinado) {
       pedirTermoCt(tipoCredito, () => handleConfirmarReserva(true, true))
@@ -679,6 +694,25 @@ export default function AgendarPage() {
       const { label } = parsePlanoKey(tipoCredito)
       setErroModal(`Você está na fila de espera de ${label} neste dia. Saia da fila antes de agendar.`)
       setConfirmando(false); return
+    }
+    // Wellhub sem vínculo: EXIGE o email do Wellhub (igual ao /aulas). É o que casa o
+    // check-in com a reserva na chegada. Uma vez informado, nunca mais pede.
+    if (faltaVinculoWellhub(tipoCredito)) {
+      const e = wellhubEmailInput.trim().toLowerCase()
+      if (!EMAIL_RE.test(e)) {
+        setErroModal('Informe o email que você usa no Wellhub — é o que valida seu check-in na chegada.')
+        setConfirmando(false); return
+      }
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const r = await fetch('/api/conta/wellhub-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+          body: JSON.stringify({ email: e }),
+        }).then((x) => x.json()).catch(() => ({}))
+        if (!r?.ok) { setErroModal('Não deu pra salvar o email do Wellhub. Tente de novo.'); setConfirmando(false); return }
+        setCliente((prev: any) => (prev ? { ...prev, wellhub_email: e } : prev))
+      } catch { setErroModal('Não deu pra salvar o email do Wellhub. Tente de novo.'); setConfirmando(false); return }
     }
     const payload: any = { cliente_id: cliente.id, data: modalSlot.data, horario: modalSlot.hora + ':00', status: 'agendado', tipo_credito: tipoCredito, unidade_id: unidadeAtiva.id, criado_via: 'cliente' }
     if (temBeneficiosPro && coachEscolhido) { payload.coach_id = coachEscolhido; payload.alocado_por = perfil?.id || null; payload.alocado_em = new Date().toISOString() }
@@ -1300,6 +1334,23 @@ export default function AgendarPage() {
                   : <div style={{ color: '#555' }}>⚠️ Voce pode cancelar o seu treino com 12hrs de antecedencia. Cuidado, faltas geram um valor de no-show de R$99,00</div>
               }
             </div>
+            {faltaVinculoWellhub(tipoCredito) && (
+              <div style={{ background: '#12081a', border: '1px solid #ff2d9b44', borderRadius: 10, padding: '0.9rem 1rem', marginBottom: '1rem' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#ff5aa6', marginBottom: 6 }}>💜 Confirme seu email do Wellhub</div>
+                <div style={{ fontSize: 12, color: '#888', lineHeight: 1.5, marginBottom: 10 }}>
+                  É o email que você usa no app do Wellhub — precisamos dele pra validar seu check-in na chegada, sem fila. (Você só informa uma vez.)
+                </div>
+                <input type="email" inputMode="email" value={wellhubEmailInput} onChange={(ev) => { setWellhubEmailInput(ev.target.value); setErroModal('') }}
+                  placeholder="email do app Wellhub"
+                  style={{ width: '100%', background: '#0a0a0a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '0.7rem', color: '#fff', fontSize: 14, fontFamily: "'DM Sans', sans-serif" }} />
+                {cliente?.email && wellhubEmailInput.trim().toLowerCase() !== String(cliente.email).trim().toLowerCase() && (
+                  <button type="button" onClick={() => setWellhubEmailInput(cliente.email)}
+                    style={{ marginTop: 8, width: '100%', background: '#0a0a0a', border: '1px dashed #ff2d9b55', borderRadius: 8, padding: '0.55rem', color: '#ff8ac4', fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", textAlign: 'left' }}>
+                    Uso este: {cliente.email}
+                  </button>
+                )}
+              </div>
+            )}
             {erroModal && <div style={{ background: '#ff2d9b15', border: '1px solid #ff2d9b44', borderRadius: 8, padding: '0.6rem 1rem', fontSize: 13, color: ACCENT, marginBottom: '1rem' }}>{erroModal}</div>}
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => setModalSlot(null)} style={{ flex: 1, background: 'transparent', border: '1px solid #333', borderRadius: 10, padding: '0.85rem', color: '#888', fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Cancelar</button>
