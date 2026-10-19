@@ -46,6 +46,7 @@ export default function LandingPage() {
   const isLogado = !!perfil
 
   const [unidades, setUnidades] = useState<any[]>([])
+  const [aulaAberta, setAulaAberta] = useState<string | null>(null)
 
   useEffect(() => {
     async function carregarUnidades() {
@@ -103,6 +104,9 @@ export default function LandingPage() {
         .planos-spoiler-h:hover { border-color: ${ACCENT}55 !important; }
         .planos-spoiler-h:hover .planos-cta-arrow { color: ${ACCENT} !important; transform: translateX(4px); }
         .planos-cta-arrow { transition: all .2s; display: inline-block; }
+        .aula-desc-fechada { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+        .escolha-h { transition: all .25s; }
+        .escolha-h:hover { border-color: ${ACCENT} !important; transform: translateY(-3px); }
         .unidade-card-h { transition: all .25s; }
         .unidade-card-h:hover { border-color: ${ACCENT}55 !important; transform: translateY(-3px); }
 
@@ -144,6 +148,28 @@ export default function LandingPage() {
           <div className="hero-frase">
             "There's no PLACE like <span className="hero-frase-just">JUST.</span>" <span className="hero-frase-smiley">:)</span>
           </div>
+        </div>
+
+        {/* PRÉVIA A — escolha de unidade */}
+        <div className="grid2-r" style={{ maxWidth: 1100, margin: '0 auto', padding: '3rem 2.5rem 1rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+          <a href="#justclub" className="escolha-h" style={{ position: 'relative' as const, display: 'block', borderRadius: 18, overflow: 'hidden', minHeight: 260, border: '1px solid #222', textDecoration: 'none' }}>
+            <video src="/running%20Mp4.mp4" autoPlay muted loop playsInline style={{ position: 'absolute' as const, inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+            <div style={{ position: 'absolute' as const, inset: 0, background: 'linear-gradient(to top, #080808f2 10%, #08080855 70%)' }} />
+            <div style={{ position: 'relative' as const, padding: '1.75rem', height: '100%', minHeight: 260, display: 'flex', flexDirection: 'column' as const, justifyContent: 'flex-end' }}>
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(44px, 5vw, 64px)', color: '#fff', lineHeight: 0.95, letterSpacing: 1 }}>JUST<span style={{ color: ACCENT }}>CLUB</span></div>
+              <div style={{ fontSize: 15, color: '#ddd', marginTop: 6 }}>Aulas coletivas · Vila Olímpia e Pinheiros</div>
+              <div style={{ fontSize: 13, color: '#999', marginTop: 10 }}>Lift · Lift for Girls · Running + Funcional <span className="escolha-seta" style={{ color: ACCENT }}>→</span></div>
+            </div>
+          </a>
+          <a href="#coach-ct" className="escolha-h" style={{ position: 'relative' as const, display: 'block', borderRadius: 18, overflow: 'hidden', minHeight: 260, border: '1px solid #222', textDecoration: 'none' }}>
+            <img src="/Imagem Treino Sala CT.jpg" alt="Sala Just CT" style={{ position: 'absolute' as const, inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+            <div style={{ position: 'absolute' as const, inset: 0, background: 'linear-gradient(to top, #080808f2 10%, #08080855 70%)' }} />
+            <div style={{ position: 'relative' as const, padding: '1.75rem', height: '100%', minHeight: 260, display: 'flex', flexDirection: 'column' as const, justifyContent: 'flex-end' }}>
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(44px, 5vw, 64px)', color: '#fff', lineHeight: 0.95, letterSpacing: 1 }}>JUST <span style={{ color: ACCENT }}>CT</span></div>
+              <div style={{ fontSize: 15, color: '#ddd', marginTop: 6 }}>Musculação · Itaim Bibi</div>
+              <div style={{ fontSize: 13, color: '#999', marginTop: 10 }}>Modo Livre · Coach CT · Coach CT Pro <span className="escolha-seta" style={{ color: ACCENT }}>→</span></div>
+            </div>
+          </a>
         </div>
       </div>
 
@@ -188,12 +214,12 @@ export default function LandingPage() {
 
       {/* JUSTCLUB — aulas coletivas */}
       <div id="justclub" style={s.section}>
-        <div style={s.sTag}>// o diferencial justclub</div>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: `${ACCENT}15`, border: `1px solid ${ACCENT}30`, borderRadius: 20, padding: '0.35rem 1rem', fontSize: 12, color: ACCENT, fontWeight: 600, marginBottom: '1.5rem' }}>
-          🏋️ JUSTCLUB
+        <div style={s.sTag}>// aulas coletivas · vila olímpia e pinheiros</div>
+        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(64px, 9vw, 120px)', color: '#fff', lineHeight: 0.9, letterSpacing: 2, marginBottom: '1rem' }}>
+          JUST<span style={{ color: ACCENT }}>CLUB</span>
         </div>
-        <div style={s.sTitle}>
-          A VIBE DO COLETIVO<br />FAZ VOCÊ RENDER MAIS SEM PERCEBER.
+        <div style={{ ...s.sTitle, fontSize: 'clamp(24px, 2.6vw, 34px)', color: '#ddd' }}>
+          A VIBE DO COLETIVO FAZ VOCÊ RENDER MAIS SEM PERCEBER.
         </div>
         <div style={{ fontSize: 16, color: '#888', maxWidth: 700, lineHeight: 1.8, marginBottom: '3rem' }}>
           Aulas coletivas em ambientes pensados pra você esquecer o resto. Iluminação, playlist e equipamentos exclusivos — três modalidades, energia alta, resultado real.
@@ -203,7 +229,7 @@ export default function LandingPage() {
 
           {/* Lift */}
           <div className="feature-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, overflow: 'hidden' as const, display: 'flex', flexDirection: 'column' as const }}>
-            <div style={{ aspectRatio: '9/16', overflow: 'hidden' as const, position: 'relative' as const, background: '#000' }}>
+            <div style={{ aspectRatio: '4/5', overflow: 'hidden' as const, position: 'relative' as const, background: '#000' }}>
               <video
                 src="/copy_255BA0C5-D05B-444C-84B6-06C09173C754%20mp4.mp4"
                 autoPlay
@@ -212,19 +238,21 @@ export default function LandingPage() {
                 playsInline
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
-              <div style={{ position: 'absolute' as const, inset: 0, background: 'linear-gradient(to top, #111 0%, transparent 30%)', pointerEvents: 'none' as const }} />
+              <div style={{ position: 'absolute' as const, inset: 0, background: 'linear-gradient(to top, #111 0%, #11111100 45%)', pointerEvents: 'none' as const }} />
+              <div style={{ position: 'absolute' as const, top: 14, left: 14, background: '#080808cc', border: `1px solid ${ACCENT}66`, color: ACCENT, borderRadius: 20, padding: '0.25rem 0.75rem', fontSize: 11, fontWeight: 700, letterSpacing: 2, fontFamily: "'DM Mono', monospace" }}>JUSTCLUB</div>
+              <div style={{ position: 'absolute' as const, left: 18, right: 18, bottom: 14, fontFamily: "'Bebas Neue', sans-serif", fontSize: 34, color: '#fff', letterSpacing: 1, lineHeight: 1 }}>LIFT</div>
             </div>
             <div style={{ padding: '1.25rem 1.5rem 1.5rem' }}>
-              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', marginBottom: '0.5rem', letterSpacing: 1 }}>LIFT</div>
-              <div style={{ fontSize: 14, color: '#888', lineHeight: 1.7 }}>
+                            <div className={aulaAberta === 'lift' ? '' : 'aula-desc-fechada'} style={{ fontSize: 14, color: '#888', lineHeight: 1.7 }}>
                 Musculação coletiva em um formato inédito, com equipamentos exclusivos, iluminação e playlists diferenciadas. Todo dia um treino e grupo muscular diferente, preparado pelos nossos coaches, que estarão próximos para auxiliar nas execuções. Esqueça o formato chato de sempre — aqui você pega gosto pela musculação. O básico bem feito funciona, pode confiar.
               </div>
+                <button onClick={() => setAulaAberta(aulaAberta === 'lift' ? null : 'lift')} style={{ background: 'none', border: 'none', color: ACCENT, fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: 0, marginTop: 8 }}>{aulaAberta === 'lift' ? 'ver menos' : 'ver mais'}</button>
             </div>
           </div>
 
           {/* Lift for Girls */}
           <div className="feature-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, overflow: 'hidden' as const, display: 'flex', flexDirection: 'column' as const }}>
-            <div style={{ aspectRatio: '9/16', overflow: 'hidden' as const, position: 'relative' as const, background: '#000' }}>
+            <div style={{ aspectRatio: '4/5', overflow: 'hidden' as const, position: 'relative' as const, background: '#000' }}>
               <video
                 src="/lift%20for%20girls%202%20mp4.mp4"
                 autoPlay
@@ -233,19 +261,21 @@ export default function LandingPage() {
                 playsInline
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
-              <div style={{ position: 'absolute' as const, inset: 0, background: 'linear-gradient(to top, #111 0%, transparent 30%)', pointerEvents: 'none' as const }} />
+              <div style={{ position: 'absolute' as const, inset: 0, background: 'linear-gradient(to top, #111 0%, #11111100 45%)', pointerEvents: 'none' as const }} />
+              <div style={{ position: 'absolute' as const, top: 14, left: 14, background: '#080808cc', border: `1px solid ${ACCENT}66`, color: ACCENT, borderRadius: 20, padding: '0.25rem 0.75rem', fontSize: 11, fontWeight: 700, letterSpacing: 2, fontFamily: "'DM Mono', monospace" }}>JUSTCLUB</div>
+              <div style={{ position: 'absolute' as const, left: 18, right: 18, bottom: 14, fontFamily: "'Bebas Neue', sans-serif", fontSize: 34, color: '#fff', letterSpacing: 1, lineHeight: 1 }}>LIFT FOR GIRLS</div>
             </div>
             <div style={{ padding: '1.25rem 1.5rem 1.5rem' }}>
-              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', marginBottom: '0.5rem', letterSpacing: 1 }}>LIFT FOR GIRLS</div>
-              <div style={{ fontSize: 14, color: '#888', lineHeight: 1.7 }}>
+                            <div className={aulaAberta === 'girls' ? '' : 'aula-desc-fechada'} style={{ fontSize: 14, color: '#888', lineHeight: 1.7 }}>
                 Uma aula exclusiva para vocês meninas, com o treino mais procurado de todos: <strong style={{ color: '#fff' }}>Glúteos & Abs</strong>. Fiquem à vontade pra treinar com toda liberdade — a sala é somente de vocês, o resultado é para todos.
               </div>
+                <button onClick={() => setAulaAberta(aulaAberta === 'girls' ? null : 'girls')} style={{ background: 'none', border: 'none', color: ACCENT, fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: 0, marginTop: 8 }}>{aulaAberta === 'girls' ? 'ver menos' : 'ver mais'}</button>
             </div>
           </div>
 
           {/* Running + Funcional */}
           <div className="feature-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, overflow: 'hidden' as const, display: 'flex', flexDirection: 'column' as const }}>
-            <div style={{ aspectRatio: '9/16', overflow: 'hidden' as const, position: 'relative' as const, background: '#000' }}>
+            <div style={{ aspectRatio: '4/5', overflow: 'hidden' as const, position: 'relative' as const, background: '#000' }}>
               <video
                 src="/running%20Mp4.mp4"
                 autoPlay
@@ -254,13 +284,15 @@ export default function LandingPage() {
                 playsInline
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
-              <div style={{ position: 'absolute' as const, inset: 0, background: 'linear-gradient(to top, #111 0%, transparent 30%)', pointerEvents: 'none' as const }} />
+              <div style={{ position: 'absolute' as const, inset: 0, background: 'linear-gradient(to top, #111 0%, #11111100 45%)', pointerEvents: 'none' as const }} />
+              <div style={{ position: 'absolute' as const, top: 14, left: 14, background: '#080808cc', border: `1px solid ${ACCENT}66`, color: ACCENT, borderRadius: 20, padding: '0.25rem 0.75rem', fontSize: 11, fontWeight: 700, letterSpacing: 2, fontFamily: "'DM Mono', monospace" }}>JUSTCLUB</div>
+              <div style={{ position: 'absolute' as const, left: 18, right: 18, bottom: 14, fontFamily: "'Bebas Neue', sans-serif", fontSize: 34, color: '#fff', letterSpacing: 1, lineHeight: 1 }}>RUNNING + FUNCIONAL</div>
             </div>
             <div style={{ padding: '1.25rem 1.5rem 1.5rem' }}>
-              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', marginBottom: '0.5rem', letterSpacing: 1 }}>RUNNING + FUNCIONAL</div>
-              <div style={{ fontSize: 14, color: '#888', lineHeight: 1.7 }}>
+                            <div className={aulaAberta === 'running' ? '' : 'aula-desc-fechada'} style={{ fontSize: 14, color: '#888', lineHeight: 1.7 }}>
                 Treino de 50 minutos intervalado entre corrida e funcional. Altíssima intensidade e coaches extremamente preparados para te levar a um alto gasto calórico — cada um na sua intensidade. Ambiente exclusivo, iluminação diferenciada e playlists únicas (gostamos de som alto) vão te fazer esquecer qualquer outro tipo de treino, acredite.
               </div>
+                <button onClick={() => setAulaAberta(aulaAberta === 'running' ? null : 'running')} style={{ background: 'none', border: 'none', color: ACCENT, fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: 0, marginTop: 8 }}>{aulaAberta === 'running' ? 'ver menos' : 'ver mais'}</button>
             </div>
           </div>
 
@@ -271,11 +303,11 @@ export default function LandingPage() {
 
       {/* COACH CT — banner único (personal 1×1 + musculação livre) */}
       <div id="coach-ct" style={s.section}>
-        <div style={s.sTag}>// o diferencial coach ct</div>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: `${ACCENT}15`, border: `1px solid ${ACCENT}30`, borderRadius: 20, padding: '0.35rem 1rem', fontSize: 12, color: ACCENT, fontWeight: 600, marginBottom: '1.5rem' }}>
-          ⚡ COACH CT
+        <div style={s.sTag}>// nossa unidade de musculação · itaim bibi</div>
+        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(64px, 9vw, 120px)', color: '#fff', lineHeight: 0.9, letterSpacing: 2, marginBottom: '1rem' }}>
+          JUST <span style={{ color: ACCENT }}>CT</span>
         </div>
-        <div style={s.sTitle}>
+        <div style={{ ...s.sTitle, fontSize: 'clamp(24px, 2.6vw, 34px)', color: '#ddd' }}>
           PERSONAL QUANDO VOCÊ QUISER.<br />OU TREINE SOZINHO, COMO PREFERIR.
         </div>
         <div style={{ fontSize: 16, color: '#888', maxWidth: 700, lineHeight: 1.8, marginBottom: '2.5rem' }}>
@@ -292,37 +324,40 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* 3 cards — os dois formatos + assinatura Ju */}
-        <div className="grid3-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}>
-          <div className="feature-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem' }}>
-            <div style={{ width: 40, height: 40, background: `${ACCENT}15`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, marginBottom: '1rem' }}>🎯</div>
-            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: '0.5rem', letterSpacing: 1 }}>1×1 COM COACH CT</div>
-            <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6 }}>
-              Agendamento flexível, um coach dedicado só a você. Escolha o dia e horário que encaixam na sua rotina, sem mensalidade de personal e sem compromisso fixo.
-            </div>
-          </div>
-          <div className="feature-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem' }}>
-            <div style={{ width: 40, height: 40, background: `${ACCENT}15`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, marginBottom: '1rem' }}>🏋️</div>
-            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: '0.5rem', letterSpacing: 1 }}>MUSCULAÇÃO LIVRE</div>
-            <div style={{ fontSize: 14, color: '#555', lineHeight: 1.6 }}>
+        {/* PRÉVIA C — os dois modos do Just CT */}
+        <div style={{ fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: 3, color: '#666', fontFamily: "'DM Mono', monospace", marginBottom: '1rem' }}>dois jeitos de treinar no just ct</div>
+        <div className="grid2-r" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+          <div className="feature-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.75rem', display: 'flex', flexDirection: 'column' as const }}>
+            <div style={{ fontSize: 11, color: '#888', fontWeight: 700, letterSpacing: 2, fontFamily: "'DM Mono', monospace", marginBottom: 10 }}>MODO 1</div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 40, color: '#fff', lineHeight: 1, letterSpacing: 1, marginBottom: '0.75rem' }}>MODO LIVRE</div>
+            <div style={{ fontSize: 15, color: '#888', lineHeight: 1.7, flex: 1 }}>
               Quer treinar sozinho? Sem problemas. Equipamentos premium, halteres completos e espaço de sobra para você treinar no seu ritmo, quando quiser.
             </div>
+            <div style={{ borderTop: '1px solid #222', marginTop: '1.25rem', paddingTop: '1rem', fontSize: 13, color: '#666' }}>
+              Wellhub <span style={{ color: '#fff', fontWeight: 600 }}>Gold+</span> · TotalPass <span style={{ color: '#fff', fontWeight: 600 }}>TP4</span>
+            </div>
           </div>
-          <div className="feature-h" style={{ background: `linear-gradient(135deg, ${ACCENT}12 0%, #111 100%)`, border: `1.5px solid ${ACCENT}55`, borderRadius: 16, padding: '1.5rem', position: 'relative' as const, overflow: 'hidden' as const }}>
-            <div style={{ width: 40, height: 40, background: `${ACCENT}25`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, marginBottom: '1rem' }}>💡</div>
-            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', marginBottom: '0.5rem', letterSpacing: 1 }}>TREINOS BY JU HITOMI</div>
-            <div style={{ fontSize: 14, color: '#aaa', lineHeight: 1.6 }}>
+          <div className="feature-h" style={{ background: `linear-gradient(135deg, ${ACCENT}18 0%, #111 100%)`, border: `1.5px solid ${ACCENT}`, borderRadius: 16, padding: '1.75rem', display: 'flex', flexDirection: 'column' as const, position: 'relative' as const }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <span style={{ fontSize: 11, color: '#888', fontWeight: 700, letterSpacing: 2, fontFamily: "'DM Mono', monospace" }}>MODO 2</span>
+              <span style={{ fontSize: 11, color: '#fff', background: ACCENT, fontWeight: 700, letterSpacing: 1, borderRadius: 20, padding: '0.15rem 0.6rem' }}>O DIFERENCIAL</span>
+            </div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 40, color: '#fff', lineHeight: 1, letterSpacing: 1, marginBottom: '0.75rem' }}>COACH CT <span style={{ color: ACCENT }}>1×1</span></div>
+            <div style={{ fontSize: 15, color: '#aaa', lineHeight: 1.7, flex: 1 }}>
+              Agendamento flexível, um coach dedicado só a você. Escolha o dia e horário que encaixam na sua rotina, sem mensalidade de personal e sem compromisso fixo.
+              <br /><br />
               Todos os treinos do Coach CT são montados pela nossa coordenadora <strong style={{ color: '#fff' }}>Ju Hitomi</strong>. Sessões de até 1h com intensidade garantida e método pensado pra resultado real.
+            </div>
+            <div style={{ borderTop: `1px solid ${ACCENT}33`, marginTop: '1.25rem', paddingTop: '1rem', fontSize: 13, color: '#888' }}>
+              Wellhub <span style={{ color: '#fff', fontWeight: 600 }}>Diamond</span> · TotalPass <span style={{ color: '#fff', fontWeight: 600 }}>TP6</span>
             </div>
           </div>
         </div>
       </div>
 
-      <div style={s.divider} />
-
       {/* COACH CT PRO */}
-      <div id="coach-ct-pro" style={{ ...s.section, paddingBottom: '4rem' }}>
-        <div style={s.sTag}>// próximo nível</div>
+      <div id="coach-ct-pro" style={{ ...s.section, paddingTop: '1rem', paddingBottom: '4rem' }}>
+        <div style={s.sTag}>// just ct · o próximo nível do coach ct</div>
         <div style={{ fontSize: 'clamp(14px, 1.5vw, 18px)', color: '#666', fontStyle: 'italic', marginBottom: '1rem', maxWidth: 600, lineHeight: 1.6 }}>
           "Existe o padrão. E existe o que poucos acessam."
         </div>
@@ -334,7 +369,7 @@ export default function LandingPage() {
             <div style={{ fontSize: 16, color: '#aaa', lineHeight: 1.9, marginBottom: '2rem' }}>
               O Coach CT já é diferente. O Pro é o que acontece quando você decide parar de encaixar o treino na sua agenda — e começa a construir a agenda em torno do treino.
               <br /><br />
-              <strong style={{ color: '#fff' }}>Janela de 14 dias. Escolha do coach. Prioridade na fila.</strong> Tudo o que o plano padrão não entrega porque não foi feito pra quem leva isso a sério.
+              <strong style={{ color: '#fff' }}>Agenda preferencial. Escolha do coach. Prioridade na fila.</strong> Tudo o que o plano padrão não entrega porque não foi feito pra quem leva isso a sério.
               <br /><br />
               Mas claro — continuar no básico também é uma opção.
             </div>
@@ -371,7 +406,7 @@ export default function LandingPage() {
           </div>
           <div className="pro-card-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem' }}>
             <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 52, color: ACCENT, lineHeight: 1, marginBottom: 4 }}>14</div>
-            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 18, color: '#fff', letterSpacing: 1, marginBottom: 8 }}>DIAS DE JANELA</div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 18, color: '#fff', letterSpacing: 1, marginBottom: 8 }}>DIAS DE AGENDA PREFERENCIAL</div>
             <div style={{ fontSize: 13, color: '#555', lineHeight: 1.6 }}>Agende com até 2 semanas de antecedência. Wellhub e TotalPass ficam com 7. Você escolhe primeiro.</div>
           </div>
           <div className="pro-card-h" style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '1.5rem' }}>

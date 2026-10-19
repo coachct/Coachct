@@ -60,6 +60,15 @@ export default function SiteHeader() {
           .sh-btn-cta { padding: 0.4rem 0.85rem; }
           .sh-hide-mobile { display: none !important; }
         }
+        /* ── Celular estreito (≤400px): aperta mais pra "Agendar Treino" não cortar ── */
+        @media (max-width: 400px) {
+          .sh-nav { padding: 0 0.75rem; }
+          .sh-logo { font-size: 19px; letter-spacing: 0.5px; }
+          .sh-actions { gap: 5px; }
+          .sh-btn { font-size: 11.5px; }
+          .sh-btn-auth { padding: 0.4rem 0.55rem; }
+          .sh-btn-cta { padding: 0.4rem 0.65rem; }
+        }
       `}</style>
       <div className="sh-logo" onClick={() => irPara('/')}>
         JUST <span style={{ color: ACCENT }}>CLUB &amp; CT</span>

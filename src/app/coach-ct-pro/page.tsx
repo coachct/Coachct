@@ -156,7 +156,7 @@ export default function CoachCtProPage() {
           {[
             {
               num: '01',
-              titulo: '14 DIAS DE JANELA',
+              titulo: '14 DIAS DE AGENDA PREFERENCIAL',
               sub: 'Você agenda antes de todo mundo.',
               desc: 'Clientes Wellhub e TotalPass têm 7 dias para agendar. Você tem 14. Isso significa que enquanto eles ainda estão tentando encaixar um horário, você já está com o treino confirmado para a semana que vem — com o coach que escolheu.',
             },
@@ -378,7 +378,7 @@ export default function CoachCtProPage() {
               },
               {
                 p: 'E se eu precisar cancelar uma sessão com menos de 3 horas?',
-                r: 'Cancelamentos com menos de 3 horas de antecedência não são permitidos e o crédito não é devolvido. Por isso a janela de 14 dias existe — para que você planeje com antecedência e não perca sessão.',
+                r: 'Cancelamentos com menos de 3 horas de antecedência não são permitidos e o crédito não é devolvido. Por isso a agenda preferencial de 14 dias existe — para que você planeje com antecedência e não perca sessão.',
               },
             ].map((faq, i) => (
               <div key={i} className="faq-item"
