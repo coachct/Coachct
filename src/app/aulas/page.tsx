@@ -12,6 +12,7 @@ import EnqueteHorario from '@/components/EnqueteHorario'
 import CamposClassPass, { CLASSPASS_VAZIO, classPassFaltando, classPassPayload } from '@/components/CamposClassPass'
 import { enqueteDoHorario } from '@/lib/enquete-horario'
 import { aulaEncerrada, aulaJaComecou, dataHojeSP, hojeSP, filaEncerrada } from '@/lib/tempo'
+import AvisoCancelamento from '@/components/AvisoCancelamento'
 import { mensagemTravaApp } from '@/lib/utils'
 
 function useIsMobile() {
@@ -1181,9 +1182,7 @@ function AulasPageInner() {
                 <CamposClassPass valor={dadosClassPass} onChange={(v) => { setDadosClassPass(v); setErroModal('') }} />
               )}
               {!cliente?.is_classpass && (
-                <div style={{ background:'#0a0a0a', border:'1px solid #1a1a1a', borderRadius:10, padding:'0.75rem 1rem', marginBottom:'1.25rem', fontSize:12, color:'#444', lineHeight:1.7 }}>
-                  ⚠️ Cancelamento gratuito <strong style={{ color:'#666' }}>até 12h antes</strong>. Com fila de espera, prazo reduz para 3h. Falta ou não realização do check-in gera no-show de <strong style={{ color:'#666' }}>R$ 49,90</strong>.
-                </div>
+                <AvisoCancelamento tipoCredito={tipoCredito} mostrarExcecaoFila />
               )}
               {/^wellhub/i.test(tipoCredito) && !cliente?.is_classpass && !cliente?.wellhub_id && !cliente?.wellhub_email && (
                 <div style={{ background:'#12081a', border:'1px solid #ff2d9b44', borderRadius:10, padding:'0.9rem 1rem', marginBottom:'1rem' }}>

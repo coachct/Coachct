@@ -11,6 +11,7 @@ import EnqueteHorario from '@/components/EnqueteHorario'
 import CamposClassPass, { CLASSPASS_VAZIO, classPassFaltando, classPassPayload } from '@/components/CamposClassPass'
 import { enqueteDoHorario } from '@/lib/enquete-horario'
 import { aulaJaComecou } from '@/lib/tempo'
+import AvisoCancelamento from '@/components/AvisoCancelamento'
 import { mensagemTravaApp } from '@/lib/utils'
 
 const ACCENT   = '#ff2d9b'
@@ -555,10 +556,7 @@ function MapaPageInner() {
             </div>
 
             {!cliente?.is_classpass && (
-              <div style={{ background:'#0a0a0a', border:'1px solid #1a1a1a', borderRadius:10, padding:'0.65rem 1rem',
-                marginBottom:'1rem', fontSize:12, color:'#444', lineHeight:1.6 }}>
-                ⚠️ Cancelamento gratuito <strong style={{ color:'#666' }}>até 12h antes</strong>. Falta ou não realização do check-in gera no-show de R$ 49,90.
-              </div>
+              <AvisoCancelamento tipoCredito={tipoCredito} />
             )}
 
             {cliente?.is_classpass && (
