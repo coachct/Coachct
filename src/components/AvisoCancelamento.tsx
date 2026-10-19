@@ -23,8 +23,7 @@ export default function AvisoCancelamento({
   if (ehCreditoJust) {
     return (
       <div style={caixa}>
-        ⚠️ Cancelamento gratuito <strong style={{ color:'#666' }}>até 12h antes</strong>.
-        {mostrarExcecaoFila && ' Com fila de espera, prazo reduz para 3h.'} Se você não cancelar com até 12h de antecedência, <strong style={{ color:'#999' }}>o crédito será consumido</strong>.
+        ⚠️ Cancelamento em <strong style={{ color:'#666' }}>até 12hr</strong> o crédito volta para você, após esse prazo <strong style={{ color:'#999' }}>o crédito será consumido</strong> em caso de falta.
       </div>
     )
   }
