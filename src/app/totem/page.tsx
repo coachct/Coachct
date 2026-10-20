@@ -18,7 +18,7 @@ type Screen =
   | 'ctUsarCredito'
 
 const POLL_MS = 3000
-const FEED_CARD_MS = 30000 // card "Entrada liberada" fica 30s na tela e some sozinho
+const FEED_CARD_MS = 120000 // CT: card "Entrada liberada" fica 2 min na tela e some sozinho
 const CLUB_CARD_MS = 60000 // Club: card "Presença confirmada" fica 1 min na tela
 const CLUB_FEED_MAX = 6    // Club: no máximo 6 cards; chegando mais, o mais antigo sai
 const CLUB_COMPACTO_DE = 4 // Club: a partir de 4 cards, eles ficam compactos
@@ -262,7 +262,8 @@ export default function TotemPage() {
       // carimba "mostrado no totem" pra não voltar no próximo poll / recarga
       api('/api/totem/ct-confirmar-entrada', { method: 'POST', body: JSON.stringify({ unidade: unidade.slug, entradaId: c.id }) }).catch(() => ({}))
     })
-    setCtFeed((prev) => [...prev, ...novos.map((c) => ({ ...c, expira: agora + FEED_CARD_MS }))])
+    // mesmo teto do Club: no máximo CLUB_FEED_MAX na tela, o mais antigo sai antes da hora
+    setCtFeed((prev) => [...prev, ...novos.map((c) => ({ ...c, expira: agora + FEED_CARD_MS }))].slice(-CLUB_FEED_MAX))
   }, [unidade, api])
 
   // ---------- Feed de check-ins do Club ----------
@@ -294,7 +295,7 @@ export default function TotemPage() {
     return () => clearInterval(t)
   }, [clubFeed.length])
 
-  // tira da tela os cards que já cumpriram os 30s
+  // tira da tela os cards do CT que já cumpriram os 2 min
   useEffect(() => {
     if (!ctFeed.length) return
     const t = setInterval(() => {
@@ -465,7 +466,7 @@ export default function TotemPage() {
                   <div className="ex-title" style={{ fontSize: 28 }}>CHECK-IN <span>EXPRESS</span></div>
                   <div className="ex-sub ct">Cliente Wellhub e Totalpass, efetue o check in no app para liberar a entrada.</div>
                 </div>
-                <div className="feed" style={ctFeed.length ? undefined : { display: 'none' }}>
+                <div className={'feed' + (ctFeed.length >= CLUB_COMPACTO_DE ? ' compact' : '')} style={ctFeed.length ? undefined : { display: 'none' }}>
                   {ctFeed.map((c) => (
                     <div key={c.id} className="feedcard">
                       <div className="fc-nome">{c.nome}</div>
@@ -888,7 +889,12 @@ const CSS = `
 #tt .ex-sub.ct{display:block;width:100%;margin-top:18px;padding:20px 14px;border-radius:20px;color:var(--txt);background:rgba(255,45,142,.08);border-color:rgba(255,45,142,.4);
   font-family:'Montserrat',sans-serif;font-style:italic;font-weight:300;font-size:15.5px;line-height:1.5;text-wrap:balance}
 #tt .ctidle{justify-content:center;gap:22px}
-#tt .ctidle .feed{flex:0 1 auto;margin:0}
+#tt .ctidle .feed{flex:0 1 auto;margin:0;overflow:hidden;min-height:0}
+#tt .feed.compact .feedcard{padding:8px 14px 11px;border-radius:14px}
+#tt .feed.compact .feedcard .fc-nome{font-size:21px}
+#tt .feed.compact .feedcard .fc-lib{font-size:16px;margin-top:4px;gap:7px}
+#tt .feed.compact .feedcard .fc-ck{width:22px;height:22px;font-size:13px}
+#tt .feed.compact .feedcard .fc-org{display:none}
 #tt .idlecam{position:relative;width:300px;height:360px;border-radius:26px;margin:0 auto;overflow:hidden;
   background:linear-gradient(160deg,#14141f,#0c0c14);border:1px solid var(--line);display:flex;align-items:center;justify-content:center}
 #tt .idlecam .face{font-size:150px;opacity:.6;position:absolute}
