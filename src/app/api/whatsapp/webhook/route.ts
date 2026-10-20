@@ -232,9 +232,9 @@ async function processar(de: string, texto: string, wamid: string, botaoId: stri
       }
       cliente = resolvido
     } else if (ident.status === 'nao_encontrado') {
-      // Atendente assumiu (modo humano) OU já foi encaminhado pra equipe? O bot
-      // fica QUIETO — só guarda a mensagem e deixa a pessoa cuidar. Sem se intrometer.
-      if (await emModoHumano(supabase, telefone) || await estaAguardandoHumano(supabase, telefone)) {
+      // Só fica QUIETO se a equipe ASSUMIU (modo_humano). "aguardando" é só alerta no
+      // painel — o bot segue ajudando (senão o cliente fica falando sozinho).
+      if (await emModoHumano(supabase, telefone)) {
         await salvarMensagem(supabase, { telefone, clienteId: null, role: 'user', conteudo: texto })
         return
       }
@@ -259,15 +259,13 @@ async function processar(de: string, texto: string, wamid: string, botaoId: stri
     // Respeita opt-out anterior.
     if (cliente.whatsapp_opt_out) return
 
-    // Atendimento humano / escalado: por padrão o bot fica quieto (quem responde é a
-    // equipe). EXCEÇÃO — AUTO-DEVOLVER: se a conversa foi "assumida" (modo_humano) mas a
-    // equipe NÃO respondeu há horas (assumida e esquecida), devolve pro assistente e deixa
-    // o bot responder — pra não deixar o cliente no vácuo pra sempre. (Era o caso: 78
-    // conversas presas em modo humano por semanas, bot mudo nelas.)
-    const humano = await emModoHumano(supabase, telefone)
-    const aguardando = await estaAguardandoHumano(supabase, telefone)
-    if (humano || aguardando) {
-      const parada = humano && !aguardando && (await semRespostaEquipeHa(supabase, telefone, HUMANO_STALE_H))
+    // SÓ o atendimento ASSUMIDO (modo_humano = equipe clicou "Assumir conversa") silencia
+    // o bot. "aguardando_humano" (cliente pediu atendente / escalonamento) é só ALERTA no
+    // painel — o bot SEGUE respondendo e ajudando. Senão o cliente que pede atendente fica
+    // falando sozinho quando ninguém assume (era o caso: pediu atendente → bot mudo pra
+    // sempre). AUTO-DEVOLVER: se foi assumida mas a equipe sumiu há horas, devolve pro bot.
+    if (await emModoHumano(supabase, telefone)) {
+      const parada = await semRespostaEquipeHa(supabase, telefone, HUMANO_STALE_H)
       if (parada) {
         await devolverAoAssistente(supabase, telefone)
         console.log(`[whatsapp/webhook] auto-devolvido ao assistente (modo humano parado ${HUMANO_STALE_H}h): ${telefone}`)
@@ -277,9 +275,10 @@ async function processar(de: string, texto: string, wamid: string, botaoId: stri
       }
     }
 
-    // Cliente pediu pra falar com um atendente: sinaliza no painel (contador/badge)
-    // para um adm dar uma olhada. O bot segue respondendo normalmente (acolhedor).
-    if (pedeHumano(texto)) {
+    // Cliente pediu pra falar com um atendente: sinaliza no painel (badge) pra equipe dar
+    // uma olhada. O bot avisa que a equipe também responde (lá embaixo) E SEGUE ajudando.
+    const pediuHumano = pedeHumano(texto)
+    if (pediuHumano) {
       await marcarAguardandoHumano(supabase, telefone)
     }
 
@@ -328,10 +327,17 @@ async function processar(de: string, texto: string, wamid: string, botaoId: stri
     // conta/ação, não pede confirmação, não transfere. O Ricardo acompanha o painel
     // e assume o que precisar. (pedeHumano acima já sinaliza quem pediu atendente.)
     const resposta = await responderInfo({ supabase, cliente, mensagem: texto, historico })
-    const corpo = prefixo + resposta.texto
-    await salvarMensagem(supabase, { telefone, clienteId: cliente.id, role: 'assistant', conteudo: resposta.texto })
+    let saida = resposta.texto
+    // Pediu atendente: garante o aviso de que a equipe TAMBÉM responde — sem deixar de
+    // ajudar na dúvida (o bot já respondeu a pergunta acima). Só acrescenta se ele ainda
+    // não citou a equipe, pra não ficar repetitivo.
+    if (pediuHumano && !/\bequipe\b/i.test(saida)) {
+      saida += '\n\nJá avisei nossa equipe por aqui também — eles te respondem assim que puderem, tá? 😊'
+    }
+    const corpo = prefixo + saida
+    await salvarMensagem(supabase, { telefone, clienteId: cliente.id, role: 'assistant', conteudo: saida })
     // Se o bot não soube e disse "a equipe te responde", sinaliza no painel pro Ricardo ver.
-    if (/equipe te responde/i.test(resposta.texto)) await marcarAguardandoHumano(supabase, telefone)
+    if (/equipe te responde/i.test(saida)) await marcarAguardandoHumano(supabase, telefone)
     await enviarTexto(de, corpo)
   } catch (e: any) {
     console.error('[whatsapp/webhook] erro no processamento:', e?.message)
@@ -412,9 +418,9 @@ async function processarMidia(
       return
     }
 
-    // Se a conversa está em atendimento humano/escalado, ou o bot está pausado, fica
-    // quieto (não atropela a equipe). Fora isso, uma imagem NUNCA pode silenciar o bot.
-    if (!BOT_ATIVO || (await emModoHumano(supabase, telefone)) || (await estaAguardandoHumano(supabase, telefone))) {
+    // Só fica quieto se a equipe ASSUMIU (modo_humano) ou o bot está pausado. "aguardando"
+    // é só alerta — o bot segue lendo o print e ajudando.
+    if (!BOT_ATIVO || (await emModoHumano(supabase, telefone))) {
       return
     }
 
