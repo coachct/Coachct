@@ -8,6 +8,10 @@
 // Check-in sem reserva (erro_motivo preenchido) não aparece: fica com a recepção.
 // Check-in cuja presença ainda não foi marcada (o webhook marca em segundo
 // plano) fica de fora desta rodada e entra no próximo poll.
+//
+// ?historico=1 → lista da recepção (botão discreto no totem): todos os check-ins
+// de HOJE com presença confirmada, já mostrados ou não, do mais novo pro mais
+// antigo, com a hora do check-in. Não carimba nada.
 import { NextRequest, NextResponse } from 'next/server'
 import { totemService, resolverUnidadeTotem, totemTokenOk } from '@/lib/totem/service'
 import { hojeSP, partesSP } from '@/lib/tempo'
@@ -46,21 +50,26 @@ export async function GET(req: NextRequest) {
     if (!unidade) return NextResponse.json({ erro: 'unidade_invalida' }, { status: 400 })
     if (unidade.tipo !== 'club') return NextResponse.json({ checkins: [] })
 
-    const desde = new Date(Date.now() - JANELA_MIN * 60 * 1000).toISOString()
-    const { data: entradas, error } = await sb
+    const historico = searchParams.get('historico') === '1'
+    const hoje = hojeSP()
+    // feed: só os últimos minutos; histórico: desde 00:00 de hoje (SP, UTC-3)
+    const desde = historico
+      ? new Date(`${hoje}T00:00:00-03:00`).toISOString()
+      : new Date(Date.now() - JANELA_MIN * 60 * 1000).toISOString()
+    let q = sb
       .from('entradas_walkin')
       .select('id, origem, id_externo, recebido_em, raw')
       .eq('unidade_id', unidade.id)
       .eq('status', 'aula')
       .in('origem', ['wellhub', 'totalpass'])
-      .is('confirmado_totem_em', null)
       .is('erro_motivo', null)
       .gte('recebido_em', desde)
+    if (!historico) q = q.is('confirmado_totem_em', null)
+    const { data: entradas, error } = await q
       .order('recebido_em', { ascending: false })
-      .limit(12)
+      .limit(historico ? 40 : 12)
     if (error || !entradas?.length) return NextResponse.json({ checkins: [] })
 
-    const hoje = hojeSP()
     const coachCache = new Map<string, string>()
     const checkins: any[] = []
 
@@ -134,6 +143,8 @@ export async function GET(req: NextRequest) {
         horario: c.horario,
         coach,
         posicao: c.aulaTipo === 'running_funcional' ? c.posicao : null,
+        hora: partesSP(new Date(e.recebido_em))?.hora || '',
+        origem: e.origem === 'totalpass' ? 'TotalPass' : 'Wellhub',
       })
     }
 

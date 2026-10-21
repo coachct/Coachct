@@ -50,6 +50,10 @@ export default function TotemPage() {
   const feedVistosRef = useRef<Set<string>>(new Set())
   // Feed do Club: quem fez check-in no app parceiro e já teve a presença marcada
   const [clubFeed, setClubFeed] = useState<{ id: string; nome: string; aulaTipo: string; horario: string; coach: string; posicao: string | null; expira: number }[]>([])
+  // Lista da recepção: últimos check-ins de hoje (botão discreto no topo do Club)
+  const [histAberto, setHistAberto] = useState(false)
+  const [histCarregando, setHistCarregando] = useState(false)
+  const [histLista, setHistLista] = useState<{ id: string; nome: string; aulaTipo: string; horario: string; coach: string; posicao: string | null; hora: string; origem: string }[]>([])
   const [scale, setScale] = useState(1)
   const [faceReady, setFaceReady] = useState(false)
   const [faceMsg, setFaceMsg] = useState('Câmera ativa · olhe para reconhecer')
@@ -285,6 +289,23 @@ export default function TotemPage() {
     setClubFeed((prev) => [...prev, ...novos.map((c) => ({ ...c, expira: agora + CLUB_CARD_MS }))].slice(-CLUB_FEED_MAX))
   }, [unidade, api])
 
+  // ---------- Lista da recepção: últimos check-ins de hoje ----------
+  const abrirHistorico = useCallback(async () => {
+    if (!unidade || unidade.tipo === 'ct') return
+    setHistAberto(true); setHistCarregando(true)
+    const r = await api(`/api/totem/club-checkins?unidade=${encodeURIComponent(unidade.slug)}&historico=1`).catch(() => ({}))
+    setHistLista((r as any)?.checkins || [])
+    setHistCarregando(false)
+  }, [unidade, api])
+
+  // lista esquecida aberta fecha sozinha e volta pro feed
+  useEffect(() => {
+    if (!histAberto) return
+    const t = setTimeout(() => setHistAberto(false), INATIVIDADE_MS)
+    return () => clearTimeout(t)
+  }, [histAberto])
+  useEffect(() => { if (screen !== 'idle') setHistAberto(false) }, [screen])
+
   // tira da tela os cards do Club que já cumpriram 1 min
   useEffect(() => {
     if (!clubFeed.length) return
@@ -442,6 +463,9 @@ export default function TotemPage() {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div className="clock"><span>{clock.h}</span><small>{clock.d}</small></div>
+              {screen === 'idle' && unidade && unidade.tipo !== 'ct' && (
+                <button className="fullbtn histbtn" onClick={abrirHistorico} aria-label="Últimos check-ins">≡</button>
+              )}
               <button className="fullbtn" onClick={toggleFull} aria-label="Tela cheia">⛶</button>
             </div>
           </div>
@@ -823,6 +847,43 @@ export default function TotemPage() {
               </section>
             )}
           </div>
+
+          {/* Lista da recepção: últimos check-ins de hoje (aberta pelo botão ≡ do topo) */}
+          {histAberto && (
+            <div className="hist" onClick={() => setHistAberto(false)}>
+              <div className="hist-box" onClick={(ev) => ev.stopPropagation()}>
+                <div className="hist-hdr">
+                  <div>
+                    <div className="hist-tit">Últimos check-ins</div>
+                    <div className="hist-sub">Hoje · presença confirmada</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="fullbtn" onClick={abrirHistorico} aria-label="Atualizar">↻</button>
+                    <button className="fullbtn" onClick={() => setHistAberto(false)} aria-label="Fechar">✕</button>
+                  </div>
+                </div>
+                <div className="hist-lista">
+                  {histCarregando && !histLista.length && <div className="feed-empty">Carregando…</div>}
+                  {!histCarregando && !histLista.length && <div className="feed-empty">Nenhum check-in hoje ainda.</div>}
+                  {histLista.map((c) => (
+                    <div key={c.id} className="hist-item">
+                      <div className="hist-hora">{c.hora}</div>
+                      <div className="hist-main">
+                        <div className="hist-nome">{c.nome}</div>
+                        <div className="row">
+                          <span className={'chip ' + tipoClasse(c.aulaTipo)}>{tipoLabel(c.aulaTipo)}</span>
+                          <span className="chip time">{c.horario}</span>
+                          {c.coach && <span className="chip time">{c.coach}</span>}
+                          <span className="chip time">{c.origem}</span>
+                        </div>
+                      </div>
+                      {c.posicao && <div className="hist-pos">{c.posicao}</div>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -850,6 +911,21 @@ const CSS = `
 #tt .clock small{display:block;font-weight:500;font-size:10px;color:var(--mut)}
 #tt .fullbtn{background:var(--panel);border:1px solid var(--line);color:var(--mut);border-radius:9px;width:30px;height:30px;font-size:15px;cursor:pointer;flex:0 0 auto;display:flex;align-items:center;justify-content:center}
 #tt .fullbtn:active{transform:scale(.94)}
+#tt .histbtn{opacity:.55;font-size:17px}
+#tt .hist{position:absolute;inset:0;z-index:20;background:rgba(5,5,9,.82);display:flex;align-items:flex-start;justify-content:center;padding:58px 14px 14px;animation:ttin .2s ease}
+#tt .hist-box{width:100%;max-height:100%;display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden}
+#tt .hist-hdr{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--line);flex:0 0 auto}
+#tt .hist-tit{font-size:18px;font-weight:800}
+#tt .hist-sub{font-size:11px;color:var(--mut);margin-top:2px}
+#tt .hist-lista{flex:1 1 auto;overflow-y:auto;padding:8px 10px 12px;-webkit-overflow-scrolling:touch}
+#tt .hist-item{display:flex;align-items:center;gap:10px;padding:10px 6px;border-bottom:1px solid var(--line)}
+#tt .hist-item:last-child{border-bottom:none}
+#tt .hist-hora{font-variant-numeric:tabular-nums;font-weight:700;font-size:14px;color:var(--mut);flex:0 0 44px}
+#tt .hist-main{flex:1 1 auto;min-width:0}
+#tt .hist-nome{font-size:16px;font-weight:800;line-height:1.2;word-break:break-word}
+#tt .hist-main .row{margin-top:5px;flex-wrap:wrap;gap:5px}
+#tt .hist-main .chip{font-size:10.5px;padding:3px 7px;white-space:nowrap}
+#tt .hist-pos{flex:0 0 auto;font-weight:900;font-size:18px;color:#86efac;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.45);border-radius:10px;padding:6px 9px}
 #tt .screens{position:relative;flex:1 1 auto;overflow:hidden}
 #tt .screen{position:absolute;inset:0;padding:10px 22px 18px;display:flex;flex-direction:column;animation:ttin .32s ease}
 @keyframes ttin{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
