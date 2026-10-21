@@ -1369,6 +1369,33 @@ const TOOLS_INFO: Anthropic.Tool[] = [
       required: ['email'],
     },
   },
+  // CONSULTAS (SÓ LEITURA) — pra responder "marquei certo?", "tenho aula?", "meu saldo?".
+  // Exigem cliente IDENTIFICADO; nunca executam ação (reservar/cancelar/trocar é no site).
+  {
+    name: 'consultar_saldo',
+    description: 'Saldo de créditos do cliente, por plano e unidade. Use quando perguntar quantos créditos/aulas tem.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'proximos_agendamentos',
+    description: 'Próximas sessões de personal (Coach CT, Just CT) agendadas/confirmadas. Use para "tenho treino marcado?", "quando é meu próximo personal?", "marquei certo?". Cada item traz data/hora e unidade.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'proximas_reservas_club',
+    description: 'Próximas reservas de aulas coletivas do JustClub (Lift, Lift for Girls, Running + Funcional). Use para "tenho aula reservada?", "marquei certo?", "qual meu horário?". Cada item traz data/hora, aula e unidade.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'historico_treinos',
+    description: 'Histórico recente de treinos JÁ PASSADOS (Coach CT e aulas do Club), com status presente/falta, mais recentes primeiro. Use para "meus últimos treinos"/frequência e para achar uma aula que a pessoa diz ter feito/faltado. Aulas passadas do Club só aparecem AQUI.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'posicao_na_fila',
+    description: 'Filas de espera em que o cliente está aguardando, com a posição. Use quando perguntar se está na fila / qual a posição.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
 ]
 
 export async function responderInfo(params: {
@@ -1427,8 +1454,9 @@ Você SÓ pode afirmar o que está na BASE DE CONHECIMENTO abaixo ou o que veio 
 # NUNCA mande LIGAR, dar TELEFONE, nem ir à RECEPÇÃO pra se informar (REGRA — nunca erre)
 A gente NÃO tem telefone de contato — "ligar", "telefone", "por telefone" NÃO EXISTE, nunca ofereça. E NÃO mande a pessoa "passar na recepção", "ir na recepção pra saber/perguntar", "eles te informam na hora". Se você não tem a informação, a resposta é UMA: essa você não tem aí e a NOSSA EQUIPE responde em breve por aqui — e PARA. (A única vez que a recepção é citada é OBJETO ESQUECIDO, que fica guardado lá pra retirar.)
 
-# VOCÊ INFORMA, NÃO RESOLVE (o coração da coisa)
-Reservar, cancelar, trocar/remarcar aula, comprar, ativar plano, ver saldo, cadastrar cartão, recuperar senha — o CLIENTE faz tudo isso sozinho no site. Você NÃO faz nada disso, NÃO pede CPF, NÃO acessa conta, NÃO faz lógica de prazo/fila/vaga/multa. Você só INFORMA a regra e aponta o caminho. Exemplos do jeito certo (curto, e encerra):
+# VOCÊ CONSULTA (leitura), mas NÃO EXECUTA AÇÃO (o coração da coisa)
+AÇÕES — reservar, cancelar, trocar/remarcar aula, comprar, ativar plano, cadastrar cartão — o CLIENTE faz sozinho no site. Você NUNCA executa isso, NÃO faz lógica de prazo/fila/vaga/multa pra decidir "dá ou não dá": informa a regra e aponta o site.
+CONSULTA (leitura) — isto você PODE e DEVE fazer quando a pessoa pergunta sobre a conta DELA: usar as ferramentas pra CHECAR as reservas de aula do Club (proximas_reservas_club), os agendamentos de Coach CT (proximos_agendamentos), o saldo de créditos (consultar_saldo), o histórico (historico_treinos) e a fila (posicao_na_fila) — pra responder "marquei certo?", "tenho aula amanhã?", "quantos créditos tenho?", "estou na fila?". Só informe o que a ferramenta retornar; NÃO invente. Pra consultar, o cliente precisa estar IDENTIFICADO — se a ferramenta responder "precisa_identificar", peça NOME COMPLETO + CPF (ou nome + e-mail) numa mensagem só, e NUNCA mostre dado de conta sem identificar (é dado de outra pessoa). Mesmo vendo a reserva, você NÃO cancela/troca por ela — se ela quiser alterar, aponta o site. Exemplos do jeito certo (curto, e encerra):
 - "quero TROCAR / mudar / antecipar / adiar minha aula pra outro horário" (MUDAR de horário, NÃO desmarcar) → é DIFERENTE de cancelar, e o cliente MESMO faz no site. A REGRA (é essa, exata — só informe ela): a troca só é possível quando (1) a sua aula ATUAL não está lotada E (2) pra um horário LOGO ANTES ou LOGO DEPOIS (adjacente) que também tenha vaga. Reserva feita no NOSSO site troca no site (https://www.justclubct.com.br/aulas); reserva feita pelo APP (Wellhub/TotalPass) é trocada pelo próprio app deles. IMPORTANTE (pergunte ANTES de responder): dizer "agendei pelo TotalPass/Wellhub" NÃO significa que foi pelo app — dá pra agendar pelo NOSSO site usando o plano do parceiro. Então, pra trocar OU cancelar de quem usa parceiro, se NÃO estiver claro se a reserva foi no APP do parceiro ou no NOSSO site, PERGUNTE isso primeiro ("você agendou pelo app do TotalPass/Wellhub ou direto no nosso site?") e só então responda — porque muda tudo: pelo NOSSO site ela mesma troca/cancela (no site); pelo app é com o parceiro. É PROIBIDO assumir que foi pelo app.
   APENAS A INFORMAÇÃO DA REGRA — SEM PROMESSA, SEM ADIVINHAR, SEM ESCALAR (nunca erre): informe a regra acima e PARE. É PROIBIDO: prever que "vai rolar / ainda pode rolar / ainda dá"; adivinhar o motivo do caso dela ("provavelmente a aula que você quer está lotada", "deve estar cheia"); e dizer que "a equipe vai olhar/resolver". Se a pessoa disser que NÃO está conseguindo trocar, apenas REAFIRME a regra (troca só pra um horário adjacente, com a sua aula atual e a nova com vaga) e encerre — sem diagnosticar o caso dela, sem prometer, sem transferir. NÃO diga "hoje não dá" nem aplique a regra dos 12h pra TROCA.
 - "quero cancelar" / "desmarcar" (largar a aula, NÃO trocar de horário) → resposta CURTA e direta, e PARA: "Para cancelar: se o seu treino estiver com 12h de antecedência, é só cancelar direto na sua conta, no site. Se já estiver fora desse prazo, infelizmente não tem mais cancelamento. 🙏" (NÃO pergunte qual reserva, NÃO cheque nada, NÃO fale de FILA nem de MULTA. Quem manda mensagem já sabe que tá tentando a última — seja curto e honesto.)
@@ -1575,6 +1603,7 @@ A última mensagem inclui uma IMAGEM (quase sempre um print da tela do app/site:
         if (bloco.type === 'tool_use') {
           let conteudo: string
           try {
+            const CONSULTAS_LEITURA = ['consultar_saldo', 'proximos_agendamentos', 'proximas_reservas_club', 'historico_treinos', 'posicao_na_fila']
             if (bloco.name === 'consultar_precos') {
               conteudo = JSON.stringify(await consultarPrecos(supabase))
             } else if (bloco.name === 'recuperar_acesso') {
@@ -1583,6 +1612,22 @@ A última mensagem inclui uma IMAGEM (quase sempre um print da tela do app/site:
               conteudo = cliente?.id
                 ? JSON.stringify(await recuperarAcessoCliente(supabase, cliente.id, String((bloco.input as any)?.email ?? '')))
                 : JSON.stringify({ ok: false, precisa_identificar: true, mensagem: 'Pra recuperar o acesso, primeiro preciso te identificar: peça o NOME COMPLETO + CPF (ou nome + e-mail do cadastro) numa mensagem só, junto com o e-mail que a pessoa quer usar pra entrar.' })
+            } else if (CONSULTAS_LEITURA.includes(bloco.name)) {
+              // CONSULTA (só leitura). Exige cliente IDENTIFICADO — senão NÃO mostra dado de
+              // conta (privacidade): orienta o bot a pedir nome + CPF (ou e-mail) primeiro.
+              if (!cliente?.id) {
+                conteudo = JSON.stringify({ precisa_identificar: true, mensagem: 'Pra consultar os dados da conta (reservas, saldo, histórico), primeiro preciso te identificar: peça o NOME COMPLETO + CPF (ou nome + e-mail do cadastro) numa mensagem só.' })
+              } else if (bloco.name === 'consultar_saldo') {
+                conteudo = JSON.stringify(await consultarSaldo(supabase, cliente.id))
+              } else if (bloco.name === 'proximos_agendamentos') {
+                conteudo = JSON.stringify(await proximosAgendamentos(supabase, cliente.id))
+              } else if (bloco.name === 'proximas_reservas_club') {
+                conteudo = JSON.stringify(await proximasReservasClub(supabase, cliente.id))
+              } else if (bloco.name === 'historico_treinos') {
+                conteudo = JSON.stringify(await historicoTreinos(supabase, cliente.id))
+              } else {
+                conteudo = JSON.stringify(await posicaoNaFila(supabase, cliente.id))
+              }
             } else {
               conteudo = JSON.stringify({ erro: `ferramenta indisponível: ${bloco.name}` })
             }
