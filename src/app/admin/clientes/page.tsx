@@ -200,6 +200,9 @@ function AdminClientesPageInner() {
   const [vendas, setVendas] = useState<any[]>([])
   const [planosCliente, setPlanosCliente] = useState<any[]>([])
   const [usoPro, setUsoPro] = useState<Record<string, number>>({})
+  // Reservas feitas com cada plano de app (Wellhub/TotalPass/PRO), carregadas ao abrir o card.
+  const [reservasPlano, setReservasPlano] = useState<Record<string, any[] | 'carregando'>>({})
+  const [reservasPlanoAberto, setReservasPlanoAberto] = useState<Record<string, boolean>>({})
   const [planosDisponiveis, setPlanosDisponiveis] = useState<any[]>([])
   const [todasUnidades, setTodasUnidades] = useState<any[]>([])
 
@@ -423,6 +426,8 @@ function AdminClientesPageInner() {
       produtos(id, nome, subtipo, unidade_id, unidades(id, nome, tipo), dias_validade)
     `).eq('cliente_id', clienteId).order('contrato_aceito_em', { ascending: false })
     setPlanosCliente(data || [])
+    setReservasPlano({})
+    setReservasPlanoAberto({})
 
     // Uso do PRO: mesma conta da RPC app_pro_oferta — reservas coach_ct_pro_* da unidade
     // entre início e fim, menos canceladas (falta conta), a partir de contar_desde.
@@ -438,6 +443,45 @@ function AdminClientesPageInner() {
       uso[cp.id] = count || 0
     }
     setUsoPro(uso)
+  }
+
+  // A reserva grava tipo_credito = "<tipo do plano>_<slug da unidade>" (ou "<tipo>_app"
+  // quando veio do app do parceiro), então o plano casa pelo prefixo + unidade.
+  // CT vive em agendamentos, Club em club_reservas. Canceladas ficam de fora; falta conta.
+  async function alternarReservasPlano(cp: any) {
+    const aberto = !reservasPlanoAberto[cp.id]
+    setReservasPlanoAberto(prev => ({ ...prev, [cp.id]: aberto }))
+    if (!aberto || reservasPlano[cp.id] || !clienteSel) return
+    const pd = cp.planos_disponiveis
+    const unidade = pd?.unidades
+    if (!pd?.tipo || !pd.unidade_id) { setReservasPlano(prev => ({ ...prev, [cp.id]: [] })); return }
+    setReservasPlano(prev => ({ ...prev, [cp.id]: 'carregando' }))
+    const prefixo = `${pd.tipo}_%`
+    const desde = pd.tipo === 'coach_ct_pro' ? cp.inicio : null
+    const ate = pd.tipo === 'coach_ct_pro' ? cp.fim : null
+    let lista: any[] = []
+    if (unidade?.tipo === 'ct') {
+      let q = supabase.from('agendamentos').select('id, data, horario, status, coaches(nome)')
+        .eq('cliente_id', clienteSel.id).eq('unidade_id', pd.unidade_id).like('tipo_credito', prefixo)
+        .neq('status', 'cancelado').order('data', { ascending: false }).order('horario', { ascending: false }).limit(300)
+      if (desde) q = q.gte('data', desde)
+      if (ate) q = q.lte('data', ate)
+      const { data } = await q
+      lista = (data || []).map((a: any) => ({ id: a.id, data: a.data, horario: a.horario, status: a.status, detalhe: a.coaches?.nome || null }))
+    } else {
+      const { data } = await supabase.from('club_reservas')
+        .select('id, status, club_ocorrencias!inner(data, club_aulas!inner(tipo, horario, unidade_id))')
+        .eq('cliente_id', clienteSel.id).eq('club_ocorrencias.club_aulas.unidade_id', pd.unidade_id).like('tipo_credito', prefixo)
+        .neq('status', 'cancelado').order('created_at', { ascending: false }).limit(300)
+      lista = (data || []).map((r: any) => ({
+        id: r.id, data: r.club_ocorrencias?.data, horario: r.club_ocorrencias?.club_aulas?.horario,
+        status: r.status, detalhe: r.club_ocorrencias?.club_aulas?.tipo || null,
+      }))
+      if (desde) lista = lista.filter(r => (r.data || '') >= desde)
+      if (ate) lista = lista.filter(r => (r.data || '') <= ate)
+      lista.sort((a, b) => `${b.data} ${b.horario}`.localeCompare(`${a.data} ${a.horario}`))
+    }
+    setReservasPlano(prev => ({ ...prev, [cp.id]: lista }))
   }
 
   async function carregarAvulsos(clienteId: string) {
@@ -1729,9 +1773,48 @@ function AdminClientesPageInner() {
                                     <div className="flex flex-col gap-1 flex-shrink-0">
                                       {pendente && <button onClick={() => reenviarLinkAceite(cp)} className="btn btn-sm gap-1 bg-orange-500 text-white hover:bg-orange-600"><LinkIcon size={11} /> Ver link</button>}
                                       {pd?.tipo === 'coach_ct_pro' && <button onClick={() => abrirAjusteVencimento(cp)} className="btn btn-sm gap-1 text-amber-700 hover:bg-amber-50"><Edit2 size={11} /> Ajustar</button>}
+                                      {!pendente && <button onClick={() => alternarReservasPlano(cp)} className="btn btn-sm gap-1 text-primary-700 hover:bg-primary-50"><Calendar size={11} /> {reservasPlanoAberto[cp.id] ? 'Ocultar reservas' : 'Ver reservas'}</button>}
                                       <button onClick={() => desativarPlano(cp.id)} className="btn btn-sm gap-1 text-red-500 hover:bg-red-50"><Trash2 size={12} /> Desativar</button>
                                     </div>
                                   </div>
+                                  {reservasPlanoAberto[cp.id] && (() => {
+                                    const rs = reservasPlano[cp.id]
+                                    if (!rs || rs === 'carregando') return <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-400">Carregando reservas...</div>
+                                    if (rs.length === 0) return <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-400">Nenhuma reserva feita com este plano.</div>
+                                    const porMes: Record<string, any[]> = {}
+                                    for (const r of rs) (porMes[(r.data || '').slice(0, 7)] ||= []).push(r)
+                                    return (
+                                      <div className="mt-3 pt-3 border-t border-gray-100 space-y-3 max-h-80 overflow-y-auto">
+                                        {Object.entries(porMes).map(([ym, itens]) => {
+                                          const [ano, mes] = ym.split('-')
+                                          const presentes = itens.filter(r => r.status === 'realizado' || r.status === 'presente').length
+                                          const faltas = itens.filter(r => r.status === 'falta').length
+                                          return (
+                                            <div key={ym}>
+                                              <div className="text-xs font-semibold text-gray-700 mb-1">
+                                                {mes}/{ano} <span className="font-normal text-gray-400">· {itens.length} reserva{itens.length === 1 ? '' : 's'} · {presentes} presença{presentes === 1 ? '' : 's'}{faltas > 0 ? ` · ${faltas} falta${faltas === 1 ? '' : 's'}` : ''}</span>
+                                              </div>
+                                              <div className="pl-2 border-l-2 border-primary-100 space-y-0.5">
+                                                {itens.map(r => {
+                                                  const st = r.status === 'realizado' || r.status === 'presente' ? { t: 'Presente', c: 'text-green-700' }
+                                                    : r.status === 'falta' ? { t: 'Falta', c: 'text-red-600' }
+                                                    : { t: 'Agendado', c: 'text-blue-600' }
+                                                  return (
+                                                    <div key={r.id} className="text-[11px] text-gray-600">
+                                                      {r.data ? formatarBR(r.data) : '—'}
+                                                      {r.horario ? ` · ${String(r.horario).slice(0, 5)}` : ''}
+                                                      {r.detalhe ? ` · ${r.detalhe}` : ''}
+                                                      {' · '}<span className={`font-medium ${st.c}`}>{st.t}</span>
+                                                    </div>
+                                                  )
+                                                })}
+                                              </div>
+                                            </div>
+                                          )
+                                        })}
+                                      </div>
+                                    )
+                                  })()}
                                 </div>
                               )
                             })}
