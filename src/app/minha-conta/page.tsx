@@ -140,6 +140,9 @@ export default function MinhaContaPage() {
   const [filas,              setFilas]              = useState<any[]>([])
   const [saldoAtual,         setSaldoAtual]         = useState<Record<string,any>>({})
   const [saldoProximo,       setSaldoProximo]       = useState<Record<string,any>>({})
+  // Treinos feitos com cada plano (chave do saldo), carregados ao tocar no card.
+  const [treinosPlano,       setTreinosPlano]       = useState<Record<string,any[]|'carregando'>>({})
+  const [planoAberto,        setPlanoAberto]        = useState<string|null>(null)
   const [clientePlanos,      setClientePlanos]      = useState<any[]>([])
   const [compras,            setCompras]            = useState<any[]>([])
   const [planosDisponiveis,  setPlanosDisponiveis]  = useState<any[]>([])
@@ -421,6 +424,37 @@ export default function MinhaContaPage() {
     ])
     const ma:Record<string,any>={}; sa.forEach(r=>Object.assign(ma,r.data||{})); setSaldoAtual(ma)
     const mp:Record<string,any>={}; sp.forEach(r=>Object.assign(mp,r.data||{})); setSaldoProximo(mp)
+  }
+
+  // A reserva grava tipo_credito = "<tipo>_<slug da unidade>" (ou "<tipo>_app" quando
+  // veio do app do parceiro), então o plano casa pelo prefixo + unidade. Avulso/pacote
+  // casa por "avulso%". Busca nas duas tabelas (CT e Club); canceladas ficam de fora.
+  async function alternarTreinosPlano(chave: string, info: any) {
+    if (planoAberto === chave) { setPlanoAberto(null); return }
+    setPlanoAberto(chave)
+    if (treinosPlano[chave] || !cliente) return
+    setTreinosPlano(prev => ({ ...prev, [chave]: 'carregando' }))
+    const tipo = info?.tipo_plano
+    const prefixo = ['wellhub','totalpass','coach_ct_pro'].includes(tipo) ? `${tipo}_%` : 'avulso%'
+    const unidadeId = info?.unidade_id || null
+    let qCt = supabase.from('agendamentos').select('id, data, horario, status, coaches(nome)')
+      .eq('cliente_id', cliente.id).like('tipo_credito', prefixo).neq('status', 'cancelado')
+      .order('data', { ascending: false }).order('horario', { ascending: false }).limit(200)
+    if (unidadeId) qCt = qCt.eq('unidade_id', unidadeId)
+    let qClub = supabase.from('club_reservas')
+      .select('id, status, club_ocorrencias!inner(data, club_aulas!inner(tipo, horario, unidade_id))')
+      .eq('cliente_id', cliente.id).like('tipo_credito', prefixo).neq('status', 'cancelado')
+      .order('created_at', { ascending: false }).limit(200)
+    if (unidadeId) qClub = qClub.eq('club_ocorrencias.club_aulas.unidade_id', unidadeId)
+    const [{ data: ags }, { data: crs }] = await Promise.all([qCt, qClub])
+    const lista = [
+      ...(ags || []).map((a: any) => ({ id: a.id, data: a.data, horario: (a.horario || '').slice(0, 5), status: a.status, detalhe: a.coaches?.nome ? `Coach ${a.coaches.nome}` : 'Coach CT' })),
+      ...(crs || []).map((r: any) => ({
+        id: r.id, data: r.club_ocorrencias?.data, horario: (r.club_ocorrencias?.club_aulas?.horario || '').slice(0, 5),
+        status: r.status, detalhe: tipoAulaLabel(r.club_ocorrencias?.club_aulas?.tipo || ''),
+      })),
+    ].sort((a, b) => `${b.data} ${b.horario}`.localeCompare(`${a.data} ${a.horario}`))
+    setTreinosPlano(prev => ({ ...prev, [chave]: lista }))
   }
 
   // Numeração "X/N" dos treinos no mês — Coach CT (agendamentos) e Club
@@ -1025,7 +1059,7 @@ export default function MinhaContaPage() {
                 const cor=restante===0?'#333':plano.startsWith('coach_ct_pro')?AMARELO:plano.startsWith('avulso')||plano.startsWith('credito')?CYAN:ACCENT
                 const saldoProx=saldoProximo[plano]
                 return (
-                  <div key={plano} style={{background:'#111',border:`1px solid ${restante===0?'#1a1a1a':cor+'22'}`,borderRadius:12,padding:'1rem'}}>
+                  <div key={plano} onClick={()=>alternarTreinosPlano(plano,info)} style={{background:'#111',border:`1px solid ${restante===0?'#1a1a1a':cor+'22'}`,borderRadius:12,padding:'1rem',cursor:'pointer'}}>
                     <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'0.65rem'}}>
                       <div style={{display:'flex',alignItems:'center',gap:8}}>
                         <span style={{fontSize:16}}>{icon}</span>
@@ -1044,6 +1078,44 @@ export default function MinhaContaPage() {
                       <span style={{fontSize:11,color:'#444'}}>{restante===0?`Esgotado em ${nomeMesAtual}`:`${restante} restante${restante!==1?'s':''} em ${nomeMesAtual}`}</span>
                       {saldoProx?.disponivel>0 && <span style={{fontSize:11,color:'#666'}}>{saldoProx.disponivel} em {nomeMesProximo} →</span>}
                     </div>
+                    <div style={{fontSize:11,color:'#888',marginTop:8}}>{planoAberto===plano?'▴ Ocultar treinos':'▾ Ver treinos feitos com este plano'}</div>
+                    {planoAberto===plano && (() => {
+                      const rs = treinosPlano[plano]
+                      const caixa = {marginTop:10,paddingTop:10,borderTop:'1px solid #1e1e1e'}
+                      if (!rs || rs==='carregando') return <div style={{...caixa,fontSize:12,color:'#555'}}>Carregando...</div>
+                      if (rs.length===0) return <div style={{...caixa,fontSize:12,color:'#555'}}>Nenhum treino feito com este plano ainda.</div>
+                      const porMes: Record<string,any[]> = {}
+                      for (const r of rs) (porMes[(r.data||'').slice(0,7)] ||= []).push(r)
+                      return (
+                        <div style={{...caixa,maxHeight:320,overflowY:'auto',display:'flex',flexDirection:'column',gap:12}}>
+                          {Object.entries(porMes).map(([ym,itens]) => {
+                            const [ano,mes] = ym.split('-')
+                            const presentes = itens.filter(r=>r.status==='realizado'||r.status==='presente').length
+                            const faltas = itens.filter(r=>r.status==='falta').length
+                            return (
+                              <div key={ym}>
+                                <div style={{fontSize:12,fontWeight:600,color:'#ddd',marginBottom:4}}>
+                                  {MESES[Number(mes)-1]} {ano}
+                                  <span style={{fontWeight:400,color:'#555'}}> · {presentes} presença{presentes!==1?'s':''}{faltas>0?` · ${faltas} falta${faltas!==1?'s':''}`:''}</span>
+                                </div>
+                                <div style={{display:'flex',flexDirection:'column',gap:3,paddingLeft:8,borderLeft:`2px solid ${cor}33`}}>
+                                  {itens.map(r => {
+                                    const st = r.status==='realizado'||r.status==='presente' ? {t:'Presente',c:VERDE}
+                                      : r.status==='falta' ? {t:'Falta',c:'#ff5555'}
+                                      : {t:'Agendado',c:'#5dade2'}
+                                    return (
+                                      <div key={r.id} style={{fontSize:12,color:'#999'}}>
+                                        <DiaSemana data={r.data}/> {r.data?.split('-').reverse().join('/')} · {r.horario}{r.detalhe?` · ${r.detalhe}`:''} · <span style={{color:st.c,fontWeight:600}}>{st.t}</span>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
+                    })()}
                   </div>
                 )
               })}
