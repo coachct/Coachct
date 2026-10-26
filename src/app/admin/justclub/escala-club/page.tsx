@@ -593,7 +593,7 @@ export default function AdminEscalaClubPage() {
     setAceitando(null)
   }
 
-  // ─── Resumo do mês (copiável p/ WhatsApp): só FDS de escala (sáb/dom) ───
+  // ─── Resumo do mês (copiável p/ WhatsApp): FDS de escala (sáb/dom) + feriados ───
   // Nome de unidade enxuto p/ o resumo por coach (tira o prefixo "JustClub").
   function unidadeCurta(id: string | null | undefined) {
     const n = nomeUnidade(id)
@@ -605,9 +605,13 @@ export default function AdminEscalaClubPage() {
     return `${wd} ${dataStr.slice(8, 10)}/${dataStr.slice(5, 7)}`
   }
   // Sábado de referência do fim de semana de uma data (domingo agrupa com o sábado anterior).
+  // Feriado em dia de semana entra no FDS mais perto: seg/ter → FDS anterior, qui/sex → FDS seguinte.
+  // Quarta fica no próprio bloco (chave = a própria data).
   function sabadoDoFds(dataStr: string) {
     const d = new Date(dataStr + 'T12:00:00')
-    if (d.getDay() === 0) d.setDate(d.getDate() - 1)
+    const ajuste = [-1, -2, -3, 0, 2, 1, 0][d.getDay()]
+    if (d.getDay() === 3) return dataStr
+    d.setDate(d.getDate() + ajuste)
     return dataLocalStr(d)
   }
 
@@ -617,7 +621,16 @@ export default function AdminEscalaClubPage() {
   async function carregarResumo() {
     setLoadingResumo(true)
     const clubIds = unidades.map((u: any) => u.id)
-    const datas = fdsDoMes(mesResumo).map(f => f.data) // só sáb/dom do mês
+    const datasFds = fdsDoMes(mesResumo).map(f => f.data) // sáb/dom do mês
+    // Feriados ativos do mês (unidades Club) entram junto, agregados ao FDS mais perto.
+    const [ano, mes] = mesResumo.split('-').map(Number)
+    const fimMes = dataLocalStr(new Date(ano, mes, 0))
+    const { data: fer } = clubIds.length > 0
+      ? await supabase.from('feriados').select('data').in('unidade_id', clubIds).eq('ativo', true)
+          .gte('data', `${mesResumo.slice(0, 7)}-01`).lte('data', fimMes)
+      : { data: [] as any[] }
+    const datasFeriado = new Set<string>((fer || []).map((f: any) => f.data).filter((d: string) => !datasFds.includes(d)))
+    const datas = [...datasFds, ...Array.from(datasFeriado)].sort()
     if (clubIds.length === 0 || datas.length === 0) {
       setBlocosUni([]); setBlocosFds([]); setBlocosCoach([]); setLoadingResumo(false); return
     }
@@ -630,9 +643,10 @@ export default function AdminEscalaClubPage() {
     let ocs: any[] = []
     if (ids.length > 0) {
       const r = await supabase.from('club_ocorrencias')
-        .select('id, data, coach_id, club_aulas(tipo, horario, unidade_id, coach_id, coaches(id, nome))')
+        .select('id, data, coach_id, club_aulas(tipo, horario, unidade_id, coach_id, feriado_id, coaches(id, nome))')
         .in('aula_id', ids).in('data', datas).eq('status', 'ativa').order('data')
-      ocs = r.data || []
+      // No dia de feriado vale só a aula do feriado (nunca a grade da semana).
+      ocs = (r.data || []).filter((o: any) => !datasFeriado.has(o.data) || o.club_aulas?.feriado_id)
     }
 
     const itens = ocs.map((o: any) => {
@@ -787,7 +801,7 @@ export default function AdminEscalaClubPage() {
         </div>
       ) : aba === 'resumo' ? (
         <div style={{ background:`${VERDE}10`, border:`1px solid ${VERDE}40`, borderRadius:12, padding:'0.75rem 1rem', marginBottom:'1.5rem', fontSize:13, color:'#0f766e' }}>
-          💡 Só a escala de <strong>fim de semana (sáb/dom)</strong>, nunca a grade da semana. Cada bloco tem seu <strong>Copiar</strong> — por unidade, por fim de semana e por coach — pronto pro WhatsApp (com os <code>*negritos*</code> que ele formata). Reflete a escala já salva (sugestão + ajustes).
+          💡 Só a escala de <strong>fim de semana (sáb/dom)</strong> e dos <strong>feriados</strong>, nunca a grade da semana. Feriado entra junto do FDS mais perto (seg/ter com o anterior, qui/sex com o seguinte). Cada bloco tem seu <strong>Copiar</strong> — por unidade, por fim de semana e por coach — pronto pro WhatsApp (com os <code>*negritos*</code> que ele formata). Reflete a escala já salva (sugestão + ajustes).
         </div>
       ) : aba === 'fds' ? (
         <div style={{ background:`${CYAN}10`, border:`1px solid ${CYAN}40`, borderRadius:12, padding:'0.75rem 1rem', marginBottom:'1.5rem', fontSize:13, color:'#0e7490' }}>
