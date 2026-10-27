@@ -55,9 +55,16 @@
 -- ───────────────────────────────────────────────────────────────────────────
 -- PASSO 1 — A trava
 -- ───────────────────────────────────────────────────────────────────────────
-CREATE OR REPLACE FUNCTION club_reservas_check_capacidade()
+-- APLICADO NO BANCO SÓ EM 27/10/2026 (migration club_trava_capacidade_exceto_parceiro).
+-- O commit de 27/06 nunca foi rodado no Supabase — estouraram 13/07, 22/07, 04/08
+-- e 28/10. Versão aplicada: SECURITY DEFINER (conta todas as reservas, sem RLS) e
+-- reserva vinda do app Wellhub/TotalPass passa sempre (já existe lá, não dá pra
+-- desfazer; recusar faria a pessoa chegar sem constar na lista).
+CREATE OR REPLACE FUNCTION public.club_reservas_check_capacidade()
 RETURNS trigger
 LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   v_tipo          text;
@@ -67,6 +74,12 @@ DECLARE
   v_cap_efetiva   int;
   v_adiciona_vaga boolean;
 BEGIN
+  -- Reserva que veio do app do parceiro (Wellhub/TotalPass) já existe lá e não
+  -- dá pra desfazer: entra sempre, senão a pessoa chega sem constar na lista.
+  IF COALESCE(NEW.via_app, false) OR NEW.criado_via IN ('wellhub','totalpass') THEN
+    RETURN NEW;
+  END IF;
+
   -- Só checa quando a operação ADICIONA um ocupante:
   --   INSERT entrando como reservado/presente, OU
   --   UPDATE de um status que não ocupava -> que ocupa.
@@ -110,7 +123,7 @@ BEGIN
     AND id <> NEW.id;
 
   IF v_ocupadas + 1 > v_cap_efetiva THEN
-    RAISE EXCEPTION 'AULA_LOTADA: capacidade % atingida (% ocupadas)',
+    RAISE EXCEPTION 'AULA_LOTADA: esta aula está lotada (capacidade %, % reservas).',
       v_cap_efetiva, v_ocupadas
       USING ERRCODE = 'P0001';
   END IF;
