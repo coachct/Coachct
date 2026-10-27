@@ -295,6 +295,9 @@ export async function POST(req: NextRequest) {
     if (pendencias && pendencias.length > 0) {
       resumoPendencias.havia = pendencias.length
 
+      // Faltas já quitadas nesta rodada — a mesma falta nunca é cobrada duas vezes
+      const faltasQuitadas = new Set<string>()
+
       for (const pend of pendencias) {
         const valorCentavos = Math.round(Number(pend.valor) * 100)
 
@@ -310,6 +313,30 @@ export async function POST(req: NextRequest) {
         const produtoIdVenda      = origemClub ? PRODUTO_MULTA_CLUB_ID : PRODUTO_MULTA_ID
         // 'JUSTCLUBMULTA' = 13 chars (limite do Pagar.me); com espaço estouraria.
         const statementDescriptor = origemClub ? 'JUSTCLUBMULTA' : 'JUSTCT MULTA'
+
+        // ── Falta já paga? (pendência duplicada) ──
+        // Se a mesma falta já tem pendência paga, venda registrada ou foi cobrada nesta
+        // rodada, cancela esta pendência em vez de cobrar de novo (caso Andrea Mari, 21/10/2026).
+        const refFalta = matchReserva?.[1] || matchAg?.[1] || null
+        if (refFalta) {
+          let quitada = faltasQuitadas.has(refFalta)
+          if (!quitada) {
+            const [{ data: pendPaga }, { data: vendaFalta }] = await Promise.all([
+              supabase.from('cobrancas_pendentes').select('id').eq('cliente_id', cliente.id)
+                .eq('status', 'pago').ilike('observacao', `%${refFalta}%`).limit(1),
+              supabase.from('vendas').select('id').eq('cliente_id', cliente.id)
+                .eq('produto_id', produtoIdVenda).is('excluido_em', null)
+                .ilike('observacao', `%${refFalta}%`).limit(1),
+            ])
+            quitada = !!(pendPaga?.length || vendaFalta?.length)
+          }
+          if (quitada) {
+            await supabase.from('cobrancas_pendentes').update({
+              status: 'cancelado', cancelado_em: new Date().toISOString(),
+            }).eq('id', pend.id)
+            continue
+          }
+        }
 
         const orderPayload = {
           customer_id: pagarmeCustomerId,
@@ -338,6 +365,7 @@ export async function POST(req: NextRequest) {
         })
 
         if (aprovado) {
+          if (refFalta) faltasQuitadas.add(refFalta)
           await supabase.from('cobrancas_pendentes').update({
             status: 'pago', pago_em: new Date().toISOString(), pagarme_order_id: orderData.id,
           }).eq('id', pend.id)

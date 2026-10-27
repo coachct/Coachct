@@ -107,13 +107,23 @@ export async function POST(req: NextRequest) {
     if (!cliente.pagarme_customer_id || !cliente.pagarme_card_id)
       return NextResponse.json({ error: 'Cliente sem cartão cadastrado' }, { status: 400 })
 
-    // Verifica se já foi cobrado
+    // Verifica se já foi cobrado (limit(1) e não maybeSingle: com 2 vendas o maybeSingle volta null)
     const { data: vendaExistente } = await supabase
       .from('vendas').select('id').eq('cliente_id', cliente.id)
-      .eq('produto_id', PRODUTO_MULTA_CLUB_ID)
-      .ilike('observacao', `%${reserva_id}%`).maybeSingle()
-    if (vendaExistente)
+      .eq('produto_id', PRODUTO_MULTA_CLUB_ID).is('excluido_em', null)
+      .ilike('observacao', `%${reserva_id}%`).limit(1)
+    if (vendaExistente?.length)
       return NextResponse.json({ error: 'Esta falta já foi cobrada anteriormente' }, { status: 400 })
+
+    // Pendências desta mesma falta. Sem isso, cada nova tentativa recusada criava OUTRA pendência
+    // e o cadastro de cartão cobrava todas.
+    const { data: pendenciasFalta } = await supabase
+      .from('cobrancas_pendentes').select('id, status').eq('cliente_id', cliente.id)
+      .ilike('observacao', `%reserva_id: ${reserva_id}%`).neq('status', 'cancelado')
+      .order('cobrado_em', { ascending: true })
+    if (pendenciasFalta?.some(p => p.status === 'pago'))
+      return NextResponse.json({ error: 'Esta falta já foi paga pelo cliente' }, { status: 400 })
+    const pendenciasAbertas = (pendenciasFalta || []).filter(p => p.status === 'pendente')
 
     // ── Garante CUSTOMER COMPLETO no Pagar.me antes de cobrar (telefone + CPF) ──
     // Customers criados antes dos fixes podem existir sem phone e/ou sem document.
@@ -217,12 +227,19 @@ export async function POST(req: NextRequest) {
         || dataPagarme?.message
         || `Cartão recusado (status: ${dataPagarme?.status || 'desconhecido'})`
 
-      await supabase.from('cobrancas_pendentes').insert({
-        cliente_id: cliente.id, valor: Number(valor),
-        motivo: `Multa no-show JustClub — ${dataAula} ${horarioAula} — ${unidadeNome}`,
-        status: 'pendente', pagarme_order_id: dataPagarme?.id || null,
-        criado_por: perfil.id, observacao: `reserva_id: ${reserva_id}`,
-      })
+      // Já existe pendência aberta desta falta → só atualiza; nunca cria uma segunda
+      if (pendenciasAbertas.length) {
+        await supabase.from('cobrancas_pendentes').update({
+          valor: Number(valor), pagarme_order_id: dataPagarme?.id || null,
+        }).eq('id', pendenciasAbertas[0].id)
+      } else {
+        await supabase.from('cobrancas_pendentes').insert({
+          cliente_id: cliente.id, valor: Number(valor),
+          motivo: `Multa no-show JustClub — ${dataAula} ${horarioAula} — ${unidadeNome}`,
+          status: 'pendente', pagarme_order_id: dataPagarme?.id || null,
+          criado_por: perfil.id, observacao: `reserva_id: ${reserva_id}`,
+        })
+      }
 
       // Falha de cobrança é o ÚNICO gatilho de bloqueio (falta isolada nunca bloqueia).
       // Bloqueia o cliente para que o banner vermelho apareça e ele possa pagar sozinho
@@ -246,6 +263,16 @@ export async function POST(req: NextRequest) {
         unidade_id: unidadeId,
         observacao: `Multa No-Show JustClub — reserva ${reserva_id} — order_id ${dataPagarme.id}`,
       }).select('id').single()
+
+    // Cobrou direto: fecha a pendência aberta desta falta (senão o cadastro de cartão cobraria de novo)
+    if (pendenciasAbertas.length) {
+      await supabase.from('cobrancas_pendentes').update({
+        status: 'pago', pago_em: new Date().toISOString(), pagarme_order_id: dataPagarme.id,
+      }).eq('id', pendenciasAbertas[0].id)
+      if (pendenciasAbertas.length > 1)
+        await supabase.from('cobrancas_pendentes').update({ status: 'cancelado', cancelado_em: new Date().toISOString() })
+          .in('id', pendenciasAbertas.slice(1).map(p => p.id))
+    }
 
     if (errVenda) {
       console.error('Erro ao inserir venda club:', errVenda)
