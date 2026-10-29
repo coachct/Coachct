@@ -575,7 +575,7 @@ export default function AdminAgendaPage() {
         ) : (
           <div className="flex flex-wrap items-center justify-end gap-2 md:flex-shrink-0 md:flex-col md:flex-nowrap md:items-end">
             <div className="flex flex-row gap-2">
-              <button onClick={() => setModalConfirmar({ ag, acao: 'presenca' })} className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
+              <button onClick={() => setModalConfirmar({ ag, acao: 'presenca' })} className="btn btn-sm gap-1 text-green-600 hover:bg-green-50">
                 <CheckCircle size={14} /> Presença
               </button>
               <button onClick={() => setModalConfirmar({ ag, acao: 'falta' })} className="btn btn-sm gap-1 text-orange-600 hover:bg-orange-50">
@@ -761,7 +761,7 @@ export default function AdminAgendaPage() {
                                   <option value="">— Sem coach —</option>
                                 </select>
                               )}
-                              <button onClick={() => setModalConfirmar({ ag, acao: 'presenca' })} className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
+                              <button onClick={() => setModalConfirmar({ ag, acao: 'presenca' })} className="btn btn-sm gap-1 text-green-600 hover:bg-green-50">
                                 <CheckCircle size={12} /> Presença
                               </button>
                               <button onClick={() => setModalConfirmar({ ag, acao: 'falta' })} className="btn btn-sm gap-1 text-orange-600 hover:bg-orange-50">
@@ -882,7 +882,7 @@ export default function AdminAgendaPage() {
                             )}
                           </div>
                           <div className="flex justify-end gap-2 md:contents">
-                            <button onClick={() => setModalConfirmar({ ag, acao: 'presenca' })} className="btn btn-sm gap-1 bg-green-500 text-white hover:bg-green-600">
+                            <button onClick={() => setModalConfirmar({ ag, acao: 'presenca' })} className="btn btn-sm gap-1 text-green-600 hover:bg-green-50">
                               <CheckCircle size={12} /> Presença
                             </button>
                             <button onClick={() => setModalConfirmar({ ag, acao: 'falta' })} className="btn btn-sm gap-1 text-orange-600 hover:bg-orange-50">
