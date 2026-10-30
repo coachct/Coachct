@@ -166,9 +166,30 @@ function garantirLinkPlanos(texto: string): string {
   return t
 }
 
+// TRAVA DETERMINÍSTICA: SEM lamentação nem afirmação/promessa (o Ricardo pediu, recorrente).
+// Com cliente irritada o modelo volta a se desculpar, validar a frustração ("você tem razão")
+// e prometer que a equipe "vai resolver com urgência máxima" — mesmo com a regra no prompt.
+// Corta SÓ os ofensores fortes (não mexe num "poxa" leve), preservando o resto e as quebras.
+const RE_LAMENTO = /desculp|voc[êe]s?\s+t[êe]m\s+(toda\s+)?raz[ãa]o|sinto\s+muito|lamento|imagino\s+(o\s+quanto|como|sua)|entendo\s+(a\s+sua|sua|o\s+seu|seu)\s*(frustra|chatea|irrita|indigna|lado)|urg[êe]ncia\s+m[áa]xima|prioridade\s+m[áa]xima|eles\s+v[ãa]o\s+(resolv|te\s+responder|te\s+retornar|dar\s+retorno|cuidar)|😔|🥺|😢/i
+function semLamentacao(texto: string): string {
+  const t = String(texto || '')
+  if (!RE_LAMENTO.test(t)) return t
+  const limpo = t
+    .split('\n')
+    .map((linha) =>
+      RE_LAMENTO.test(linha)
+        ? linha.split(/(?<=[.!?…])\s+/).filter((f) => !RE_LAMENTO.test(f)).join(' ').replace(/[ \t]+/g, ' ').trim()
+        : linha,
+    )
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+  return limpo.length >= 8 ? limpo : t // nunca manda vazio
+}
+
 /** Passada determinística final aplicada a TODA resposta enviada ao cliente. */
 function finalizarTexto(texto: string, contextoCancel = false): string {
-  return garantirLinkPlanos(semCanalExterno(semTelefoneInventado(limparMecanicaCancel(texto, contextoCancel))))
+  return semLamentacao(garantirLinkPlanos(semCanalExterno(semTelefoneInventado(limparMecanicaCancel(texto, contextoCancel)))))
 }
 
 // TRAVA DETERMINÍSTICA: NUNCA falar de multa NEM de cartão (garantia) se o cliente não
@@ -1522,6 +1543,7 @@ Você NÃO passa a conversa pra equipe, NÃO diz "vou transferir/encaminhar pra 
 # Tom
 Português do Brasil, caloroso e DIRETO. Mensagens CURTAS: dê a informação e PARE — não repita o que a pessoa disse, não faça várias perguntas, não alongue. Sem muletas tipo "Boa pergunta!". Pode *negrito* e emojis com parcimônia.
 NADA DE LAMENTO / COMENTÁRIO TRISTE (REGRA — o Ricardo pediu): é PROIBIDO abrir ou encher a resposta com lamúria — "Poxa, que situação", "Fico com pena", "que pena", "sinto muito", "infelizmente" repetido. No MÁXIMO um toque LEVE de empatia, UMA vez, e só quando REALMENTE couber (ex.: alguém passando mal) — nunca em dobro, nunca em mensagens seguidas. Vá DIRETO à informação.
+NADA DE AFIRMAÇÃO / PROMESSA nem VALIDAR FRUSTRAÇÃO (REGRA — o Ricardo pediu, é recorrente): é PROIBIDO pedir desculpas ("me desculpe", "desculpa"), dar razão à irritação ("você tem (toda) razão em estar frustrado", "entendo sua frustração") e PROMETER resultado da equipe ("vou encaminhar com urgência máxima", "com prioridade máxima", "eles vão resolver/te responder", "vão te retornar"). Você NÃO controla a equipe nem prazos — NÃO prometa isso. Diga o FATO de forma curta e honesta (ex.: "isso é com a equipe e não tenho o prazo aqui") e PARE, sem desculpa, sem validar, sem prometer urgência.
 NÃO SUPONHA nem invente cenário (REGRA): não adivinhe o motivo/situação da pessoa, não crie hipótese ("mas calma, se você conseguir...", "provavelmente está lotada"). Se ela já disse o que quer, responda isso — não fique supondo.
 RESPONDA SÓ O QUE FOI PERGUNTADO (REGRA): dê a resposta EXATA, curtíssima. NÃO despeje a regra inteira, NÃO liste condições/passos que ela não pediu, NÃO emende assunto. Entenda a situação primeiro e responda ao ponto — uma ou duas linhas bastam.
 
