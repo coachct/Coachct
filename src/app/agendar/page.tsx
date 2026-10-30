@@ -21,7 +21,8 @@ const AMARELO = '#ffaa00'
 const VERMELHO = '#ff4444'
 
 // Bloqueio de agendamento do Coach CT: texto que o cliente vê no lugar da grade.
-const MSG_AGENDAMENTO_CT_BLOQUEADO = 'Notamos que você não tem comparecido aos treinos, o que está ocasionando coaches sem atendimentos em horários que temos alunos querendo agendamentos. Favor entrar em contato com a equipe via whatsapp para liberarmos novamente os seus agendamentos.'
+const MSG_CT_1_POR_DIA = 'Você já tem um treino agendado no Coach CT neste dia. É permitido apenas um agendamento por dia.'
+const MSG_AGENDAMENTO_CT_BLOQUEADO ='Notamos que você não tem comparecido aos treinos, o que está ocasionando coaches sem atendimentos em horários que temos alunos querendo agendamentos. Favor entrar em contato com a equipe via whatsapp para liberarmos novamente os seus agendamentos.'
 const WHATSAPP_EQUIPE = '5511917555878'
 
 // Clientes que veem o aviso de faltas antes de cada reserva (decisão caso a caso).
@@ -497,6 +498,8 @@ export default function AgendarPage() {
   const isDiaExclusivoPro = diasDesdHoje >= 7 && tipoVisualizacao !== 'coach_ct_pro'
 
   function jaAgendouNoDia(plano: string) { return agendamentosNoDia.some(a => a.tipo_credito === plano && ['agendado', 'confirmado', 'realizado'].includes(a.status)) }
+  // Coach CT: um agendamento por dia, qualquer crédito (trava CT_1_POR_DIA no banco)
+  function temAgendamentoNoDia() { return agendamentosNoDia.some(a => ['agendado', 'confirmado', 'realizado'].includes(a.status)) }
   function naFila(hora: string) { return filasDoCliente.some(f => (f.horario || '').slice(0, 5) === hora) }
   function temFilaNoHorario(hora: string) { return filaGeral.some(f => (f.horario || '').slice(0, 5) === hora) }
 
@@ -666,7 +669,7 @@ export default function AgendarPage() {
     if (!modalSlot || !cliente || !unidadeAtiva) return
     if (clienteBloqueado) { setErroModal('Sua conta está bloqueada.'); return }
     if (agendamentoCtBloqueado) { setErroModal(MSG_AGENDAMENTO_CT_BLOQUEADO); return }
-    if (jaAgendouNoDia(tipoCredito)) { const { label } = parsePlanoKey(tipoCredito); setErroModal(`Você já tem um agendamento com ${label} neste dia.`); return }
+    if (temAgendamentoNoDia()) { setErroModal(MSG_CT_1_POR_DIA); return }
     const agora = new Date()
     const dataSel = diasSemana[diaSel]
     const mesmoMes = dataSel.getMonth() === agora.getMonth() && dataSel.getFullYear() === agora.getFullYear()
@@ -753,15 +756,13 @@ export default function AgendarPage() {
       return
     }
     setEntrandoFila(true); setErroFila('')
-    // Guarda: não entrar na fila se já há agendamento no mesmo dia/tipo (evita fila + agendamento simultâneos).
+    // Guarda: não entrar na fila se já há agendamento no mesmo dia, qualquer crédito (um agendamento por dia no CT).
     const { data: jaAgDiaFila } = await supabase
       .from('agendamentos').select('id')
       .eq('cliente_id', cliente.id).eq('data', modalFila.data)
-      .eq('tipo_credito', tipoFilaCredito).eq('unidade_id', unidadeAtiva.id)
       .neq('status', 'cancelado').limit(1)
     if (jaAgDiaFila && jaAgDiaFila.length > 0) {
-      const { label } = parsePlanoKey(tipoFilaCredito)
-      setErroFila(`Você já tem um agendamento com ${label} neste dia. Não é possível também entrar na fila.`)
+      setErroFila('Você já tem um treino agendado no Coach CT neste dia. Como é permitido apenas um agendamento por dia, não é possível entrar na fila de outro horário.')
       setEntrandoFila(false); return
     }
     if (notifFila !== cliente.notificacao_preferida) {
