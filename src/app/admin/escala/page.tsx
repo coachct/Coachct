@@ -52,9 +52,12 @@ function rotuloDia(dataStr: string) {
   return `${wd} ${dataStr.slice(8, 10)}/${dataStr.slice(5, 7)}`
 }
 // Sábado de referência do fim de semana (domingo agrupa com o sábado anterior).
+// Feriado em dia de semana entra no FDS mais perto: seg/ter → FDS anterior, qui/sex → FDS seguinte.
+// Quarta fica no próprio bloco (chave = a própria data).
 function sabadoDoFds(dataStr: string) {
   const d = new Date(dataStr + 'T12:00:00')
-  if (d.getDay() === 0) d.setDate(d.getDate() - 1)
+  if (d.getDay() === 3) return dataStr
+  d.setDate(d.getDate() + [-1, -2, -3, 0, 2, 1, 0][d.getDay()])
   return dataLocalStr(d)
 }
 const META_KEY = 'escala_ct_meta_dia'
@@ -90,6 +93,8 @@ export default function AdminEscalaPage() {
   const [dispMes, setDispMes] = useState<Set<string>>(new Set())    // `${coachId}|${data}`
   const [escalasMes, setEscalasMes] = useState<any[]>([])           // escala_fds do mês (coach_id = user_id)
   const [feriasMes, setFeriasMes] = useState<any[]>([])
+  const [escalasFeriadoMes, setEscalasFeriadoMes] = useState<any[]>([]) // escala_fds dos feriados ativos (dia de semana) do mês — só p/ o Resumo
+  const [feriadosResumo, setFeriadosResumo] = useState<string[]>([])     // datas desses feriados
   const [loadingMes, setLoadingMes] = useState(false)
   const [salvandoDisp, setSalvandoDisp] = useState<string | null>(null) // `${coachId}|${data}`
   const [salvandoMontar, setSalvandoMontar] = useState<string | null>(null) // `${userId}|${data}` ou 'mes'
@@ -346,18 +351,28 @@ export default function AdminEscalaPage() {
     if (!unidadeAtiva) return
     setLoadingMes(true)
     const datas = fdsDoMes(mesSel).map(f => f.data)
-    if (datas.length === 0) { setDispMes(new Set()); setEscalasMes([]); setFeriasMes([]); setLoadingMes(false); return }
+    if (datas.length === 0) { setDispMes(new Set()); setEscalasMes([]); setFeriasMes([]); setEscalasFeriadoMes([]); setLoadingMes(false); return }
     const minD = datas[0], maxD = datas[datas.length - 1]
-    const [{ data: disp }, { data: esc }, { data: fer }] = await Promise.all([
+    const [y, m] = mesSel.split('-').map(Number)
+    const [{ data: disp }, { data: esc }, { data: fer }, { data: feriadosMes }] = await Promise.all([
       supabase.from('ct_disponibilidade_fds').select('coach_id, data').eq('unidade_id', unidadeAtiva.id).in('data', datas),
       supabase.from('escala_fds').select('*').eq('unidade_id', unidadeAtiva.id).in('data', datas).order('data'),
       supabase.from('coach_ferias').select('coach_id, data_inicio, data_fim').lte('data_inicio', maxD).gte('data_fim', minD),
+      supabase.from('feriados').select('data').eq('unidade_id', unidadeAtiva.id).eq('ativo', true)
+        .gte('data', `${mesSel}-01`).lte('data', dataLocalStr(new Date(y, m, 0))),
     ])
+    // Feriados ativos em dia de semana: as escalas deles entram no Resumo, junto do FDS mais perto.
+    const datasFeriado = (feriadosMes || []).map((f: any) => f.data).filter((d: string) => !datas.includes(d))
+    const { data: escFer } = datasFeriado.length
+      ? await supabase.from('escala_fds').select('*').eq('unidade_id', unidadeAtiva.id).in('data', datasFeriado).order('data')
+      : { data: [] as any[] }
     const s = new Set<string>()
     for (const d of (disp || [])) s.add(`${d.coach_id}|${d.data}`)
     setDispMes(s)
     setEscalasMes(esc || [])
     setFeriasMes(fer || [])
+    setEscalasFeriadoMes(escFer || [])
+    setFeriadosResumo(datasFeriado)
     setLoadingMes(false)
   }
 
@@ -450,15 +465,16 @@ export default function AdminEscalaPage() {
     await Promise.all([carregarMes(), loadDados(true)])
   }
 
-  // ─── Resumo do mês (copiável p/ WhatsApp): só sáb/dom do mês, reflete a escala salva ───
+  // ─── Resumo do mês (copiável p/ WhatsApp): sáb/dom + feriados do mês, reflete a escala salva ───
   function montarResumo() {
-    const datas = fdsDoMes(mesSel).map(f => f.data)
+    const datas = [...fdsDoMes(mesSel).map(f => f.data), ...feriadosResumo].sort()
+    const escalasResumo = [...escalasMes, ...escalasFeriadoMes]
     const mesTxt = competenciaLabel(mesSel)
     const nomeUnid = (unidadeAtiva?.nome || 'Coach CT').toUpperCase()
     // Sábado: cada coach com o turno dele (" — Turno 1 · 08h às 12h"), ordenado por turno.
     const sufixoTurno = (e: any) => precisaTurno(e.data) ? ` — ${rotuloTurnoFds(e.turno)}` : ''
     const nomesDoDia = (data: string) =>
-      escalasMes.filter(e => e.data === data)
+      escalasResumo.filter(e => e.data === data)
         .sort((a, b) => ((a.turno || 9) - (b.turno || 9)) || nomeCoach(a.coach_id).localeCompare(nomeCoach(b.coach_id)))
         .map(e => nomeCoach(e.coach_id) + sufixoTurno(e))
     const plural = (n: number) => `${n} dia${n === 1 ? '' : 's'}`
@@ -481,7 +497,7 @@ export default function AdminEscalaPage() {
     })
 
     const porCoach: Record<string, any[]> = {}
-    for (const e of escalasMes) {
+    for (const e of escalasResumo) {
       if (!porCoach[e.coach_id]) porCoach[e.coach_id] = []
       porCoach[e.coach_id].push(e)
     }
@@ -800,8 +816,8 @@ export default function AdminEscalaPage() {
             )
             return (
               <>
-                {secao('Mês todo', 'todos os fins de semana do mês', bMes)}
-                {secao('Por fim de semana', 'sábado + domingo', bFds)}
+                {secao('Mês todo', 'todos os fins de semana e feriados do mês', bMes)}
+                {secao('Por fim de semana', 'sábado + domingo, com o feriado mais perto junto', bFds)}
                 {secao('Por coach', 'cada coach, mês todo — mandar individual', bCoach)}
               </>
             )
