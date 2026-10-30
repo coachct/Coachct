@@ -83,11 +83,24 @@ export default function AdminCalendarioClubPage() {
     if (lista.length > 0) {
       const { data: reservas } = await supabase.from('club_reservas')
         .select('ocorrencia_id, status').in('ocorrencia_id', lista.map((o: any) => o.id))
+
+      // Bloqueios: Running desconta posição bloqueada (global da unidade + pontual da aula);
+      // Lift/LFG desconta vagas_bloqueadas da ocorrência. Mesma regra do contador do site (aulas/page.tsx).
+      const { data: bloqGlobal } = await supabase.from('club_posicoes').select('id')
+        .eq('unidade_id', unidadeSel.id).eq('ativo', true).eq('bloqueado', true)
+      const { data: bloqPont } = await supabase.from('club_posicoes_bloqueios_ocorrencia')
+        .select('ocorrencia_id').in('ocorrencia_id', lista.map((o: any) => o.id))
+      const qtdBloqGlobal = (bloqGlobal || []).length
+
       const cont: Record<string, any> = {}
       for (const oc of lista) {
         const rs = (reservas || []).filter((r: any) => r.ocorrencia_id === oc.id)
+        const cap = oc.club_aulas?.capacidade || 0
+        const bloqueadas = oc.club_aulas?.tipo === 'running_funcional'
+          ? qtdBloqGlobal + (bloqPont || []).filter((b: any) => b.ocorrencia_id === oc.id).length
+          : (oc.vagas_bloqueadas || 0)
         cont[oc.id] = {
-          total:    oc.club_aulas?.capacidade || 0,
+          total:    Math.max(0, cap - bloqueadas),
           reservado: rs.filter((r: any) => r.status === 'reservado').length,
           presente:  rs.filter((r: any) => r.status === 'presente').length,
           falta:     rs.filter((r: any) => r.status === 'falta').length,
@@ -234,7 +247,7 @@ export default function AdminCalendarioClubPage() {
                   </div>
                   <div style={{ textAlign:'center' }}>
                     <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:28, color:'#111', lineHeight:1 }}>
-                      {cont.total - total}
+                      {Math.max(0, cont.total - total)}
                     </div>
                     <div style={{ fontSize:10, color:'#aaa', textTransform:'uppercase', letterSpacing:0.5 }}>vagas</div>
                   </div>
