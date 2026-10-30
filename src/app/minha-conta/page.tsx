@@ -251,7 +251,7 @@ export default function MinhaContaPage() {
       { data: cobrancasData },
     ] = await Promise.all([
       // Futuros CT
-      supabase.from('agendamentos').select('*, unidades(nome)')
+      supabase.from('agendamentos').select('*, unidades(nome), coaches(nome)')
         .eq('cliente_id', cli.id).gte('data', hoje)
         .not('status','in','("cancelado")').order('data').order('horario').limit(30),
       // Passados CT
@@ -978,6 +978,9 @@ export default function MinhaContaPage() {
                         {item.tipoCredito && (()=>{ const {label,icon}=parsePlanoKey(item.tipoCredito); return (
                           <span style={{fontSize:10,color:'#777',background:'#1a1a1a',padding:'1px 7px',borderRadius:20,border:'1px solid #2a2a2a'}}>{icon} {label}</span>
                         )})()}
+                        {!isClub && (item.original as any)?.coaches?.nome && (
+                          <span style={{fontSize:10,color:VERDE,background:`${VERDE}15`,padding:'1px 7px',borderRadius:20,fontWeight:600}}>Coach {(item.original as any).coaches.nome}</span>
+                        )}
                         {numeroTreino.get(item.id) && (
                           <span title="treino do mês" style={{fontSize:10,color:ACCENT,background:`${ACCENT}15`,padding:'1px 7px',borderRadius:20,fontFamily:"'DM Mono', monospace",fontWeight:700}}>{numeroTreino.get(item.id)}</span>
                         )}
