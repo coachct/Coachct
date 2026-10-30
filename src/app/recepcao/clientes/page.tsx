@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, Suspense } from 'react'
 import { createClient } from '@/lib/supabase'
 import { gradeExtraDoDia, coachesComFixaSubstituida } from '@/lib/grade'
 import { coachesFdsPorHora } from '@/lib/fds-ct'
+import { clienteTemPro, coachesLivresNoHorario } from '@/lib/coach-pro'
 import { mensagemTravaApp } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnidade } from '@/hooks/useUnidade'
@@ -135,6 +136,10 @@ function RecepcaoClientesPageInner() {
   const [horariosSel, setHorariosSel] = useState<any[]>([])
   const [modalSlot, setModalSlot] = useState<{ hora: string; data: string } | null>(null)
   const [tipoCredito, setTipoCredito] = useState('')
+  // Cliente PRO (Coach CT Pro / App PRO): escolhe o coach depois do dia e horário.
+  const [modalPro, setModalPro] = useState(false)
+  const [coachesModal, setCoachesModal] = useState<{ id: string; nome: string }[]>([])
+  const [coachEscolhido, setCoachEscolhido] = useState('')
   const [agendando, setAgendando] = useState(false)
   const [erroModal, setErroModal] = useState('')
 
@@ -467,28 +472,35 @@ function RecepcaoClientesPageInner() {
     if (!unidadeAtiva) return
     const dataStr = diasSemana[diaSel].toISOString().split('T')[0]
     const dataObj = diasSemana[diaSel]
-    const { data: saldoData } = await supabase.rpc('saldo_creditos_cliente', {
-      p_cliente_id: clienteSel.id,
-      p_mes: dataObj.getMonth() + 1,
-      p_ano: dataObj.getFullYear(),
-      p_unidade_id: unidadeAtiva.id,
-    })
+    const [{ data: saldoData }, ehPro] = await Promise.all([
+      supabase.rpc('saldo_creditos_cliente', {
+        p_cliente_id: clienteSel.id,
+        p_mes: dataObj.getMonth() + 1,
+        p_ano: dataObj.getFullYear(),
+        p_unidade_id: unidadeAtiva.id,
+      }),
+      clienteTemPro(supabase, clienteSel.id, unidadeAtiva.id),
+    ])
     setSaldoMes(saldoData || {})
+    setModalPro(ehPro); setCoachEscolhido(''); setCoachesModal([])
     setModalSlot({ hora, data: dataStr })
     setTipoCredito('')
     setErroModal('')
+    if (ehPro) setCoachesModal(await coachesLivresNoHorario(supabase, unidadeAtiva.id, dataStr, hora))
   }
 
   async function confirmarAgendamento() {
     if (!tipoCredito) { setErroModal('Selecione o tipo de crédito.'); return }
     if (!modalSlot || !clienteSel || !unidadeAtiva) return
     setAgendando(true); setErroModal('')
-    const { error } = await supabase.from('agendamentos').insert({
+    const payload: any = {
       cliente_id: clienteSel.id, data: modalSlot.data,
       horario: modalSlot.hora + ':00', status: 'agendado',
       tipo_credito: tipoCredito, unidade_id: unidadeAtiva.id,
       criado_via: 'recepcao', criado_por: perfil?.id || null,
-    })
+    }
+    if (modalPro && coachEscolhido) { payload.coach_id = coachEscolhido; payload.alocado_por = perfil?.id || null; payload.alocado_em = new Date().toISOString() }
+    const { error } = await supabase.from('agendamentos').insert(payload)
     if (error) { setErroModal(mensagemTravaApp(error) || 'Erro ao agendar. Tente novamente.'); setAgendando(false); return }
     setModalSlot(null); setAgendando(false)
     await Promise.all([carregarSaldo(clienteSel.id), carregarHistorico(clienteSel.id)])
@@ -1918,6 +1930,16 @@ function RecepcaoClientesPageInner() {
                 )}
               </div>
             </div>
+            {modalPro && (
+              <div className="mb-4">
+                <div className="text-xs text-gray-400 mb-2 uppercase tracking-wide font-semibold">Coach (cliente PRO)</div>
+                <select value={coachEscolhido} onChange={e => setCoachEscolhido(e.target.value)} className="input w-full">
+                  <option value="">Qualquer coach disponível</option>
+                  {coachesModal.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                </select>
+                {coachesModal.length === 0 && <div className="text-xs text-gray-400 mt-1.5">Sem coaches disponíveis pra escolha neste horário.</div>}
+              </div>
+            )}
             {erroModal && <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-sm text-red-600">{erroModal}</div>}
             <div className="flex gap-2">
               <button onClick={() => setModalSlot(null)} className="btn flex-1 text-gray-500 border border-gray-200">Cancelar</button>
