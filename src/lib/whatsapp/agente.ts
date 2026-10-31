@@ -166,11 +166,13 @@ function garantirLinkPlanos(texto: string): string {
   return t
 }
 
-// TRAVA DETERMINÍSTICA: SEM lamentação nem afirmação/promessa (o Ricardo pediu, recorrente).
-// Com cliente irritada o modelo volta a se desculpar, validar a frustração ("você tem razão")
-// e prometer que a equipe "vai resolver com urgência máxima" — mesmo com a regra no prompt.
-// Corta SÓ os ofensores fortes (não mexe num "poxa" leve), preservando o resto e as quebras.
-const RE_LAMENTO = /desculp|voc[êe]s?\s+t[êe]m\s+(toda\s+)?raz[ãa]o|sinto\s+muito|lamento|imagino\s+(o\s+quanto|como|sua)|entendo\s+(a\s+sua|sua|o\s+seu|seu)\s*(frustra|chatea|irrita|indigna|lado)|urg[êe]ncia\s+m[áa]xima|prioridade\s+m[áa]xima|eles\s+v[ãa]o\s+(resolv|te\s+responder|te\s+retornar|dar\s+retorno|cuidar)|😔|🥺|😢/i
+// TRAVA DETERMINÍSTICA: SEM lamentação, SEM concordar/participar da situação e SEM promessa
+// da equipe (o Ricardo pediu, recorrente). O modelo volta a se desculpar, validar a frustração
+// ("você tem razão"), CONCORDAR com a queixa ("isso realmente parece um erro", "que situação
+// difícil", "entendo que é complicado") e PROMETER que a equipe "vai analisar/verificar/ajudar/
+// resolver" — mesmo com a regra no prompt. Corta essas frases (não mexe num "poxa" leve nem na
+// frase aprovada "a equipe te responde em breve"), preservando o resto (o FATO/a regra).
+const RE_LAMENTO = /desculp|voc[êe]s?\s+t[êe]m\s+(toda\s+)?raz[ãa]o|sinto\s+muito|\blamento\b|\bimagino\b|entendo\s+que|entendo\s+(a\s+sua|sua|o\s+seu|seu)\s*(frustra|chatea|irrita|indigna|lado)|que\s+situa[çc][ãa]o|situa[çc][ãa]o\s+(dif[íi]cil|complicad|delicad|chat|especial)|for[çc]a\s+(pra|pro|a[íi]|a\s+voc)|que\s+(chato|pena|droga)|parece\s+(mesmo\s+|realmente\s+)?(um\s+|ser\s+)?(erro|estranho|engano|problema)|n[ãa]o\s+bate\b|faz\s+(todo\s+)?sentido|urg[êe]ncia\s+m[áa]xima|prioridade\s+m[áa]xima|eles\s+v[ãa]o\s+(resolv|te\s+responder|te\s+retornar|dar\s+retorno|cuidar)|(precisa\s+ser\s+|vai\s+|v[ãa]o\s+|vamos\s+|consegue[m]?\s+)(analisad|analisar|verificar|conferir)|verificar\s+o\s+que\s+(aconteceu|houve)|ver\s+se\s+conseguem|conseguem\s+te\s+ajudar|encaminh\w*\s+(pro|pra|para)\s+(o\s+)?(nosso\s+)?(time|equipe)|😔|🥺|😢/i
 function semLamentacao(texto: string): string {
   const t = String(texto || '')
   if (!RE_LAMENTO.test(t)) return t
@@ -181,10 +183,14 @@ function semLamentacao(texto: string): string {
         ? linha.split(/(?<=[.!?…])\s+/).filter((f) => !RE_LAMENTO.test(f)).join(' ').replace(/[ \t]+/g, ' ').trim()
         : linha,
     )
+    // Linha que sobrou SÓ com emoji/pontuação (ex.: um "🙏" órfão) vira vazia pra não ficar solta.
+    .map((linha) => (/[A-Za-zÀ-ÿ0-9]/.test(linha) ? linha : ''))
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
-  return limpo.length >= 8 ? limpo : t // nunca manda vazio
+  // Se sobrou muito pouco (a resposta era só lamento/promessa), manda uma linha neutra e
+  // honesta no lugar — nunca o original cheio de lamento, nunca vazio.
+  return limpo.length >= 12 ? limpo : 'Isso é com a nossa equipe — eles te respondem por aqui em breve. 😊'
 }
 
 /** Passada determinística final aplicada a TODA resposta enviada ao cliente. */
@@ -1543,7 +1549,7 @@ Você NÃO passa a conversa pra equipe, NÃO diz "vou transferir/encaminhar pra 
 # Tom
 Português do Brasil, caloroso e DIRETO. Mensagens CURTAS: dê a informação e PARE — não repita o que a pessoa disse, não faça várias perguntas, não alongue. Sem muletas tipo "Boa pergunta!". Pode *negrito* e emojis com parcimônia.
 NADA DE LAMENTO / COMENTÁRIO TRISTE (REGRA — o Ricardo pediu): é PROIBIDO abrir ou encher a resposta com lamúria — "Poxa, que situação", "Fico com pena", "que pena", "sinto muito", "infelizmente" repetido. No MÁXIMO um toque LEVE de empatia, UMA vez, e só quando REALMENTE couber (ex.: alguém passando mal) — nunca em dobro, nunca em mensagens seguidas. Vá DIRETO à informação.
-NADA DE AFIRMAÇÃO / PROMESSA nem VALIDAR FRUSTRAÇÃO (REGRA — o Ricardo pediu, é recorrente): é PROIBIDO pedir desculpas ("me desculpe", "desculpa"), dar razão à irritação ("você tem (toda) razão em estar frustrado", "entendo sua frustração") e PROMETER resultado da equipe ("vou encaminhar com urgência máxima", "com prioridade máxima", "eles vão resolver/te responder", "vão te retornar"). Você NÃO controla a equipe nem prazos — NÃO prometa isso. Diga o FATO de forma curta e honesta (ex.: "isso é com a equipe e não tenho o prazo aqui") e PARE, sem desculpa, sem validar, sem prometer urgência.
+NADA DE AFIRMAÇÃO / PROMESSA, nem VALIDAR, nem CONCORDAR/PARTICIPAR da situação (REGRA — o Ricardo pediu, é recorrente): é PROIBIDO (1) pedir desculpas ("me desculpe", "desculpa"); (2) validar/concordar com a queixa ("você tem (toda) razão", "entendo sua frustração", "entendo que é complicado", "isso realmente parece um erro", "isso não bate mesmo", "faz sentido"); (3) participar do drama ("que situação difícil", "força pra você", "imagino como é"); (4) PROMETER resultado da equipe ("vou encaminhar pro time", "com urgência/prioridade máxima", "eles vão resolver/verificar/analisar", "vão conseguir ver o que aconteceu", "vão te ajudar com isso"). Você NÃO controla a equipe, nem prazos, nem diagnostica o sistema. Dê SÓ o FATO/a regra, curto, e — se for mesmo caso de equipe — no máximo "isso é com a nossa equipe, que te responde por aqui" e PARE. Sem desculpa, sem concordar, sem drama, sem prometer.
 NÃO SUPONHA nem invente cenário (REGRA): não adivinhe o motivo/situação da pessoa, não crie hipótese ("mas calma, se você conseguir...", "provavelmente está lotada"). Se ela já disse o que quer, responda isso — não fique supondo.
 RESPONDA SÓ O QUE FOI PERGUNTADO (REGRA): dê a resposta EXATA, curtíssima. NÃO despeje a regra inteira, NÃO liste condições/passos que ela não pediu, NÃO emende assunto. Entenda a situação primeiro e responda ao ponto — uma ou duas linhas bastam.
 
