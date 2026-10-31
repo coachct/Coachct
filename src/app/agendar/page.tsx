@@ -104,15 +104,31 @@ function parsePlanoKey(key: string): { label: string; icon: string } {
 }
 
 function HalterSVG({ estado, onClick }: { estado: 'livre' | 'ocupado' | 'meu' | 'fila' | 'bloqueado', onClick?: () => void }) {
-  const cor = estado === 'ocupado' ? '#333' : estado === 'meu' ? CYAN : estado === 'fila' ? AMARELO : estado === 'bloqueado' ? '#ff4444' : ACCENT
-  const opacity = estado === 'ocupado' ? 0.3 : estado === 'bloqueado' ? 0.4 : 1
+  const cor = estado === 'ocupado' ? '#555' : estado === 'meu' ? CYAN : estado === 'fila' ? AMARELO : estado === 'bloqueado' ? '#ff4444' : ACCENT
+  const opacity = estado === 'bloqueado' ? 0.4 : 1
+  // Anilha grande por dentro, pequena por fora. Ocupado = só contorno (não some no fundo preto).
+  const contorno = estado === 'ocupado'
   return (
     <svg width="36" height="36" viewBox="0 0 48 28" style={{ opacity, flexShrink: 0, cursor: estado === 'livre' ? 'pointer' : 'default' }} onClick={estado === 'livre' ? onClick : undefined}>
-      <rect x="15" y="11.5" width="18" height="5" rx="2" fill={cor} />
-      <rect x="2" y="5" width="5" height="18" rx="3" fill={cor} />
-      <rect x="8" y="7.5" width="4" height="13" rx="2" fill={cor} />
-      <rect x="36" y="7.5" width="4" height="13" rx="2" fill={cor} />
-      <rect x="41" y="5" width="5" height="18" rx="3" fill={cor} />
+      {contorno ? (
+        <g fill="none" stroke={cor} strokeWidth="1.6">
+          <rect x="10" y="4" width="5" height="20" rx="1.5" />
+          <rect x="33" y="4" width="5" height="20" rx="1.5" />
+          <rect x="5" y="8" width="4" height="12" rx="1.5" />
+          <rect x="39" y="8" width="4" height="12" rx="1.5" />
+          <path d="M15 14h18M1.5 14H5M43 14h3.5" />
+        </g>
+      ) : (
+        <g fill={cor}>
+          <rect x="15" y="12" width="18" height="4" rx="1" />
+          <rect x="10" y="4" width="5" height="20" rx="1.5" />
+          <rect x="33" y="4" width="5" height="20" rx="1.5" />
+          <rect x="5" y="8" width="4" height="12" rx="1.5" />
+          <rect x="39" y="8" width="4" height="12" rx="1.5" />
+          <rect x="1.5" y="12.5" width="3.5" height="3" rx="1" />
+          <rect x="43" y="12.5" width="3.5" height="3" rx="1" />
+        </g>
+      )}
     </svg>
   )
 }
