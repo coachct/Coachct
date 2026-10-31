@@ -196,15 +196,24 @@ export default function AdminAgendaPage() {
     let coachsFinal: any[] = []
 
     if (usaFds) {
-      // escala_fds.coach_id guarda user_id — usamos coachMap para resolver nome e coaches.id
+      // escala_fds.coach_id guarda user_id — resolve nome e coaches.id buscando em coaches
+      // por user_id aqui mesmo (igual à Recepção). Não depender do coachMap do state:
+      // ele carrega em paralelo e, se ainda estiver vazio, a grade fica com "?".
       const { data: escala } = await supabase
         .from('escala_fds')
         .select('coach_id, turno')
         .eq('data', data)
         .eq('unidade_id', unidadeAtiva.id)
 
+      const userIdsEscala = Array.from(new Set(((escala || []) as any[]).map(e => e.coach_id).filter(Boolean)))
+      const infoPorUser: Record<string, { id: string; nome: string }> = {}
+      if (userIdsEscala.length > 0) {
+        const { data: csEscala } = await supabase.from('coaches').select('id, nome, user_id').in('user_id', userIdsEscala)
+        for (const c of (csEscala || []) as any[]) if (c.user_id) infoPorUser[c.user_id] = { id: c.id, nome: c.nome }
+      }
+
       for (const e of (escala || []) as any[]) {
-        const info = coachMap[e.coach_id]
+        const info = infoPorUser[e.coach_id] || coachMap[e.coach_id]
         if (feriasSet.has(info?.id || e.coach_id)) continue
         // Sábado: só os horários do turno do coach; domingo/feriado: todos.
         for (const hora of horariosFdsCoach(data, !!feriado, e.turno)) {
