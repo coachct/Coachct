@@ -270,6 +270,20 @@ export default function AgendarPage() {
     return d
   })
 
+  // O dia novo da agenda abre em horário aleatório (sorteado no banco, nunca revelado).
+  // Até abrir, o último dia de cada janela aparece trancado. O banco também barra a reserva.
+  const [aberturaLiberada, setAberturaLiberada] = useState(true)
+  useEffect(() => {
+    let vivo = true
+    const checar = async () => {
+      const { data } = await supabase.rpc('ct_abertura_status')
+      if (vivo && data) setAberturaLiberada(!!(data as any).liberada)
+    }
+    checar()
+    const t = setInterval(checar, 60_000)
+    return () => { vivo = false; clearInterval(t) }
+  }, [])
+
   useEffect(() => {
     if (!loadingUnidade && unidadesPermitidas.length === 1) {
       setUnidadeConfirmada(true)
@@ -496,6 +510,13 @@ export default function AgendarPage() {
   const dataSelAposLimite = dataSelecionada > dataMaxima
   const diasDesdHoje = Math.floor((dataSelecionada.getTime() - hojeRef.getTime()) / (1000 * 60 * 60 * 24))
   const isDiaExclusivoPro = diasDesdHoje >= 7 && tipoVisualizacao !== 'coach_ct_pro'
+  // Dia novo ainda fechado: 14º dia (Pro) e, fora da visão Pro, também o 7º dia.
+  function diaTrancado(d: Date) {
+    if (aberturaLiberada) return false
+    const off = Math.floor((d.getTime() - hojeRef.getTime()) / (1000 * 60 * 60 * 24))
+    return off === 13 || (off === 6 && tipoVisualizacao !== 'coach_ct_pro')
+  }
+  const diaSelTrancado = diaTrancado(dataSelecionada)
 
   function jaAgendouNoDia(plano: string) { return agendamentosNoDia.some(a => a.tipo_credito === plano && ['agendado', 'confirmado', 'realizado'].includes(a.status)) }
   // Coach CT: um agendamento por dia, qualquer crédito (trava CT_1_POR_DIA no banco)
@@ -1113,7 +1134,7 @@ export default function AgendarPage() {
                           style={{ padding: '0.6rem 0.25rem', borderRadius: 10, border: `1.5px solid ${isSel ? ACCENT : '#222'}`, background: isSel ? `${ACCENT}15` : 'transparent', textAlign: 'center' }}>
                           <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, color: isSel ? ACCENT : '#555', fontWeight: 600, marginBottom: 2 }}>{isHoje ? 'HOJE' : DIAS_SEMANA[d.getDay()]}</div>
                           <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 20, color: isSel ? '#fff' : '#888', lineHeight: 1 }}>{d.getDate()}</div>
-                          <div style={{ fontSize: 9, color: isSel ? ACCENT : '#444', textTransform: 'uppercase' }}>{d.toLocaleDateString('pt-BR', { month: 'short' })}</div>
+                          <div style={{ fontSize: 9, color: isSel ? ACCENT : '#444', textTransform: 'uppercase' }}>{diaTrancado(d) ? '🔒' : d.toLocaleDateString('pt-BR', { month: 'short' })}</div>
                         </div>
                       )
                     })}
@@ -1137,7 +1158,12 @@ export default function AgendarPage() {
                   ))}
                 </div>
 
-                {dataSelAposLimite ? (
+                {diaSelTrancado && !dataSelAposLimite ? (
+                  <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#666' }}>
+                    <div style={{ fontSize: 14, marginBottom: 8 }}>🔒 Abre hoje, em horário aleatório</div>
+                    <div style={{ fontSize: 12, color: '#555' }}>Os horários deste dia são liberados a qualquer momento ao longo do dia.</div>
+                  </div>
+                ) : dataSelAposLimite ? (
                   <div style={{ background: '#111', border: '1px solid #222', borderRadius: 16, padding: '3rem', textAlign: 'center', color: '#666' }}>
                     <div style={{ fontSize: 14, marginBottom: 8 }}>📅 Data ainda não liberada</div>
                     <div style={{ fontSize: 12, color: '#555' }}>Agendamentos liberados em janela de 14 dias.</div>
