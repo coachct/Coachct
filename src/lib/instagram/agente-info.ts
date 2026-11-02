@@ -15,6 +15,9 @@ import {
   listarConhecimento,
   type UnidadeInfo,
 } from '@/lib/whatsapp/conhecimento'
+// Mesmas travas determinísticas do WhatsApp (piso de 100%): o Instagram era um cérebro
+// separado SEM nenhuma trava, então lamento/concordância/promessa vazavam. Aplicadas na saída.
+import { semLamentacao, semCanalExterno } from '@/lib/whatsapp/agente'
 
 const MODELO = 'claude-sonnet-4-6'
 const MAX_ITERACOES = 4
@@ -71,6 +74,9 @@ Quando o cliente diz que levou multa MAS fez check-in, o mais provável é que o
 
 # Musculação livre NÃO precisa agendar (REGRA — nunca erre)
 A musculação livre do Just CT é LIVRE: vem quando quiser, dentro do horário de funcionamento, e treina no seu ritmo — SEM agendar horário. NUNCA diga que precisa "agendar horário" pra musculação livre. Agendar/reservar é só pro Coach CT (personal 1×1) e pras aulas do JustClub (Lift, Lift for Girls, Running Funcional).
+
+# FEEDBACK / SUGESTÃO / CRÍTICA / DESABAFO sobre a Just (REGRA — responda CURTO)
+Quando a pessoa NÃO está perguntando nada nem pedindo ação — só está dando um feedback, sugestão, elogio, crítica ou desabafo sobre a Just (ex.: "a Pinheiros está abandonada", "podiam ter shake pós-treino", "faltou opção pós-treino", "a aula tava cheia demais") — a resposta é CURTA e só isso: **"Entendido! Os feedbacks vão ser passados pra direção. Obrigado por compartilhar 🙏"**. É PROIBIDO: comentar ponto a ponto, elogiar/validar a ideia ("é ótima", "faz total sentido", "simples e prático", "merece atenção"), PROMETER qualquer coisa ("vou garantir que chegue", "vou levar pra quem decide", "chega pra quem decide") e empurrar pro WhatsApp "pra registrar formalmente / chegar com mais força". Só agradece e diz que passa pra direção. Nada além disso. (Se junto do desabafo houver uma pergunta de verdade — ex.: "vocês abrem feriado?" — responda a pergunta normalmente e, ao feedback, só o agradecimento curto.)
 
 # Regras gerais
 - REGRA DE OURO DA INFORMAÇÃO: é PROIBIDO inventar, deduzir ou "achar" — só afirme o que está na BASE DE CONHECIMENTO abaixo ou veio da ferramenta de preços. Se NÃO tem nada gravado sobre o assunto, NÃO chute uma explicação (ex.: NUNCA diga "deve ser instabilidade do app" se você não tem isso gravado) — diga com sinceridade que vai confirmar e mande a pessoa chamar no WhatsApp pra equipe ver. Inventar só prejudica a empresa. Na dúvida entre inventar e mandar pro WhatsApp, SEMPRE mandar pro WhatsApp.
@@ -154,7 +160,11 @@ export async function responderInstagram(params: {
       .map((b) => b.text)
       .join('\n')
       .trim()
-    return texto || `Pode mandar de novo? 😊 Se preferir um atendimento completo, chama no WhatsApp 👉 ${WHATSAPP_LINK}`
+    // Passada final determinística (mesmo piso do WhatsApp): corta lamento, concordância/
+    // participação no drama e promessa da equipe ("vou garantir que chegue", "faz total
+    // sentido", "merece atenção"...) antes de enviar.
+    const limpo = semLamentacao(semCanalExterno(texto)).trim()
+    return limpo || `Pode mandar de novo? 😊 Se preferir um atendimento completo, chama no WhatsApp 👉 ${WHATSAPP_LINK}`
   }
 
   return `Deu um probleminha aqui 😅. Chama a gente no WhatsApp que resolvo na hora 👉 ${WHATSAPP_LINK}`

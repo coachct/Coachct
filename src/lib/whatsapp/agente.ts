@@ -147,7 +147,7 @@ export const FALLBACK_EQUIPE = 'Essa a nossa equipe te responde certinho por aqu
 const RE_LIGAR = /\bligue?\b|\bligar\b|liga\s+(pra|para|no|na|a[íi])|por\s+telefone|\btelefone\b|\bfone\b/i
 const RE_RECEP_INFO = /recep[çc][ãa]o[^.!?]{0,45}(informa|conseguem|na hora|te diz|saber|perguntar|ver isso)|(passa|v[áa]|vai|va)[^.!?]{0,20}recep[çc][ãa]o[^.!?]{0,20}(saber|informa|perguntar|ver)/i
 const RE_OBJETO_CTX = /guardad|retirar|esquec|perdid|deixou|deixei|achad[oa]s e perdidos/i
-function semCanalExterno(texto: string): string {
+export function semCanalExterno(texto: string): string {
   const t = String(texto || '')
   if (RE_OBJETO_CTX.test(t)) return t // objeto esquecido usa "recepção" de forma legítima
   if (RE_LIGAR.test(t) || RE_RECEP_INFO.test(t)) return FALLBACK_EQUIPE
@@ -174,8 +174,8 @@ function garantirLinkPlanos(texto: string): string {
 // difícil", "entendo que é complicado") e PROMETER que a equipe "vai analisar/verificar/ajudar/
 // resolver" — mesmo com a regra no prompt. Corta essas frases (não mexe num "poxa" leve nem na
 // frase aprovada "a equipe te responde em breve"), preservando o resto (o FATO/a regra).
-const RE_LAMENTO = /desculp|voc[êe]s?\s+t[êe]m\s+(toda\s+)?raz[ãa]o|sinto\s+muito|\blamento\b|\bimagino\b|entendo\s+que|entendo\s+(a\s+sua|sua|o\s+seu|seu)\s*(frustra|chatea|irrita|indigna|lado)|que\s+situa[çc][ãa]o|situa[çc][ãa]o\s+(dif[íi]cil|complicad|delicad|chat|especial)|for[çc]a\s+(pra|pro|a[íi]|a\s+voc)|que\s+(chato|pena|droga)|parece\s+(mesmo\s+|realmente\s+)?(um\s+|ser\s+)?(erro|estranho|engano|problema)|n[ãa]o\s+bate\b|faz\s+(todo\s+)?sentido|boa\s+not[íi]cia|fica\s+tranquil|urg[êe]ncia\s+m[áa]xima|prioridade\s+m[áa]xima|eles\s+v[ãa]o\s+(resolv|te\s+responder|te\s+retornar|dar\s+retorno|cuidar)|(precisa\s+ser\s+|vai\s+|v[ãa]o\s+|vamos\s+|consegue[m]?\s+)(analisad|analisar|verificar|conferir)|verificar\s+o\s+que\s+(aconteceu|houve)|ver\s+se\s+conseguem|conseguem\s+te\s+ajudar|encaminh\w*\s+(pro|pra|para)\s+(o\s+)?(nosso\s+)?(time|equipe)|😔|🥺|😢/i
-function semLamentacao(texto: string): string {
+const RE_LAMENTO = /desculp|voc[êe]s?\s+t[êe]m\s+(toda\s+)?raz[ãa]o|sinto\s+muito|\blamento\b|\bimagino\b|entendo\s+que|entendo\s+(a\s+sua|sua|o\s+seu|seu)\s*(frustra|chatea|irrita|indigna|lado)|que\s+situa[çc][ãa]o|situa[çc][ãa]o\s+(dif[íi]cil|complicad|delicad|chat|especial)|for[çc]a\s+(pra|pro|a[íi]|a\s+voc)|que\s+(chato|pena|droga)|parece\s+(mesmo\s+|realmente\s+)?(um\s+|ser\s+)?(erro|estranho|engano|problema)|n[ãa]o\s+bate\b|faz\s+(todo\s+|total\s+|muito\s+|bastante\s+)?sentido|merece\s+(aten[çc][ãa]o|destaque|olhar)|vou\s+garantir|(pra|para)\s+quem\s+decide|boa\s+not[íi]cia|fica\s+tranquil|urg[êe]ncia\s+m[áa]xima|prioridade\s+m[áa]xima|eles\s+v[ãa]o\s+(resolv|te\s+responder|te\s+retornar|dar\s+retorno|cuidar)|(precisa\s+ser\s+|vai\s+|v[ãa]o\s+|vamos\s+|consegue[m]?\s+)(analisad|analisar|verificar|conferir)|verificar\s+o\s+que\s+(aconteceu|houve)|ver\s+se\s+conseguem|conseguem\s+te\s+ajudar|encaminh\w*\s+(pro|pra|para)\s+(o\s+)?(nosso\s+)?(time|equipe)|😔|🥺|😢/i
+export function semLamentacao(texto: string): string {
   const t = String(texto || '')
   if (!RE_LAMENTO.test(t)) return t
   const limpo = t
