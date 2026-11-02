@@ -141,7 +141,9 @@ function semTelefoneInventado(texto: string): string {
 // à recepção pra saber" (recepção só é canal pra OBJETO ESQUECIDO). Quando não sabe a
 // info, o certo é dizer que a EQUIPE responde em breve. Se o bot vazar "ligar/telefone"
 // ou "recepção pra se informar", troca por esse fallback. 100% garantido, custo zero.
-export const FALLBACK_EQUIPE = 'Essa informação eu não tenho aqui certinho 😊 — mas nossa equipe te responde por aqui em breve!'
+// Fallback quando NÃO há info gravada. Reformulado (o Ricardo pediu): NUNCA admitir que
+// "eu não sei / não tenho" — fica feio. Só informa que a equipe responde, de forma natural.
+export const FALLBACK_EQUIPE = 'Essa a nossa equipe te responde certinho por aqui em breve! 😊'
 const RE_LIGAR = /\bligue?\b|\bligar\b|liga\s+(pra|para|no|na|a[íi])|por\s+telefone|\btelefone\b|\bfone\b/i
 const RE_RECEP_INFO = /recep[çc][ãa]o[^.!?]{0,45}(informa|conseguem|na hora|te diz|saber|perguntar|ver isso)|(passa|v[áa]|vai|va)[^.!?]{0,20}recep[çc][ãa]o[^.!?]{0,20}(saber|informa|perguntar|ver)/i
 const RE_OBJETO_CTX = /guardad|retirar|esquec|perdid|deixou|deixei|achad[oa]s e perdidos/i
@@ -193,9 +195,31 @@ function semLamentacao(texto: string): string {
   return limpo.length >= 12 ? limpo : 'Isso é com a nossa equipe — eles te respondem por aqui em breve. 😊'
 }
 
+// TRAVA DETERMINÍSTICA: NUNCA deixar o cliente ver que o bot "não sabe/não tem" (o Ricardo
+// pediu — fica feio). Corta frases de ignorância ("não tenho essa informação aqui", "não
+// tenho certeza", "não quero te passar errado", "não sei te confirmar"). Se sobrar algo útil
+// (ex.: o link da grade), manda isso; se não sobrar nada, manda só o fallback da equipe.
+const RE_IGNORA = /n[ãa]o tenho\s+(essa|a)\s+(inform|certeza)|n[ãa]o tenho\s+(isso|essa)\b|n[ãa]o tenho\s+aqui|n[ãa]o tenho\s+como\s+(confirmar|te\s+confirmar|saber)|n[ãa]o consigo\s+(confirmar|te\s+confirmar)|n[ãa]o tenho\s+certeza|n[ãa]o sei\s+(ao certo|exatamente|te\s+dizer|te\s+confirmar|dizer)|(pra|para)\s+n[ãa]o\s+(te\s+)?passar\s+(algo\s+|nada\s+)?errad|n[ãa]o quero\s+(te\s+)?passar\s+(algo\s+|nada\s+)?errad/i
+function semRevelarIgnorancia(texto: string): string {
+  const t = String(texto || '')
+  if (!RE_IGNORA.test(t)) return t
+  const limpo = t
+    .split('\n')
+    .map((linha) =>
+      RE_IGNORA.test(linha)
+        ? linha.split(/(?<=[.!?…])\s+/).filter((f) => !RE_IGNORA.test(f)).join(' ').replace(/[ \t]+/g, ' ').trim()
+        : linha,
+    )
+    .map((linha) => (/[A-Za-zÀ-ÿ0-9]/.test(linha) ? linha : ''))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+  return /[A-Za-zÀ-ÿ0-9]/.test(limpo) && limpo.length >= 15 ? limpo : FALLBACK_EQUIPE
+}
+
 /** Passada determinística final aplicada a TODA resposta enviada ao cliente. */
 function finalizarTexto(texto: string, contextoCancel = false): string {
-  return semLamentacao(garantirLinkPlanos(semCanalExterno(semTelefoneInventado(limparMecanicaCancel(texto, contextoCancel)))))
+  return semLamentacao(semRevelarIgnorancia(garantirLinkPlanos(semCanalExterno(semTelefoneInventado(limparMecanicaCancel(texto, contextoCancel))))))
 }
 
 // TRAVA DETERMINÍSTICA: NUNCA falar de multa NEM de cartão (garantia) se o cliente não
@@ -1523,7 +1547,7 @@ O "horário restrito" do Wellhub Gold (seg-sex, 09h–17h) vale EXCLUSIVAMENTE p
 É TERMINANTEMENTE PROIBIDO escrever a palavra MULTA, COBRANÇA, no-show ou TAXA se o cliente NÃO perguntou diretamente sobre isso. Isso vale INCLUSIVE pra tranquilizar/dizer que NÃO tem ("não tem cobrança nem multa", "sem multa", "fica tranquilo que não é cobrado") — reassegurar que não tem multa TAMBÉM é PROIBIDO, porque INTRODUZ o assunto. Se ninguém perguntou sobre cobrança/multa, a palavra multa simplesmente NÃO aparece na sua resposta, ponto. O mesmo pro CARTÃO cadastrado / "garantia": não puxe por conta própria. Só fale de multa/cobrança/cartão SE a pessoa PERGUNTAR diretamente sobre pagamento, cobrança, multa ou cartão.
 
 # HORÁRIOS / GRADE DE AULAS → só o link do calendário (REGRA — nunca diga "não tenho")
-Quando perguntarem os horários das aulas / a grade / "que horas tem aula" / horários de funcionamento das aulas: NÃO diga "não tenho isso aqui", "pra não te passar errado", nem liste nada. Só mande o link do calendário do site, curto e positivo, e encerre. Ex.: "Os horários você vê (e já reserva!) direto no site 👉 https://www.justclubct.com.br/aulas 😊". A grade fica sempre atualizada lá — é só o link.
+Quando perguntarem QUALQUER coisa sobre horário/grade de aula do Club — os horários, a grade, "que horas tem aula", "voltou/mudou/alterou o horário pra X", "tem aula às X?", "o horário das 06:20 ainda existe?", horários de funcionamento das aulas: responda com CONFIANÇA mandando o link do calendário do site — ele é a grade EM TEMPO REAL e reflete a realidade. NUNCA responda sim/não, NUNCA liste, e é PROIBIDO dizer "não tenho isso aqui", "não tenho certeza", "pra não te passar errado" ou qualquer coisa que mostre que você não sabe. Ex. curto e positivo: "Os horários (e já dá pra reservar!) você confere na grade do site 👉 https://www.justclubct.com.br/aulas 😊 — ela fica sempre atualizada." E encerra, sem oferecer outro canal.
 
 # AULA EXPERIMENTAL / GRÁTIS / "QUERO CONHECER" → puxe pro treino avulso, SEM falar de "gratuito" (REGRA)
 Quando perguntarem se tem aula EXPERIMENTAL, aula GRÁTIS, "aula pra conhecer" ou "como faço pra conhecer": é PROIBIDO dizer que "não temos aula gratuita" ou negar/citar a palavra grátis — NÃO introduza o tema "gratuito". Responda direto e positivo: pra conhecer nossos treinos, é só comprar um treino avulso (as aulas coletivas nos JustClub ou a musculação no Just CT) e aponte https://www.justclubct.com.br/comprar. Mesmo se a pessoa usar a palavra "grátis/gratuita", NÃO repita nem negue — só puxe pro treino avulso + o link.
