@@ -1451,7 +1451,13 @@ export async function responderInfo(params: {
   const client = new Anthropic()
   const hoje = calcularHoje()
 
-  const [enderecos, faq] = await Promise.all([listarEnderecos(supabase), listarConhecimento(supabase)])
+  const [enderecos, faq, feriadoRes] = await Promise.all([
+    listarEnderecos(supabase),
+    listarConhecimento(supabase),
+    // HOJE é feriado? (o bot precisa saber, senão responde horário de dia útil num feriado)
+    supabase.from('feriados').select('descricao').eq('data', hoje.dataStr).eq('ativo', true).limit(1),
+  ])
+  const feriadoHoje = (feriadoRes as any)?.data?.[0]?.descricao ?? null
   const enderecosTxt = enderecos.length
     ? enderecos.map((u) => `- ${u.nome}: ${u.endereco ?? 'endereço não cadastrado'}`).join('\n')
     : '- (endereços não disponíveis no momento)'
@@ -1572,9 +1578,12 @@ ${faqTxt}`
     ? `\n\n# ⚠️ HORÁRIO DE PICO — REDOBRE A ATENÇÃO NO CANCELAMENTO
 Agora é horário de pico de pedidos de CANCELAR / DESMARCAR treino em cima da hora (perto das aulas / fim de semana). A grande maioria é FORA DO PRAZO. Então, redobre: se a pessoa quer CANCELAR (largar) um treino de HOJE (já passou, é agora, ou ainda hoje em cima da hora) → a essa altura NÃO dá mais pra cancelar — responda a conclusão LIMPA e gentil ("como é ainda pra hoje, a essa altura não dá mais pra cancelar 🙏"), SEM mostrar conta, SEM multa, e NUNCA afirmando que ainda dá. (ATENÇÃO: se a pessoa quer só TROCAR pra outro horário — não desmarcar — isso é self-service no site e você NÃO nega por ser hoje; siga a regra de TROCAR.) Só treino claramente de OUTRO dia usa a regra genérica de cancelamento (12h, na conta pelo site). EXCEÇÃO: se está CLARO que o treino é do COACH CT (personal, não aula do JustClub), use a frase aprovada do Coach CT (a da regra "quero cancelar"), mesmo sendo hoje.`
     : ''
+  const feriadoAviso = feriadoHoje
+    ? `\n- ⚠️ HOJE É FERIADO (${feriadoHoje}) — e isso MUDA o horário. Se perguntarem "abre hoje?" / "qual o horário hoje?": SIM, a gente ABRE, mas no horário de FERIADO (NÃO o de dia útil). Informe o horário de FERIADO que está na base (o Just CT funciona no horário de domingo/feriado; as aulas do JustClub seguem a grade de feriado, que a pessoa vê em https://www.justclubct.com.br/aulas) — e já avise que é horário de feriado. NUNCA dê o horário de dia útil num feriado.`
+    : ''
   const dinamico = `# AGORA — você SABE o dia E a HORA (nunca pergunte)
 - HOJE é ${hoje.extenso} — ${hoje.dataStr}. Quando disserem "hoje", é esse dia.
-- AGORA são cerca de ${agoraHora} (horário de São Paulo). Use isso pra entender o contexto do que a pessoa fala ("hoje às 5h30", "agora", "mais tarde") — principalmente pra cancelamento (ver a regra).${alertaPico}`
+- AGORA são cerca de ${agoraHora} (horário de São Paulo). Use isso pra entender o contexto do que a pessoa fala ("hoje às 5h30", "agora", "mais tarde") — principalmente pra cancelamento (ver a regra).${feriadoAviso}${alertaPico}`
 
   // Quando vem um PRINT/imagem: mesma cabeça do balcão, mas orientando a LER a tela
   // pra ENTENDER a situação — sem quebrar nenhuma regra (só o que está gravado, sem
