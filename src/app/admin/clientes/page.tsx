@@ -50,6 +50,25 @@ function reservadoEm(ts?: string | null): string | null {
   const d = new Date(ts)
   return `${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
 }
+// Chip do e-mail de confirmação da reserva (emails_enviados + webhook do Resend).
+function EmailReservaChip({ e }: { e?: any }) {
+  if (!e) return null
+  const map: Record<string, { label: string; cls: string }> = {
+    enviado:   { label: 'e-mail enviado',   cls: 'bg-gray-100 text-gray-600' },
+    entregue:  { label: 'e-mail entregue',  cls: 'bg-green-100 text-green-700' },
+    atrasado:  { label: 'e-mail atrasado',  cls: 'bg-amber-100 text-amber-700' },
+    devolvido: { label: 'e-mail devolvido', cls: 'bg-red-100 text-red-600' },
+    spam:      { label: 'e-mail como spam', cls: 'bg-red-100 text-red-600' },
+    erro:      { label: 'e-mail falhou',    cls: 'bg-red-100 text-red-600' },
+  }
+  const m = map[e.status] || { label: `e-mail ${e.status}`, cls: 'bg-gray-100 text-gray-600' }
+  const quando = reservadoEm(e.entregue_em || e.enviado_em)
+  return (
+    <span title={`${e.email}${quando ? ` · ${quando}` : ''}${e.erro ? ` · ${e.erro}` : ''}`} className={`px-1.5 py-0.5 rounded-full ${m.cls}`}>
+      ✉ {m.label}{quando ? ` ${quando}` : ''}
+    </span>
+  )
+}
 function tipoAulaLabel(t?: string | null): string {
   if (t === 'lift')              return 'Lift'
   if (t === 'lift_for_girls')    return 'Lift for Girls'
@@ -197,6 +216,7 @@ function AdminClientesPageInner() {
   const [historico, setHistorico] = useState<any[]>([])
   const [clubReservas, setClubReservas] = useState<any[]>([])
   const [acessosWalkin, setAcessosWalkin] = useState<any[]>([])
+  const [emailsReserva, setEmailsReserva] = useState<Record<string, any>>({})
   const [saldoMes, setSaldoMes] = useState<Record<string, any>>({})
   const [vendas, setVendas] = useState<any[]>([])
   const [planosCliente, setPlanosCliente] = useState<any[]>([])
@@ -345,11 +365,11 @@ function AdminClientesPageInner() {
     }
     setClienteSel(cliente); setForm({ ...cliente }); setEditando(false); setAba('dados')
     setErroEdicao(''); setDupCliente(null)
-    setHistorico([]); setClubReservas([]); setAcessosWalkin([]); setVendas([]); setModalSlot(null); setTipoCredito('')
+    setHistorico([]); setClubReservas([]); setAcessosWalkin([]); setEmailsReserva({}); setVendas([]); setModalSlot(null); setTipoCredito('')
     setErroCriarAcesso(''); setFotoUrl(null); setStatusSync('idle'); setErroSync(''); setAcessoBloqueado(false)
     await Promise.all([
       carregarSaldo(cliente.id), carregarHistorico(cliente.id), carregarClubReservas(cliente.id),
-      carregarAcessosWalkin(cliente.id),
+      carregarAcessosWalkin(cliente.id), carregarEmailsReserva(cliente.id),
       carregarVendas(cliente.id), carregarPlanosCliente(cliente.id), carregarFotoUrl(cliente),
       carregarAvulsos(cliente.id), carregarBloqueioAcesso(cliente),
     ])
@@ -402,6 +422,20 @@ function AdminClientesPageInner() {
       .order('created_at', { ascending: false })
       .limit(50)
     setClubReservas(data || [])
+  }
+
+  async function carregarEmailsReserva(clienteId: string) {
+    // Último e-mail de confirmação por agendamento (CT) / reserva (Club).
+    const { data } = await supabase.from('emails_enviados')
+      .select('agendamento_id, club_reserva_id, email, status, erro, enviado_em, entregue_em')
+      .eq('cliente_id', clienteId).eq('tipo', 'reserva_confirmada')
+      .order('enviado_em', { ascending: true }).limit(200)
+    const mapa: Record<string, any> = {}
+    for (const e of data || []) {
+      const ref = e.agendamento_id || e.club_reserva_id
+      if (ref) mapa[ref] = e
+    }
+    setEmailsReserva(mapa)
   }
 
   async function carregarAcessosWalkin(clienteId: string) {
@@ -2012,6 +2046,7 @@ function AdminClientesPageInner() {
                               <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-400 mt-0.5">
                                 {o && <span className={`px-1.5 py-0.5 rounded-full ${o.cls}`}>{o.label}</span>}
                                 {q && <span>agendado em {q}</span>}
+                                <EmailReservaChip e={emailsReserva[ag.id]} />
                               </div>
                             )})()}
                           </div>
@@ -2052,6 +2087,7 @@ function AdminClientesPageInner() {
                                 <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-400 mt-0.5">
                                   {o && <span className={`px-1.5 py-0.5 rounded-full ${o.cls}`}>{o.label}</span>}
                                   {q && <span>reservado em {q}</span>}
+                                  <EmailReservaChip e={emailsReserva[cr.id]} />
                                 </div>
                               )})()}
                             </div>
@@ -2126,6 +2162,7 @@ function AdminClientesPageInner() {
                             <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-400 mt-0.5">
                               {o && <span className={`px-1.5 py-0.5 rounded-full ${o.cls}`}>{o.label}</span>}
                               {q && <span>agendado em {q}</span>}
+                              <EmailReservaChip e={emailsReserva[ag.id]} />
                               {c && <span className="text-red-500">· cancelado em {c}</span>}
                             </div>
                           )})()}
@@ -2163,6 +2200,7 @@ function AdminClientesPageInner() {
                               <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-400 mt-0.5">
                                 {o && <span className={`px-1.5 py-0.5 rounded-full ${o.cls}`}>{o.label}</span>}
                                 {q && <span>reservado em {q}</span>}
+                                <EmailReservaChip e={emailsReserva[cr.id]} />
                                 {c && <span className="text-red-500">· cancelado em {c}</span>}
                               </div>
                             )})()}

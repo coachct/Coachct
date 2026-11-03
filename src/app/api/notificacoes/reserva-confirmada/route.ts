@@ -126,9 +126,26 @@ export async function POST(req: NextRequest) {
 
     const { subject, html } = emailReservaConfirmada(payload)
     const resend = new Resend(process.env.RESEND_API_KEY)
-    const { error: errEmail } = await resend.emails.send({
+    const { data: enviado, error: errEmail } = await resend.emails.send({
       from: REMETENTE, to: cliente.email, subject, html,
     })
+
+    // Registro do envio (prova pra atendimento). O status de entrega chega
+    // depois pelo webhook do Resend. Falha aqui nunca afeta o cliente.
+    try {
+      await supabase.from('emails_enviados').insert({
+        cliente_id: cliente.id,
+        tipo: 'reserva_confirmada',
+        agendamento_id: tipo === 'ct' ? body.agendamentoId : null,
+        club_reserva_id: tipo === 'club' ? body.reservaId : null,
+        email: cliente.email,
+        resend_id: enviado?.id || null,
+        status: errEmail ? 'erro' : 'enviado',
+        erro: errEmail?.message || null,
+      })
+    } catch (e: any) {
+      console.error('[reserva-confirmada] falha ao registrar envio:', e?.message || e)
+    }
 
     if (errEmail) {
       console.error('[reserva-confirmada] falha no Resend:', errEmail.message)
