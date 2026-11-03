@@ -86,10 +86,25 @@ export default function CoachesPage() {
   const [rescPagamentos, setRescPagamentos] = useState(0)
   const [conflitosSaida, setConflitosSaida] = useState<{ ct: any[]; club: any[] }>({ ct: [], club: [] })
 
+  // ─── Filtros da listagem ───
+  const [filtroStatus,  setFiltroStatus]  = useState<'ativos' | 'inativos' | 'todos'>('ativos')
+  const [filtroUnidade, setFiltroUnidade] = useState<string>('')
+
   const supabase = createClient()
   const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 
-  useEffect(() => { loadCoaches(); carregarUnidades() }, [])
+  useEffect(() => { loadCoaches(); carregarUnidades(); carregarVinculosUnidades() }, [])
+
+  // Vínculos coach↔unidade de todos os coaches (alimenta o filtro por unidade e o selo de unidades).
+  async function carregarVinculosUnidades() {
+    const { data } = await supabase.from('coach_unidades').select('coach_id, unidade_id').eq('ativo', true)
+    const mapa: Record<string, Set<string>> = {}
+    for (const r of (data || [])) {
+      if (!mapa[r.coach_id]) mapa[r.coach_id] = new Set()
+      mapa[r.coach_id].add(r.unidade_id)
+    }
+    setCoachUnidades(prev => ({ ...mapa, ...prev }))
+  }
 
   async function loadCoaches() {
     const { data } = await supabase.from('coaches').select('*').order('nome')
@@ -662,6 +677,13 @@ export default function CoachesPage() {
     return tipo === 'ct' ? 'Coach CT' : tipo === 'club' ? 'JustClub' : tipo
   }
 
+  const coachesFiltrados = coaches.filter(c => {
+    if (filtroStatus === 'ativos' && !c.ativo) return false
+    if (filtroStatus === 'inativos' && c.ativo) return false
+    if (filtroUnidade && !coachUnidades[c.id]?.has(filtroUnidade)) return false
+    return true
+  })
+
   if (loading) return <Spinner />
 
   return (
@@ -715,10 +737,28 @@ export default function CoachesPage() {
         </div>
       )}
 
+      {/* ── Filtros ── */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div className="flex gap-1">
+          {([['ativos', 'Ativos'], ['inativos', 'Inativos'], ['todos', 'Todos']] as const).map(([k, l]) => (
+            <button key={k} type="button" onClick={() => setFiltroStatus(k)}
+              className={`btn btn-sm ${filtroStatus === k ? 'bg-primary-600 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+        <select className="input py-1 text-sm w-auto" value={filtroUnidade} onChange={e => setFiltroUnidade(e.target.value)}>
+          <option value="">Todas as unidades</option>
+          {unidades.map(u => <option key={u.id} value={u.id}>{u.nome}</option>)}
+        </select>
+        <span className="text-xs text-gray-400">{coachesFiltrados.length} coach{coachesFiltrados.length !== 1 ? 'es' : ''}</span>
+      </div>
+
       {/* ── Lista coaches ── */}
       <div className="space-y-3">
         {coaches.length === 0 && <EmptyState message="Nenhum coach cadastrado ainda." />}
-        {coaches.map(coach => {
+        {coaches.length > 0 && coachesFiltrados.length === 0 && <EmptyState message="Nenhum coach com esses filtros." />}
+        {coachesFiltrados.map(coach => {
           const inativo  = !coach.ativo
           const qtdUnids = coachUnidades[coach.id]?.size || 0
           const aberto   = expandedCoach === coach.id
