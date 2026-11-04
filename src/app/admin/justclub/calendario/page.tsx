@@ -66,8 +66,10 @@ export default function AdminCalendarioClubPage() {
   async function carregarOcorrencias() {
     if (!unidadeSel) return
     setLoadingOcs(true)
+    // Sem filtro de ativo: grade encerrada (ex.: Pinheiros 03/11) continua aparecendo nas datas passadas.
+    // As ocorrências futuras dela já foram canceladas, então o status='ativa' abaixo basta.
     const { data: aulasIds } = await supabase.from('club_aulas').select('id')
-      .eq('unidade_id', unidadeSel.id).eq('ativo', true)
+      .eq('unidade_id', unidadeSel.id)
     const ids = (aulasIds || []).map((a: any) => a.id)
     if (!ids.length) { setOcorrencias([]); setLoadingOcs(false); return }
 
