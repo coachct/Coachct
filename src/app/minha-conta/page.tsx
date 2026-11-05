@@ -632,11 +632,11 @@ export default function MinhaContaPage() {
       if (item.tipo==='ct') {
         // Fila DESTE horário — não basta haver fila em qualquer horário do dia
         // (bug antigo: filtrava só data+unidade e liberava cancelamento tardio).
-        const {data:f} = await supabase.from('fila_espera').select('id').eq('data',item.data).eq('horario',item.original.horario).eq('unidade_id',item.original.unidade_id).eq('status','aguardando').limit(1)
-        temFila = (f||[]).length>0
+        const {data:n} = await supabase.rpc('fila_aguardando_qtd',{p_unidade_id:item.original.unidade_id,p_data:item.data,p_horario:item.original.horario})
+        temFila = Number(n||0)>0
       } else {
-        const {data:f} = await supabase.from('fila_espera').select('id').eq('ocorrencia_id',item.original.club_ocorrencias?.id).eq('status','aguardando').limit(1)
-        temFila = (f||[]).length>0
+        const {data:n} = await supabase.rpc('fila_aguardando_qtd',{p_ocorrencia_id:item.original.club_ocorrencias?.id})
+        temFila = Number(n||0)>0
       }
       if (!temFila) {
         pode = false

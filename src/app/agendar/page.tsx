@@ -434,20 +434,20 @@ export default function AgendarPage() {
         for (const h of (hors || [])) { if (feriasSet.has(h.coach_id) || substituidos.has(h.coach_id)) continue; const hora = (h.hora || '').slice(0, 5); if (isDiaDe && hora <= horaAtual) continue; porHora[hora] = (porHora[hora] || 0) + 1; if (!coachPorHora[hora]) coachPorHora[hora] = new Set(); coachPorHora[hora].add(h.coach_id) }
         for (const s of extra) { if (feriasSet.has(s.coach_id)) continue; if (isDiaDe && s.hora <= horaAtual) continue; if (!coachPorHora[s.hora]) coachPorHora[s.hora] = new Set(); if (coachPorHora[s.hora].has(s.coach_id)) continue; coachPorHora[s.hora].add(s.coach_id); porHora[s.hora] = (porHora[s.hora] || 0) + 1 }
       }
-      const [agsRes, filaGeralRes, bloqueadasRes, agClienteRes, filasRes] = await Promise.allSettled([
-        supabase.from('agendamentos').select('horario, status').eq('data', dataStr).eq('unidade_id', unidadeAtiva.id).neq('status', 'cancelado'),
-        supabase.from('fila_espera').select('horario').eq('data', dataStr).eq('status', 'aguardando').eq('unidade_id', unidadeAtiva.id),
+      // Ocupação e fila do dia vêm contadas pelo banco (RPC) — o site não lê agendamentos/fila de outros clientes.
+      const [ocupRes, bloqueadasRes, agClienteRes, filasRes] = await Promise.allSettled([
+        supabase.rpc('ct_ocupacao_dia', { p_unidade_id: unidadeAtiva.id, p_data: dataStr }),
         supabase.from('vagas_bloqueadas').select('horario, quantidade').eq('data', dataStr).eq('ativo', true).eq('unidade_id', unidadeAtiva.id),
         cliente ? supabase.from('agendamentos').select('horario, tipo_credito, status').eq('data', dataStr).eq('cliente_id', cliente.id).eq('unidade_id', unidadeAtiva.id) : Promise.resolve({ data: [] as any[] }),
         cliente ? supabase.from('fila_espera').select('horario').eq('data', dataStr).eq('cliente_id', cliente.id).eq('unidade_id', unidadeAtiva.id) : Promise.resolve({ data: [] as any[] }),
       ])
-      const ags = agsRes.status === 'fulfilled' ? (agsRes.value as any).data : []
-      const filaGeralData = filaGeralRes.status === 'fulfilled' ? (filaGeralRes.value as any).data : []
+      const ocupRows: any[] = (ocupRes.status === 'fulfilled' ? (ocupRes.value as any).data : []) || []
+      const filaGeralData = ocupRows.filter((r: any) => (r.fila || 0) > 0).map((r: any) => ({ horario: r.horario }))
       const bloqueadas = bloqueadasRes.status === 'fulfilled' ? (bloqueadasRes.value as any).data : []
       const agCliente = agClienteRes.status === 'fulfilled' ? (agClienteRes.value as any).data : []
       const filas = filasRes.status === 'fulfilled' ? (filasRes.value as any).data : []
       const ocupados: Record<string, number> = {}
-      for (const a of (ags || [])) { const hora = (a.horario || '').slice(0, 5); ocupados[hora] = (ocupados[hora] || 0) + 1 }
+      for (const a of ocupRows) { const hora = (a.horario || '').slice(0, 5); ocupados[hora] = (ocupados[hora] || 0) + (a.agendados || 0) }
       const bloqueadasMap: Record<string, number> = {}
       for (const b of (bloqueadas || [])) { const hora = (b.horario || '').slice(0, 5); bloqueadasMap[hora] = (bloqueadasMap[hora] || 0) + (b.quantidade || 1) }
       const resultado = Object.entries(porHora).map(([hora, total]) => {
@@ -502,8 +502,8 @@ export default function AgendarPage() {
     // Daqui pra baixo, coachIds são sempre coaches.id (igual a coach_ferias e agendamentos).
     coachIds = coachIds.filter(id => !feriasSet.has(id))
     if (coachIds.length === 0) { setCoachesDisponiveis([]); return }
-    const { data: ocupados } = await supabase.from('agendamentos').select('coach_id').eq('data', dataStr).eq('horario', horaStr + ':00').eq('unidade_id', unidadeAtiva.id).neq('status', 'cancelado').not('coach_id', 'is', null)
-    const idsOcupados = new Set((ocupados || []).map((a: any) => a.coach_id))
+    const { data: ocupados } = await supabase.rpc('ct_coaches_ocupados', { p_unidade_id: unidadeAtiva.id, p_data: dataStr, p_horario: horaStr + ':00' })
+    const idsOcupados = new Set(((ocupados as any[]) || []).map((a: any) => (typeof a === 'string' ? a : a?.ct_coaches_ocupados)))
     const idsDisp = coachIds.filter(id => !idsOcupados.has(id))
     if (idsDisp.length === 0) { setCoachesDisponiveis([]); return }
     const { data: coachesData } = await supabase.from('coaches').select('id, nome').in('id', idsDisp).eq('ativo', true).order('nome')

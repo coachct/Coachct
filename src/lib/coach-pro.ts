@@ -40,8 +40,9 @@ export async function coachesLivresNoHorario(supabase: any, unidadeId: string, d
   }
   coachIds = coachIds.filter(id => !feriasSet.has(id))
   if (coachIds.length === 0) return []
-  const { data: ocupados } = await supabase.from('agendamentos').select('coach_id').eq('data', dataStr).eq('horario', horaStr + ':00').eq('unidade_id', unidadeId).neq('status', 'cancelado').not('coach_id', 'is', null)
-  const idsOcupados = new Set((ocupados || []).map((a: any) => a.coach_id))
+  // Contado pelo banco (RPC): o cliente não lê agendamentos de outros.
+  const { data: ocupados } = await supabase.rpc('ct_coaches_ocupados', { p_unidade_id: unidadeId, p_data: dataStr, p_horario: horaStr + ':00' })
+  const idsOcupados = new Set(((ocupados as any[]) || []).map((a: any) => (typeof a === 'string' ? a : a?.ct_coaches_ocupados)))
   const idsDisp = coachIds.filter(id => !idsOcupados.has(id))
   if (idsDisp.length === 0) return []
   const { data: coachesData } = await supabase.from('coaches').select('id, nome').in('id', idsDisp).eq('ativo', true).order('nome')

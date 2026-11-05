@@ -593,7 +593,7 @@ function AulasPageInner() {
       status: 'aguardando', data: modalFila.data || dataSelStr, horario: modalFila.club_aulas?.horario, unidade_id: unidadeId,
     })
     if (error) { setErroModal(mensagemTravaApp(error) || 'Erro ao entrar na fila: '+error.message); setEntrandoFila(false); return }
-    const { count } = await supabase.from('fila_espera').select('*', { count: 'exact', head: true }).eq('ocorrencia_id', modalFila.id).eq('status', 'aguardando')
+    const { data: count } = await supabase.rpc('fila_aguardando_qtd', { p_ocorrencia_id: modalFila.id })
     setEntrandoFila(false)
     setFilaConfirmada({ posicao: count || 1, oc: modalFila, data: modalFila.data || dataSelStr })
     setModalFila(null)

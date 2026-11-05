@@ -79,6 +79,16 @@ revoke all on public.clientes, public.agendamentos, public.fila_espera, public.c
 grant select (data, horario, status, unidade_id, coach_id) on public.agendamentos to anon;
 grant select (data, horario, status, unidade_id, ocorrencia_id) on public.fila_espera to anon;
 
+-- ── Etapa 5 (05/11/2026): fim da leitura entre clientes ─────────────────────
+-- Site passou a contar ocupação/fila por RPC (sem identificar ninguém):
+--   ct_ocupacao_dia(unidade, data), ct_coaches_ocupados(unidade, data, horario),
+--   fila_aguardando_qtd(ocorrencia | unidade+data+horario)  — migration rpc_ocupacao_sem_identificacao.
+-- Depois do deploy:
+--   drop policy agendamentos_leitura_grade on public.agendamentos;
+--   drop policy fila_leitura_grade on public.fila_espera;
+--   revoke select on public.agendamentos, public.fila_espera from anon;
+-- Rollback da etapa 5: recriar as duas policies (select to anon, authenticated using (true)) + grants de coluna p/ anon acima.
+
 -- Rollback de emergência (reabre como era):
 -- create policy "Service role acesso total clientes" on public.clientes for all using (true) with check (true);
 -- (idem para agendamentos / fila_espera / cliente_creditos) + grant all on <tabela> to anon;
