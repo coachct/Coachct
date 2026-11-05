@@ -147,9 +147,15 @@ export const FALLBACK_EQUIPE = 'Essa a nossa equipe te responde certinho por aqu
 const RE_LIGAR = /\bligue?\b|\bligar\b|liga\s+(pra|para|no|na|a[íi])|por\s+telefone|\btelefone\b|\bfone\b/i
 const RE_RECEP_INFO = /recep[çc][ãa]o[^.!?]{0,45}(informa|conseguem|na hora|te diz|saber|perguntar|ver isso)|(passa|v[áa]|vai|va)[^.!?]{0,20}recep[çc][ãa]o[^.!?]{0,20}(saber|informa|perguntar|ver)/i
 const RE_OBJETO_CTX = /guardad|retirar|esquec|perdid|deixou|deixei|achad[oa]s e perdidos/i
+// Resposta APROVADA de contato (FAQ): "a gente NÃO tem telefone, é tudo por aqui no WhatsApp e
+// pelo site". Ela cita a palavra "telefone"/"ligação" (negando) — então deixa passar, senão a
+// trava abaixo destruía a resposta certa e virava beco sem saída. Só não vale se, mesmo assim,
+// ainda mandar procurar a recepção pra saber de algo.
+const RE_CANAL_PROPRIO = /n[ãa]o\s+(temos|tem|h[áa])\s+(telefone|n[úu]mero)|atendimento\s+(é|e|funciona)\s+(todo\s+)?(por\s+aqui|aqui\s+no\s+whats|pelo\s+whats)|por\s+aqui\s+no\s+whatsapp\s+e\s+pelo\s+site/i
 export function semCanalExterno(texto: string): string {
   const t = String(texto || '')
   if (RE_OBJETO_CTX.test(t)) return t // objeto esquecido usa "recepção" de forma legítima
+  if (RE_CANAL_PROPRIO.test(t) && !RE_RECEP_INFO.test(t)) return t // "não temos telefone, é por aqui" = resposta certa
   if (RE_LIGAR.test(t) || RE_RECEP_INFO.test(t)) return FALLBACK_EQUIPE
   return t
 }
