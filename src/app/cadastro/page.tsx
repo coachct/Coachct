@@ -60,14 +60,14 @@ export default function CadastroPage() {
     setSalvando(true)
 
     const cpfLimpo = cpf.replace(/\D/g, '')
-    const { data: cpfExiste } = await supabase.from('clientes').select('id').eq('cpf', cpfLimpo).maybeSingle()
-    if (cpfExiste) {
+    // Visitante não lê a tabela clientes: o banco só responde se CPF/email já existem.
+    const { data: existe } = await supabase.rpc('cadastro_existente', { p_cpf: cpfLimpo, p_email: email.trim() })
+    if ((existe as any)?.cpf) {
       setErro('Este CPF já está cadastrado. Faça login ou recupere sua senha.')
       setSalvando(false); setJaSubmeteu(false); return
     }
 
-    const { data: emailExiste } = await supabase.from('clientes').select('id').ilike('email', email.trim()).maybeSingle()
-    if (emailExiste) {
+    if ((existe as any)?.email) {
       setErro('Este email já está cadastrado. Faça login ou recupere sua senha.')
       setSalvando(false); setJaSubmeteu(false); return
     }
