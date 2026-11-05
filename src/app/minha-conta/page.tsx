@@ -10,6 +10,7 @@ import ModalTelefone from '@/components/ModalTelefone'
 import CompraCreditoExtra, { type CreditoExtraStatus } from '@/components/CompraCreditoExtra'
 import AppProCard from '@/components/AppProCard'
 import ClubExtraCard from '@/components/ClubExtraCard'
+import AvisoCoachAusente from '@/components/AvisoCoachAusente'
 import { numerarTreinosDoMes, PLANOS_SEM_TETO, poolReservaClub } from '@/lib/treinos-numero'
 import { temPlanoProAtivo } from '@/lib/planoPro'
 import { TEXTO_TERMO_WELLHUB_TOTALPASS, VERSAO_TERMO_WELLHUB_TOTALPASS } from '@/lib/contratos/termo-wellhub-totalpass'
@@ -902,6 +903,9 @@ export default function MinhaContaPage() {
 
         {/* Check ins Extra for Clubs — só para quem usou 70%+ do app no Club */}
         {!estaBloqueado && cliente?.id && <ClubExtraCard clienteId={cliente.id} />}
+
+        {/* Coach escolhido ficou ausente — cliente escolhe outro ou deixa sem coach */}
+        <AvisoCoachAusente agendamentos={agendamentos} onResolvido={loadDados} />
 
         {/* ══════════════════════════════════════════
             SEÇÃO 1 — PRÓXIMOS TREINOS
