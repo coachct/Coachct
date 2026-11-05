@@ -5,6 +5,7 @@ import { fmt } from '@/lib/utils'
 import { KpiCard, PageHeader, Spinner } from '@/components/ui'
 import CardAcompanhados from '@/components/CardAcompanhados'
 import CardAvisoFaltas from '@/components/CardAvisoFaltas'
+import CardExcessoCoachCT from '@/components/CardExcessoCoachCT'
 import Link from 'next/link'
 import { CalendarDays, Dumbbell, ShoppingCart, Receipt, MessageCircle, Instagram, Star, UserX, Music } from 'lucide-react'
 
@@ -176,6 +177,9 @@ export default function AdminDashboard() {
           </div>
         )}
       </div>
+
+      {/* Horários do CT com mais clientes que coaches — some sozinho se não tiver nenhum */}
+      <CardExcessoCoachCT />
 
       {/* Clientes marcados pra acompanhar — some sozinho se não tiver ninguém */}
       <CardAcompanhados />
