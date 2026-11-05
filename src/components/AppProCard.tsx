@@ -104,28 +104,34 @@ export default function AppProCard({ clienteId, onde, ocultarAvisoEsgotado = fal
   const restam = o.total ? Math.max(0, o.total - o.usados) : 0
   const alerta = local === 'conta_70'
 
-  const barraUso = o.total ? (
-    <div style={{ background: '#111', border: '1px solid #1e1e1e', borderRadius: 14, padding: '0.75rem 1rem', marginBottom: 12 }}>
-      <div style={{ fontSize: 12, color: '#888' }}>Check-ins do {parceiro} este mês</div>
-      <div style={{ height: 6, background: '#222', borderRadius: 3, overflow: 'hidden', margin: '6px 0 4px' }}>
-        <div style={{ width: `${pct}%`, height: '100%', background: alerta ? AMARELO : '#888' }} />
-      </div>
-      <div style={{ fontSize: 12, color: alerta ? AMARELO : '#aaa' }}>
-        {o.usados} de {o.total} usados{alerta ? ` · restam ${restam}` : ''}
-      </div>
+  // Layout de 05/11/2026 em /minha-conta: fundo escuro, rosa só na borda,
+  // selo, número grande, barra e botão. A barra de uso fica DENTRO do card.
+  const cardConta: React.CSSProperties = { background: '#151515', border: `1px solid ${ACCENT}66`, borderRadius: 16, padding: '1.1rem 1.1rem' }
+  const selo: React.CSSProperties = { display: 'inline-block', fontFamily: "'DM Mono', monospace", fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: ACCENT, border: `1px solid ${ACCENT}55`, borderRadius: 999, padding: '3px 9px' }
+  const numeroGrande = (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '12px 0 4px' }}>
+      <span style={{ ...bebas, fontSize: 38, color: ACCENT, lineHeight: 1 }}>+4</span>
+      <span style={{ fontSize: 14, color: '#eee' }}>treinos por mês</span>
     </div>
-  ) : null
+  )
 
   // ── 2 · Passou de 70% ──
   if (alerta) {
     return (
-      <div style={{ marginBottom: '1.5rem' }}>
-        {barraUso}
-        <div style={{ background: '#12000a', border: `1.5px solid ${ACCENT}`, borderRadius: 14, padding: '1rem 1.1rem' }}>
-          <div style={{ ...bebas, fontSize: 20, color: '#fff', lineHeight: 1.1, marginBottom: 6 }}>SEUS CHECK-INS DO APP ESTÃO SE ESGOTANDO</div>
-          <div style={{ fontSize: 13, color: '#ccc', lineHeight: 1.5 }}>
+      <div style={{ marginBottom: '1.25rem' }}>
+        <div style={cardConta}>
+          <div style={{ ...bebas, fontSize: 21, color: '#fff', lineHeight: 1.1, marginBottom: 8 }}>SEUS CHECK-INS DO APP ESTÃO SE ESGOTANDO</div>
+          <div style={{ fontSize: 13, color: '#cfcfcf', lineHeight: 1.5 }}>
             Olha, o uso dos check-ins que você tem direito com seu app está se esgotando. Mas você sabia que pode ter créditos extras e, o melhor, ainda ganhar os benefícios de ser um cliente PRO?
           </div>
+          {o.total ? (
+            <>
+              <div style={{ height: 5, background: '#2a2a2a', borderRadius: 3, overflow: 'hidden', margin: '10px 0 4px' }}>
+                <div style={{ width: `${pct}%`, height: '100%', background: ACCENT }} />
+              </div>
+              <div style={{ fontSize: 11.5, color: '#999' }}>{o.usados} de {o.total} check-ins do {parceiro} usados · restam {restam}</div>
+            </>
+          ) : null}
           <div style={{ marginTop: 10 }}>
             <Item icone="+">+4 treinos Coach CT por mês</Item>
             <Item icone="✓">Escolha seu coach</Item>
@@ -142,19 +148,17 @@ export default function AppProCard({ clienteId, onde, ocultarAvisoEsgotado = fal
 
   // ── 1 · Card fixo ──
   return (
-    <div style={{ marginBottom: '1.5rem' }}>
-      {barraUso}
-      <div style={{ background: '#12000a', border: `1.5px solid ${ACCENT}55`, borderRadius: 14, padding: '1rem 1.1rem' }}>
-        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', color: ACCENT }}>// exclusivo para quem treina pelo app</div>
-        <div style={{ ...bebas, fontSize: 22, color: '#fff', margin: '6px 0 4px' }}>SEJA APP COACH CT PRO</div>
-        <div style={{ fontSize: 13, color: '#aaa', lineHeight: 1.45 }}>Continue com seu {parceiro} e ganhe +4 treinos por mês e os benefícios PRO.</div>
-        <div style={{ marginTop: 6 }}>
-          <Item icone="✓">Escolha seu coach</Item>
-          <Item icone="◷">Agende com 14 dias de antecedência</Item>
-          <Item icone="✕">Cancele até 3h antes</Item>
-        </div>
-        <div style={{ fontSize: 12, color: '#888', margin: '10px 0' }}>3x de R$ 299 · trimestral</div>
-        <button onClick={irParaCompra} style={btn}>Conhecer o App PRO</button>
+    <div style={{ marginBottom: '1.25rem' }}>
+      <div style={cardConta}>
+        <span style={selo}>Exclusivo para quem treina pelo app</span>
+        <div style={{ ...bebas, fontSize: 22, color: '#fff', margin: '10px 0 4px' }}>SEJA APP COACH CT PRO</div>
+        <div style={{ fontSize: 13, color: '#cfcfcf', lineHeight: 1.5 }}>Continue com seu {parceiro} e ganhe +4 treinos por mês e os benefícios PRO.</div>
+        {numeroGrande}
+        <Item icone="✓">Escolha seu coach</Item>
+        <Item icone="✓">Agende com 14 dias de antecedência</Item>
+        <Item icone="✓">Cancele até 3h antes</Item>
+        <div style={{ fontSize: 12, color: '#999', margin: '10px 0' }}>3x de R$ 299 · trimestral</div>
+        <button onClick={irParaCompra} style={btn}>Conhecer o App PRO →</button>
       </div>
     </div>
   )

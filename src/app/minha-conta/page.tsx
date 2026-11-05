@@ -152,6 +152,23 @@ export default function MinhaContaPage() {
   const [verTodosHistorico,  setVerTodosHistorico]  = useState(false)
   const [buscaClassPass,     setBuscaClassPass]     = useState('')
 
+  // ── Abas (redesign 05/11/2026): Início · Meus planos · Histórico · Perfil ──
+  // Só muda o que aparece na tela; dados, regras e modais são os mesmos.
+  const [aba, setAba] = useState<'inicio'|'planos'|'historico'|'perfil'>('inicio')
+  const [itemAberto,         setItemAberto]         = useState<string|null>(null)
+  const [verTodosFuturo,     setVerTodosFuturo]     = useState(false)
+  const [verEncerrados,      setVerEncerrados]      = useState(false)
+  const [verComoFunciona,    setVerComoFunciona]    = useState(false)
+  const [filtroHistorico,    setFiltroHistorico]    = useState<'treinos'|'compras'>('treinos')
+  const [verTodasCompras,    setVerTodasCompras]    = useState(false)
+  useEffect(() => {
+    try {
+      const a = new URLSearchParams(window.location.search).get('aba')
+      if (a==='planos'||a==='historico'||a==='perfil') setAba(a)
+    } catch {}
+  }, [])
+  const irParaAba = (a: typeof aba) => { setAba(a); try { window.scrollTo({top:0,behavior:'smooth'}) } catch {} }
+
   const [modalCancelar, setModalCancelar] = useState<any>(null)
   const [cancelando,    setCancelando]    = useState(false)
   const [erroCancelar,  setErroCancelar]  = useState('')
@@ -799,6 +816,161 @@ export default function MinhaContaPage() {
     cancelado:  {label:'Cancelado',  cor:'#ff6b6b'},
   }
 
+  // ── Apoio às abas (redesign 05/11/2026) — só apresentação ──
+  const DIAS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
+  const secLabel: React.CSSProperties = {fontSize:11,color:'#aaa',fontWeight:700,letterSpacing:2,textTransform:'uppercase'}
+  const hojeStr   = dataLocalStr(agora)
+  const amanhaStr = dataLocalStr(new Date(agora.getFullYear(),agora.getMonth(),agora.getDate()+1))
+
+  // Plano "encerrado" = sem saldo agora e sem renovação no mês que vem (avulso,
+  // pacote, plano vencido). Plano mensal esgotado continua em "ativos".
+  const planoEncerrado = (plano:string, info:any) => Number(info?.disponivel)===0 && !(Number(saldoProximo[plano]?.total)>0)
+  const labelPlano = (plano:string, info:any) => (plano==='avulso' && info?.nome_pacote) ? info.nome_pacote : parsePlanoKey(plano).label
+  const planosAtivosLista     = Object.entries(saldoAtual).filter(([p,i]:any)=>!planoEncerrado(p,i))
+  const planosEncerradosLista = Object.entries(saldoAtual).filter(([p,i]:any)=>planoEncerrado(p,i))
+  // Chip curto do saldo: "TotalPass — Just Club Vila Olímpia" → "Vila Olímpia".
+  // Se dois planos derem o mesmo nome curto, os dois voltam pro nome completo.
+  const curtoDoPlano = (plano:string, info:any) => {
+    const l = labelPlano(plano, info)
+    const depois = l.includes(' — ') ? l.split(' — ').slice(1).join(' — ') : l
+    return depois.replace(/^just\s?club\s+/i,'').trim() || l
+  }
+  const chipsSaldo = (() => {
+    const base = planosAtivosLista.map(([p,i]:any)=>({plano:p, curto:curtoDoPlano(p,i), longo:labelPlano(p,i), disp:Number(i.disponivel)||0}))
+    return base.map(c => ({...c, nome: base.filter(o=>o.curto===c.curto).length>1 ? c.longo : c.curto}))
+  })()
+
+  const tituloTreino = (item:any) => item.tipo==='club' ? (item.tipoAula ? tipoAulaLabel(item.tipoAula) : 'Aula') : 'Coach CT'
+  const quandoTreino = (data:string) => data===hojeStr ? 'hoje' : data===amanhaStr ? 'amanhã' : ''
+
+  // Próximo treino em destaque; os demais + a fila de espera numa lista curta.
+  const LIMITE_FUTURO = 3
+  const proximoTreino = feedFuturoExibido[0] || null
+  const restoFuturo = [
+    ...feedFuturoExibido.slice(1).map(item => ({kind:'ag' as const, key:`${item.tipo}-${item.id}`, ord:`${item.data}T${item.horario}`, item, f:null as any})),
+    ...filas.map((f:any) => ({kind:'fila' as const, key:`fila-${f.id}`, ord:`${f.data}T${(f.horario||'').slice(0,5)}`, item:null as any, f})),
+  ].sort((a,b)=>a.ord.localeCompare(b.ord))
+  const mostrarTodoFuturo = verTodosFuturo || !!cliente?.is_classpass
+  const restoExibido = mostrarTodoFuturo ? restoFuturo : restoFuturo.slice(0, LIMITE_FUTURO)
+
+  const chipsDoTreino = (item:any) => {
+    const isClub = item.tipo==='club'
+    const d = new Date(item.data+'T12:00:00')
+    const isProxMes = d.getMonth()!==agora.getMonth()||d.getFullYear()!==agora.getFullYear()
+    const chip = (cor:string, txt:any, mono=false) => (
+      <span style={{fontSize:10.5,color:cor,background:`${cor}15`,padding:'2px 8px',borderRadius:20,fontWeight:600,fontFamily:mono?"'DM Mono', monospace":undefined}}>{txt}</span>
+    )
+    return (
+      <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
+        {item.tipoCredito && (()=>{ const {label,icon}=parsePlanoKey(item.tipoCredito); return (
+          <span style={{fontSize:10.5,color:'#999',background:'#1a1a1a',padding:'2px 8px',borderRadius:20,border:'1px solid #2a2a2a'}}>{icon} {label}</span>
+        )})()}
+        {numeroTreino.get(item.id) && chip(ACCENT, numeroTreino.get(item.id), true)}
+        {isClub && item.posicao && chip(VERDE, item.posicao, true)}
+        {!isClub && item.original?.coaches?.nome && chip(VERDE, `Coach ${item.original.coaches.nome}`)}
+        {isProxMes && chip(AMARELO, `crédito ${MESES[d.getMonth()]}`)}
+      </div>
+    )
+  }
+  const nomeClassPass = (item:any) => cliente?.is_classpass && item.tipo==='club' ? (
+    <div style={{fontSize:13,color:'#ddd',marginTop:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+      {item.original?.classpass_nome || <span style={{color:'#555'}}>Sem nome</span>}
+      {item.original?.classpass_reserva_id && (
+        <span style={{fontSize:11,color:'#555',fontFamily:"'DM Mono', monospace",marginLeft:6}}>{item.original.classpass_reserva_id}</span>
+      )}
+    </div>
+  ) : null
+  const botoesTreino = (item:any, grande=false) => {
+    const podeCancelar = ['agendado','confirmado','reservado'].includes(item.status)
+    const infoTroca = trocaInfo[`${item.tipo}-${item.id}`]
+    if (!podeCancelar && !infoTroca?.pode) return null
+    const b: React.CSSProperties = {flex:1,background:'transparent',borderRadius:10,padding:grande?'0.6rem':'0.45rem',fontSize:grande?13:12,fontWeight:600,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}
+    return (
+      <div style={{display:'flex',gap:8,marginTop:grande?14:10}}>
+        {infoTroca?.pode && <button onClick={()=>abrirModalTroca(item,infoTroca)} style={{...b,border:`1px solid ${CYAN}55`,color:CYAN}}>⇄ Trocar horário</button>}
+        {podeCancelar && <button onClick={()=>abrirModalCancelar(item)} style={{...b,border:'1px solid #333',color:'#bbb'}}>Cancelar</button>}
+      </div>
+    )
+  }
+  const dataMini = (data:string, cor='#fff') => {
+    const d = new Date(data+'T12:00:00')
+    return (
+      <div style={{flexShrink:0,textAlign:'center',width:38}}>
+        <div style={{fontSize:9,color:cor==='#fff'?'#666':cor,fontWeight:700,letterSpacing:1,textTransform:'uppercase'}}>{DIAS[d.getDay()]}</div>
+        <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:22,color:cor,lineHeight:1}}>{d.getDate()}</div>
+      </div>
+    )
+  }
+
+  // Card de plano (igual ao de antes; só mudou de lugar).
+  const cardPlano = ([plano,info]:any) => {
+    const icon=parsePlanoKey(plano).icon
+    const label=labelPlano(plano,info)
+    const restante=info.disponivel; const total=info.total
+    const pct=total>0?Math.round((restante/total)*100):0
+    const cor=restante===0?'#333':plano.startsWith('coach_ct_pro')?AMARELO:plano.startsWith('avulso')||plano.startsWith('credito')?CYAN:ACCENT
+    const saldoProx=saldoProximo[plano]
+    return (
+      <div key={plano} onClick={()=>alternarTreinosPlano(plano,info)} style={{background:'#111',border:`1px solid ${restante===0?'#1a1a1a':cor+'22'}`,borderRadius:12,padding:'1rem',cursor:'pointer'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'0.65rem'}}>
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <span style={{fontSize:16}}>{icon}</span>
+            <span style={{fontSize:13,fontWeight:600,color:restante===0?'#666':'#ddd'}}>{label}</span>
+          </div>
+          <div style={{textAlign:'right'}}>
+            <span style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:22,color:restante===0?'#555':cor,lineHeight:1}}>{restante}</span>
+            <span style={{fontSize:12,color:'#555'}}> / {total}</span>
+          </div>
+        </div>
+        <div style={{height:3,background:'#1a1a1a',borderRadius:2,overflow:'hidden',marginBottom:6}}>
+          <div style={{height:'100%',borderRadius:2,background:restante===0?'#222':cor,width:`${pct}%`,transition:'width .3s'}}/>
+        </div>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <span style={{fontSize:11,color:'#666'}}>{restante===0?`Esgotado em ${nomeMesAtual}`:`${restante} restante${restante!==1?'s':''} em ${nomeMesAtual}`}</span>
+          {saldoProx?.disponivel>0 && <span style={{fontSize:11,color:'#777'}}>{saldoProx.disponivel} em {nomeMesProximo} →</span>}
+        </div>
+        <div style={{fontSize:11,color:'#888',marginTop:8}}>{planoAberto===plano?'▴ Ocultar treinos':'▾ Ver treinos feitos com este plano'}</div>
+        {planoAberto===plano && (() => {
+          const rs = treinosPlano[plano]
+          const caixa = {marginTop:10,paddingTop:10,borderTop:'1px solid #1e1e1e'}
+          if (!rs || rs==='carregando') return <div style={{...caixa,fontSize:12,color:'#555'}}>Carregando...</div>
+          if (rs.length===0) return <div style={{...caixa,fontSize:12,color:'#555'}}>Nenhum treino feito com este plano ainda.</div>
+          const porMes: Record<string,any[]> = {}
+          for (const r of rs) (porMes[(r.data||'').slice(0,7)] ||= []).push(r)
+          return (
+            <div style={{...caixa,maxHeight:320,overflowY:'auto',display:'flex',flexDirection:'column',gap:12}}>
+              {Object.entries(porMes).map(([ym,itens]) => {
+                const [ano,mes] = ym.split('-')
+                const presentes = itens.filter(r=>r.status==='realizado'||r.status==='presente').length
+                const faltas = itens.filter(r=>r.status==='falta').length
+                return (
+                  <div key={ym}>
+                    <div style={{fontSize:12,fontWeight:600,color:'#ddd',marginBottom:4}}>
+                      {MESES[Number(mes)-1]} {ano}
+                      <span style={{fontWeight:400,color:'#555'}}> · {presentes} presença{presentes!==1?'s':''}{faltas>0?` · ${faltas} falta${faltas!==1?'s':''}`:''}</span>
+                    </div>
+                    <div style={{display:'flex',flexDirection:'column',gap:3,paddingLeft:8,borderLeft:`2px solid ${cor}33`}}>
+                      {itens.map(r => {
+                        const st = r.status==='realizado'||r.status==='presente' ? {t:'Presente',c:VERDE}
+                          : r.status==='falta' ? {t:'Falta',c:'#ff5555'}
+                          : {t:'Agendado',c:'#5dade2'}
+                        return (
+                          <div key={r.id} style={{fontSize:12,color:'#999'}}>
+                            <DiaSemana data={r.data}/> {r.data?.split('-').reverse().join('/')} · {r.horario}{r.detalhe?` · ${r.detalhe}`:''} · <span style={{color:st.c,fontWeight:600}}>{st.t}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })()}
+      </div>
+    )
+  }
+
   return (
     <div style={{minHeight:'100vh',background:'#080808',fontFamily:"'DM Sans', sans-serif",color:'#f0f0f0'}}>
       <style>{`
@@ -886,258 +1058,200 @@ export default function MinhaContaPage() {
           <CadastroRosto onCadastrado={()=>setRostoCadastrado(true)} />
         )}
 
-        {/* ── BOTÕES DE AÇÃO ── */}
-        {!estaBloqueado && (
-          <div style={{marginBottom:'2rem'}}>
-            <button onClick={()=>router.push('/agendar')} style={{width:'100%',background:ACCENT,color:'#fff',border:'none',borderRadius:12,padding:'0.9rem',fontWeight:700,fontSize:14,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
-              + Agendar Treino
-            </button>
-            <button onClick={()=>router.push('/treinos')} style={{width:'100%',marginTop:10,background:'transparent',color:'#fff',border:'1px solid #333',borderRadius:12,padding:'0.9rem',fontWeight:700,fontSize:14,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
-              💪 Treinos · Musculação livre
-            </button>
-          </div>
-        )}
-
-        {/* Oferta do App Coach CT PRO — só para quem treina Coach CT pelo app */}
-        {!estaBloqueado && cliente?.id && <AppProCard clienteId={cliente.id} onde="conta" />}
-
-        {/* Check ins Extra for Clubs — só para quem usou 70%+ do app no Club */}
-        {!estaBloqueado && cliente?.id && <ClubExtraCard clienteId={cliente.id} />}
-
         {/* Coach escolhido ficou ausente — cliente escolhe outro ou deixa sem coach */}
         <AvisoCoachAusente agendamentos={agendamentos} onResolvido={loadDados} />
 
-        {/* ══════════════════════════════════════════
-            SEÇÃO 1 — PRÓXIMOS TREINOS
-        ══════════════════════════════════════════ */}
-        <div style={{marginBottom:'2rem'}}>
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'0.85rem'}}>
-            <div style={{fontSize:11,color:'#aaa',fontWeight:700,letterSpacing:2,textTransform:'uppercase'}}>📅 Próximos treinos</div>
-            <div style={{fontSize:12,color:'#555'}}>{feedFuturo.length} agendamento{feedFuturo.length!==1?'s':''}</div>
-          </div>
-
-          {cliente?.is_classpass && feedFuturo.length>0 && (
-            <div style={{marginBottom:'0.85rem'}}>
-              <input value={buscaClassPass} onChange={e=>setBuscaClassPass(e.target.value)}
-                placeholder="🔍 Buscar por nome do cliente ou Reservation ID" autoComplete="off" spellCheck={false}
-                style={{width:'100%',background:'#111',border:'1px solid #2a2a2a',borderRadius:10,padding:'0.75rem 1rem',color:'#fff',fontSize:14,fontFamily:"'DM Sans', sans-serif"}}/>
-              {termoBusca && feedFuturoExibido.length===0 && (
-                <div style={{fontSize:12,color:'#555',marginTop:8}}>Nenhum agendamento encontrado para essa busca.</div>
-              )}
-            </div>
-          )}
-
-          {feedFuturo.length===0 ? (
-            <div style={{background:'#111',border:'1px solid #1e1e1e',borderRadius:14,padding:'2rem',textAlign:'center'}}>
-              <div style={{fontSize:28,marginBottom:8}}>🏋️</div>
-              <div style={{fontSize:14,color:'#555'}}>Nenhum treino agendado</div>
-              {temPlanoAtivo && !estaBloqueado && (
-                <button onClick={()=>router.push('/agendar')} style={{marginTop:'1rem',background:ACCENT,color:'#fff',border:'none',borderRadius:10,padding:'0.6rem 1.25rem',fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
-                  Agendar agora →
-                </button>
-              )}
-            </div>
-          ) : (
-            <div style={{display:'flex',flexDirection:'column',gap:6}}>
-              {feedFuturoExibido.map(item => {
-                const d = new Date(item.data+'T12:00:00')
-                const podeCancelar = ['agendado','confirmado','reservado'].includes(item.status)
-                const infoTroca = trocaInfo[`${item.tipo}-${item.id}`]
-                const isClub = item.tipo==='club'
-                const isProxMes = d.getMonth()!==agora.getMonth()||d.getFullYear()!==agora.getFullYear()
-                const sc = statusConfig[item.status]||{label:item.status,cor:'#888'}
-                const dias=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
-                return (
-                  <div key={`${item.tipo}-${item.id}`} style={{background:'#111',border:'1px solid #1e1e1e',borderRadius:12,padding:'0.9rem 1rem',display:'flex',alignItems:'center',gap:'0.85rem'}}>
-                    {/* Data */}
-                    <div style={{flexShrink:0,textAlign:'center',width:42}}>
-                      <div style={{fontSize:9,color:'#555',fontWeight:700,letterSpacing:1,textTransform:'uppercase'}}>{dias[d.getDay()]}</div>
-                      <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:26,color:'#fff',lineHeight:1}}>{d.getDate()}</div>
-                      <div style={{fontSize:9,color:'#444',textTransform:'uppercase'}}>{d.toLocaleDateString('pt-BR',{month:'short'})}</div>
-                    </div>
-
-                    <div style={{width:1,height:40,background:'#222',flexShrink:0}}/>
-
-                    {/* Info */}
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',marginBottom:3}}>
-                        <span style={{fontSize:14,fontWeight:600,color:'#fff'}}>{item.horario}</span>
-                        <span style={{fontSize:13,color:'#888'}}>· {item.unidadeNome}</span>
-                      </div>
-                      {cliente?.is_classpass && isClub && (
-                        <div style={{fontSize:13,color:'#ddd',marginBottom:3,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                          {(item.original as any)?.classpass_nome || <span style={{color:'#555'}}>Sem nome</span>}
-                          {(item.original as any)?.classpass_reserva_id && (
-                            <span style={{fontSize:11,color:'#555',fontFamily:"'DM Mono', monospace",marginLeft:6}}>{(item.original as any).classpass_reserva_id}</span>
-                          )}
-                        </div>
-                      )}
-                      <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
-                        {isClub && item.tipoAula && (
-                          <span style={{fontSize:10,color:ACCENT,background:`${ACCENT}15`,padding:'1px 7px',borderRadius:20,fontWeight:600}}>{tipoAulaLabel(item.tipoAula)}</span>
-                        )}
-                        {isClub && item.posicao && (
-                          <span style={{fontSize:10,color:VERDE,fontFamily:"'DM Mono', monospace",fontWeight:700,background:`${VERDE}15`,padding:'1px 7px',borderRadius:20}}>{item.posicao}</span>
-                        )}
-                        {item.tipoCredito && (()=>{ const {label,icon}=parsePlanoKey(item.tipoCredito); return (
-                          <span style={{fontSize:10,color:'#777',background:'#1a1a1a',padding:'1px 7px',borderRadius:20,border:'1px solid #2a2a2a'}}>{icon} {label}</span>
-                        )})()}
-                        {!isClub && (item.original as any)?.coaches?.nome && (
-                          <span style={{fontSize:10,color:VERDE,background:`${VERDE}15`,padding:'1px 7px',borderRadius:20,fontWeight:600}}>Coach {(item.original as any).coaches.nome}</span>
-                        )}
-                        {numeroTreino.get(item.id) && (
-                          <span title="treino do mês" style={{fontSize:10,color:ACCENT,background:`${ACCENT}15`,padding:'1px 7px',borderRadius:20,fontFamily:"'DM Mono', monospace",fontWeight:700}}>{numeroTreino.get(item.id)}</span>
-                        )}
-                        {isProxMes && (
-                          <span style={{fontSize:10,color:AMARELO,background:`${AMARELO}15`,padding:'1px 7px',borderRadius:20}}>crédito {MESES[d.getMonth()]}</span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Status + trocar/cancelar */}
-                    <div style={{flexShrink:0,textAlign:'right'}}>
-                      <div style={{fontSize:10,fontWeight:700,color:sc.cor,textTransform:'uppercase',marginBottom:4}}>{sc.label}</div>
-                      <div style={{display:'flex',gap:5,justifyContent:'flex-end'}}>
-                        {infoTroca?.pode && (
-                          <button onClick={()=>abrirModalTroca(item,infoTroca)} style={{background:'transparent',border:`1px solid ${CYAN}55`,borderRadius:6,padding:'0.2rem 0.6rem',fontSize:10,color:CYAN,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>⇄ Trocar</button>
-                        )}
-                        {podeCancelar && (
-                          <button onClick={()=>abrirModalCancelar(item)} style={{background:'transparent',border:'1px solid #2a2a2a',borderRadius:6,padding:'0.2rem 0.6rem',fontSize:10,color:'#666',cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>Cancelar</button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
+        {/* ── ABAS ── */}
+        <div style={{display:'flex',gap:4,background:'#141414',border:'1px solid #1e1e1e',borderRadius:12,padding:4,marginBottom:'1.5rem',position:'sticky',top:72,zIndex:5}}>
+          {([['inicio','Início'],['planos','Meus planos'],['historico','Histórico'],['perfil','Perfil']] as const).map(([k,l])=>(
+            <button key={k} onClick={()=>irParaAba(k)} style={{flex:1,background:aba===k?ACCENT:'transparent',color:aba===k?'#fff':'#999',border:'none',borderRadius:9,padding:'0.55rem 0.25rem',fontSize:12.5,fontWeight:600,cursor:'pointer',fontFamily:"'DM Sans', sans-serif",whiteSpace:'nowrap'}}>
+              {l}
+            </button>
+          ))}
         </div>
 
-        {/* ── FILA DE ESPERA ── */}
-        {filas.length>0 && (
-          <div style={{marginBottom:'2rem'}}>
-            <div style={{fontSize:11,color:AMARELO,fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginBottom:'0.85rem'}}>⏳ Fila de espera</div>
-            <div style={{display:'flex',flexDirection:'column',gap:6}}>
-              {filas.map(f => {
-                const d = new Date(f.data+'T12:00:00')
-                const dias=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
-                return (
-                  <div key={f.id} style={{background:'#120d00',border:`1px solid ${AMARELO}33`,borderRadius:12,padding:'0.9rem 1rem',display:'flex',alignItems:'center',gap:'0.85rem'}}>
-                    <div style={{flexShrink:0,textAlign:'center',width:42}}>
-                      <div style={{fontSize:9,color:AMARELO,fontWeight:700,letterSpacing:1,textTransform:'uppercase',opacity:0.8}}>{dias[d.getDay()]}</div>
-                      <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:26,color:AMARELO,lineHeight:1}}>{d.getDate()}</div>
-                      <div style={{fontSize:9,color:AMARELO,textTransform:'uppercase',opacity:0.7}}>{d.toLocaleDateString('pt-BR',{month:'short'})}</div>
-                    </div>
-                    <div style={{width:1,height:40,background:`${AMARELO}33`,flexShrink:0}}/>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:14,fontWeight:600,color:'#fff',marginBottom:2}}>{(f.horario||'').slice(0,5)} · {f.unidades?.nome||'Just CT'}</div>
-                      {f.posicao_fila && (
-                        <div style={{fontSize:12,fontWeight:700,color:AMARELO,marginBottom:2}}>Você é o {f.posicao_fila}º da fila</div>
-                      )}
-                      <div style={{fontSize:11,color:AMARELO,opacity:0.8}}>Se abrir vaga, você pode ser avisado até 3h antes do treino</div>
-                    </div>
-                    <button onClick={()=>setModalSairFila(f)} style={{background:'transparent',border:`1px solid ${AMARELO}55`,borderRadius:8,padding:'0.3rem 0.75rem',fontSize:11,color:AMARELO,cursor:'pointer',fontFamily:"'DM Sans', sans-serif",flexShrink:0}}>Sair</button>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
         {/* ══════════════════════════════════════════
-            SEÇÃO 2 — MEUS PLANOS & CRÉDITOS
+            ABA INÍCIO — próximo treino, saldo, atalhos e ofertas
         ══════════════════════════════════════════ */}
-        <div style={{marginBottom:'2rem'}}>
-          <div style={{fontSize:11,color:'#aaa',fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginBottom:'0.85rem'}}>🏆 Meus planos & créditos</div>
-
-          {Object.keys(saldoAtual).length===0 && clientePlanos.length===0 ? (
-            <div style={{background:'#111',border:'1px solid #1e1e1e',borderRadius:14,padding:'1.5rem',textAlign:'center'}}>
-              <div style={{fontSize:13,color:'#555'}}>Nenhum plano ativo no momento.</div>
+        {aba==='inicio' && (<>
+          <div style={{marginBottom:'1.75rem'}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'0.75rem'}}>
+              <div style={secLabel}>Próximos treinos</div>
+              {feedFuturo.length>0 && <div style={{fontSize:12,color:'#666'}}>{feedFuturo.length} agendado{feedFuturo.length!==1?'s':''}</div>}
             </div>
-          ) : (
-            <div style={{display:'flex',flexDirection:'column',gap:6}}>
-              {Object.entries(saldoAtual).map(([plano,info]:any) => {
-                const parsed=parsePlanoKey(plano)
-                const icon=parsed.icon
-                // crédito global (pacote sem unidade): usa o nome do pacote igual ao modal de reserva
-                const label=(plano==='avulso' && info?.nome_pacote) ? info.nome_pacote : parsed.label
-                const restante=info.disponivel; const total=info.total
-                const pct=total>0?Math.round((restante/total)*100):0
-                const cor=restante===0?'#333':plano.startsWith('coach_ct_pro')?AMARELO:plano.startsWith('avulso')||plano.startsWith('credito')?CYAN:ACCENT
-                const saldoProx=saldoProximo[plano]
-                return (
-                  <div key={plano} onClick={()=>alternarTreinosPlano(plano,info)} style={{background:'#111',border:`1px solid ${restante===0?'#1a1a1a':cor+'22'}`,borderRadius:12,padding:'1rem',cursor:'pointer'}}>
-                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'0.65rem'}}>
-                      <div style={{display:'flex',alignItems:'center',gap:8}}>
-                        <span style={{fontSize:16}}>{icon}</span>
-                        <span style={{fontSize:13,fontWeight:600,color:restante===0?'#444':'#ddd'}}>{label}</span>
+
+            {cliente?.is_classpass && feedFuturo.length>0 && (
+              <div style={{marginBottom:'0.85rem'}}>
+                <input value={buscaClassPass} onChange={e=>setBuscaClassPass(e.target.value)}
+                  placeholder="🔍 Buscar por nome do cliente ou Reservation ID" autoComplete="off" spellCheck={false}
+                  style={{width:'100%',background:'#111',border:'1px solid #2a2a2a',borderRadius:10,padding:'0.75rem 1rem',color:'#fff',fontSize:14,fontFamily:"'DM Sans', sans-serif"}}/>
+                {termoBusca && feedFuturoExibido.length===0 && (
+                  <div style={{fontSize:12,color:'#555',marginTop:8}}>Nenhum agendamento encontrado para essa busca.</div>
+                )}
+              </div>
+            )}
+
+            {feedFuturo.length===0 && (
+              <div style={{background:'#111',border:'1px solid #1e1e1e',borderRadius:14,padding:'1.75rem',textAlign:'center'}}>
+                <div style={{fontSize:28,marginBottom:8}}>🏋️</div>
+                <div style={{fontSize:14,color:'#666'}}>Nenhum treino agendado</div>
+              </div>
+            )}
+
+            {/* Próximo treino — em destaque */}
+            {proximoTreino && (()=>{
+              const item = proximoTreino
+              const d = new Date(item.data+'T12:00:00')
+              const sc = statusConfig[item.status]||{label:item.status,cor:'#888'}
+              const quando = quandoTreino(item.data)
+              return (
+                <div style={{background:'#111',border:`1px solid ${ACCENT}55`,borderRadius:14,padding:'1rem 1.1rem'}}>
+                  <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:10}}>
+                    <div>
+                      <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:34,color:'#fff',lineHeight:1}}>{item.horario}</div>
+                      <div style={{fontSize:12,color:'#888',marginTop:3}}>
+                        {DIAS[d.getDay()]}, {d.getDate()} {d.toLocaleDateString('pt-BR',{month:'short'}).replace('.','')}{quando?` · ${quando}`:''}
                       </div>
-                      <div style={{textAlign:'right'}}>
-                        <span style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:22,color:restante===0?'#333':cor,lineHeight:1}}>{restante}</span>
-                        <span style={{fontSize:12,color:'#444'}}> / {total}</span>
-                      </div>
                     </div>
-                    {/* Barra de progresso */}
-                    <div style={{height:3,background:'#1a1a1a',borderRadius:2,overflow:'hidden',marginBottom:6}}>
-                      <div style={{height:'100%',borderRadius:2,background:restante===0?'#222':cor,width:`${pct}%`,transition:'width .3s'}}/>
-                    </div>
-                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                      <span style={{fontSize:11,color:'#444'}}>{restante===0?`Esgotado em ${nomeMesAtual}`:`${restante} restante${restante!==1?'s':''} em ${nomeMesAtual}`}</span>
-                      {saldoProx?.disponivel>0 && <span style={{fontSize:11,color:'#666'}}>{saldoProx.disponivel} em {nomeMesProximo} →</span>}
-                    </div>
-                    <div style={{fontSize:11,color:'#888',marginTop:8}}>{planoAberto===plano?'▴ Ocultar treinos':'▾ Ver treinos feitos com este plano'}</div>
-                    {planoAberto===plano && (() => {
-                      const rs = treinosPlano[plano]
-                      const caixa = {marginTop:10,paddingTop:10,borderTop:'1px solid #1e1e1e'}
-                      if (!rs || rs==='carregando') return <div style={{...caixa,fontSize:12,color:'#555'}}>Carregando...</div>
-                      if (rs.length===0) return <div style={{...caixa,fontSize:12,color:'#555'}}>Nenhum treino feito com este plano ainda.</div>
-                      const porMes: Record<string,any[]> = {}
-                      for (const r of rs) (porMes[(r.data||'').slice(0,7)] ||= []).push(r)
-                      return (
-                        <div style={{...caixa,maxHeight:320,overflowY:'auto',display:'flex',flexDirection:'column',gap:12}}>
-                          {Object.entries(porMes).map(([ym,itens]) => {
-                            const [ano,mes] = ym.split('-')
-                            const presentes = itens.filter(r=>r.status==='realizado'||r.status==='presente').length
-                            const faltas = itens.filter(r=>r.status==='falta').length
-                            return (
-                              <div key={ym}>
-                                <div style={{fontSize:12,fontWeight:600,color:'#ddd',marginBottom:4}}>
-                                  {MESES[Number(mes)-1]} {ano}
-                                  <span style={{fontWeight:400,color:'#555'}}> · {presentes} presença{presentes!==1?'s':''}{faltas>0?` · ${faltas} falta${faltas!==1?'s':''}`:''}</span>
-                                </div>
-                                <div style={{display:'flex',flexDirection:'column',gap:3,paddingLeft:8,borderLeft:`2px solid ${cor}33`}}>
-                                  {itens.map(r => {
-                                    const st = r.status==='realizado'||r.status==='presente' ? {t:'Presente',c:VERDE}
-                                      : r.status==='falta' ? {t:'Falta',c:'#ff5555'}
-                                      : {t:'Agendado',c:'#5dade2'}
-                                    return (
-                                      <div key={r.id} style={{fontSize:12,color:'#999'}}>
-                                        <DiaSemana data={r.data}/> {r.data?.split('-').reverse().join('/')} · {r.horario}{r.detalhe?` · ${r.detalhe}`:''} · <span style={{color:st.c,fontWeight:600}}>{st.t}</span>
-                                      </div>
-                                    )
-                                  })}
-                                </div>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )
-                    })()}
+                    <div style={{fontSize:11,fontWeight:700,color:sc.cor,textTransform:'uppercase'}}>{sc.label}</div>
                   </div>
-                )
-              })}
-            </div>
-          )}
+                  <div style={{fontSize:15,fontWeight:600,color:'#fff',margin:'10px 0 6px'}}>{tituloTreino(item)} · {item.unidadeNome}</div>
+                  {nomeClassPass(item)}
+                  {chipsDoTreino(item)}
+                  {botoesTreino(item, true)}
+                </div>
+              )
+            })()}
 
-          {/* Botão comprar abaixo dos planos */}
-          {(Object.keys(saldoAtual).length>0||clientePlanos.length>0) && (
-            <div style={{display:'flex',gap:8,marginTop:10}}>
-              <button onClick={()=>router.push('/comprar')} style={{flex:1,background:'transparent',color:'#aaa',border:'1px solid #222',borderRadius:10,padding:'0.6rem',fontSize:12,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
-                🛍️ Ver planos e pacotes
+            {/* Demais treinos e fila de espera — lista curta; toque abre as ações */}
+            {restoExibido.length>0 && (
+              <div style={{background:'#111',border:'1px solid #1e1e1e',borderRadius:14,padding:'0.15rem 1rem',marginTop:8}}>
+                {restoExibido.map((r,i) => {
+                  const aberto = itemAberto===r.key
+                  const linha: React.CSSProperties = {borderTop:i?'1px solid #1e1e1e':'none',padding:'0.7rem 0'}
+                  if (r.kind==='fila') {
+                    const f = r.f
+                    return (
+                      <div key={r.key} style={linha}>
+                        <div onClick={()=>setItemAberto(aberto?null:r.key)} style={{display:'flex',alignItems:'center',gap:12,cursor:'pointer'}}>
+                          {dataMini(f.data, AMARELO)}
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:13.5,color:'#eee',fontWeight:500}}>{(f.horario||'').slice(0,5)} · {f.unidades?.nome||'Just CT'}</div>
+                            <div style={{fontSize:11.5,color:AMARELO}}>na fila{f.posicao_fila?`, ${f.posicao_fila}º`:''}</div>
+                          </div>
+                          <span style={{color:ACCENT,fontSize:14}}>{aberto?'▴':'›'}</span>
+                        </div>
+                        {aberto && (
+                          <div style={{paddingLeft:50,marginTop:8}}>
+                            <div style={{fontSize:11.5,color:'#aaa',lineHeight:1.5}}>Se abrir vaga, você pode ser avisado até 3h antes do treino</div>
+                            <button onClick={()=>setModalSairFila(f)} style={{marginTop:10,width:'100%',background:'transparent',border:`1px solid ${AMARELO}55`,borderRadius:10,padding:'0.45rem',fontSize:12,fontWeight:600,color:AMARELO,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>Sair da fila</button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  }
+                  const item = r.item
+                  const sc = statusConfig[item.status]||{label:item.status,cor:'#888'}
+                  return (
+                    <div key={r.key} style={linha}>
+                      <div onClick={()=>setItemAberto(aberto?null:r.key)} style={{display:'flex',alignItems:'center',gap:12,cursor:'pointer'}}>
+                        {dataMini(item.data)}
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:13.5,color:'#eee',fontWeight:500}}>{item.horario} · {tituloTreino(item)}</div>
+                          <div style={{fontSize:11.5,color:'#888'}}>{item.unidadeNome}</div>
+                        </div>
+                        <span style={{color:ACCENT,fontSize:14}}>{aberto?'▴':'›'}</span>
+                      </div>
+                      {aberto && (
+                        <div style={{paddingLeft:50,marginTop:8}}>
+                          <div style={{fontSize:10.5,fontWeight:700,color:sc.cor,textTransform:'uppercase',marginBottom:6}}>{sc.label}</div>
+                          {nomeClassPass(item)}
+                          {chipsDoTreino(item)}
+                          {botoesTreino(item)}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {!cliente?.is_classpass && restoFuturo.length>LIMITE_FUTURO && (
+              <button onClick={()=>setVerTodosFuturo(!verTodosFuturo)} style={{width:'100%',marginTop:8,background:'transparent',border:'none',padding:'0.5rem',fontSize:12.5,color:'#999',cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
+                {verTodosFuturo?'Ver menos':'Ver todos os agendamentos ›'}
               </button>
+            )}
+          </div>
+
+          {/* Saldo do mês — resumo; o detalhe mora em "Meus planos" */}
+          {chipsSaldo.length>0 && (
+            <div style={{marginBottom:'1.5rem'}}>
+              <div style={{...secLabel,marginBottom:'0.65rem'}}>Seu saldo este mês</div>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                {chipsSaldo.map(c=>(
+                  <button key={c.plano} onClick={()=>irParaAba('planos')} style={{background:'#141414',border:'1px solid #262626',borderRadius:999,padding:'0.4rem 0.8rem',fontSize:12.5,color:'#ddd',cursor:'pointer',fontFamily:"'DM Sans', sans-serif",whiteSpace:'nowrap'}}>
+                    {c.nome} <strong style={{color:c.disp>0?ACCENT:'#555',marginLeft:3}}>{c.disp}</strong>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
-        </div>
+
+          {/* Ações */}
+          {!estaBloqueado && (
+            <div style={{marginBottom:'1.75rem'}}>
+              <button onClick={()=>router.push('/agendar')} style={{width:'100%',background:ACCENT,color:'#fff',border:'none',borderRadius:12,padding:'0.9rem',fontWeight:700,fontSize:14,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
+                + Agendar treino
+              </button>
+              <div style={{display:'flex',gap:8,marginTop:8}}>
+                <button onClick={()=>router.push('/treinos')} style={{flex:1,background:'transparent',color:'#ddd',border:'1px solid #333',borderRadius:12,padding:'0.75rem 0.5rem',fontWeight:600,fontSize:13,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
+                  💪 Treinos · Musculação livre
+                </button>
+                <button onClick={()=>router.push('/comprar')} style={{flex:1,background:'transparent',color:'#ddd',border:'1px solid #333',borderRadius:12,padding:'0.75rem 0.5rem',fontWeight:600,fontSize:13,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
+                  🛍️ Comprar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Ofertas — cada uma com a sua regra; se valer as duas, aparecem as duas */}
+          {!estaBloqueado && cliente?.id && <ClubExtraCard clienteId={cliente.id} />}
+          {!estaBloqueado && cliente?.id && <AppProCard clienteId={cliente.id} onde="conta" />}
+        </>)}
+
+        {/* ══════════════════════════════════════════
+            ABA MEUS PLANOS
+        ══════════════════════════════════════════ */}
+        {aba==='planos' && (<>
+          <div style={{marginBottom:'2rem'}}>
+            <div style={{...secLabel,marginBottom:'0.85rem'}}>Planos ativos</div>
+            {planosAtivosLista.length===0 ? (
+              <div style={{background:'#111',border:'1px solid #1e1e1e',borderRadius:14,padding:'1.5rem',textAlign:'center'}}>
+                <div style={{fontSize:13,color:'#666'}}>Nenhum plano ativo no momento.</div>
+              </div>
+            ) : (
+              <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                {planosAtivosLista.map(cardPlano)}
+              </div>
+            )}
+
+            {planosEncerradosLista.length>0 && (
+              <>
+                <button onClick={()=>setVerEncerrados(!verEncerrados)} style={{width:'100%',marginTop:10,background:'transparent',border:'none',padding:'0.5rem 0.25rem',fontSize:12.5,color:'#888',cursor:'pointer',fontFamily:"'DM Sans', sans-serif",display:'flex',justifyContent:'space-between'}}>
+                  <span>Planos encerrados ({planosEncerradosLista.length})</span><span>{verEncerrados?'▴':'▾'}</span>
+                </button>
+                {verEncerrados && (
+                  <div style={{display:'flex',flexDirection:'column',gap:6,marginTop:4}}>
+                    {planosEncerradosLista.map(cardPlano)}
+                  </div>
+                )}
+              </>
+            )}
+
+            <button onClick={()=>router.push('/comprar')} style={{width:'100%',marginTop:10,background:'transparent',color:'#aaa',border:'1px solid #222',borderRadius:10,padding:'0.65rem',fontSize:12.5,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
+              🛍️ Ver planos e pacotes
+            </button>
+          </div>
 
         {/* ══════════════════════════════════════════
             SEÇÃO 2A — CRÉDITOS DE AULA (apps parceiros)
@@ -1213,162 +1327,160 @@ export default function MinhaContaPage() {
           </div>
         )}
 
-        {/* ══════════════════════════════════════════
-            SEÇÃO 2B — ATIVAR PLANO DE APP PARCEIRO (visível)
-        ══════════════════════════════════════════ */}
-        <div style={{marginBottom:'2rem'}}>
-          <div style={{fontSize:11,color:'#aaa',fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginBottom:'0.85rem'}}>📲 Ativar plano de app parceiro</div>
-
-          {/* Explicação */}
-          <div style={{background:'#0d0d0d',border:'1px solid #1e1e1e',borderRadius:14,padding:'1.1rem 1.25rem',marginBottom:'1rem'}}>
-            <p style={{fontSize:13,color:'#bbb',lineHeight:1.7,marginBottom:'0.75rem'}}>
-              É cliente <strong style={{color:'#a78bfa'}}>Wellhub</strong> ou <strong style={{color:'#38bdf8'}}>TotalPass</strong>? Ative o plano da unidade onde quer treinar. Cada unidade tem seu próprio limite de treinos no mês, e você pode ter os dois apps ativos ao mesmo tempo, sem problema.
-            </p>
-            <div style={{background:'#0a0a0a',border:`1px solid ${AMARELO}22`,borderRadius:10,padding:'0.75rem 0.9rem',fontSize:12.5,color:'#ddd',lineHeight:1.6}}>
-              💡 No <strong>Just CT</strong>, só precisa ativar se quiser agendar <strong>Coach CT</strong>. Para <strong>musculação livre</strong>, é só fazer o check-in direto na recepção da unidade.
-            </div>
-          </div>
-
-          {/* Cards por unidade */}
-          {gruposParceiros.length===0 ? (
-            <div style={{background:'#111',border:'1px solid #1e1e1e',borderRadius:14,padding:'1.5rem',textAlign:'center',fontSize:13,color:'#555'}}>
-              Nenhum plano parceiro disponível no momento.
-            </div>
-          ) : (
-            <div style={{display:'flex',flexDirection:'column',gap:'1.25rem'}}>
-              {gruposParceiros.map((grupo:any)=>(
-                <div key={grupo.uid}>
-                  <div style={{fontSize:11,color:'#666',fontWeight:700,letterSpacing:1,textTransform:'uppercase',marginBottom:8,display:'flex',alignItems:'center',gap:6}}>
-                    <span>{grupo.tipo==='club'?'🏢':'🏋️'}</span>{grupo.nome}
-                  </div>
-                  <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                    {grupo.planos.map((plano:any)=>{
-                      const ativo=planoJaAtivo(plano.id)
-                      const isWell=plano.tipo==='wellhub'
-                      const cor=isWell?'#a78bfa':'#38bdf8'
-                      const info=tierDoPlano(plano.tipo, grupo.tipo)
-                      const creditosTxt = info ? info.creditos : plano.creditos_mes
-                      return (
-                        <div key={plano.id} style={{background:ativo?'#111':'#0a0a0a',border:`1px solid ${ativo?cor+'44':'#222'}`,borderRadius:12,padding:'0.9rem 1rem',display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
-                          <div style={{display:'flex',alignItems:'center',gap:11,minWidth:0}}>
-                            <span style={{fontSize:20,flexShrink:0}}>{isWell?'💜':'🔵'}</span>
-                            <div style={{minWidth:0}}>
-                              <div style={{fontSize:14,fontWeight:600,color:ativo?cor:'#eee'}}>{isWell?'Wellhub':'TotalPass'}</div>
-                              <div style={{fontSize:11.5,color:'#888',marginTop:2,lineHeight:1.4}}>
-                                {info ? <>a partir do <strong style={{color:'#aaa'}}>{info.tier}</strong> · {creditosTxt} treinos/mês</> : <>{creditosTxt} treinos/mês</>}
-                              </div>
+          {/* Apps parceiros — só o que ainda falta ativar */}
+          {(()=>{
+            const grupos = gruposParceiros
+              .map((g:any)=>({...g, planos:g.planos.filter((p:any)=>!planoJaAtivo(p.id))}))
+              .filter((g:any)=>g.planos.length>0)
+            if (grupos.length===0) return null
+            return (
+              <div style={{marginBottom:'2rem'}}>
+                <div style={{...secLabel,marginBottom:'0.85rem'}}>Apps parceiros</div>
+                <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                  {grupos.flatMap((grupo:any)=>grupo.planos.map((plano:any)=>{
+                    const isWell=plano.tipo==='wellhub'
+                    const info=tierDoPlano(plano.tipo, grupo.tipo)
+                    const creditosTxt = info ? info.creditos : plano.creditos_mes
+                    return (
+                      <div key={plano.id} style={{background:'#111',border:'1px solid #222',borderRadius:12,padding:'0.85rem 1rem',display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
+                        <div style={{display:'flex',alignItems:'center',gap:11,minWidth:0}}>
+                          <span style={{fontSize:18,flexShrink:0}}>{isWell?'💜':'🔵'}</span>
+                          <div style={{minWidth:0}}>
+                            <div style={{fontSize:13.5,fontWeight:600,color:'#eee'}}>{isWell?'Wellhub':'TotalPass'} · {grupo.nome}</div>
+                            <div style={{fontSize:11.5,color:'#888',marginTop:2,lineHeight:1.4}}>
+                              {info ? <>a partir do <strong style={{color:'#aaa'}}>{info.tier}</strong> · {creditosTxt} treinos/mês</> : <>{creditosTxt} treinos/mês</>}
                             </div>
                           </div>
-                          {ativo?(
-                            <div style={{display:'flex',alignItems:'center',gap:5,background:'#0a1a0a',borderRadius:20,padding:'0.35rem 0.85rem',border:`1px solid ${cor}44`,flexShrink:0}}>
-                              <div style={{width:5,height:5,borderRadius:'50%',background:cor}}/>
-                              <span style={{fontSize:11,fontWeight:700,color:cor}}>ATIVO</span>
-                            </div>
-                          ):(
-                            <button onClick={()=>abrirModalAtivar(plano)} style={{background:isWell?'linear-gradient(135deg,#7c3aed,#a855f7)':'linear-gradient(135deg,#0369a1,#0ea5e9)',color:'#fff',border:'none',borderRadius:20,padding:'0.45rem 1.15rem',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:"'DM Sans', sans-serif",flexShrink:0}}>
-                              Ativar →
-                            </button>
-                          )}
                         </div>
-                      )
-                    })}
-                  </div>
+                        <button onClick={()=>abrirModalAtivar(plano)} style={{background:isWell?'#7c3aed':'#0284c7',color:'#fff',border:'none',borderRadius:20,padding:'0.45rem 1.1rem',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:"'DM Sans', sans-serif",flexShrink:0}}>
+                          Ativar
+                        </button>
+                      </div>
+                    )
+                  }))}
                 </div>
-              ))}
+                <button onClick={()=>setVerComoFunciona(!verComoFunciona)} style={{width:'100%',marginTop:8,background:'transparent',border:'none',padding:'0.5rem',fontSize:12.5,color:'#999',cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
+                  {verComoFunciona?'Fechar':'Como funciona? ›'}
+                </button>
+                {verComoFunciona && (
+                  <div style={{background:'#0d0d0d',border:'1px solid #1e1e1e',borderRadius:14,padding:'1.1rem 1.25rem',marginTop:4}}>
+                    <p style={{fontSize:13,color:'#bbb',lineHeight:1.7,marginBottom:'0.75rem'}}>
+                      É cliente <strong style={{color:'#a78bfa'}}>Wellhub</strong> ou <strong style={{color:'#38bdf8'}}>TotalPass</strong>? Ative o plano da unidade onde quer treinar. Cada unidade tem seu próprio limite de treinos no mês, e você pode ter os dois apps ativos ao mesmo tempo, sem problema.
+                    </p>
+                    <div style={{background:'#0a0a0a',border:`1px solid ${AMARELO}22`,borderRadius:10,padding:'0.75rem 0.9rem',fontSize:12.5,color:'#ddd',lineHeight:1.6}}>
+                      💡 No <strong>Just CT</strong>, só precisa ativar se quiser agendar <strong>Coach CT</strong>. Para <strong>musculação livre</strong>, é só fazer o check-in direto na recepção da unidade.
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+        </>)}
+
+        {/* ══════════════════════════════════════════
+            ABA HISTÓRICO — treinos feitos e compras
+        ══════════════════════════════════════════ */}
+        {aba==='historico' && (<>
+          <div style={{display:'flex',gap:6,marginBottom:'1rem'}}>
+            {([['treinos','Treinos'],['compras','Compras']] as const).map(([k,l])=>(
+              <button key={k} onClick={()=>setFiltroHistorico(k)} style={{background:filtroHistorico===k?`${ACCENT}18`:'transparent',border:`1px solid ${filtroHistorico===k?ACCENT:'#2a2a2a'}`,color:filtroHistorico===k?ACCENT:'#999',borderRadius:999,padding:'0.4rem 1rem',fontSize:12.5,fontWeight:600,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>{l}</button>
+            ))}
+          </div>
+
+          {filtroHistorico==='treinos' && (
+            <div style={{marginBottom:'2rem'}}>
+              {feedHistorico.length===0 ? (
+                <div style={{background:'#111',border:'1px solid #1e1e1e',borderRadius:14,padding:'1.5rem',textAlign:'center',fontSize:13,color:'#666'}}>Nenhum treino feito ainda.</div>
+              ) : (<>
+                <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                  {historicoExibido.map(item => {
+                    const sc=statusConfig[item.status]||{label:item.status,cor:'#888'}
+                    return (
+                      <div key={`h-${item.tipo}-${item.id}`} style={{background:'#0d0d0d',border:'1px solid #181818',borderRadius:10,padding:'0.75rem 1rem',display:'flex',alignItems:'center',gap:'0.75rem'}}>
+                        {dataMini(item.data, '#888')}
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:13,color:'#bbb',fontWeight:500,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                            <span>{item.horario} · {tituloTreino(item)}</span>
+                            {numeroTreino.get(item.id) && (
+                              <span title="treino do mês" style={{fontSize:10,color:ACCENT,fontFamily:"'DM Mono', monospace",fontWeight:700}}>{numeroTreino.get(item.id)}</span>
+                            )}
+                          </div>
+                          <div style={{fontSize:11.5,color:'#666',marginTop:1}}>{item.unidadeNome}</div>
+                        </div>
+                        <div style={{fontSize:10,fontWeight:700,color:sc.cor,textTransform:'uppercase',flexShrink:0}}>
+                          {item.status==='realizado'?'✓':item.status==='falta'?'✗':''} {sc.label}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                {feedHistorico.length>5 && (
+                  <button onClick={()=>setVerTodosHistorico(!verTodosHistorico)} style={{width:'100%',marginTop:8,background:'transparent',border:'1px solid #1e1e1e',borderRadius:10,padding:'0.6rem',fontSize:12,color:'#777',cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
+                    {verTodosHistorico?'Ver menos':'Ver todos os treinos'}
+                  </button>
+                )}
+              </>)}
             </div>
           )}
-        </div>
 
-        {/* ══════════════════════════════════════════
-            SEÇÃO 3 — HISTÓRICO DE TREINOS
-        ══════════════════════════════════════════ */}
-        {feedHistorico.length>0 && (
-          <div style={{marginBottom:'2rem'}}>
-            <div style={{fontSize:11,color:'#aaa',fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginBottom:'0.85rem'}}>🕐 Histórico de treinos</div>
-            <div style={{display:'flex',flexDirection:'column',gap:4}}>
-              {historicoExibido.map(item => {
-                const d = new Date(item.data+'T12:00:00')
-                const sc=statusConfig[item.status]||{label:item.status,cor:'#888'}
-                const dias=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
-                const isClub=item.tipo==='club'
-                return (
-                  <div key={`h-${item.tipo}-${item.id}`} style={{background:'#0d0d0d',border:'1px solid #181818',borderRadius:10,padding:'0.75rem 1rem',display:'flex',alignItems:'center',gap:'0.75rem'}}>
-                    <div style={{flexShrink:0,textAlign:'center',width:36}}>
-                      <div style={{fontSize:8,color:'#444',fontWeight:700,textTransform:'uppercase'}}>{dias[d.getDay()]}</div>
-                      <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:20,color:'#666',lineHeight:1}}>{d.getDate()}</div>
-                      <div style={{fontSize:8,color:'#333',textTransform:'uppercase'}}>{d.toLocaleDateString('pt-BR',{month:'short'})}</div>
-                    </div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:13,color:'#888',fontWeight:500,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
-                        <span>{item.horario} · {item.unidadeNome}</span>
-                        {numeroTreino.get(item.id) && (
-                          <span title="treino do mês" style={{fontSize:10,color:ACCENT,fontFamily:"'DM Mono', monospace",fontWeight:700}}>{numeroTreino.get(item.id)}</span>
-                        )}
+          {filtroHistorico==='compras' && (
+            <div style={{marginBottom:'2rem'}}>
+              {compras.length===0 ? (
+                <div style={{background:'#111',border:'1px solid #1e1e1e',borderRadius:14,padding:'1.5rem',textAlign:'center',fontSize:13,color:'#666'}}>Nenhuma compra ainda.</div>
+              ) : (<>
+                <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                  {(verTodasCompras ? compras : compras.slice(0,3)).map(c=>{
+                    const d = c._det
+                    const br = (s:string) => s.slice(0,10).split('-').reverse().join('/')
+                    const dataCompraBR = d ? br(d.dataCompra) : new Date(c.vendido_em).toLocaleDateString('pt-BR',{timeZone:'America/Sao_Paulo'})
+                    const pagamento = labelPagamento(c.forma_pagamento) + (d?.parcelas>1 ? ` ${d.parcelas}x` : '')
+                    const linha = (rotulo:string, valor:any) => (
+                      <div style={{display:'flex',gap:8,fontSize:12,lineHeight:1.6}}>
+                        <span style={{color:'#777',minWidth:74}}>{rotulo}</span>
+                        <span style={{color:d?.vencido?'#888':'#ddd'}}>{valor}</span>
                       </div>
-                      {isClub&&item.tipoAula&&<div style={{fontSize:11,color:'#555',marginTop:1}}>{tipoAulaLabel(item.tipoAula)}</div>}
+                    )
+                    return (
+                    <div key={c.id} style={{background:'#111',border:'1px solid #1e1e1e',borderRadius:10,padding:'0.85rem 1rem'}}>
+                      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:'1rem',marginBottom:6}}>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:14,color:d?.vencido?'#bbb':'#fff',fontWeight:600,marginBottom:2}}>{c.produtos?.nome||'Produto'}</div>
+                          <div style={{fontSize:12,color:'#888'}}>{dataCompraBR} · {pagamento}</div>
+                        </div>
+                        <div style={{textAlign:'right',flexShrink:0}}>
+                          <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:18,color:d?.vencido?'#999':'#fff'}}>{formatarValor(c.valor_total)}</div>
+                          {d?.vencido
+                            ? <div style={{fontSize:10.5,color:'#777',marginTop:2,fontWeight:600}}>Encerrado</div>
+                            : <div style={{fontSize:10.5,color:VERDE,marginTop:2,fontWeight:600}}>✓ Pago</div>}
+                        </div>
+                      </div>
+                      {d && (d.creditos!=null || d.ate) && (
+                        <div style={{borderTop:'1px solid #1e1e1e',paddingTop:6}}>
+                          {d.creditos!=null && linha('Créditos',
+                            `${d.creditos} ${d.creditos===1?'treino':'treinos'}${d.restantes!=null ? ` · ${d.restantes} ${d.restantes===1?'restante':'restantes'}` : ''}`)}
+                          {d.ate && (d.inicio
+                            ? linha('Validade', `${br(d.inicio)} até ${br(d.ate)} (${d.dias} dias)`)
+                            : linha('Validade', `${d.dias} ${d.dias===1?'dia':'dias'}, até ${br(d.ate)}`))}
+                        </div>
+                      )}
                     </div>
-                    <div style={{fontSize:10,fontWeight:700,color:sc.cor,textTransform:'uppercase',flexShrink:0}}>
-                      {item.status==='realizado'?'✓':item.status==='falta'?'✗':''} {sc.label}
-                    </div>
-                  </div>
-                )
-              })}
+                    )
+                  })}
+                </div>
+                {compras.length>3 && (
+                  <button onClick={()=>setVerTodasCompras(!verTodasCompras)} style={{width:'100%',marginTop:8,background:'transparent',border:'none',padding:'0.5rem',fontSize:12.5,color:'#999',cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
+                    {verTodasCompras?'Ver menos':'Ver todas as compras ›'}
+                  </button>
+                )}
+              </>)}
             </div>
-            {feedHistorico.length>5 && (
-              <button onClick={()=>setVerTodosHistorico(!verTodosHistorico)} style={{width:'100%',marginTop:8,background:'transparent',border:'1px solid #1e1e1e',borderRadius:10,padding:'0.6rem',fontSize:12,color:'#555',cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
-                {verTodosHistorico?'Ver menos':'Ver todos os treinos'}
-              </button>
-            )}
-          </div>
-        )}
+          )}
+        </>)}
 
         {/* ══════════════════════════════════════════
-            SEÇÃO 4 — COMPRAS RECENTES
+            ABA PERFIL
         ══════════════════════════════════════════ */}
-        {compras.length>0 && (
-          <div style={{marginBottom:'2rem'}}>
-            <div style={{fontSize:11,color:'#aaa',fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginBottom:'0.85rem'}}>🛒 Compras recentes</div>
-            <div style={{display:'flex',flexDirection:'column',gap:4}}>
-              {compras.map(c=>{
-                const d = c._det
-                const br = (s:string) => s.slice(0,10).split('-').reverse().join('/')
-                const dataCompraBR = d ? br(d.dataCompra) : new Date(c.vendido_em).toLocaleDateString('pt-BR',{timeZone:'America/Sao_Paulo'})
-                const pagamento = labelPagamento(c.forma_pagamento) + (d?.parcelas>1 ? ` ${d.parcelas}x` : '')
-                const linha = (rotulo:string, valor:any, cor='#eee') => (
-                  <div style={{display:'flex',gap:8,fontSize:12,lineHeight:1.6}}>
-                    <span style={{color:'#999',minWidth:74}}>{rotulo}</span>
-                    <span style={{color:cor}}>{valor}</span>
-                  </div>
-                )
-                return (
-                <div key={c.id} style={{background:'#111',border:'1px solid #222',borderRadius:10,padding:'0.85rem 1rem'}}>
-                  <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:'1rem',marginBottom:6}}>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:14,color:'#fff',fontWeight:600,marginBottom:2}}>{c.produtos?.nome||'Produto'}</div>
-                      <div style={{fontSize:12,color:'#bbb'}}>Comprado em {dataCompraBR} · {pagamento}</div>
-                    </div>
-                    <div style={{textAlign:'right',flexShrink:0}}>
-                      <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:18,color:'#fff'}}>{formatarValor(c.valor_total)}</div>
-                      <div style={{fontSize:10,color:VERDE,marginTop:2,fontWeight:600}}>✓ Pago</div>
-                    </div>
-                  </div>
-                  {d && (d.creditos!=null || d.ate) && (
-                    <div style={{borderTop:'1px solid #222',paddingTop:6}}>
-                      {d.creditos!=null && linha('Créditos',
-                        `${d.creditos} ${d.creditos===1?'treino':'treinos'}${d.restantes!=null ? ` · ${d.restantes} ${d.restantes===1?'restante':'restantes'}` : ''}`)}
-                      {d.ate && (d.inicio
-                        ? linha('Validade', `${br(d.inicio)} até ${br(d.ate)} (${d.dias} dias)`, d.vencido ? '#ff6b6b' : '#eee')
-                        : linha('Validade', `${d.dias} ${d.dias===1?'dia':'dias'}, até ${br(d.ate)}`, d.vencido ? '#ff6b6b' : '#eee'))}
-                      {d.vencido && <div style={{fontSize:11,color:'#ff6b6b',fontWeight:600,marginTop:2}}>Vencido em {br(d.ate)}</div>}
-                    </div>
-                  )}
-                </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
+        {aba==='perfil' && (<>
         {/* ══════════════════════════════════════════
             SEÇÃO 5 — MINHA CONTA
         ══════════════════════════════════════════ */}
@@ -1442,6 +1554,7 @@ export default function MinhaContaPage() {
             Sair da conta
           </span>
         </div>
+        </>)}
       </div>
 
       {/* ══════════════════════════════════════════
