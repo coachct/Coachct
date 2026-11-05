@@ -767,6 +767,8 @@ export default function AgendarPage() {
         setModalCompraCE(true)
         return
       }
+      // Lotou enquanto a tela estava aberta: atualiza a grade pra mostrar LOTADO/fila.
+      if (String(error.message || '').includes('CT_HORARIO_LOTADO')) loadHorarios()
       setErroModal(mensagemTravaApp(error) || 'Erro ao agendar. Tente novamente.'); setConfirmando(false); return
     }
     if (novo?.id) dispararEmailAgendamento(novo.id)
