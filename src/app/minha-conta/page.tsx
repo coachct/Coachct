@@ -828,17 +828,6 @@ export default function MinhaContaPage() {
   const labelPlano = (plano:string, info:any) => (plano==='avulso' && info?.nome_pacote) ? info.nome_pacote : parsePlanoKey(plano).label
   const planosAtivosLista     = Object.entries(saldoAtual).filter(([p,i]:any)=>!planoEncerrado(p,i))
   const planosEncerradosLista = Object.entries(saldoAtual).filter(([p,i]:any)=>planoEncerrado(p,i))
-  // Chip curto do saldo: "TotalPass — Just Club Vila Olímpia" → "Vila Olímpia".
-  // Se dois planos derem o mesmo nome curto, os dois voltam pro nome completo.
-  const curtoDoPlano = (plano:string, info:any) => {
-    const l = labelPlano(plano, info)
-    const depois = l.includes(' — ') ? l.split(' — ').slice(1).join(' — ') : l
-    return depois.replace(/^just\s?club\s+/i,'').trim() || l
-  }
-  const chipsSaldo = (() => {
-    const base = planosAtivosLista.map(([p,i]:any)=>({plano:p, curto:curtoDoPlano(p,i), longo:labelPlano(p,i), disp:Number(i.disponivel)||0}))
-    return base.map(c => ({...c, nome: base.filter(o=>o.curto===c.curto).length>1 ? c.longo : c.curto}))
-  })()
 
   const tituloTreino = (item:any) => item.tipo==='club' ? (item.tipoAula ? tipoAulaLabel(item.tipoAula) : 'Aula') : 'Coach CT'
   const quandoTreino = (data:string) => data===hojeStr ? 'hoje' : data===amanhaStr ? 'amanhã' : ''
@@ -1183,21 +1172,7 @@ export default function MinhaContaPage() {
             )}
           </div>
 
-          {/* Saldo do mês — resumo; o detalhe mora em "Meus planos" */}
-          {chipsSaldo.length>0 && (
-            <div style={{marginBottom:'1.5rem'}}>
-              <div style={{...secLabel,marginBottom:'0.65rem'}}>Seu saldo este mês</div>
-              <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-                {chipsSaldo.map(c=>(
-                  <button key={c.plano} onClick={()=>irParaAba('planos')} style={{background:'#141414',border:'1px solid #262626',borderRadius:999,padding:'0.4rem 0.8rem',fontSize:12.5,color:'#ddd',cursor:'pointer',fontFamily:"'DM Sans', sans-serif",whiteSpace:'nowrap'}}>
-                    {c.nome} <strong style={{color:c.disp>0?ACCENT:'#555',marginLeft:3}}>{c.disp}</strong>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Ações */}
+          {/* Ações (o saldo saiu do Início em 05/11 — fica só em "Meus planos") */}
           {!estaBloqueado && (
             <div style={{marginBottom:'1.75rem'}}>
               <button onClick={()=>router.push('/agendar')} style={{width:'100%',background:ACCENT,color:'#fff',border:'none',borderRadius:12,padding:'0.9rem',fontWeight:700,fontSize:14,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
