@@ -554,11 +554,7 @@ export default function AgendarPage() {
 
   function planosDisponiveisParaDia() {
     const saldo = saldoParaData()
-    // Fora da janela de 7 dias (ou 7º dia ainda fechado) só o crédito Pro agenda —
-    // mesma regra da trava CT_DIA_NAO_ABERTO no banco. Sem isso o modal oferecia
-    // Wellhub/TotalPass pra quem tem Pro e o banco recusava.
-    const soPro = diasDesdHoje >= 7 || (diasDesdHoje === 6 && !aberturaLiberada)
-    return Object.keys(saldo).filter(p => saldo[p].disponivel > 0 && !jaAgendouNoDia(p) && (!soPro || p.startsWith('coach_ct_pro')))
+    return Object.keys(saldo).filter(p => saldo[p].disponivel > 0 && !jaAgendouNoDia(p))
   }
 
   const notifOpcoes = [
