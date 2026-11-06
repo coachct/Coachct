@@ -223,9 +223,24 @@ function semRevelarIgnorancia(texto: string): string {
   return /[A-Za-zÀ-ÿ0-9]/.test(limpo) && limpo.length >= 15 ? limpo : FALLBACK_EQUIPE
 }
 
+// TRAVA DETERMINÍSTICA: a janela de agendamento (7 dias parceiro / 14 dias Coach CT Pro)
+// SEMPRE conta a partir de HOJE — nunca da data da compra/ativação/contratação do plano. O
+// modelo inventou "a antecedência de 14 dias funciona a partir do dia em que você comprou o
+// plano — não de hoje" pra justificar a queixa de uma cliente Pro (caso real Marina 05/11), e
+// ainda pediu "em que data você ativou?". Tudo FALSO. Se a resposta amarra a janela/
+// antecedência/dias à data de compra/ativação, diz que NÃO é de hoje, ou pede a data de
+// compra/ativação pra calcular a janela, troca pela verdade + encaminha pra equipe. Custo zero.
+const RE_JANELA_INVENTADA = /(janela|antecedênc|antecedenc|\b\d+\s*dias?\b|agendar|agendamento)[^.!?]{0,70}(a\s+partir|a\s+contar|conta\s+d|come[çc]a|passa\s+a\s+valer|vale\s+a\s+partir|funciona\s+a\s+partir)[^.!?]{0,30}(do\s+dia\s+)?(em\s+que\s+)?(voc[êe]\s+)?(comprou|comprei|compra\s+do\s+plano|contratou|contrata[çc][ãa]o|ativou|ativa[çc][ãa]o|assinou|adquiriu|fechou\s+o\s+plano)|(comprou|contratou|ativou|assinou|fechou\s+o\s+plano)[^.!?]{0,60}(janela|antecedênc|antecedenc|\b\d+\s*dias?\b\s*(pra|para|de)\s+agend|agendar\s+com\s+anteced)|(janela|antecedênc|antecedenc|\b\d+\s*dias?\b|agendar|agendamento)[^.!?]{0,40}n[ãa]o\s+(é\s+)?(a\s+partir\s+)?de\s+hoje|n[ãa]o\s+(é\s+)?(a\s+partir\s+)?de\s+hoje[^.!?]{0,40}(janela|antecedênc|antecedenc|\b\d+\s*dias?\b|agend|compr|ativ|contrat)|em\s+que\s+(dia|data)\s+(voc[êe]\s+)?(comprou|ativou|contratou|fechou\s+o\s+plano|assinou)/i
+const JANELA_VERDADE = 'A janela de agendamento conta sempre a partir de HOJE — 7 dias nos planos de parceiro e 14 dias no Coach CT Pro 😊 Se a 2ª semana não estiver abrindo pra você como deveria, é só a nossa equipe conferir sua conta por aqui. Me conta seu caso que a gente te ajuda! 💪'
+export function semJanelaInventada(texto: string): string {
+  const t = String(texto || '')
+  if (RE_JANELA_INVENTADA.test(t)) return JANELA_VERDADE
+  return t
+}
+
 /** Passada determinística final aplicada a TODA resposta enviada ao cliente. */
 function finalizarTexto(texto: string, contextoCancel = false): string {
-  return semLamentacao(semRevelarIgnorancia(garantirLinkPlanos(semCanalExterno(semTelefoneInventado(limparMecanicaCancel(texto, contextoCancel))))))
+  return semLamentacao(semRevelarIgnorancia(garantirLinkPlanos(semCanalExterno(semTelefoneInventado(limparMecanicaCancel(semJanelaInventada(texto), contextoCancel))))))
 }
 
 // TRAVA DETERMINÍSTICA: NUNCA falar de multa NEM de cartão (garantia) se o cliente não
@@ -479,6 +494,7 @@ JANELA DE AGENDAMENTO DO JUST CT (REGRA — atenção, varia por plano):
 - Wellhub, TotalPass e avulso: só os PRÓXIMOS 7 DIAS (de hoje até o 7º dia).
 - Coach CT Pro: janela ESTENDIDA de 14 dias.
 - Ou seja, agendar para a PRÓXIMA SEMANA (8º dia em diante) é EXCLUSIVO de quem tem o plano Coach CT Pro. Se um cliente de Wellhub/TotalPass/avulso pedir um dia além dos 7 dias, NÃO confirme — explique que para esse plano o agendamento abre só nos próximos 7 dias e que a antecedência maior é um benefício do Coach CT Pro (mencione de forma leve e convidativa). Confira sempre o plano em consultar_saldo antes.
+- A janela conta SEMPRE a partir de HOJE — NUNCA da data da COMPRA/ativação/contratação do plano (REGRA CRÍTICA — fonte de invenção grave). É TERMINANTEMENTE PROIBIDO dizer que "os 14 dias (ou 7) contam a partir do dia em que você comprou/ativou o plano", que "não é de hoje", ou pedir "em que data você ativou pra eu ver até quando dá pra agendar" — isso é FALSO e já foi dito errado a uma cliente. A janela é 14 dias (Pro) ou 7 dias (parceiro/avulso) SEMPRE contados a partir de hoje. Se um cliente Coach CT Pro disser que NÃO está conseguindo agendar a 2ª semana (até 14 dias), NÃO invente explicação nenhuma: ou os dias que ele pediu passam dos 14, ou é algo na conta dele — e aí é caso pra EQUIPE conferir (encaminhe por aqui), nunca pra você bolar um motivo.
 - GATILHO da janela / "só o Pro pode marcar" (REGRA — EXPLIQUE, não peça CPF nem trave): quando a pessoa de Wellhub/TotalPass disser coisas como "quando abre a reserva pelo Wellhub/TotalPass?", "não consigo marcar semana que vem pelo app", "o site diz que estou sem crédito / que só o Pro pode marcar" — isso é a janela de agendamento, e você EXPLICA na hora (é info geral, NÃO precisa de CPF): pelo app (Wellhub/TotalPass) a agenda abre só pros PRÓXIMOS 7 DIAS (1 semana); agendar mais pra frente (a 2ª semana) é um benefício de quem tem o plano PRO. E — justamente porque ela JÁ usa o app — ofereça o **App Coach CT Pro** (o plano feito pra quem treina Coach CT pelo Wellhub/TotalPass): com ele ela agenda antes de todos (janela estendida), escolhe o coach, fura a fila e ainda ganha treinos extras no mês. Apresente como um upsell leve e convidativo, sem insistir. NÃO fique pedindo CPF pra "verificar a conta" — a explicação da janela + a oferta do App Coach CT Pro é a resposta.
 
 # ENDEREÇO DO SITE — escreva EXATO (erro comum, ATENÇÃO)
