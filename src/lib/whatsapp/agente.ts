@@ -238,9 +238,24 @@ export function semJanelaInventada(texto: string): string {
   return t
 }
 
+// TRAVA DETERMINÍSTICA: o bot NUNCA pode AFIRMAR que NÓS (a gente/Studio/Just) cancelamos a
+// aula — ele não tem como saber se é verdade (caso real Marina 07/11: cliente disse "vcs
+// cancelaram a aula" e o bot respondeu "se a aula foi cancelada pela gente, a vaga volta pra
+// você automaticamente" — concordou com a acusação e inventou mecânica). Dar razão a uma
+// acusação que não foi verificada é PROIBIDO. Se a resposta admite/assume (mesmo no condicional)
+// que a aula/reserva foi cancelada pela gente, troca por uma linha NEUTRA que não confirma nem
+// nega e encaminha pra equipe. Custo zero.
+const RE_ADMITE_CANCEL_NOSSO = /(aula|reserva|vaga|hor[áa]rio|turma)[^.!?]{0,30}(foi|est[áa]|foram|tenha sido|tiver sido)\s+cancelad[ao]s?\s+(pela\s+gente|por\s+n[óo]s|pelo\s+studio|pela\s+just|pela\s+academia|por\s+aqui|aqui\b)|\b(a\s+gente|n[óo]s|voc[êe]s|a\s+just|o\s+studio|a\s+academia)\s+(cancel(amos|aram)|tenha\s+cancelad[ao]|tiver\s+cancelad[ao])\b|\b(a\s+gente|n[óo]s|a\s+just|o\s+studio)\s+cancelou\b|\bcancelamos\s+(a\s+sua|a\s+|sua\s+|o\s+seu|seu\s+)?(aula|reserva|turma|hor[áa]rio)/i
+const NEUTRO_CANCEL = 'Deixa eu ver isso certinho com a nossa equipe antes de te confirmar qualquer coisa — eles te respondem por aqui já já! 😊'
+export function semAdmitirCulpaCancel(texto: string): string {
+  const t = String(texto || '')
+  if (RE_ADMITE_CANCEL_NOSSO.test(t)) return NEUTRO_CANCEL
+  return t
+}
+
 /** Passada determinística final aplicada a TODA resposta enviada ao cliente. */
 function finalizarTexto(texto: string, contextoCancel = false): string {
-  return semLamentacao(semRevelarIgnorancia(garantirLinkPlanos(semCanalExterno(semTelefoneInventado(limparMecanicaCancel(semJanelaInventada(texto), contextoCancel))))))
+  return semLamentacao(semRevelarIgnorancia(garantirLinkPlanos(semCanalExterno(semTelefoneInventado(limparMecanicaCancel(semAdmitirCulpaCancel(semJanelaInventada(texto)), contextoCancel))))))
 }
 
 // TRAVA DETERMINÍSTICA: NUNCA falar de multa NEM de cartão (garantia) se o cliente não
@@ -576,6 +591,7 @@ Antes de pedir o "sim" final, você PODE lembrar de forma BEM curta e leve da fl
   • Nas unidades do JustClub (Club): as reservas que passam pelo ClassPass são feitas DIRETO no app do próprio ClassPass (a gente não tem autonomia sobre elas). Nem todas as nossas aulas sobem pro ClassPass — então, resposta CURTA e pronta: aula que aparece no app do ClassPass → reserva por lá; aula que NÃO aparece lá → a pessoa reserva direto no nosso site (https://www.justclubct.com.br) e PRONTO. Não fique alongando o assunto nem pedindo cadastro — é só passar essa informação e encerrar.
   • No Just CT: o ClassPass dá acesso APENAS à MUSCULAÇÃO LIVRE. Se a pessoa quiser fazer PERSONAL (Coach CT), o ClassPass não paga o personal — mas ela pode usar o ClassPass pra AGENDAR o acesso ao CT (a musculação livre) E comprar um Coach CT avulso no nosso site (https://www.justclubct.com.br) para o personal em si.
   • NÓS (o Studio) sempre marcamos a presença do ClassPass — não precisa check-in tipo Wellhub/TotalPass, e não fale em multa. Se não tiver certeza de um detalhe específico, confirme com a equipe em vez de inventar. ATENÇÃO: isso vale SOMENTE para ClassPass; Wellhub/TotalPass seguem a regra do check-in no horário (abaixo).
+- NUNCA DÊ RAZÃO ao cliente nem aceite como VERDADE o que ele AFIRMA de um fato que você NÃO verificou (REGRA CRÍTICA — você não sabe se é verdade): quando o cliente afirma algo que você não consegue confirmar com as ferramentas — "vocês cancelaram a aula", "o coach não apareceu", "fiz check-in no horário", "paguei e não caiu", "me cobraram errado", "a aula sumiu", "já tinha reservado" — você NÃO tem como saber se é verdade (ele pode estar certo OU não). É TERMINANTEMENTE PROIBIDO: (a) CONCORDAR / dar razão ("é, realmente vocês cancelaram", "isso foi um erro nosso", "você tem razão"); (b) REPETIR a acusação como fato aceito, mesmo no CONDICIONAL que embute a culpa ("se a aula foi cancelada pela gente, então...", "como vocês cancelaram, a vaga volta..."); (c) INVENTAR uma consequência ou solução em cima disso ("a vaga volta pra você automaticamente", "aparece liberada no seu app"). O certo é NEUTRO: não confirme NEM negue a versão dele, não bote culpa em ninguém, e — se é algo que precisa ser apurado — encaminhe pra EQUIPE verificar, sem prometer resultado. Vale pra QUALQUER acusação/afirmação de fato (cancelamento, falta, cobrança, coach, reserva). (Para RESERVA/CHECK-IN feito pelo APP do parceiro ou ClassPass vale o que está nas regras abaixo: aí nem escala, é domínio deles.)
 - CHECK-IN, FALTA e MULTA (REGRA CRÍTICA — NUNCA presuma que a cobrança é indevida): quando o cliente diz que levou multa MAS fez check-in, o cenário MAIS PROVÁVEL é que o check-in foi feito FORA da janela do treino (em outro horário, às vezes num período bem distante) — e aí a multa está CORRETA e NÃO é anulada. Regras invioláveis:
   1) O check-in só conta como presença (e só evita a multa) quando feito DENTRO do horário/janela do treino, perto do Studio. Check-in feito FORA da janela (principalmente em outro período/distante do horário) NÃO anula a falta e, consequentemente, NÃO tira a multa.
   2) Você NÃO tem acesso ao horário exato em que o check-in foi feito. Então NUNCA presuma que ele foi válido/no horário, e NUNCA diga "não deveria gerar multa", "isso é um engano", "cobrança indevida" ou "independente de qualquer coisa".
