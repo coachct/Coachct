@@ -14,8 +14,8 @@ import { cobrarMultaCT, cobrarMultaClub, type ResultadoCobranca } from '@/lib/co
 // (src/lib/cobranca-multa.ts). Sem cartão / já cobrada / sem CPF ou telefone
 // → pula e fica na tela. Recusa → pendência + bloqueio (igual ao manual).
 //
-// Kill switch: só cobra de verdade com NOSHOW_AUTO_ATIVO=true na Vercel.
-// Sem isso roda em SIMULAÇÃO: faz todas as checagens e grava em noshow_auto_log
+// Liga/desliga: botão na tela Cobrança No-Show (tabela noshow_auto_config).
+// Desligada roda em SIMULAÇÃO: faz todas as checagens e grava em noshow_auto_log
 // quem seria cobrado, sem tocar no Pagar.me.
 //
 // Chamadas aceitas:
@@ -57,7 +57,9 @@ async function handler(req: NextRequest) {
   const url = new URL(req.url)
   const dataParam = url.searchParams.get('data')
   const dia = !ehCron && dataParam && /^\d{4}-\d{2}-\d{2}$/.test(dataParam) ? dataParam : hojeSP()
-  const simulando = process.env.NOSHOW_AUTO_ATIVO !== 'true' || url.searchParams.get('simular') === '1'
+  // Chave do botão na tela Cobrança No-Show. Se não conseguir ler, simula (nunca cobra no escuro).
+  const { data: cfg } = await supabase.from('noshow_auto_config').select('ativo').eq('id', true).maybeSingle()
+  const simulando = cfg?.ativo !== true || url.searchParams.get('simular') === '1'
   const modo = simulando ? 'simulacao' : 'cobranca'
 
   // ── Faltas do dia: mesmos filtros da tela admin/cobranca-noshow ──

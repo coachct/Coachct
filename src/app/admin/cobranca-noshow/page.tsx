@@ -83,6 +83,41 @@ export default function CobrancaNoShowPage() {
 
   useEffect(() => { if (perfil && unidadeAtiva) carregarFaltas() }, [perfil, unidadeAtiva?.id, filtroPeriodo, aba])
 
+  // Cobrança automática (rotina das 22h): chave liga/desliga + resumo da última rodada
+  const [autoAtivo,     setAutoAtivo]     = useState<boolean | null>(null)
+  const [autoSalvando,  setAutoSalvando]  = useState(false)
+  const [autoUltima,    setAutoUltima]    = useState<null | { em: string; modo: string; cobrado: number; recusado: number; pulado: number; simulado: number }>(null)
+
+  useEffect(() => { if (perfil) carregarAuto() }, [perfil])
+
+  async function carregarAuto() {
+    const { data: cfg } = await supabase.from('noshow_auto_config').select('ativo').eq('id', true).maybeSingle()
+    setAutoAtivo(cfg ? !!cfg.ativo : null)
+    const { data: ult } = await supabase.from('noshow_auto_log').select('executado_em, data_ref').order('executado_em', { ascending: false }).limit(1)
+    if (!ult?.length) { setAutoUltima(null); return }
+    const { data: rodada } = await supabase.from('noshow_auto_log').select('modo, resultado').eq('data_ref', ult[0].data_ref)
+    const c = { cobrado: 0, recusado: 0, pulado: 0, simulado: 0, erro: 0 } as Record<string, number>
+    for (const l of (rodada || [])) c[l.resultado] = (c[l.resultado] || 0) + 1
+    setAutoUltima({ em: ult[0].executado_em, modo: rodada?.[0]?.modo || '', cobrado: c.cobrado, recusado: c.recusado, pulado: c.pulado + c.erro, simulado: c.simulado })
+  }
+
+  async function alternarAuto() {
+    if (autoAtivo === null || autoSalvando) return
+    const novo = !autoAtivo
+    const msg = novo
+      ? 'Ligar a cobrança automática? Todo dia às 22h as faltas do dia (Wellhub/TotalPass com cartão salvo) serão cobradas no cartão.'
+      : 'Desligar a cobrança automática? As faltas passam a ser cobradas só manualmente nesta tela.'
+    if (!window.confirm(msg)) return
+    setAutoSalvando(true)
+    const { data, error } = await supabase.from('noshow_auto_config')
+      .update({ ativo: novo, atualizado_em: new Date().toISOString(), atualizado_por: perfil?.id || null })
+      .eq('id', true).select('ativo')
+    // RLS barra quem não é admin sem dar erro (0 linhas) — por isso confere o retorno
+    if (error || !data?.length) window.alert('Não foi possível alterar' + (error ? ': ' + error.message : ' (só admin pode ligar/desligar).'))
+    else setAutoAtivo(!!data[0].ativo)
+    setAutoSalvando(false)
+  }
+
   function trocarAba(nova: AbaAtiva) {
     setAba(nova)
     setFaltas([])
@@ -474,6 +509,40 @@ export default function CobrancaNoShowPage() {
             Multa: <strong className="ml-1 text-gray-700">{formatarMoeda(valorMulta)}</strong>
           </div>
         </div>
+
+        {/* Cobrança automática (rotina das 22h) */}
+        {autoAtivo !== null && (
+          <div className={`rounded-2xl border px-4 py-3 mb-5 flex flex-wrap items-center justify-between gap-3 ${autoAtivo ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200'}`}>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${autoAtivo ? 'bg-green-500' : 'bg-gray-300'}`} />
+                Cobrança automática {autoAtivo ? 'ligada' : 'desligada'}
+              </div>
+              <div className="text-xs text-gray-500 mt-0.5">
+                {autoAtivo
+                  ? 'Todo dia às 22h cobra as faltas do dia (CT e JustClub) no cartão salvo.'
+                  : 'Nada é cobrado sozinho. Às 22h a rotina só registra quem seria cobrado.'}
+                {autoUltima && (
+                  <span className="block mt-0.5 text-gray-400">
+                    Última rodada: {new Date(autoUltima.em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    {autoUltima.modo === 'simulacao'
+                      ? ` · simulação: ${autoUltima.simulado} seriam cobradas`
+                      : ` · ${autoUltima.cobrado} cobrada${autoUltima.cobrado !== 1 ? 's' : ''}, ${autoUltima.recusado} recusada${autoUltima.recusado !== 1 ? 's' : ''}`}
+                    {autoUltima.pulado > 0 ? `, ${autoUltima.pulado} pulada${autoUltima.pulado !== 1 ? 's' : ''}` : ''}
+                  </span>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={alternarAuto}
+              disabled={autoSalvando || perfil?.role !== 'admin'}
+              title={perfil?.role !== 'admin' ? 'Só admin pode ligar/desligar' : undefined}
+              role="switch" aria-checked={autoAtivo}
+              className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${autoAtivo ? 'bg-green-500' : 'bg-gray-300'}`}>
+              <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${autoAtivo ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
