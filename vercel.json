@@ -9,6 +9,7 @@
     { "path": "/api/fila/reconciliar", "schedule": "*/10 * * * *" },
     { "path": "/api/feedback-estreia/disparar", "schedule": "0 13 * * *" },
     { "path": "/api/carrinho-abandonado/disparar", "schedule": "0 * * * *" },
-    { "path": "/api/coaches/encerrar-vencidos", "schedule": "5 3 * * *" }
+    { "path": "/api/coaches/encerrar-vencidos", "schedule": "5 3 * * *" },
+    { "path": "/api/noshow/cobrar-automatico", "schedule": "0 1 * * *" }
   ]
 }
