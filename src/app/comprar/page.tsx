@@ -17,7 +17,7 @@ import {
 const ACCENT   = '#ff2d9b'
 const VERDE    = '#2ddd8b'
 // Rosa da Black Friday: um tom abaixo do ACCENT, menos vivo, pra dar leitura.
-const BF_ROSA  = '#d9619c'
+const BF_ROSA  = '#c46a94'
 const JUST_CT_ID = 'c28bf4bb-56f8-44ff-818a-c7836e58bcef'
 
 export default function ComprarPage() {
@@ -148,6 +148,8 @@ export default function ComprarPage() {
         @keyframes spin { to { transform: rotate(360deg) } }
         .card-h   { transition: all .25s; }
         .card-h:hover { border-color: ${ACCENT} !important; transform: translateY(-4px); }
+        .card-bf  { transition: all .25s; }
+        .card-bf:hover { border-color: ${BF_ROSA} !important; transform: translateY(-4px); }
         .card-pro { transition: all .3s; }
         .card-pro:hover { transform: translateY(-6px); box-shadow: 0 12px 32px -8px ${ACCENT}33; }
         .card-club { transition: all .3s; }
@@ -203,8 +205,8 @@ export default function ComprarPage() {
                     const vPT = fmt(porTr), vT = fmt(total)
                     const vRef = ref != null ? fmt(ref) : null
                     return (
-                      <div key={p.id} className="card-h" style={{ ...card, border: `1.5px solid ${BF_ROSA}`, display: 'flex', flexDirection: 'column' }}>
-                        <div style={{ alignSelf: 'flex-start', background: BF_ROSA, color: '#fff', fontSize: 11, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', padding: '0.3rem 0.6rem', borderRadius: 6, marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>
+                      <div key={p.id} className="card-bf" style={{ ...card, border: '1px solid #333', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ alignSelf: 'flex-start', background: 'transparent', border: `1px solid ${BF_ROSA}`, color: BF_ROSA, fontSize: 11, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', padding: '0.3rem 0.6rem', borderRadius: 6, marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>
                           {BF_SELO}
                         </div>
 
@@ -229,7 +231,7 @@ export default function ComprarPage() {
                         </div>
 
                         <button onClick={() => irParaCheckout(p.id)} className="btn-h"
-                          style={{ background: BF_ROSA, color: '#fff', border: 'none', borderRadius: 8, padding: '0.8rem', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", width: '100%' }}>
+                          style={{ background: '#fff', color: '#111', border: 'none', borderRadius: 8, padding: '0.8rem', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", width: '100%' }}>
                           Comprar agora →
                         </button>
                       </div>
