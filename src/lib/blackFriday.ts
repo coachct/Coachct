@@ -53,6 +53,15 @@ export const BF_SUB       = 'Treinos em dobro: 50% OFF por treino.'
 export const BF_SELO      = '50% OFF por treino'
 export const BF_FREE      = 'FREE'
 
+// Banner da home (aprovado pelo Ricardo em 09/11 — opção "etiqueta" com POR AÍ)
+export const BANNER_BN_TAG      = '// black november'
+export const BANNER_BN_POR_AI   = 'POR AÍ:'
+export const BANNER_BN_ETIQUETA = '"tudo pela metade do dobro"'
+export const BANNER_BN_JUST     = 'NA JUST:'
+export const BANNER_BN_REAL     = 'O DOBRO DE TREINOS REAL.'
+export const BANNER_BN_APOIO    = 'Mesmo preço, o dobro de treinos. 50% OFF por treino.'
+export const BANNER_BN_CTA      = 'Ver os pacotes →'
+
 export const bfDestaque = (p: any) => {
   const n = treinosPagos(p)
   return `${n} TREINOS + ${n} ${BF_FREE}`

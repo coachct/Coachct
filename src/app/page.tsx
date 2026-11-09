@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase'
 import SiteHeader from '@/components/SiteHeader'
 import AvisoUnidade from '@/components/AvisoUnidade'
 import SummerBanner from '@/components/SummerBanner'
+import BlackNovemberBanner from '@/components/BlackNovemberBanner'
 
 const ACCENT = '#ff2d9b'
 
@@ -144,6 +145,8 @@ export default function LandingPage() {
       <div style={{ background: '#080808', paddingTop: 64 }}>
         {/* Campanha Summer Mode — só aparece dentro da janela de venda (data, não deploy) */}
         <SummerBanner />
+        {/* Campanha Black November — some sozinha depois de 30/11 */}
+        <BlackNovemberBanner />
         <div className="hero-frase-wrap" style={{ maxWidth: 1200, margin: '0 auto', padding: '6rem 2.5rem 1rem', textAlign: 'center' as const }}>
           <div className="hero-frase">
             "There's no PLACE like <span className="hero-frase-just">JUST.</span>" <span className="hero-frase-smiley">:)</span>
