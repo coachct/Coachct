@@ -15,6 +15,7 @@ import {
   listarConhecimento,
   type UnidadeInfo,
 } from '@/lib/whatsapp/conhecimento'
+import { avisoBlackNovemberBot } from '@/lib/blackFriday'
 // Mesmas travas determinísticas do WhatsApp (piso de 100%): o Instagram era um cérebro
 // separado SEM nenhuma trava, então lamento/concordância/promessa vazavam. Aplicadas na saída.
 import { semLamentacao, semCanalExterno, semJanelaInventada, semAdmitirCulpaCancel, semPrazoRelogioCancel } from '@/lib/whatsapp/agente'
@@ -51,7 +52,7 @@ O endereço é EXATAMENTE https://www.justclubct.com.br — "club" colado em "ct
 
 # O que você faz AQUI no Instagram (só informação)
 - Tira dúvidas gerais: como funcionam os treinos, as modalidades (Lift, Lift for Girls, Running + Funcional, Coach CT, musculação livre), endereços, horários de funcionamento e dúvidas da base abaixo.
-- PREÇOS: use SEMPRE a ferramenta consultar_precos (nunca chute valores). Deixe claro a qual modalidade cada pacote pertence.
+- PREÇOS: use SEMPRE a ferramenta consultar_precos (nunca chute valores). Deixe claro a qual modalidade cada pacote pertence.${avisoBlackNovemberBot()}
 
 # O que você NÃO faz aqui (direcione pro WhatsApp)
 Qualquer coisa que mexa com a CONTA, agenda ou exija dados da pessoa — agendar/marcar treino, reservar aula, fazer check-in, ver saldo/créditos, fila de espera, recuperar acesso/senha, dúvidas sobre o cadastro dela — você NÃO resolve nem executa pelo Instagram. Direcione com simpatia pro WhatsApp, onde a gente resolve na hora. Ex.: "Pra isso (agendar, reservar, ver seu plano...) chama a gente no WhatsApp 👉 ${WHATSAPP_LINK} — lá a gente resolve rapidinho! 😊". NÃO peça CPF, e-mail nem dados pessoais por aqui.

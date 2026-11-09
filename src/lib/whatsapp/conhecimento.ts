@@ -7,6 +7,8 @@
 // Just CT — não precisa de log de LGPD.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { passouDaJanela } from '@/lib/summer'
+import { ehBlackFriday, treinosPagos } from '@/lib/blackFriday'
 
 // Endereço fixo de fallback — mesma fonte usada nas telas (agendar/aulas),
 // caso unidades.endereco esteja vazio no banco.
@@ -68,18 +70,22 @@ function aplicacaoProduto(tipo: string | null, subtipo: string | null): string {
 export async function consultarPrecos(supabase: SupabaseClient): Promise<any[]> {
   const { data, error } = await supabase
     .from('produtos')
-    .select('nome, valor, subtipo, tipo, dias_validade, creditos_por_venda')
+    .select('nome, valor, subtipo, tipo, dias_validade, creditos_por_venda, campanha, venda_fim')
     .eq('ativo', true)
     .eq('visivel_site', true) // só o que é vendido pro cliente no site (esconde itens internos)
     .neq('subtipo', 'multa')
     .order('valor', { ascending: true })
   if (error) throw new Error(`produtos: ${error.message}`)
-  return (data ?? []).map((p: any) => ({
+  // Campanha encerrada não vende mais (ex.: Summer Mode) — o bot não pode oferecer.
+  return (data ?? []).filter((p: any) => !(p.campanha && passouDaJanela(p))).map((p: any) => ({
     nome: p.nome,
     valor: p.valor,
     para_que_serve: aplicacaoProduto(p.tipo, p.subtipo),
     creditos: p.creditos_por_venda || null,
     validade_dias: p.dias_validade || null,
+    ...(ehBlackFriday(p) ? {
+      oferta: `BLACK NOVEMBER — treinos em dobro: pague ${treinosPagos(p)} e ganhe ${treinosPagos(p)} FREE (${p.creditos_por_venda} treinos no total) = 50% OFF por treino.`,
+    } : {}),
   }))
 }
 

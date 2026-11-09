@@ -10,7 +10,28 @@
 //
 // venda_fim controla a vitrine E a compra: depois de 30/11 a API recusa
 // (src/app/api/pagamento/criar). A data NÃO aparece na comunicação.
+import { hojeSP } from '@/lib/tempo'
+
 export const CAMPANHA_BF = 'black_friday_2026'
+export const BF_VENDA_FIM = '2026-11-30'
+
+/** Campanha no ar hoje (horário SP)? Some sozinha depois de 30/11. */
+export const bfNoAr = (hoje: string = hojeSP()) => hoje <= BF_VENDA_FIM
+
+/**
+ * Regra dos bots (WhatsApp e Instagram) sobre preços durante a campanha.
+ * Vazia fora da janela, então não precisa tirar à mão no dia 01/12.
+ */
+export function avisoBlackNovemberBot(): string {
+  if (!bfNoAr()) return ''
+  return `
+
+# BLACK NOVEMBER — campanha no ar (REGRA de preços, vale acima das outras)
+Quando perguntarem de valores, preços, planos ou pacotes (mesmo de forma geral), AVISE que estamos com a BLACK NOVEMBER e deixe claros os DOIS pontos:
+1) TREINOS EM DOBRO nos pacotes: pague 5 e ganhe 5 FREE (R$ 295, válido por 60 dias) · pague 10 e ganhe 10 FREE (R$ 549, 90 dias) · pague 40 e ganhe 40 FREE (R$ 1.796, 360 dias);
+2) consequentemente, 50% OFF POR TREINO.
+Mande o link https://www.justclubct.com.br/comprar. Os pacotes normais de 5/10/40 NÃO estão à venda durante a campanha — ofereça só os da Black November. Os pacotes valem na musculação livre do Just CT e nas aulas do JustClub (NÃO são Coach CT/personal). NÃO informe data de término e NÃO crie urgência ("últimos dias", "corre", "acaba logo") — só a oferta.`
+}
 
 export const ehBlackFriday = (p: any) => p?.campanha === CAMPANHA_BF
 

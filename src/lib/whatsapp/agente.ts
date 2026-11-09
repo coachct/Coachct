@@ -31,6 +31,7 @@ import {
 } from './conhecimento'
 import { cancelarAgendamentoCt, horariosDisponiveisCt, agendarCt, entrarFilaCt, sairFila, aulasClubDisponiveis, reservarClub, cancelarReservaClub, entrarFilaClub, posicoesLivresClub, recuperarAcessoCliente, atualizarCpfCliente, verificarCartaoParceiro, type ResultadoAcao } from './acoes'
 import { agoraEmSaoPaulo } from './consultas'
+import { avisoBlackNovemberBot } from '@/lib/blackFriday'
 
 interface ContextoGeral {
   enderecos: UnidadeInfo[]
@@ -761,7 +762,7 @@ Quando o cliente disser "hoje" use ${hoje.dataStr}; quando disser "amanhã" use 
   // (tools + bloco fixo) fica em cache quente e as chamadas seguintes custam ~10%.
   return [
     { type: 'text', text: estatico, cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: dinamico },
+    { type: 'text', text: dinamico + avisoBlackNovemberBot() },
   ]
 }
 
@@ -1383,7 +1384,7 @@ Português do Brasil, caloroso e DIRETO. Mensagens CURTAS (é WhatsApp, não é 
   // Prefixo fixo (tools + bloco fixo) cacheado; chamadas seguintes custam ~10%.
   const system: Anthropic.TextBlockParam[] = [
     { type: 'text', text: estatico, cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: dinamico },
+    { type: 'text', text: dinamico + avisoBlackNovemberBot() },
   ]
 
   const messages: Anthropic.MessageParam[] = [
@@ -1678,7 +1679,7 @@ A última mensagem inclui uma IMAGEM (quase sempre um print da tela do app/site:
 
   const system: Anthropic.TextBlockParam[] = [
     { type: 'text', text: estatico, cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: dinamico + guiaImagem },
+    { type: 'text', text: dinamico + avisoBlackNovemberBot() + guiaImagem },
   ]
 
   // Última mensagem do usuário: só texto, ou imagem(ns) + texto (quando veio print).
