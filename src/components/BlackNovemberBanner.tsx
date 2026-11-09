@@ -3,7 +3,7 @@ import { useRouter } from 'next/navigation'
 import { rastrear } from '@/lib/rastreio'
 import {
   CAMPANHA_BF, bfNoAr, BANNER_BN_TAG, BANNER_BN_POR_AI, BANNER_BN_ETIQUETA,
-  BANNER_BN_JUST, BANNER_BN_REAL, BANNER_BN_APOIO, BANNER_BN_CTA,
+  BANNER_BN_JUST, BANNER_BN_REAL, BANNER_BN_REAL_2, BANNER_BN_APOIO, BANNER_BN_CTA,
 } from '@/lib/blackFriday'
 
 const ROSA = '#c46a94'
@@ -73,7 +73,7 @@ export default function BlackNovemberBanner() {
           </div>
           <div className="bnb-just">
             {BANNER_BN_JUST}<br />
-            <span style={{ color: ROSA }}>{BANNER_BN_REAL}</span>
+            <span style={{ color: ROSA }}>{BANNER_BN_REAL}<br />{BANNER_BN_REAL_2}</span>
           </div>
         </div>
 
