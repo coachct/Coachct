@@ -122,7 +122,7 @@ export default function CoachesPage() {
     const abrindo = expandedCoach !== coach.id
     if (!abrindo) { setExpandedCoach(null); return }
     setExpandedCoach(coach.id)
-    setEditDraft({ id: coach.id, nome: coach.nome, cpf: coach.cpf, salario_fixo: coach.salario_fixo, cargo: coach.cargo, valor_hora: coach.valor_hora, data_inicio_horas: coach.data_inicio_horas })
+    setEditDraft({ id: coach.id, nome: coach.nome, cpf: coach.cpf, salario_fixo: coach.salario_fixo, cargo: coach.cargo, valor_hora: coach.valor_hora, data_inicio_horas: coach.data_inicio_horas, data_inicio: coach.data_inicio })
     loadCoachUnidades(coach.id)
     loadHorarios(coach.id)
     loadFerias(coach.id)
@@ -664,6 +664,7 @@ export default function CoachesPage() {
       salario_fixo: editDraft.salario_fixo || 0,
       valor_hora: editDraft.valor_hora || 0,
       data_inicio_horas: editDraft.data_inicio_horas || null,
+      data_inicio: editDraft.data_inicio || null,
     }).eq('id', editDraft.id)
     if (error) setMsg('Erro: ' + error.message)
     else { setMsg('Coach atualizado!'); loadCoaches() }
@@ -777,6 +778,11 @@ export default function CoachesPage() {
                       {coach.cargo === 'professor' ? 'Professor' : 'Estagiário'}
                     </span>
                     {inativo && <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Inativo</span>}
+                    {coach.data_inicio && (
+                      <span className="text-xs bg-green-50 text-green-700 border border-green-100 px-2 py-0.5 rounded-full">
+                        Desde {fmtData(coach.data_inicio)}
+                      </span>
+                    )}
                     {coach.data_saida && (
                       <span className="text-xs bg-red-50 text-red-700 border border-red-100 px-2 py-0.5 rounded-full flex items-center gap-1">
                         <DoorOpen size={10}/>
@@ -814,6 +820,10 @@ export default function CoachesPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                       <div><label className="label">Nome</label><input className="input" value={editDraft.nome||''} onChange={e => setEditDraft(f=>({...f,nome:e.target.value}))} /></div>
                       <div><label className="label">CPF</label><input className="input" value={editDraft.cpf||''} onChange={e => setEditDraft(f=>({...f,cpf:e.target.value}))} /></div>
+                    </div>
+                    <div className="max-w-xs mb-3">
+                      <label className="label">Data de início do contrato</label>
+                      <input className="input" type="date" value={editDraft.data_inicio||''} onChange={e => setEditDraft(f=>({...f,data_inicio:e.target.value}))} />
                     </div>
                     <div className="mb-3">
                       <label className="label">Cargo</label>

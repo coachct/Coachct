@@ -19,6 +19,8 @@ export interface Coach {
   cargo: 'estagiario' | 'professor'
   valor_hora: number
   data_inicio_horas: string | null
+  // Início do contrato: só informativo (cadastro), não afeta grade nem pagamento.
+  data_inicio: string | null
   // Encerramento de contrato: a partir do dia seguinte a grade não sobe e as horas não contam.
   data_saida: string | null
   adicional_por_aula: number
