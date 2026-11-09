@@ -191,8 +191,8 @@ export default function ComprarPage() {
               <div style={{ marginBottom: '5rem' }}>
                 <div style={{ marginBottom: '1.5rem' }}>
                   <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 2, color: BF_ROSA, marginBottom: '0.5rem', fontFamily: "'DM Mono', monospace" }}>{BF_TAG}</div>
-                  <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 36, color: '#fff', letterSpacing: 4 }}>{BF_TITULO}</div>
-                  <div style={{ fontSize: 14, color: '#888', marginTop: '0.5rem', fontStyle: 'italic' }}>{BF_SUB}</div>
+                  <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(48px,6vw,68px)', color: '#fff', letterSpacing: 4, lineHeight: 1 }}>{BF_TITULO}</div>
+                  <div style={{ fontSize: 16, color: '#aaa', marginTop: '0.6rem', fontStyle: 'italic' }}>{BF_SUB}</div>
                 </div>
 
                 <div className="grid-3">

@@ -26,8 +26,8 @@ export function precoRefPorTreino(p: any): number | null {
 }
 
 // ── Textos ──────────────────────────────────────────────────────────────────
-export const BF_TAG       = '// black friday'
-export const BF_TITULO    = 'BLACK FRIDAY'
+export const BF_TAG       = '// black november'
+export const BF_TITULO    = 'BLACK NOVEMBER'
 export const BF_SUB       = 'Treinos em dobro: 50% OFF por treino.'
 export const BF_SELO      = '50% OFF por treino'
 export const BF_FREE      = 'FREE'
