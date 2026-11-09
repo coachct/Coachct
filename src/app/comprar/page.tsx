@@ -16,6 +16,8 @@ import {
 
 const ACCENT   = '#ff2d9b'
 const VERDE    = '#2ddd8b'
+// Rosa da Black Friday: um tom abaixo do ACCENT, menos vivo, pra dar leitura.
+const BF_ROSA  = '#d9619c'
 const JUST_CT_ID = 'c28bf4bb-56f8-44ff-818a-c7836e58bcef'
 
 export default function ComprarPage() {
@@ -188,7 +190,7 @@ export default function ComprarPage() {
             {produtosBF.length > 0 && (
               <div style={{ marginBottom: '5rem' }}>
                 <div style={{ marginBottom: '1.5rem' }}>
-                  <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 2, color: ACCENT, marginBottom: '0.5rem', fontFamily: "'DM Mono', monospace" }}>{BF_TAG}</div>
+                  <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 2, color: BF_ROSA, marginBottom: '0.5rem', fontFamily: "'DM Mono', monospace" }}>{BF_TAG}</div>
                   <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 36, color: '#fff', letterSpacing: 4 }}>{BF_TITULO}</div>
                   <div style={{ fontSize: 14, color: '#888', marginTop: '0.5rem', fontStyle: 'italic' }}>{BF_SUB}</div>
                 </div>
@@ -201,13 +203,13 @@ export default function ComprarPage() {
                     const vPT = fmt(porTr), vT = fmt(total)
                     const vRef = ref != null ? fmt(ref) : null
                     return (
-                      <div key={p.id} className="card-h" style={{ ...card, border: `1.5px solid ${ACCENT}`, display: 'flex', flexDirection: 'column' }}>
-                        <div style={{ alignSelf: 'flex-start', background: ACCENT, color: '#fff', fontSize: 11, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', padding: '0.3rem 0.6rem', borderRadius: 6, marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>
+                      <div key={p.id} className="card-h" style={{ ...card, border: `1.5px solid ${BF_ROSA}`, display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ alignSelf: 'flex-start', background: BF_ROSA, color: '#fff', fontSize: 11, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', padding: '0.3rem 0.6rem', borderRadius: 6, marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>
                           {BF_SELO}
                         </div>
 
                         <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 34, color: '#fff', lineHeight: 1, letterSpacing: 1, marginBottom: '0.9rem' }}>
-                          {bfDestaque(p).split(' + ')[0]} <span style={{ color: ACCENT }}>+ {bfDestaque(p).split(' + ')[1]}</span>
+                          {bfDestaque(p).split(' + ')[0]} <span style={{ color: BF_ROSA }}>+ {bfDestaque(p).split(' + ')[1]}</span>
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginBottom: 2, flexWrap: 'wrap' }}>
@@ -227,7 +229,7 @@ export default function ComprarPage() {
                         </div>
 
                         <button onClick={() => irParaCheckout(p.id)} className="btn-h"
-                          style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 8, padding: '0.8rem', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", width: '100%' }}>
+                          style={{ background: BF_ROSA, color: '#fff', border: 'none', borderRadius: 8, padding: '0.8rem', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", width: '100%' }}>
                           Comprar agora →
                         </button>
                       </div>
