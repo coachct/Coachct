@@ -3,7 +3,8 @@ import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
-import { dataBR } from '@/lib/summer'
+import { dataBR, passouDaJanela, ERRO_CAMPANHA_ENCERRADA } from '@/lib/summer'
+import { ehBlackFriday, bfResumoCheckout } from '@/lib/blackFriday'
 import { rastrear, sessaoId, origemSalva } from '@/lib/rastreio'
 import { APP_PRO_PRODUTO_ID, carregarAppProOferta } from '@/lib/appPro'
 import { CLUB_EXTRA_PRODUTO_ID, carregarClubExtraOferta, ERRO_CLUB_EXTRA_NAO_ELEGIVEL } from '@/lib/clubExtra'
@@ -34,6 +35,7 @@ function CheckoutContent() {
   const produtoId = searchParams.get('produto')
 
   const [produto, setProduto] = useState<any>(null)
+  const [campanhaEncerrada, setCampanhaEncerrada] = useState(false)
   const [cliente, setCliente] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [etapa, setEtapa] = useState<Etapa>('auth')
@@ -163,6 +165,13 @@ function CheckoutContent() {
       .eq('ativo', true)
     if (produtoId !== APP_PRO_PRODUTO_ID && produtoId !== CLUB_EXTRA_PRODUTO_ID) query = query.eq('visivel_site', true)
     const { data } = await query.maybeSingle()
+    // Campanha encerrada não vende nem por link direto (a API também recusa).
+    if (data?.campanha && passouDaJanela(data)) {
+      setCampanhaEncerrada(true)
+      setProduto(null)
+      setLoading(false)
+      return
+    }
     setProduto(data)
     setLoading(false)
     // Terceiro degrau do funil, só para produto de campanha.
@@ -414,6 +423,7 @@ function CheckoutContent() {
       case 'acesso':
         return `Acesso ilimitado ao Just CT por ${p.dias_validade} dias`
       case 'pacote':
+        if (ehBlackFriday(p)) return bfResumoCheckout(p)
         // Produto de campanha tem data de vencimento fixa (não conta dias a partir da compra).
         return p.validade_fixa
           ? `${p.creditos_por_venda} créditos · válidos até ${dataBR(p.validade_fixa)} · Todas as unidades`
@@ -454,7 +464,7 @@ function CheckoutContent() {
     <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', color: '#fff', fontFamily: "'DM Sans', sans-serif" }}>
       <div style={{ textAlign: 'center' as const }}>
         <div style={{ fontSize: 48, marginBottom: '1rem' }}>❌</div>
-        <div style={{ fontSize: 18, fontWeight: 600 }}>Produto não encontrado.</div>
+        <div style={{ fontSize: 18, fontWeight: 600 }}>{campanhaEncerrada ? ERRO_CAMPANHA_ENCERRADA : 'Produto não encontrado.'}</div>
         <button onClick={() => router.push('/comprar')}
           style={{ marginTop: '1.5rem', background: ACCENT, color: '#fff', border: 'none', borderRadius: 8, padding: '0.75rem 1.5rem', fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
           ← Voltar pra lista

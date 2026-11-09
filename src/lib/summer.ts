@@ -143,5 +143,8 @@ export const REGRAS: { forte: string; resto: string }[] = [
 export const RODAPE_REGRAS =
   'Só o titular usa · uma reserva por treino · falta não conta pro bônus · não vale para Coach CT personal · um de cada por CPF'
 
+export const ERRO_CAMPANHA_ENCERRADA =
+  'Esta oferta foi encerrada. Veja os pacotes disponíveis em /comprar.'
+
 export const ERRO_LIMITE_POR_CLIENTE =
   'Você já tem este pacote. O Summer Mode é um de cada por pessoa.'

@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { CAMPANHA_SUMMER, ERRO_LIMITE_POR_CLIENTE } from '@/lib/summer'
+import { CAMPANHA_SUMMER, ERRO_LIMITE_POR_CLIENTE, ERRO_CAMPANHA_ENCERRADA, passouDaJanela } from '@/lib/summer'
 import { APP_PRO_PRODUTO_ID } from '@/lib/appPro'
 import { CLUB_EXTRA_PRODUTO_ID, ERRO_CLUB_EXTRA_NAO_ELEGIVEL } from '@/lib/clubExtra'
 
@@ -213,8 +213,13 @@ export async function POST(req: NextRequest) {
     // trava no banco; aqui é antes pra não criar order na Pagar.me de uma
     // venda que o banco vai recusar.
     //
-    // A janela de venda (venda_inicio/venda_fim) NÃO barra a compra: ela é só
-    // exibição no site. Link direto compra em qualquer data.
+    // Campanha encerrada: depois de venda_fim o produto de campanha NÃO vende
+    // mais, nem por link direto (decisão do Ricardo, 09/11/2026 — Summer Mode
+    // ainda vendia pelo link). Antes de venda_inicio continua comprando.
+    if (produto.campanha && passouDaJanela(produto)) {
+      return NextResponse.json({ error: ERRO_CAMPANHA_ENCERRADA }, { status: 410 })
+    }
+
     const limitePorCliente = Number(produto.limite_por_cliente) || 0
     if (limitePorCliente > 0) {
       const { count } = await supabase

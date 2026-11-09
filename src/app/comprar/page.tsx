@@ -9,6 +9,10 @@ import SummerModeCards from '@/components/SummerModeCards'
 import { CAMPANHA_SUMMER, dentroDaJanela, dataBR, COMPRAR_TITULO, COMPRAR_SUB } from '@/lib/summer'
 import { rastrear } from '@/lib/rastreio'
 import { APP_PRO_PRODUTO_ID } from '@/lib/appPro'
+import {
+  CAMPANHA_BF, ehBlackFriday, precoRefPorTreino, BF_TAG, BF_TITULO, BF_SUB, BF_SELO,
+  bfDestaque, bfApoio,
+} from '@/lib/blackFriday'
 
 const ACCENT   = '#ff2d9b'
 const VERDE    = '#2ddd8b'
@@ -111,13 +115,25 @@ export default function ComprarPage() {
     }
   }, [produtosSummer.length])
 
+  // Black Friday: seção própria no topo, fora do agrupamento genérico.
+  const produtosBF = produtos
+    .filter(p => ehBlackFriday(p) && dentroDaJanela(p))
+    .sort((a, b) => Number(a.valor) - Number(b.valor))
+  const bfVisitaRegistrada = useRef(false)
+  useEffect(() => {
+    if (produtosBF.length > 0 && !bfVisitaRegistrada.current) {
+      bfVisitaRegistrada.current = true
+      rastrear('visita', { campanha: CAMPANHA_BF })
+    }
+  }, [produtosBF.length])
+
   const produtosCoachPro       = produtos.filter(p => p.subtipo === 'coach_ct_pro')
   const produtosAcessoCT       = produtos.filter(p => p.subtipo === 'acesso')
   const produtosIlimitado      = produtos.filter(p => p.subtipo === 'ilimitado_club')
   const produtosPacotesAvulsos = [
     ...produtos.filter(p => p.subtipo === 'credito' && p.tipo === 'credito_coach'),
     ...produtos.filter(p => p.subtipo === 'credito' && p.tipo === 'credito_treino'),
-    ...produtos.filter(p => p.subtipo === 'pacote' && !ehSummer(p)).sort((a, b) => Number(a.valor) - Number(b.valor)),
+    ...produtos.filter(p => p.subtipo === 'pacote' && !ehSummer(p) && !ehBlackFriday(p)).sort((a, b) => Number(a.valor) - Number(b.valor)),
   ]
 
   const card = { background: '#111', border: '1px solid #222', borderRadius: 16, padding: '2rem' }
@@ -168,7 +184,60 @@ export default function ComprarPage() {
           </div>
         ) : (
           <>
-            {/* ══ 0. SUMMER MODE (campanha — só dentro da janela de venda) ══ */}
+            {/* ══ 0. BLACK FRIDAY (campanha — só dentro da janela de venda) ══ */}
+            {produtosBF.length > 0 && (
+              <div style={{ marginBottom: '5rem' }}>
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 2, color: ACCENT, marginBottom: '0.5rem', fontFamily: "'DM Mono', monospace" }}>{BF_TAG}</div>
+                  <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 36, color: '#fff', letterSpacing: 4 }}>{BF_TITULO}</div>
+                  <div style={{ fontSize: 14, color: '#888', marginTop: '0.5rem', fontStyle: 'italic' }}>{BF_SUB}</div>
+                </div>
+
+                <div className="grid-3">
+                  {produtosBF.map(p => {
+                    const total   = Number(p.valor)
+                    const porTr   = total / (Number(p.creditos_por_venda) || 1)
+                    const ref     = precoRefPorTreino(p)
+                    const vPT = fmt(porTr), vT = fmt(total)
+                    const vRef = ref != null ? fmt(ref) : null
+                    return (
+                      <div key={p.id} className="card-h" style={{ ...card, border: `1.5px solid ${ACCENT}`, display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ alignSelf: 'flex-start', background: ACCENT, color: '#fff', fontSize: 11, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', padding: '0.3rem 0.6rem', borderRadius: 6, marginBottom: '1rem', fontFamily: "'DM Mono', monospace" }}>
+                          {BF_SELO}
+                        </div>
+
+                        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 34, color: '#fff', lineHeight: 1, letterSpacing: 1, marginBottom: '0.9rem' }}>
+                          {bfDestaque(p).split(' + ')[0]} <span style={{ color: ACCENT }}>+ {bfDestaque(p).split(' + ')[1]}</span>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginBottom: 2, flexWrap: 'wrap' }}>
+                          {vRef && (
+                            <div style={{ fontSize: 15, color: '#777', textDecoration: 'line-through' }}>{vRef.reais}{vRef.cents || ',00'}</div>
+                          )}
+                          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 38, color: '#fff', lineHeight: 1 }}>{vPT.reais}<span style={{ fontSize: 19 }}>{vPT.cents}</span></div>
+                          <div style={{ fontSize: 12, color: '#ccc' }}>/ treino</div>
+                        </div>
+
+                        <div style={{ fontSize: 12, color: '#ccc', marginBottom: '0.75rem', fontFamily: "'DM Mono', monospace" }}>
+                          {vT.reais}{vT.cents} total{p.max_parcelas > 1 ? ` · até ${p.max_parcelas}x` : ''}
+                        </div>
+
+                        <div style={{ fontSize: 13, color: '#fff', flex: 1, marginBottom: '1.25rem', lineHeight: 1.6 }}>
+                          {bfApoio(p, `${vT.reais}${vT.cents}`)}
+                        </div>
+
+                        <button onClick={() => irParaCheckout(p.id)} className="btn-h"
+                          style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 8, padding: '0.8rem', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", width: '100%' }}>
+                          Comprar agora →
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* ══ 0b. SUMMER MODE (campanha — só dentro da janela de venda) ══ */}
             {produtosSummer.length > 0 && (
               <div style={{ marginBottom: '5rem' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
