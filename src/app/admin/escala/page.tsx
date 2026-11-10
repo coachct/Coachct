@@ -68,6 +68,8 @@ export default function AdminEscalaPage() {
 
   const [aba, setAba] = useState<'fds' | 'feriados' | 'disponibilidade' | 'montar' | 'resumo'>('fds')
   const [coachesDisponiveis, setCoachesDisponiveis] = useState<any[]>([])
+  // user_id → nome de TODOS os coaches citados na escala (inclusive inativos), só p/ exibir histórico com nome real.
+  const [nomesEscala, setNomesEscala] = useState<Record<string, string>>({})
   const [escalas, setEscalas] = useState<any[]>([])
   const [feriados, setFeriados] = useState<any[]>([])
   const [feriasRows, setFeriasRows] = useState<any[]>([])
@@ -177,7 +179,18 @@ export default function AdminEscalaPage() {
     for (const d of (disp || [])) ds.add(`${d.coach_id}|${d.data}`)
     setDispFds(ds)
     setCoachesDisponiveis(coaches || [])
-    setEscalas(esc || [])
+    // Coach inativo não aparece na escala futura (o banco já apaga essas linhas ao desativar —
+    // trigger trg_limpar_escala_fds_coach_inativo; isto é só garantia na tela).
+    const userIdsEsc = Array.from(new Set((esc || []).map((e: any) => e.coach_id).filter(Boolean)))
+    const { data: inativos } = userIdsEsc.length
+      ? await supabase.from('coaches').select('user_id').eq('ativo', false).in('user_id', userIdsEsc)
+      : { data: [] as any[] }
+    const inativosSet = new Set((inativos || []).map((c: any) => c.user_id))
+    setEscalas((esc || []).filter((e: any) => !inativosSet.has(e.coach_id)))
+    const { data: todosNomes } = await supabase.from('coaches').select('user_id, nome').not('user_id', 'is', null)
+    const mapaNomes: Record<string, string> = {}
+    for (const c of (todosNomes || [])) mapaNomes[c.user_id] = c.nome
+    setNomesEscala(mapaNomes)
     setFeriados(fer || [])
     setFeriasRows(ferias || [])
     setLoading(false)
@@ -185,7 +198,7 @@ export default function AdminEscalaPage() {
 
   function nomeCoach(coachUserId: string): string {
     const c = coachesDisponiveis.find(c => c.user_id === coachUserId)
-    return c?.nome || 'Coach'
+    return c?.nome || nomesEscala[coachUserId] || 'Coach'
   }
 
   function coachesDaData(data: string): any[] {
