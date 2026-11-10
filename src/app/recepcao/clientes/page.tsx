@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, Suspense } from 'react'
 import { createClient } from '@/lib/supabase'
 import { gradeExtraDoDia, coachesComFixaSubstituida } from '@/lib/grade'
 import { coachesFdsPorHora } from '@/lib/fds-ct'
+import { escalaFdsValida } from '@/lib/escala-fds-valida'
 import { clienteTemPro, coachesLivresNoHorario } from '@/lib/coach-pro'
 import { mensagemTravaApp } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
@@ -429,9 +430,9 @@ function RecepcaoClientesPageInner() {
 
     const porHora: Record<string, number> = {}
     if (ehFds) {
-      const { data: escala } = await supabase.from('escala_fds').select('coach_id, turno')
-        .eq('data', dataStr).eq('unidade_id', unidadeAtiva.id)
-      Object.assign(porHora, coachesFdsPorHora(dataStr, !!feriado, escala || []))
+      // Só coach ativo e fora de férias (src/lib/escala-fds-valida.ts).
+      const escala = await escalaFdsValida(supabase, unidadeAtiva.id, dataStr)
+      Object.assign(porHora, coachesFdsPorHora(dataStr, !!feriado, escala))
     } else {
       const { data: hors } = await supabase.from('coach_horarios').select('hora, coach_id')
         .eq('dia_semana', diaSemNum).eq('unidade_id', unidadeAtiva.id).eq('ativo', true)

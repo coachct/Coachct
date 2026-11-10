@@ -6,6 +6,7 @@ import { useUnidade } from '@/hooks/useUnidade'
 import { createClient } from '@/lib/supabase'
 import { gradeExtraDoDia, coachesComFixaSubstituida } from '@/lib/grade'
 import { coachesFdsPorHora, coachFdsAtende } from '@/lib/fds-ct'
+import { escalaFdsValida } from '@/lib/escala-fds-valida'
 import { dashboardDoRole } from '@/lib/auth-redirect'
 import { filaEncerrada } from '@/lib/tempo'
 import { mensagemTravaApp } from '@/lib/utils'
@@ -420,9 +421,10 @@ export default function AgendarPage() {
       const feriasSet = new Set((feriasRows || []).map((f: any) => f.coach_id))
       let porHora: Record<string, number> = {}
       if (usaEscalaFds) {
-        const { data: escala } = await supabase.from('escala_fds').select('coach_id, turno').eq('unidade_id', unidadeAtiva.id).eq('data', dataStr)
+        // Só coach ativo e fora de férias (escala_fds guarda user_id; férias guarda coaches.id).
+        const escala = await escalaFdsValida(supabase, unidadeAtiva.id, dataStr)
         // Sábado tem dois turnos; domingo/feriado turno único (src/lib/fds-ct.ts).
-        const qtdPorHora = coachesFdsPorHora(dataStr, ehFeriado, (escala || []).filter((e: any) => !feriasSet.has(e.coach_id)))
+        const qtdPorHora = coachesFdsPorHora(dataStr, ehFeriado, escala)
         for (const [hora, qtd] of Object.entries(qtdPorHora)) { if (isDiaDe && hora <= horaAtual) continue; porHora[hora] = qtd }
       } else {
         const { data: hors } = await supabase.from('coach_horarios').select('hora, coach_id').eq('dia_semana', diaSem).eq('ativo', true).eq('unidade_id', unidadeAtiva.id)
