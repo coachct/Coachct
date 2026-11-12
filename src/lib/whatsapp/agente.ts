@@ -269,9 +269,42 @@ export function semPrazoRelogioCancel(texto: string): string {
   return t
 }
 
+// TRAVA DETERMINÍSTICA: a "restrição de horário" do Wellhub Gold (seg-sex 09h-17h) é SÓ da
+// MUSCULAÇÃO LIVRE do Just CT — NUNCA das aulas do Club (Lift, Lift for Girls, Running +
+// Funcional). O bot insiste em aplicar a restrição às aulas do Club (erro recorrente: Ana/12-11
+// "o Gold é aceito mas com restrição de horário — de segunda a sexta, das 09h às 17h" pras aulas
+// do JustClub). Mesmo com a regra no prompt o modelo erra. Aqui, por FRASE: se uma frase fala de
+// aula do Club E impõe a restrição (09-17 / "restrição de horário"), troca essa frase pela
+// verdade (Gold aceito no Club, sem restrição). Não mexe em frase que NEGA a restrição ("sem
+// restrição", "qualquer horário") nem na que fala só da musculação do Just CT. Custo zero.
+const RE_CLUB_AULA = /aulas?\s+d[oe]\s+(justclub|club)|aulas?\s+coletiv|lift\s+for\s+girls|\blift\b|running\s*\+?\s*funcional/i
+const RE_RESTRICAO_HORARIO = /restri[çc][ãa]o\s+de\s+hor[áa]rio|hor[áa]rio\s+restrito|\b0?9\s*h?\s*(?:h|às|as|a|at[ée]|[-–—])\s*1[67]\s*h?\b/i
+const RE_SEM_RESTRICAO = /sem\s+restri|n[ãa]o\s+(tem|h[áa])\s+restri|qualquer\s+(dia|hor[áa]rio)/i
+const FRASE_GOLD_CLUB_OK = 'No JustClub (Lift, Lift for Girls e Running + Funcional) o Gold já é aceito, sem restrição de horário — vale qualquer dia e horário da grade.'
+export function semRestricaoGoldClub(texto: string): string {
+  const t = String(texto || '')
+  if (!RE_RESTRICAO_HORARIO.test(t)) return t
+  return t
+    .split('\n')
+    .map((linha) => {
+      if (!RE_RESTRICAO_HORARIO.test(linha)) return linha
+      return linha
+        .split(/(?<=[.!?…])\s+/)
+        .map((fr) =>
+          RE_CLUB_AULA.test(fr) && RE_RESTRICAO_HORARIO.test(fr) && !RE_SEM_RESTRICAO.test(fr)
+            ? FRASE_GOLD_CLUB_OK
+            : fr,
+        )
+        .join(' ')
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 /** Passada determinística final aplicada a TODA resposta enviada ao cliente. */
 function finalizarTexto(texto: string, contextoCancel = false): string {
-  return semLamentacao(semRevelarIgnorancia(garantirLinkPlanos(semCanalExterno(semTelefoneInventado(limparMecanicaCancel(semPrazoRelogioCancel(semAdmitirCulpaCancel(semJanelaInventada(texto))), contextoCancel))))))
+  return semLamentacao(semRevelarIgnorancia(garantirLinkPlanos(semCanalExterno(semTelefoneInventado(limparMecanicaCancel(semRestricaoGoldClub(semPrazoRelogioCancel(semAdmitirCulpaCancel(semJanelaInventada(texto)))), contextoCancel))))))
 }
 
 // TRAVA DETERMINÍSTICA: NUNCA falar de multa NEM de cartão (garantia) se o cliente não
