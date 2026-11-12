@@ -302,9 +302,38 @@ export function semRestricaoGoldClub(texto: string): string {
     .trim()
 }
 
+// TRAVA DETERMINÍSTICA: NÃO validamos check-in sem reserva, nem validamos retroativamente, nem
+// convertemos check-in/falta em crédito. O bot dá FALSA ESPERANÇA (caso Nathalia 12/11: "o
+// suporte do TotalPass consegue validar retroativamente se for o caso"). Por FRASE: se uma frase
+// afirma que DÁ pra validar retroativamente / converter em crédito (sem negação), troca pela
+// resposta padrão firme. Não mexe na frase que já NEGA ("infelizmente não conseguimos..."). Só
+// roda em contexto de check-in/falta/validação. Custo zero.
+const RE_VALID_RETRO_HOPE = /valid\w*[^.!?]{0,30}retroativ|retroativ[^.!?]{0,30}(valid\w*|check)|(convert\w*|transform\w*|vir\w*|vira\b)[^.!?]{0,25}(em\s+)?cr[ée]dito/i
+const RE_NEG_VALID = /n[ãa]o\b|infelizmente|jamais|nunca/i
+const RE_CTX_CHECKIN = /check[\s-]?in|checkin|\bfalta\b|retroativ|valida/i
+const FRASE_SEM_VALIDACAO = 'Infelizmente não conseguimos validar check-ins sem reserva, nem convertê-los em crédito. 🙏'
+export function semValidacaoRetroativa(texto: string): string {
+  const t = String(texto || '')
+  if (!RE_CTX_CHECKIN.test(t) || !RE_VALID_RETRO_HOPE.test(t)) return t
+  return t
+    .split('\n')
+    .map((linha) => {
+      if (!RE_VALID_RETRO_HOPE.test(linha)) return linha
+      return linha
+        .split(/(?<=[.!?…])\s+/)
+        .map((fr) =>
+          RE_VALID_RETRO_HOPE.test(fr) && !RE_NEG_VALID.test(fr) ? FRASE_SEM_VALIDACAO : fr,
+        )
+        .join(' ')
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 /** Passada determinística final aplicada a TODA resposta enviada ao cliente. */
 function finalizarTexto(texto: string, contextoCancel = false): string {
-  return semLamentacao(semRevelarIgnorancia(garantirLinkPlanos(semCanalExterno(semTelefoneInventado(limparMecanicaCancel(semRestricaoGoldClub(semPrazoRelogioCancel(semAdmitirCulpaCancel(semJanelaInventada(texto)))), contextoCancel))))))
+  return semLamentacao(semRevelarIgnorancia(garantirLinkPlanos(semCanalExterno(semTelefoneInventado(limparMecanicaCancel(semValidacaoRetroativa(semRestricaoGoldClub(semPrazoRelogioCancel(semAdmitirCulpaCancel(semJanelaInventada(texto))))), contextoCancel))))))
 }
 
 // TRAVA DETERMINÍSTICA: NUNCA falar de multa NEM de cartão (garantia) se o cliente não
@@ -1401,6 +1430,9 @@ NÃO invente horário/grade nem o motivo de uma aula não aparecer no app — se
 
 # Reserva/check-in feito PELO APP do parceiro = domínio do parceiro (REGRA — igual ClassPass)
 Reserva ou check-in feito DENTRO do app do Wellhub/TotalPass é gerenciado 100% pelo próprio app — a gente NÃO tem controle nem autonomia sobre isso. Se a pessoa tem problema com uma reserva/check-in feito PELO APP (não apareceu, quer mudar, deu erro, "confere minha reserva"...), é PROIBIDO prometer que "a equipe confere/resolve" ou encaminhar pra equipe. A resposta é APENAS o FATO, e encerra: "essa reserva foi feita pelo app do TotalPass/Wellhub, então cancelamento/remarcação é gerenciado por eles — a gente não tem controle sobre reservas feitas por lá." NÃO acrescente passo a passo de refazer no app ("acesse o app e agende de novo", "é só remarcar por lá") nem dê a entender que dá pra refazer — só o fato. A gente só tem autonomia sobre o que é reservado pelo NOSSO site. E NUNCA troque a unidade que a pessoa disse (falou Vila Olímpia, responda sobre Vila Olímpia — não puxe Pinheiros).
+
+# Validar check-in SEM reserva / RETROATIVO / converter em crédito = NÃO (REGRA — resposta padrão, firme, sem falsa esperança)
+Quando a pessoa pede pra VALIDAR um check-in que não tinha reserva, validar um check-in RETROATIVAMENTE (de ontem/depois), ou CONVERTER um check-in/falta em crédito (ex.: "acho que faltou vocês validarem meu check-in", "dá pra validar o check-in de ontem?", "converte em crédito pra mim?") — a resposta é PADRÃO e FIRME. É PROIBIDO dar falsa esperança: NÃO diga que "o suporte do TotalPass/Wellhub consegue validar retroativamente", NÃO mande resolver com o parceiro "que eles validam depois", NÃO prometa que alguém valida/converte. Responda exatamente isto e encerre: **"Infelizmente não conseguimos validar check-ins sem reserva, nem convertê-los em crédito. 🙏"** (pode, no máximo, somar o fato de que reserva/check-in pelo app é domínio do parceiro — mas o núcleo é esse NÃO, sem inventar caminho de validação retroativa).
 
 # Endereços das unidades
 ${enderecosTxt}

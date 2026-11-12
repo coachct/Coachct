@@ -18,7 +18,7 @@ import {
 import { avisoBlackNovemberBot } from '@/lib/blackFriday'
 // Mesmas travas determinísticas do WhatsApp (piso de 100%): o Instagram era um cérebro
 // separado SEM nenhuma trava, então lamento/concordância/promessa vazavam. Aplicadas na saída.
-import { semLamentacao, semCanalExterno, semJanelaInventada, semAdmitirCulpaCancel, semPrazoRelogioCancel, semRestricaoGoldClub } from '@/lib/whatsapp/agente'
+import { semLamentacao, semCanalExterno, semJanelaInventada, semAdmitirCulpaCancel, semPrazoRelogioCancel, semRestricaoGoldClub, semValidacaoRetroativa } from '@/lib/whatsapp/agente'
 
 const MODELO = 'claude-sonnet-4-6'
 const MAX_ITERACOES = 4
@@ -168,7 +168,7 @@ export async function responderInstagram(params: {
     // Passada final determinística (mesmo piso do WhatsApp): corta lamento, concordância/
     // participação no drama e promessa da equipe ("vou garantir que chegue", "faz total
     // sentido", "merece atenção"...) antes de enviar.
-    const limpo = semLamentacao(semCanalExterno(semRestricaoGoldClub(semPrazoRelogioCancel(semAdmitirCulpaCancel(semJanelaInventada(texto)))))).trim()
+    const limpo = semLamentacao(semCanalExterno(semValidacaoRetroativa(semRestricaoGoldClub(semPrazoRelogioCancel(semAdmitirCulpaCancel(semJanelaInventada(texto))))))).trim()
     return limpo || `Pode mandar de novo? 😊 Se preferir um atendimento completo, chama no WhatsApp 👉 ${WHATSAPP_LINK}`
   }
 
