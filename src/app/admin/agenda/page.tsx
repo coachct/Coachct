@@ -97,6 +97,10 @@ export default function AdminAgendaPage() {
   const [horarioRealSel, setHorarioRealSel] = useState('')
   const [coachRealSel, setCoachRealSel] = useState('')
   const [salvandoHorarioReal, setSalvandoHorarioReal] = useState(false)
+  // 🔧 Troca de horário no dia (admin): move o agendamento sem cancelar/reagendar.
+  const [modalTroca, setModalTroca] = useState<any | null>(null)
+  const [trocaSel, setTrocaSel] = useState('')
+  const [salvandoTroca, setSalvandoTroca] = useState(false)
 
   const scrollRef = useRef<number>(0)
   const dateInputRef = useRef<HTMLInputElement>(null)
@@ -404,6 +408,54 @@ export default function AdminAgendaPage() {
     await loadData(true)
   }
 
+  // Horários do mesmo dia com vaga (grade + extra + fds já calculadas nesta tela),
+  // sem o horário atual e, se for hoje, só os que ainda não começaram.
+  function opcoesTroca(ag: any): { horario: string; vagas: number }[] {
+    const atual = norm(ag.horario)
+    const lista = usaEscalaFds ? horariosFds : HORARIOS
+    const agoraMinLocal = agora.getHours() * 60 + agora.getMinutes()
+    return lista
+      .filter(h => h !== atual && coachesPorHorario(h).length > 0)
+      .filter(h => data !== hoje || horaParaMin(h) > agoraMinLocal)
+      .map(h => ({ horario: h, vagas: vagasDisponiveis(h) }))
+      .filter(o => o.vagas >= 1)
+  }
+
+  // Move o agendamento pro novo horário do mesmo dia. Só muda horário e limpa o
+  // coach (o do horário antigo não vale no novo). NÃO mexe em status, crédito,
+  // fila nem multa — os triggers de UPDATE só reagem a mudança de status.
+  async function salvarTroca() {
+    if (!modalTroca || !trocaSel || salvandoTroca || !unidadeAtiva) return
+    setSalvandoTroca(true)
+    // Reconfere a vaga no banco na hora de salvar (outra tela pode ter ocupado).
+    const { count } = await supabase.from('agendamentos')
+      .select('id', { count: 'exact', head: true })
+      .eq('data', data).eq('unidade_id', unidadeAtiva.id)
+      .eq('horario', trocaSel + ':00').neq('status', 'cancelado')
+    const livres = coachesPorHorario(trocaSel).length - (count || 0) - bloqueadasNoHorario(trocaSel)
+    if (livres < 1) {
+      setSalvandoTroca(false)
+      alert(`O horário ${trocaSel} acabou de lotar. Escolha outro.`)
+      await loadData(true)
+      return
+    }
+    const { error } = await supabase.from('agendamentos').update({
+      horario: trocaSel + ':00',
+      coach_id: null,
+      alocado_em: null,
+      alocado_por: null,
+      coach_correcao_manual: false,
+      trocado_admin_em: new Date().toISOString(),
+      trocado_admin_de: norm(modalTroca.horario),
+      trocado_admin_por: perfil?.id,
+    }).eq('id', modalTroca.id)
+    setSalvandoTroca(false)
+    if (error) { alert('Erro ao trocar o horário: ' + error.message); return }
+    setModalTroca(null)
+    setTrocaSel('')
+    await loadData(true)
+  }
+
   function abrirModalBloqueio(horario: string) {
     setModalBloqueio({ horario, vagasLivres: vagasDisponiveis(horario), bloqueiosAtivos: bloqueiosPorHorario(horario) })
     setQtdBloquear(1); setMotivoBloqueio(''); setErroBloqueio('')
@@ -560,7 +612,13 @@ export default function AdminAgendaPage() {
               <span className="text-xs text-gray-400">Nenhum coach livre neste horário</span>
             )}
             <button onClick={() => { setModalCorrecao(ag); setCoachCorrecaoSel(ag.coach_id || '') }} className="ml-2 text-xs font-medium text-amber-600 hover:text-amber-700 hover:underline">Corrigir coach</button>
+            {!feito && !faltou && (
+              <button onClick={() => { setModalTroca(ag); setTrocaSel('') }} className="ml-3 text-xs font-medium text-primary-600 hover:text-primary-700 hover:underline">Trocar horário</button>
+            )}
           </div>
+          {ag.trocado_admin_de && (
+            <div className="mt-1 text-xs text-gray-400">Horário trocado de {norm(ag.trocado_admin_de)}</div>
+          )}
         </div>
         </div>
         {feito || faltou ? (
@@ -742,6 +800,12 @@ export default function AdminAgendaPage() {
                               </div>
                               {coachNome && <div className="text-xs text-green-700 mt-1 font-medium">Coach: {coachNome}{ag.coach_correcao_manual && <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-amber-600">corrigido</span>}</div>}
                               <button onClick={() => { setModalCorrecao(ag); setCoachCorrecaoSel(ag.coach_id || '') }} className="mt-1 text-xs font-medium text-amber-600 hover:text-amber-700 hover:underline">Corrigir coach</button>
+                              {ag.status !== 'realizado' && ag.status !== 'falta' && (
+                                <button onClick={() => { setModalTroca(ag); setTrocaSel('') }} className="mt-1 ml-3 text-xs font-medium text-primary-600 hover:text-primary-700 hover:underline">Trocar horário</button>
+                              )}
+                              {ag.trocado_admin_de && (
+                                <div className="mt-1 text-xs text-gray-400">Horário trocado de {norm(ag.trocado_admin_de)}</div>
+                              )}
                               {ag.checkin_fora_janela && (
                                 <div className="mt-1.5 flex items-start gap-1.5 rounded-lg bg-sky-50 px-2 py-1 text-xs font-medium text-sky-800">
                                   <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
@@ -1089,6 +1153,46 @@ export default function AdminAgendaPage() {
           </div>
         </div>
       )}
+
+      {modalTroca && (() => {
+        const opcoes = opcoesTroca(modalTroca)
+        return (
+          <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl w-full max-w-sm p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <div className="font-bold text-gray-900">Trocar horário</div>
+                  <div className="text-sm text-gray-400 mt-0.5">{modalTroca.clientes?.nome} · agendado às {norm(modalTroca.horario)}</div>
+                </div>
+                <button onClick={() => { setModalTroca(null); setTrocaSel('') }} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              </div>
+              <div className="bg-primary-50 border border-primary-100 rounded-lg p-3 mb-4 text-xs text-primary-800 flex items-start gap-2">
+                <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
+                <span>Move o agendamento para outro horário do mesmo dia. Não cancela, não devolve crédito e não mexe na fila. O coach é desalocado — aloque de novo no horário novo.</span>
+              </div>
+              {opcoes.length === 0 ? (
+                <div className="text-sm text-gray-500 mb-4">Nenhum outro horário com vaga neste dia.</div>
+              ) : (
+                <div className="grid grid-cols-3 gap-2 mb-4 max-h-64 overflow-y-auto">
+                  {opcoes.map(o => (
+                    <button key={o.horario} onClick={() => setTrocaSel(o.horario)}
+                      className={`rounded-lg border px-2 py-2 text-center ${trocaSel === o.horario ? 'border-primary-500 bg-primary-50 text-primary-800' : 'border-gray-200 hover:border-primary-300'}`}>
+                      <div className="font-mono text-sm font-semibold">{o.horario}</div>
+                      <div className="text-[11px] text-gray-500">{o.vagas} vaga{o.vagas > 1 ? 's' : ''}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <button onClick={() => { setModalTroca(null); setTrocaSel('') }} className="btn flex-1 text-gray-500 border border-gray-200">Cancelar</button>
+                <button onClick={salvarTroca} disabled={!trocaSel || salvandoTroca} className="btn btn-primary flex-1">
+                  {salvandoTroca ? 'Salvando...' : trocaSel ? `Mover para ${trocaSel}` : 'Escolha o horário'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {modalConfirmar && (() => {
         const ehPresenca = modalConfirmar.acao === 'presenca'
