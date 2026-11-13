@@ -128,9 +128,12 @@ export function etapasPorRound(b: Bloco) {
   return Math.max(1, ordemCircuito(b).length)
 }
 
-// Cada etapa tem a sua transição; rounds repetem o bloco inteiro.
-export function totalBloco(b: Bloco) {
-  return b.rounds * etapasPorRound(b) * (b.etapa_seg + b.transicao_seg)
+// Cada etapa é seguida de uma transição; rounds repetem o bloco inteiro.
+// O último bloco da aula não tem a transição depois da última etapa: a aula acaba ali.
+export function totalBloco(b: Bloco, ultimoDaAula = false) {
+  const etapas = b.rounds * etapasPorRound(b)
+  const transicoes = ultimoDaAula ? Math.max(0, etapas - 1) : etapas
+  return etapas * b.etapa_seg + transicoes * b.transicao_seg
 }
 
 // Tempo que cada aluno/dupla passa na corrida dentro do bloco.
@@ -188,7 +191,7 @@ export function passouEsteira(b: Bloco) {
 
 export function resumo(t: Treino) {
   const abertura = t.aquecimento_seg + t.explicacao_seg
-  const blocos = t.blocos.reduce((s, b) => s + totalBloco(b), 0)
+  const blocos = t.blocos.reduce((s, b, i) => s + totalBloco(b, i === t.blocos.length - 1), 0)
   const corrida = t.blocos.reduce((s, b) => s + corridaBloco(b), 0)
   const soma = abertura + blocos
   const diff = t.duracao_seg - soma

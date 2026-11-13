@@ -375,14 +375,14 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
             <div className="flex h-3.5 rounded-full overflow-hidden gap-0.5 bg-[#0e0e11]">
               {t.aquecimento_seg > 0 && <div style={{ flex: t.aquecimento_seg, background: '#6b6b76' }} />}
               {t.explicacao_seg > 0 && <div style={{ flex: t.explicacao_seg, background: '#4a4a54' }} />}
-              {t.blocos.map((b, i) => totalBloco(b) > 0 && <div key={b.id} style={{ flex: totalBloco(b), background: cores[i % 2] }} />)}
+              {t.blocos.map((b, i) => totalBloco(b, i === ultimo) > 0 && <div key={b.id} style={{ flex: totalBloco(b, i === ultimo), background: cores[i % 2] }} />)}
               {r.diff > 0 && <div style={{ flex: r.diff }} />}
             </div>
             <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 text-[13px]">
               <div>Aquecimento</div><div className="text-[#a1a1aa]">{mmss(t.aquecimento_seg)}</div>
               <div>Explicação e arrumação</div><div className="text-[#a1a1aa]">{mmss(t.explicacao_seg)}</div>
               {t.blocos.map((b, i) => (
-                <FragmentoEtapa key={b.id} nome={`Bloco ${i + 1} — ${b.nome || 'sem nome'}${i === ultimo ? ' (fim em alta)' : ''}`} tempo={mmss(totalBloco(b))} />
+                <FragmentoEtapa key={b.id} nome={`Bloco ${i + 1} — ${b.nome || 'sem nome'}${i === ultimo ? ' (fim em alta)' : ''}`} tempo={mmss(totalBloco(b, i === ultimo))} />
               ))}
             </div>
           </section>
@@ -513,7 +513,7 @@ function BlocoCard(p: {
           <span className={estourou ? cls.seloVermelho : cls.seloVerde}>
             Esteira {b.alunos_corrida} de {lim}{b.corrida_em_dupla ? ' (dupla)' : ''}
           </span>
-          <span className={cls.seloCinza}>Total do bloco {mmss(totalBloco(b))}{p.ultimo ? ' · termina a aula' : ''}</span>
+          <span className={cls.seloCinza}>Total do bloco {mmss(totalBloco(b, p.ultimo))}{p.ultimo ? ' · termina a aula' : ''}</span>
           <button onClick={() => p.onMover(-1)} disabled={i === 0} className={cls.btnIcone} aria-label="Mover bloco para cima"><ArrowUp size={14} /></button>
           <button onClick={() => p.onMover(1)} disabled={i === p.total - 1} className={cls.btnIcone} aria-label="Mover bloco para baixo"><ArrowDown size={14} /></button>
           <button onClick={p.onDuplicar} className={cls.btnIcone} aria-label="Duplicar bloco"><Copy size={14} /></button>
@@ -617,7 +617,7 @@ function BlocoCard(p: {
             <option value="">+ Adicionar estação</option>
             {ESTACOES.filter(s => !ab || s.key !== 'corrida').map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
-          {ab && <RoteiroAB b={b} setBloco={p.setBloco} />}
+          {ab && <RoteiroAB b={b} setBloco={p.setBloco} ultimo={p.ultimo} />}
         </>
       ) : (
         <>
@@ -692,7 +692,7 @@ function EsteiraAB({ b, setBloco, setEstacao }: {
 }
 
 // Roteiro do Grupos A/B: rodízio no chão + etapa por etapa, gerado do que está preenchido.
-function RoteiroAB({ b, setBloco }: { b: Bloco; setBloco: (patch: Partial<Bloco>) => void }) {
+function RoteiroAB({ b, setBloco, ultimo }: { b: Bloco; setBloco: (patch: Partial<Bloco>) => void; ultimo: boolean }) {
   const chao = estacoesChao(b)
   const rod = rodizioChaoLigado(b)
   const etapas = roteiroAB(b)
@@ -767,7 +767,8 @@ function RoteiroAB({ b, setBloco }: { b: Bloco; setBloco: (patch: Partial<Bloco>
                   <span className="text-[#a1a1aa]">Chão:</span> Grupo {grupoChao(e)}
                   {n > 0 ? (rod ? ` · ${e.voltaChao + 1}ª volta (${e.voltaChao === 0 ? 'cada dupla numa posição' : 'próxima estação'})` : ' · mesma estação') : ''}
                 </span>
-                {b.transicao_seg > 0 && <span className="text-[#a1a1aa]">+ transição {mmss(b.transicao_seg)}</span>}
+                {b.transicao_seg > 0 && !(ultimo && e.n === etapas.length) && <span className="text-[#a1a1aa]">+ transição {mmss(b.transicao_seg)}</span>}
+                {ultimo && e.n === etapas.length && <span className="text-[#ff6db8]">fim da aula</span>}
               </div>
             ))}
           </div>
