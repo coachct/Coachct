@@ -564,6 +564,7 @@ function BlocoCard(p: {
             </label>
             <label className={cls.label}>Rounds
               <NumInput valor={b.rounds} min={1} onChange={n => p.setBloco({ rounds: n })} />
+              {ab && <span className="text-[#d4d4d8]">= {b.rounds * 2} etapas (A e B trocam)</span>}
             </label>
           </div>
 
