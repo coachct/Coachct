@@ -415,6 +415,11 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
           )}
 
           <PreviaTV t={t} />
+          {t.id && (
+            <a href={`/hibrido-tv/${t.id}`} target="_blank" rel="noreferrer" className={`${cls.btn} inline-flex items-center justify-center -mt-2`}>
+              Abrir na TV (teste) · usa o último salvo
+            </a>
+          )}
 
           <section className={`${cls.card} p-5 flex flex-col gap-2`}>
             <div className="text-xs text-[#a1a1aa]">Este dia nas outras faixas</div>

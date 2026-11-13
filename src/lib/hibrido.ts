@@ -181,6 +181,56 @@ export function estacaoNaVolta(chao: EstacaoRow[], p: number, v: number, rodizio
   return chao[rodizio ? (p + v) % chao.length : p]
 }
 
+// ---- Linha do tempo da aula (TV) -----------------------------------------------
+
+export type Segmento =
+  | { tipo: 'aquecimento'; dur: number; desc: string }
+  | { tipo: 'explicacao'; dur: number; desc: string }
+  | {
+      tipo: 'etapa' | 'transicao'
+      dur: number
+      bloco: number          // índice do bloco
+      etapa: number          // índice da etapa dentro do bloco (0..)
+      etapasBloco: number
+      round: number          // 1..
+      // Grupos A/B
+      aEsteira?: boolean
+      voltaChao?: number
+      // Circuito / todos: posição na ordem das estações
+      pos?: number
+      // Transição: aEsteira/voltaChao/pos já são da etapa seguinte; fimBloco = vem outro bloco
+      fimBloco?: boolean
+    }
+
+// Aula inteira, segundo a segundo: abertura, etapas e transições.
+// A transição depois da última etapa do último bloco não existe (a aula acaba ali).
+export function linhaDoTempo(t: Treino): Segmento[] {
+  const out: Segmento[] = []
+  if (t.aquecimento_seg > 0) out.push({ tipo: 'aquecimento', dur: t.aquecimento_seg, desc: t.aquecimento_desc })
+  if (t.explicacao_seg > 0) out.push({ tipo: 'explicacao', dur: t.explicacao_seg, desc: t.explicacao_desc })
+  t.blocos.forEach((b, bi) => {
+    const ultimoBloco = bi === t.blocos.length - 1
+    const porRound = etapasPorRound(b)
+    const total = b.rounds * porRound
+    const ab = b.formato === 'grupos_ab' ? roteiroAB(b) : null
+    for (let k = 0; k < total; k++) {
+      const base = { bloco: bi, etapa: k, etapasBloco: total, round: Math.floor(k / porRound) + 1 }
+      const extra = ab ? { aEsteira: ab[k].aEsteira, voltaChao: ab[k].voltaChao } : { pos: k % porRound }
+      if (b.etapa_seg > 0) out.push({ tipo: 'etapa', dur: b.etapa_seg, ...base, ...extra })
+      const fimDaAula = ultimoBloco && k === total - 1
+      if (b.transicao_seg > 0 && !fimDaAula) {
+        // Na transição o que importa é para onde cada um vai: guarda a etapa seguinte
+        const fimBloco = k === total - 1
+        const destino = fimBloco
+          ? extra
+          : ab ? { aEsteira: ab[k + 1].aEsteira, voltaChao: ab[k + 1].voltaChao } : { pos: (k + 1) % porRound }
+        out.push({ tipo: 'transicao', dur: b.transicao_seg, ...base, ...destino, fimBloco })
+      }
+    }
+  })
+  return out
+}
+
 export function limiteEsteira(b: Bloco) {
   return b.corrida_em_dupla ? LIMITE_ESTEIRA_DUPLA : LIMITE_ESTEIRA
 }
