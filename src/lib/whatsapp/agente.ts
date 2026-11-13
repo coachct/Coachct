@@ -446,11 +446,17 @@ Esse rascunho está TRANSFERINDO o atendimento pra equipe? ${escalou ? 'SIM' : '
   try {
     const r = await client.messages.create({
       model: MODELO_REVISOR,
-      max_tokens: 1000,
+      // Teto alto: o revisor REESCREVE a resposta inteira em "RESPOSTA:". Com teto baixo,
+      // uma resposta longa (ex.: as 3 unidades + modalidades + valores) era cortada no meio
+      // e o texto truncado ("...propostas bem diferentes:") ia pro cliente. (Incidente 13/11.)
+      max_tokens: 2000,
       // Sem thinking (o checklist já guia) + base cacheada = revisor barato.
       system: [{ type: 'text', text: revisorSystem(faqTxt), cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: userMsg }],
     })
+    // Se MESMO ASSIM o revisor truncou (resposta gigante), NÃO envie o corte: fail-open,
+    // mantém o rascunho original completo (que já passou pelas travas determinísticas).
+    if (r.stop_reason === 'max_tokens') return null
     const txt = r.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
       .map((b) => b.text)
