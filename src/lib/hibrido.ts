@@ -55,6 +55,8 @@ export interface EstacaoRow {
 
 export interface Rodizio {
   a_comeca?: 'corrida' | 'estacoes'
+  // Grupos A/B: a cada volta ao chão, a dupla vai para a próxima estação (padrão: sim)
+  rodizio_chao?: boolean
   ordem?: string[]
 }
 
@@ -138,6 +140,44 @@ export function corridaBloco(b: Bloco) {
   return b.rounds * corridas * b.etapa_seg
 }
 
+// ---- Grupos A/B: esteira × chão ------------------------------------------------
+
+export const estacoesChao = (b: Bloco) => b.estacoes.filter(e => e.estacao !== 'corrida')
+export const rodizioChaoLigado = (b: Bloco) => b.rodizio.rodizio_chao !== false
+
+export type EtapaAB = {
+  n: number
+  round: number
+  inicio: number
+  fim: number
+  aEsteira: boolean
+  // Qual volta ao chão é esta para o grupo que está no chão (0 = primeira)
+  voltaChao: number
+}
+
+// Etapa por etapa do bloco A/B: em cada round os grupos trocam de lado uma vez.
+export function roteiroAB(b: Bloco): EtapaAB[] {
+  const aComecaEsteira = (b.rodizio.a_comeca || 'corrida') === 'corrida'
+  const out: EtapaAB[] = []
+  let t = 0
+  let voltaA = 0, voltaB = 0
+  for (let r = 0; r < b.rounds; r++) {
+    for (let k = 0; k < 2; k++) {
+      const aEsteira = (k === 0) === aComecaEsteira
+      const voltaChao = aEsteira ? voltaB++ : voltaA++
+      out.push({ n: out.length + 1, round: r + 1, inicio: t, fim: t + b.etapa_seg, aEsteira, voltaChao })
+      t += b.etapa_seg + b.transicao_seg
+    }
+  }
+  return out
+}
+
+// Estação de quem começou na posição p (ordem da tabela) na volta v ao chão.
+export function estacaoNaVolta(chao: EstacaoRow[], p: number, v: number, rodizio: boolean) {
+  if (!chao.length) return null
+  return chao[rodizio ? (p + v) % chao.length : p]
+}
+
 export function limiteEsteira(b: Bloco) {
   return b.corrida_em_dupla ? LIMITE_ESTEIRA_DUPLA : LIMITE_ESTEIRA
 }
@@ -204,7 +244,7 @@ export function blocoVazio(): Bloco {
     etapa_seg: 0,
     transicao_seg: 0,
     rounds: 1,
-    rodizio: { a_comeca: 'corrida' },
+    rodizio: { a_comeca: 'corrida', rodizio_chao: true },
     alunos_corrida: 0,
     corrida_em_dupla: false,
     estacoes: [],
@@ -356,7 +396,7 @@ export async function salvarTreino(supabase: any, t: Treino): Promise<{ id: stri
       transicao_seg: b.transicao_seg,
       rounds: b.rounds,
       rodizio: b.formato === 'grupos_ab'
-        ? { a_comeca: b.rodizio.a_comeca || 'corrida' }
+        ? { a_comeca: b.rodizio.a_comeca || 'corrida', rodizio_chao: b.rodizio.rodizio_chao !== false }
         : { ordem: (b.rodizio.ordem || []).filter(oid => b.estacoes.some(e => e.id === oid)) },
       alunos_corrida: b.alunos_corrida,
       corrida_em_dupla: b.corrida_em_dupla,
@@ -371,7 +411,8 @@ export async function salvarTreino(supabase: any, t: Treino): Promise<{ id: stri
         estacao: e.estacao,
         rotulo: e.rotulo.trim() || null,
         postos: intOuNull(e.postos),
-        pessoas: intOuNull(e.pessoas),
+        // Grupos A/B: as pessoas na esteira são os "alunos na corrida" do bloco
+        pessoas: b.formato === 'grupos_ab' && e.estacao === 'corrida' ? b.alunos_corrida : intOuNull(e.pessoas),
         modo_dupla: e.modo_dupla,
         instrucao: e.instrucao.trim() || null,
         meta: e.meta.trim() || null,

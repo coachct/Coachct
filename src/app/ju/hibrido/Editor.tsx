@@ -12,6 +12,7 @@ import {
   mmss, resumo, totalBloco, limiteEsteira, passouEsteira, ordemCircuito, nomeEstacao,
   labelEstacao, estacoesUsadas, treinoVazio, blocoVazio, estacaoVazia, clonarBlocos,
   carregarTreino, salvarTreino, programar, carregarMedias, faixasProvaveis, fmtDia,
+  estacoesChao, rodizioChaoLigado, roteiroAB, estacaoNaVolta,
 } from '@/lib/hibrido'
 import { cls, Modal } from './ui'
 import { hojeSP } from '@/lib/tempo'
@@ -500,6 +501,9 @@ function BlocoCard(p: {
   const aComeca = b.rodizio.a_comeca || 'corrida'
   const txtEsteira = 'Começa na esteira → vai para as estações'
   const txtEstacoes = 'Começa nas estações → vai para a esteira'
+  const ab = b.formato === 'grupos_ab'
+  // Em Grupos A/B a esteira fica no card próprio; a tabela é só do chão
+  const linhas = ab ? estacoesChao(b) : b.estacoes
 
   return (
     <section className={`${cls.card} p-6 flex flex-col gap-4`}>
@@ -529,18 +533,22 @@ function BlocoCard(p: {
       {p.aberto ? (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <label className={`${cls.label} col-span-2`}>Nome do bloco
+            <label className={`${cls.label} col-span-2 ${ab ? 'md:col-span-4' : ''}`}>Nome do bloco
               <input value={b.nome} onChange={e => p.setBloco({ nome: e.target.value })} className={cls.input} />
             </label>
-            <label className={cls.label}>Alunos na corrida
-              <NumInput valor={b.alunos_corrida} onChange={n => p.setBloco({ alunos_corrida: n })} />
-            </label>
-            <label className={cls.label}>Corrida
-              <select value={b.corrida_em_dupla ? 'dupla' : 'individual'} onChange={e => p.setBloco({ corrida_em_dupla: e.target.value === 'dupla' })} className={cls.input}>
-                <option value="individual">Individual</option>
-                <option value="dupla">Em dupla</option>
-              </select>
-            </label>
+            {!ab && (
+              <>
+                <label className={cls.label}>Alunos na corrida
+                  <NumInput valor={b.alunos_corrida} onChange={n => p.setBloco({ alunos_corrida: n })} />
+                </label>
+                <label className={cls.label}>Corrida
+                  <select value={b.corrida_em_dupla ? 'dupla' : 'individual'} onChange={e => p.setBloco({ corrida_em_dupla: e.target.value === 'dupla' })} className={cls.input}>
+                    <option value="individual">Individual</option>
+                    <option value="dupla">Em dupla</option>
+                  </select>
+                </label>
+              </>
+            )}
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <label className={cls.label}>Formato
@@ -559,25 +567,29 @@ function BlocoCard(p: {
             </label>
           </div>
 
-          {b.formato === 'grupos_ab' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="rounded-xl bg-[#0e0e11] border border-[#2a2a31] px-3.5 py-3">
-                <div className="text-xs text-[#a1a1aa]">Grupo A · {grupo} {unidade}</div>
-                <select
-                  value={aComeca}
-                  onChange={e => p.setBloco({ rodizio: { ...b.rodizio, a_comeca: e.target.value as 'corrida' | 'estacoes' } })}
-                  aria-label="Onde o Grupo A começa"
-                  className="w-full bg-transparent font-medium text-[#f2f2f4] outline-none -ml-1 py-0.5"
-                >
-                  <option value="corrida">{txtEsteira}</option>
-                  <option value="estacoes">{txtEstacoes}</option>
-                </select>
+          {ab ? (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="rounded-xl bg-[#0e0e11] border border-[#2a2a31] px-3.5 py-3">
+                  <div className="text-xs text-[#a1a1aa]">Grupo A · {grupo} {unidade}</div>
+                  <select
+                    value={aComeca}
+                    onChange={e => p.setBloco({ rodizio: { ...b.rodizio, a_comeca: e.target.value as 'corrida' | 'estacoes' } })}
+                    aria-label="Onde o Grupo A começa"
+                    className="w-full bg-transparent font-medium text-[#f2f2f4] outline-none -ml-1 py-0.5"
+                  >
+                    <option value="corrida">{txtEsteira}</option>
+                    <option value="estacoes">{txtEstacoes}</option>
+                  </select>
+                </div>
+                <div className="rounded-xl bg-[#0e0e11] border border-[#2a2a31] px-3.5 py-3">
+                  <div className="text-xs text-[#a1a1aa]">Grupo B · {grupo} {unidade}</div>
+                  <div className="font-medium py-0.5">{aComeca === 'corrida' ? txtEstacoes : txtEsteira}</div>
+                </div>
               </div>
-              <div className="rounded-xl bg-[#0e0e11] border border-[#2a2a31] px-3.5 py-3">
-                <div className="text-xs text-[#a1a1aa]">Grupo B · {grupo} {unidade}</div>
-                <div className="font-medium py-0.5">{aComeca === 'corrida' ? txtEstacoes : txtEsteira}</div>
-              </div>
-            </div>
+              <EsteiraAB b={b} setBloco={p.setBloco} setEstacao={p.setEstacao} />
+              <div className="text-xs text-[#a1a1aa] -mb-2">Estações do chão</div>
+            </>
           ) : (
             <OrdemEditor b={b} setBloco={p.setBloco} />
           )}
@@ -587,10 +599,10 @@ function BlocoCard(p: {
               {['Estação', 'Postos', 'Pessoas', 'Dupla', 'O que fazer', 'Meta', 'Carga F / M', ''].map((h, k) => (
                 <div key={k} className="px-3 py-2.5 bg-[#222228] text-[#a1a1aa] text-xs">{h}</div>
               ))}
-              {b.estacoes.length === 0 && (
-                <div className="col-span-8 px-3 py-4 border-t border-[#2a2a31] text-[#a1a1aa]">Nenhuma estação ainda.</div>
+              {linhas.length === 0 && (
+                <div className="col-span-8 px-3 py-4 border-t border-[#2a2a31] text-[#a1a1aa]">{ab ? 'Nenhuma estação no chão ainda.' : 'Nenhuma estação ainda.'}</div>
               )}
-              {b.estacoes.map(e => (
+              {linhas.map(e => (
                 <LinhaEstacao key={e.id} e={e} set={patch => p.setEstacao(e.id, patch)} remover={() => p.removerEstacao(e.id)} />
               ))}
             </div>
@@ -602,8 +614,9 @@ function BlocoCard(p: {
             className={`${cls.btnTracejado} appearance-none cursor-pointer`}
           >
             <option value="">+ Adicionar estação</option>
-            {ESTACOES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+            {ESTACOES.filter(s => !ab || s.key !== 'corrida').map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
+          {ab && <RoteiroAB b={b} setBloco={p.setBloco} />}
         </>
       ) : (
         <>
@@ -617,7 +630,7 @@ function BlocoCard(p: {
           </div>
           <div className="text-[#a1a1aa]">
             {b.formato === 'grupos_ab'
-              ? `Grupo A começa ${aComeca === 'corrida' ? 'na esteira' : 'nas estações'}, Grupo B ${aComeca === 'corrida' ? 'nas estações' : 'na esteira'}. `
+              ? `Grupo A começa ${aComeca === 'corrida' ? 'na esteira' : 'nas estações'}, Grupo B ${aComeca === 'corrida' ? 'nas estações' : 'na esteira'}. ${rodizioChaoLigado(b) ? 'A cada volta ao chão, a dupla vai para a próxima estação. ' : ''}`
               : ordem.length ? `${b.formato === 'circuito' ? 'Ordem do circuito' : 'Ordem das estações'}: ${ordem.map(nomeEstacao).join(' → ')}. ` : ''}
             {usadas.length ? `Estações em uso: ${usadas.join(', ')}. ` : 'Sem estações. '}
             <button onClick={p.onAbrir} className="text-[#ff6db8] hover:text-[#ff9fd0] underline">Editar estações</button>
@@ -629,6 +642,137 @@ function BlocoCard(p: {
         <button onClick={p.onAddBloco} className={cls.btnTracejado}>+ Adicionar bloco</button>
       )}
     </section>
+  )
+}
+
+// Esteira do Grupos A/B: fica aqui, fora da tabela (que é só do chão).
+function EsteiraAB({ b, setBloco, setEstacao }: {
+  b: Bloco
+  setBloco: (patch: Partial<Bloco>) => void
+  setEstacao: (eid: string, patch: Partial<EstacaoRow>) => void
+}) {
+  const corrida = b.estacoes.find(e => e.estacao === 'corrida')
+  const setCorrida = (patch: Partial<EstacaoRow>) => {
+    if (corrida) setEstacao(corrida.id, patch)
+    else setBloco({ estacoes: [{ ...estacaoVazia('corrida', b.estacoes), ...patch }, ...b.estacoes] })
+  }
+  return (
+    <div className="rounded-xl bg-[#0e0e11] border border-[#2a2a31] px-3.5 py-3 flex flex-col gap-3">
+      <div className="text-xs text-[#ff6db8] font-medium">Esteira</div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <label className={cls.label}>Alunos na corrida
+          <NumInput valor={b.alunos_corrida} onChange={n => setBloco({ alunos_corrida: n })} />
+        </label>
+        <label className={cls.label}>Corrida
+          <select value={b.corrida_em_dupla ? 'dupla' : 'individual'} onChange={e => setBloco({ corrida_em_dupla: e.target.value === 'dupla' })} className={cls.input}>
+            <option value="individual">Individual</option>
+            <option value="dupla">Em dupla</option>
+          </select>
+        </label>
+        <label className={cls.label}>Esteiras
+          <input value={corrida?.postos || ''} inputMode="numeric" onChange={e => setCorrida({ postos: e.target.value.replace(/\D/g, '') })} className={cls.input} />
+        </label>
+        <label className={cls.label}>Dupla
+          <select value={corrida?.modo_dupla || 'individual'} onChange={e => setCorrida({ modo_dupla: e.target.value as ModoDupla })} className={cls.input}>
+            {MODOS_DUPLA.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-3">
+        <label className={cls.label}>O que fazer
+          <input value={corrida?.instrucao || ''} onChange={e => setCorrida({ instrucao: e.target.value })} className={cls.input} />
+        </label>
+        <label className={cls.label}>Meta
+          <input value={corrida?.meta || ''} onChange={e => setCorrida({ meta: e.target.value })} className={cls.input} />
+        </label>
+      </div>
+    </div>
+  )
+}
+
+// Roteiro do Grupos A/B: rodízio no chão + etapa por etapa, gerado do que está preenchido.
+function RoteiroAB({ b, setBloco }: { b: Bloco; setBloco: (patch: Partial<Bloco>) => void }) {
+  const chao = estacoesChao(b)
+  const rod = rodizioChaoLigado(b)
+  const etapas = roteiroAB(b)
+  const n = chao.length
+  const voltas = b.rounds
+  const grupoChao = (e: { aEsteira: boolean }) => (e.aEsteira ? 'B' : 'A')
+  return (
+    <div className="flex flex-col gap-3">
+      <label className="flex items-start gap-2.5 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={rod}
+          onChange={e => setBloco({ rodizio: { ...b.rodizio, rodizio_chao: e.target.checked } })}
+          className="w-5 h-5 mt-0.5 accent-[#ff2d9b]"
+        />
+        <span>
+          <span className="font-medium">Rodízio no chão</span>
+          <span className="block text-xs text-[#a1a1aa]">A cada volta ao chão, a dupla vai para a próxima estação, sem repetir.</span>
+        </span>
+      </label>
+
+      {rod && n > 0 && voltas !== n && (
+        <div className="flex flex-wrap items-center gap-3 px-3.5 py-2.5 rounded-xl bg-[#2a210b] text-[#f3dfb2]">
+          <span>
+            Com {n} {n === 1 ? 'estação' : 'estações'} no chão, são {n} rounds para todo mundo passar por todas
+            {voltas < n ? ` (hoje cada dupla passa por ${voltas}).` : ` (com ${voltas}, ${voltas - n === 1 ? 'uma estação repete' : 'algumas estações repetem'}).`}
+          </span>
+          <button onClick={() => setBloco({ rounds: n })} className="min-h-[36px] px-3 rounded-lg bg-[#ffd27a] text-[#2a1d00] font-semibold">
+            Usar {n} rounds
+          </button>
+        </div>
+      )}
+
+      {n > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <div className="text-xs text-[#a1a1aa]">Rodízio no chão · cada linha é onde a dupla está em cada volta ao chão</div>
+          <div className="overflow-x-auto border border-[#2a2a31] rounded-xl">
+            <table className="w-full text-[13px] border-collapse">
+              <thead>
+                <tr className="bg-[#222228] text-[#a1a1aa] text-xs">
+                  <th className="px-3 py-2 text-left font-normal">Posição</th>
+                  {Array.from({ length: voltas }, (_, v) => (
+                    <th key={v} className="px-3 py-2 text-left font-normal whitespace-nowrap">{v + 1}ª volta</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {chao.map((e, p) => (
+                  <tr key={e.id} className="border-t border-[#2a2a31]">
+                    <td className="px-3 py-2 text-[#a1a1aa] whitespace-nowrap">{p + 1}{e.pessoas ? ` · ${e.pessoas} pessoas` : ''}</td>
+                    {Array.from({ length: voltas }, (_, v) => (
+                      <td key={v} className="px-3 py-2 whitespace-nowrap">{nomeEstacao(estacaoNaVolta(chao, p, v, rod)!)}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="text-xs text-[#a1a1aa]">Quem desce da esteira pela primeira vez escolhe uma posição livre e segue a linha dela.</div>
+        </div>
+      )}
+
+      {etapas.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <div className="text-xs text-[#a1a1aa]">Roteiro do bloco</div>
+          <div className="border border-[#2a2a31] rounded-xl divide-y divide-[#2a2a31] text-[13px]">
+            {etapas.map(e => (
+              <div key={e.n} className="px-3 py-2 flex flex-wrap gap-x-3 gap-y-0.5 items-baseline">
+                <span className="text-[#a1a1aa] w-[150px] shrink-0">Etapa {e.n} · {mmss(e.inicio)}–{mmss(e.fim)}</span>
+                <span><span className="text-[#ff6db8]">Esteira:</span> Grupo {e.aEsteira ? 'A' : 'B'}</span>
+                <span>
+                  <span className="text-[#a1a1aa]">Chão:</span> Grupo {grupoChao(e)}
+                  {n > 0 ? (rod ? ` · ${e.voltaChao + 1}ª volta (${e.voltaChao === 0 ? 'cada dupla numa posição' : 'próxima estação'})` : ' · mesma estação') : ''}
+                </span>
+                {b.transicao_seg > 0 && <span className="text-[#a1a1aa]">+ transição {mmss(b.transicao_seg)}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -716,9 +860,10 @@ function PreviaTV({ t }: { t: Treino }) {
     const txtCorrida = `Esteira${corrida?.instrucao ? ` · ${corrida.instrucao}` : ''}`
     if (b.formato === 'grupos_ab') {
       const aCorre = (b.rodizio.a_comeca || 'corrida') === 'corrida'
+      const txtChao = estacoesChao(b).length ? 'Chão · 1ª volta' : 'Chão'
       grupos = [
-        { k: 'Grupo A', v: aCorre ? txtCorrida : 'Estações' },
-        { k: 'Grupo B', v: aCorre ? 'Estações' : txtCorrida },
+        { k: 'Grupo A', v: aCorre ? txtCorrida : txtChao },
+        { k: 'Grupo B', v: aCorre ? txtChao : txtCorrida },
       ]
       proximo = `Próximo: transição ${mmss(b.transicao_seg)} → troca de lado`
     } else {
