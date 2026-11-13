@@ -9,7 +9,7 @@ import { Spinner } from '@/components/ui'
 import {
   Bloco, EstacaoRow, Estacao, Formato, ModoDupla, Treino, MediaHorario,
   FAIXAS, FORMATOS, ESTACOES, MODOS_DUPLA, UNIDADE_VO,
-  mmss, lerMmss, resumo, totalBloco, limiteEsteira, passouEsteira, ordemCircuito, nomeEstacao,
+  mmss, resumo, totalBloco, limiteEsteira, passouEsteira, ordemCircuito, nomeEstacao,
   labelEstacao, estacoesUsadas, treinoVazio, blocoVazio, estacaoVazia, clonarBlocos,
   carregarTreino, salvarTreino, programar, carregarMedias, faixasProvaveis, fmtDia,
 } from '@/lib/hibrido'
@@ -18,32 +18,45 @@ import { hojeSP } from '@/lib/tempo'
 
 type Acao = 'treino' | 'modelo'
 
-// Campo mm:ss: deixa digitar livre e grava quando o texto vira um tempo válido.
-function TempoInput({ valor, onChange, className, ariaLabel }: {
+// Tempo em dois campos: minutos e segundos, cada um só com número.
+function TempoInput({ valor, onChange, ariaLabel }: {
   valor: number
   onChange: (seg: number) => void
   className?: string
   ariaLabel?: string
 }) {
-  const [txt, setTxt] = useState(mmss(valor))
-  const foco = useRef(false)
-  useEffect(() => { if (!foco.current) setTxt(mmss(valor)) }, [valor])
-  const invalido = lerMmss(txt) === null
+  const min = Math.floor(valor / 60)
+  const seg = valor % 60
+  const num = (v: string) => {
+    const n = parseInt(v.replace(/\D/g, ''), 10)
+    return Number.isFinite(n) ? n : 0
+  }
+  const campo = 'min-h-[44px] w-full min-w-0 pl-3 pr-9 rounded-[10px] border border-[#3a3a42] bg-[#0e0e11] text-[#f2f2f4] outline-none focus:border-[#ff2d9b] text-right'
   return (
-    <input
-      value={txt}
-      aria-label={ariaLabel}
-      inputMode="numeric"
-      placeholder="mm:ss"
-      onFocus={() => { foco.current = true }}
-      onBlur={() => { foco.current = false; setTxt(mmss(valor)) }}
-      onChange={e => {
-        setTxt(e.target.value)
-        const s = lerMmss(e.target.value)
-        if (s !== null) onChange(s)
-      }}
-      className={`${cls.input} ${invalido ? '!border-[#ff8a9a]' : ''} ${className || ''}`}
-    />
+    <div className="grid grid-cols-2 gap-1.5">
+      <div className="relative">
+        <input
+          value={String(min)}
+          inputMode="numeric"
+          aria-label={`${ariaLabel || 'Tempo'}: minutos`}
+          onFocus={e => e.target.select()}
+          onChange={e => onChange(num(e.target.value) * 60 + seg)}
+          className={campo}
+        />
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#a1a1aa] pointer-events-none">min</span>
+      </div>
+      <div className="relative">
+        <input
+          value={String(seg)}
+          inputMode="numeric"
+          aria-label={`${ariaLabel || 'Tempo'}: segundos`}
+          onFocus={e => e.target.select()}
+          onChange={e => onChange(min * 60 + Math.min(59, num(e.target.value)))}
+          className={campo}
+        />
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#a1a1aa] pointer-events-none">s</span>
+      </div>
+    </div>
   )
 }
 
@@ -311,7 +324,7 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
 
           <section className={`${cls.card} p-6 flex flex-col gap-3.5`}>
             <h2 className={`${cls.titulo} m-0 text-lg font-semibold`}>2 · Abertura</h2>
-            <div className="grid grid-cols-[minmax(0,1fr)_110px] md:grid-cols-[220px_minmax(0,1fr)_110px] gap-3 items-center">
+            <div className="grid grid-cols-[minmax(0,1fr)_170px] md:grid-cols-[220px_minmax(0,1fr)_170px] gap-3 items-center">
               <div className="font-medium col-span-2 md:col-span-1">Aquecimento</div>
               <input value={t.aquecimento_desc} onChange={e => set('aquecimento_desc', e.target.value)} aria-label="Descrição do aquecimento" className={cls.input} />
               <TempoInput valor={t.aquecimento_seg} onChange={v => set('aquecimento_seg', v)} className="text-center" ariaLabel="Tempo do aquecimento" />
