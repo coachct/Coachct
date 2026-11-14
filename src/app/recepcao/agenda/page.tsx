@@ -75,6 +75,11 @@ export default function RecepcaoAgendaPage() {
   // A recepção só MARCA (não altera depois de marcado); ajuste retroativo é só no admin.
   const [modalConfirmar, setModalConfirmar] = useState<{ ag: any; acao: 'presenca' | 'falta' } | null>(null)
   const [salvandoStatus, setSalvandoStatus] = useState(false)
+  // 🔧 Coach CT AVULSO paga só o coach: precisa de ACESSO ao CT no dia (walk-in lançado
+  // ou check-in Wellhub/TotalPass). agendamento_id → acesso (null = sem acesso).
+  // null no estado inteiro = conferência não carregou → não trava nada (à prova de falha).
+  const [acessoAvulso, setAcessoAvulso] = useState<Record<string, string | null> | null>(null)
+  const [conferindoAcesso, setConferindoAcesso] = useState(false)
 
   const scrollRef = useRef<number>(0)
   const dateInputRef = useRef<HTMLInputElement>(null)
@@ -201,6 +206,7 @@ export default function RecepcaoAgendaPage() {
     }
 
     setAgendamentos(ags || [])
+    await carregarAcessoAvulso(ags || [])
     let coachsFinal = (coachs || []).filter((c: any) => !feriasSet.has(c.coach_id))
     if (!escalaFds) {
       // Grade extra do período (aditivo, à prova de falha, atrás do kill switch):
@@ -225,6 +231,42 @@ export default function RecepcaoAgendaPage() {
     setLoadingData(false)
 
     if (manter_scroll) setTimeout(() => window.scrollTo({ top: scrollRef.current }), 50)
+  }
+
+  async function carregarAcessoAvulso(ags: any[]) {
+    if (!unidadeAtiva) return
+    if (!ags.some(a => ehAvulso(a))) { setAcessoAvulso({}); return }
+    try {
+      const { data: rows, error } = await supabase.rpc('coach_ct_avulso_acesso_do_dia', { p_data: data, p_unidade: unidadeAtiva.id })
+      if (error) { setAcessoAvulso(null); return }
+      const mapa: Record<string, string | null> = {}
+      for (const r of (rows || []) as any[]) mapa[r.agendamento_id] = r.acesso
+      setAcessoAvulso(mapa)
+    } catch { setAcessoAvulso(null) }
+  }
+  function ehAvulso(ag: any) { return (ag?.tipo_credito || '').startsWith('avulso') }
+  function semAcesso(ag: any) {
+    return ehAvulso(ag) && ag.status !== 'cancelado' && acessoAvulso !== null && ag.id in acessoAvulso && !acessoAvulso[ag.id]
+  }
+  async function conferirAcessoDeNovo() {
+    setConferindoAcesso(true)
+    await carregarAcessoAvulso(agendamentos)
+    setConferindoAcesso(false)
+  }
+  function seloAcesso(ag: any) {
+    if (!ehAvulso(ag) || acessoAvulso === null || !(ag.id in acessoAvulso)) return null
+    const acesso = acessoAvulso[ag.id]
+    if (acesso) return (
+      <div className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+        <CheckCircle size={12} /> Acesso ao CT: {acesso}
+      </div>
+    )
+    return (
+      <div className="mt-1.5 flex items-start gap-1.5 rounded-lg bg-red-100/80 px-2 py-1 text-xs font-medium text-red-800">
+        <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
+        <span><strong>Sem acesso ao CT.</strong> Coach CT avulso paga só o coach — lance o walk-in (Musculação Livre) ou peça o check-in do app antes da presença.</span>
+      </div>
+    )
   }
 
   function norm(hora: string) { return (hora || '').slice(0, 5) }
@@ -294,8 +336,10 @@ export default function RecepcaoAgendaPage() {
   }
 
   // 🔧 Confirma a ação do modal. Só altera o status (igual às funções acima).
-  async function confirmarStatus() {
+  async function confirmarStatus(forcar = false) {
     if (!modalConfirmar || salvandoStatus) return
+    // Trava: presença de Coach CT avulso sem acesso ao CT só passa forçada pelo admin.
+    if (modalConfirmar.acao === 'presenca' && semAcesso(modalConfirmar.ag) && !(forcar && perfil?.role === 'admin')) return
     setSalvandoStatus(true)
     if (modalConfirmar.acao === 'presenca') await marcarPresenca(modalConfirmar.ag.id)
     else await marcarFalta(modalConfirmar.ag.id)
@@ -477,6 +521,7 @@ export default function RecepcaoAgendaPage() {
         <div className="min-w-0 flex-1">
           <div className="truncate text-lg font-bold text-gray-900">{ag.clientes?.nome || '—'}</div>
           <div className="mt-0.5 text-sm text-gray-500">{planoIcon} {planoLabel}</div>
+          {!feito && !faltou && seloAcesso(ag)}
           {modoErrado && (
             <div className="mt-1.5 flex items-start gap-1.5 rounded-lg bg-amber-100/70 px-2 py-1 text-xs font-medium text-amber-800">
               <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
@@ -709,6 +754,7 @@ export default function RecepcaoAgendaPage() {
                                 <span>{ag.tipo_credito}</span>
                                 {ag.clientes?.telefone && <span>{ag.clientes.telefone}</span>}
                               </div>
+                              {ag.status !== 'realizado' && ag.status !== 'falta' && seloAcesso(ag)}
                               {coachNome && (
                                 <div className="text-xs text-green-700 mt-1 font-medium">Coach: {coachNome}</div>
                               )}
@@ -1102,6 +1148,7 @@ export default function RecepcaoAgendaPage() {
 
       {modalConfirmar && (() => {
         const ehPresenca = modalConfirmar.acao === 'presenca'
+        const travado = ehPresenca && semAcesso(modalConfirmar.ag)
         return (
           <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl w-full max-w-sm p-6">
@@ -1118,9 +1165,23 @@ export default function RecepcaoAgendaPage() {
               <div className={`rounded-lg p-3 mb-4 text-sm ${ehPresenca ? 'bg-green-50 border border-green-100 text-green-700' : 'bg-orange-50 border border-orange-100 text-orange-700'}`}>
                 Marcar <strong>{ehPresenca ? 'presença' : 'falta'}</strong> de <strong>{modalConfirmar.ag.clientes?.nome}</strong>?
               </div>
+              {travado && (
+                <div className="rounded-lg p-3 mb-4 text-sm bg-red-50 border border-red-200 text-red-800">
+                  <div className="font-semibold flex items-center gap-1.5"><AlertCircle size={14} /> Sem acesso ao CT hoje</div>
+                  <div className="mt-1">Coach CT avulso paga só o coach. Antes da presença, lance o <strong>walk-in</strong> na Musculação Livre (Treino Avulso, Diária Personal ou pacote) ou peça o <strong>check-in do Wellhub/TotalPass</strong>.</div>
+                  <button onClick={conferirAcessoDeNovo} disabled={conferindoAcesso} className="mt-2 text-xs font-semibold text-red-700 hover:underline">
+                    {conferindoAcesso ? 'Conferindo...' : 'Já lancei — conferir de novo'}
+                  </button>
+                  {perfil?.role === 'admin' && (
+                    <button onClick={() => confirmarStatus(true)} disabled={salvandoStatus} className="mt-2 ml-4 text-xs font-medium text-gray-500 hover:underline">
+                      Marcar mesmo assim (admin)
+                    </button>
+                  )}
+                </div>
+              )}
               <div className="flex gap-2">
                 <button onClick={() => setModalConfirmar(null)} className="btn flex-1 text-gray-500 border border-gray-200">Cancelar</button>
-                <button onClick={confirmarStatus} disabled={salvandoStatus}
+                <button onClick={() => confirmarStatus()} disabled={salvandoStatus || travado}
                   className={`btn flex-1 gap-1 text-white ${ehPresenca ? 'bg-green-500 hover:bg-green-600' : 'bg-orange-500 hover:bg-orange-600'}`}>
                   {ehPresenca ? <CheckCircle size={12} /> : <XCircle size={12} />}
                   {salvandoStatus ? 'Salvando...' : ehPresenca ? 'Confirmar presença' : 'Confirmar falta'}
