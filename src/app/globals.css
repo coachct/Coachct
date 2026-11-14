@@ -4,6 +4,8 @@
 
 @layer base {
   * { box-sizing: border-box; }
+  /* iPhone: não aumentar a fonte sozinho (no modo app a página ficava maior que a tela) */
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   body { @apply bg-gray-50 text-gray-900 antialiased; }
 }
 

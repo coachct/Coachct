@@ -19,7 +19,14 @@ export const metadata: Metadata = {
   },
 }
 
+// Escala travada em 1: aberto pelo atalho da tela de início (modo app), o iPhone
+// não aplica o "encaixar na tela" do Safari e a página abria maior que a tela,
+// cortada nas laterais. maximumScale/userScalable fixam a página no tamanho certo.
 export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
   themeColor: '#000000',
 }
 
