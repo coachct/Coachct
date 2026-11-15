@@ -935,15 +935,13 @@ export default function RecorrentesPage() {
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 text-xs uppercase tracking-wide text-gray-400">
-                    <th className="px-4 py-3 font-medium">Descrição</th>
-                    <th className="px-4 py-3 font-medium">Unidade</th>
-                    <th className="px-4 py-3 font-medium">Categoria</th>
-                    <th className="px-4 py-3 font-medium">Venc.</th>
-                    <th className="px-4 py-3 font-medium">Vigência</th>
-                    <th className="px-4 py-3 font-medium">Último gerado</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
-                    <th className="px-4 py-3 text-right font-medium">Valor</th>
-                    <th className="px-4 py-3 text-right font-medium">Ações</th>
+                    <th className="px-3 py-3 font-medium">Descrição</th>
+                    <th className="px-3 py-3 font-medium">Categoria</th>
+                    <th className="px-3 py-3 font-medium">Venc.</th>
+                    <th className="px-3 py-3 font-medium">Vigência</th>
+                    <th className="px-3 py-3 font-medium">Status</th>
+                    <th className="px-3 py-3 text-right font-medium">Valor</th>
+                    <th className="px-3 py-3 text-right font-medium">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -956,9 +954,11 @@ export default function RecorrentesPage() {
                           !t.ativo ? 'opacity-60' : ''
                         }`}
                       >
-                        <td className="px-4 py-3 font-medium text-gray-900">{t.descricao}</td>
-                        <td className="px-4 py-3 text-gray-600">{nomeUnidade(t.unidade_id)}</td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3">
+                          <div className="font-medium text-gray-900">{t.descricao}</div>
+                          <div className="text-xs text-gray-500">{nomeUnidade(t.unidade_id)}</div>
+                        </td>
+                        <td className="px-3 py-3">
                           {cat ? (
                             <span className="inline-flex rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-700">
                               {cat.nome}
@@ -967,42 +967,48 @@ export default function RecorrentesPage() {
                             <span className="text-gray-400">—</span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-gray-600">dia {t.dia_vencimento}</td>
-                        <td className="px-4 py-3 text-gray-600">
-                          {fmtData(t.inicio)} → {t.fim ? fmtData(t.fim) : 'sem fim'}
+                        <td className="whitespace-nowrap px-3 py-3 text-gray-600">
+                          dia {t.dia_vencimento}
                         </td>
-                        <td className="px-4 py-3 text-gray-600">{fmtCompetencia(t.ultima_geracao)}</td>
-                        <td className="px-4 py-3">{badgeAtivo(t.ativo)}</td>
-                        <td className="px-4 py-3 text-right font-semibold text-gray-900">
+                        <td className="whitespace-nowrap px-3 py-3 text-gray-600">
+                          <div>
+                            {fmtData(t.inicio)} → {t.fim ? fmtData(t.fim) : 'sem fim'}
+                          </div>
+                          <div className="text-xs text-gray-400">
+                            Último gerado: {fmtCompetencia(t.ultima_geracao)}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3">{badgeAtivo(t.ativo)}</td>
+                        <td className="whitespace-nowrap px-3 py-3 text-right font-semibold text-gray-900">
                           {fmtBRL(Number(t.valor))}
                         </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center justify-end gap-1">
+                        <td className="px-2 py-3">
+                          <div className="flex items-center justify-end">
                             <button
                               onClick={() => abrirReajuste(t)}
                               title="Reajustar valor"
-                              className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-[#ff2d9b]"
+                              className="rounded-lg p-1.5 text-gray-500 transition hover:bg-gray-100 hover:text-[#ff2d9b]"
                             >
                               <DollarSign size={16} />
                             </button>
                             <button
                               onClick={() => abrirRenovar(t)}
                               title="Renovar vigência"
-                              className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-[#ff2d9b]"
+                              className="rounded-lg p-1.5 text-gray-500 transition hover:bg-gray-100 hover:text-[#ff2d9b]"
                             >
                               <CalendarClock size={16} />
                             </button>
                             <button
                               onClick={() => abrirEdicao(t)}
                               title="Editar"
-                              className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-[#ff2d9b]"
+                              className="rounded-lg p-1.5 text-gray-500 transition hover:bg-gray-100 hover:text-[#ff2d9b]"
                             >
                               <Pencil size={16} />
                             </button>
                             <button
                               onClick={() => alternarAtivo(t)}
                               title={t.ativo ? 'Inativar' : 'Ativar'}
-                              className={`rounded-lg p-2 transition hover:bg-gray-100 ${
+                              className={`rounded-lg p-1.5 transition hover:bg-gray-100 ${
                                 t.ativo
                                   ? 'text-gray-500 hover:text-red-600'
                                   : 'text-gray-400 hover:text-green-600'
@@ -1013,7 +1019,7 @@ export default function RecorrentesPage() {
                             <button
                               onClick={() => abrirExcluir(t)}
                               title="Excluir recorrência"
-                              className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-red-600"
+                              className="rounded-lg p-1.5 text-gray-500 transition hover:bg-gray-100 hover:text-red-600"
                             >
                               <Trash2 size={16} />
                             </button>
