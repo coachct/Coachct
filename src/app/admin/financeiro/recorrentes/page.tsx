@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   CalendarClock,
   DollarSign,
+  Trash2,
 } from 'lucide-react'
 
 const supabase = createClient()
@@ -165,6 +166,16 @@ export default function RecorrentesPage() {
   const [rjAno, setRjAno] = useState(anoAtual)
   const [rjSalvando, setRjSalvando] = useState(false)
   const [rjErro, setRjErro] = useState<string | null>(null)
+
+  // ---- modal excluir ----
+  const [excluirAlvo, setExcluirAlvo] = useState<Recorrente | null>(null)
+  const [exContagem, setExContagem] = useState<{
+    pagas: number
+    vencidas: number
+    futuras: number
+  } | null>(null)
+  const [exSalvando, setExSalvando] = useState(false)
+  const [exErro, setExErro] = useState<string | null>(null)
 
   async function carregar() {
     setCarregando(true)
@@ -642,6 +653,87 @@ export default function RecorrentesPage() {
     carregar()
   }
 
+  // ---- excluir recorrência ----
+  // Regra: contas pagas ficam; vencidas em aberto ficam; só saem as NÃO pagas com
+  // vencimento de hoje em diante. O template some da lista (as contas que ficam
+  // perdem o vínculo — FK ON DELETE SET NULL — e seguem no Contas a Pagar).
+  async function abrirExcluir(t: Recorrente) {
+    setExcluirAlvo(t)
+    setExContagem(null)
+    setExErro(null)
+
+    const { data, error } = await supabase
+      .from('despesas')
+      .select('pago, vencimento')
+      .eq('recorrencia_id', t.id)
+      .is('excluido_em', null)
+
+    if (error) {
+      setExErro('Não foi possível carregar as contas desta recorrência.')
+      return
+    }
+
+    const hoje = hojeLocalStr()
+    const linhas = (data || []) as { pago: boolean; vencimento: string }[]
+    setExContagem({
+      pagas: linhas.filter((d) => d.pago).length,
+      vencidas: linhas.filter((d) => !d.pago && d.vencimento < hoje).length,
+      futuras: linhas.filter((d) => !d.pago && d.vencimento >= hoje).length,
+    })
+  }
+
+  function fecharExcluir() {
+    if (exSalvando) return
+    setExcluirAlvo(null)
+  }
+
+  async function confirmarExcluir() {
+    if (!excluirAlvo || !exContagem) return
+
+    setExSalvando(true)
+    setExErro(null)
+
+    // 1) Tira do Contas a Pagar as contas futuras ainda não pagas.
+    const { data: removidas, error: errDesp } = await supabase
+      .from('despesas')
+      .update({ excluido_em: new Date().toISOString(), excluido_por: user?.id ?? null })
+      .eq('recorrencia_id', excluirAlvo.id)
+      .eq('pago', false)
+      .is('excluido_em', null)
+      .gte('vencimento', hojeLocalStr())
+      .select('id')
+
+    if (errDesp) {
+      setExErro('Erro ao excluir as contas futuras. Nada foi alterado.')
+      setExSalvando(false)
+      return
+    }
+
+    // 2) Remove o template (para de gerar e sai da lista).
+    const { data: apagado, error: errTpl } = await supabase
+      .from('despesas_recorrentes')
+      .delete()
+      .eq('id', excluirAlvo.id)
+      .select('id')
+
+    if (errTpl || !apagado || apagado.length === 0) {
+      setExErro(
+        'As contas futuras foram excluídas, mas houve erro ao remover a recorrência. Tente novamente.'
+      )
+      setExSalvando(false)
+      return
+    }
+
+    setGErro(false)
+    setGMsg(
+      `Recorrência "${excluirAlvo.descricao}" excluída — ${(removidas || []).length} conta(s) futura(s) removida(s). Contas pagas e vencidas foram mantidas.`
+    )
+
+    setExSalvando(false)
+    setExcluirAlvo(null)
+    carregar()
+  }
+
   const ativosCount = useMemo(() => recorrentes.filter((t) => t.ativo).length, [recorrentes])
 
   const inputCls =
@@ -826,6 +918,13 @@ export default function RecorrentesPage() {
                         <Power size={15} />
                         {t.ativo ? 'Inativar' : 'Ativar'}
                       </button>
+                      <button
+                        onClick={() => abrirExcluir(t)}
+                        className="col-span-2 inline-flex items-center justify-center gap-1.5 rounded-xl border border-red-100 bg-white py-2 text-sm font-medium text-red-600 active:bg-red-50"
+                      >
+                        <Trash2 size={15} />
+                        Excluir recorrência
+                      </button>
                     </div>
                   </div>
                 )
@@ -910,6 +1009,13 @@ export default function RecorrentesPage() {
                               }`}
                             >
                               <Power size={16} />
+                            </button>
+                            <button
+                              onClick={() => abrirExcluir(t)}
+                              title="Excluir recorrência"
+                              className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-red-600"
+                            >
+                              <Trash2 size={16} />
                             </button>
                           </div>
                         </td>
@@ -1135,6 +1241,83 @@ export default function RecorrentesPage() {
               >
                 {rSalvando && <Loader2 size={16} className="animate-spin" />}
                 Renovar e gerar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal excluir */}
+      {excluirAlvo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white shadow-xl md:max-h-none md:overflow-visible">
+            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+              <h2 className="text-lg font-bold text-gray-900">Excluir recorrência</h2>
+              <button
+                onClick={fecharExcluir}
+                className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-4 px-6 py-5">
+              {exErro && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
+                  {exErro}
+                </div>
+              )}
+
+              <div className="rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                <div className="font-medium text-gray-900">{excluirAlvo.descricao}</div>
+                <div className="mt-0.5 text-xs">
+                  {nomeUnidade(excluirAlvo.unidade_id)} · venc. dia {excluirAlvo.dia_vencimento} ·{' '}
+                  {fmtBRL(Number(excluirAlvo.valor))}
+                </div>
+              </div>
+
+              {!exContagem && !exErro ? (
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <Loader2 size={16} className="animate-spin" />
+                  Verificando as contas…
+                </div>
+              ) : exContagem ? (
+                <ul className="space-y-1.5 text-sm text-gray-700">
+                  <li>
+                    <strong className="text-red-600">{exContagem.futuras}</strong> conta(s) futura(s)
+                    não paga(s) — <strong>serão excluídas</strong>
+                  </li>
+                  <li>
+                    <strong>{exContagem.pagas}</strong> conta(s) já paga(s) — mantidas
+                  </li>
+                  <li>
+                    <strong>{exContagem.vencidas}</strong> conta(s) vencida(s) em aberto — mantidas
+                    no Contas a Pagar
+                  </li>
+                </ul>
+              ) : null}
+
+              <p className="text-xs text-gray-400">
+                A recorrência sai desta lista e não gera mais contas. Essa ação não pode ser
+                desfeita.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-gray-100 px-6 py-4">
+              <button
+                onClick={fecharExcluir}
+                disabled={exSalvando}
+                className="rounded-xl px-4 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-100 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmarExcluir}
+                disabled={exSalvando || !exContagem}
+                className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
+              >
+                {exSalvando && <Loader2 size={16} className="animate-spin" />}
+                Excluir recorrência
               </button>
             </div>
           </div>
