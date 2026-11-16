@@ -161,3 +161,108 @@ export function AvisoPopupPinheiros({ unidadeId }: { unidadeId?: string }) {
     </div>
   )
 }
+
+// ── Popup Vila Olímpia — novos horários do Lift for Girls de quarta ──────────
+// Independente do aviso de Pinheiros. Para REMOVER depois: AVISO_VO_ATIVO = false + deploy.
+const VILA_OLIMPIA_ID = '05eeab3e-5eae-4140-bc3a-1c1d56ac95be'
+const AVISO_VO_ATIVO = true
+const AVISO_VO_TITULO = 'Lift for Girls de quarta com novos horários'
+const AVISO_VO_TEXTO = 'A partir de 25/11 as aulas passam a ser às 05:45, 06:45 e 07:45.'
+// Mudar o sufixo (v1 → v2) faz o popup reaparecer para todos.
+const POPUP_VO_STORAGE_KEY = 'aviso_vo_lfg_horarios_v1'
+
+/**
+ * Popup que aparece UMA ÚNICA VEZ por navegador ao entrar no calendário da
+ * JustClub Vila Olímpia (`/aulas?unidade=<vila-olimpia>`). Mesmo visual do
+ * popup de Pinheiros; marca em localStorage que já foi visto.
+ */
+export function AvisoPopupVilaOlimpia({ unidadeId }: { unidadeId?: string }) {
+  const [aberto, setAberto] = useState(false)
+
+  useEffect(() => {
+    if (!AVISO_VO_ATIVO || unidadeId !== VILA_OLIMPIA_ID) return
+    let jaViu = false
+    try { jaViu = localStorage.getItem(POPUP_VO_STORAGE_KEY) === '1' } catch {}
+    if (!jaViu) setAberto(true)
+  }, [unidadeId])
+
+  function fechar() {
+    try { localStorage.setItem(POPUP_VO_STORAGE_KEY, '1') } catch {}
+    setAberto(false)
+  }
+
+  if (!AVISO_VO_ATIVO || !aberto) return null
+
+  return (
+    <div
+      onClick={fechar}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 1000,
+        background: 'rgba(0,0,0,0.78)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+        fontFamily: "'DM Sans', sans-serif",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: '#141414',
+          border: `1.5px solid ${ACCENT}`,
+          borderRadius: 16,
+          maxWidth: 420,
+          width: '100%',
+          padding: '32px 28px 28px',
+          textAlign: 'center',
+          position: 'relative',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
+        }}
+      >
+        <button
+          onClick={fechar}
+          aria-label="Fechar aviso"
+          style={{
+            position: 'absolute',
+            right: 12,
+            top: 10,
+            background: 'transparent',
+            border: 'none',
+            color: '#777',
+            fontSize: 22,
+            lineHeight: 1,
+            cursor: 'pointer',
+            padding: 4,
+          }}
+        >×</button>
+        <div style={{ fontSize: 38, lineHeight: 1, marginBottom: 14 }}>⚠</div>
+        <div style={{ color: ACCENT, fontSize: 13, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 }}>
+          Just Club Vila Olímpia
+        </div>
+        <div style={{ color: '#fff', fontSize: 17, fontWeight: 600, lineHeight: 1.4, marginBottom: 8 }}>
+          {AVISO_VO_TITULO}
+        </div>
+        <div style={{ color: '#bbb', fontSize: 15, lineHeight: 1.5, marginBottom: 24 }}>
+          {AVISO_VO_TEXTO}
+        </div>
+        <button
+          onClick={fechar}
+          style={{
+            background: ACCENT,
+            color: '#fff',
+            border: 'none',
+            borderRadius: 10,
+            padding: '12px 32px',
+            fontSize: 15,
+            fontWeight: 700,
+            cursor: 'pointer',
+            fontFamily: "'DM Sans', sans-serif",
+          }}
+        >Entendi</button>
+      </div>
+    </div>
+  )
+}
