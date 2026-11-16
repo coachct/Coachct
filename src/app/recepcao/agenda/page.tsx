@@ -322,7 +322,15 @@ export default function RecepcaoAgendaPage() {
 
   async function marcarPresenca(agendamentoId: string) {
     // Aviso ao coach sai pelo trigger do banco (aluno presente + com coach).
-    await supabase.from('agendamentos').update({ status: 'realizado' }).eq('id', agendamentoId)
+    const { error } = await supabase.from('agendamentos').update({ status: 'realizado' }).eq('id', agendamentoId)
+    if (error) {
+      // Trava do banco: Coach CT avulso sem acesso ao CT no dia.
+      alert(String(error.message || '').includes('COACH_CT_AVULSO_SEM_ACESSO')
+        ? 'Sem acesso ao CT hoje. Coach CT avulso paga só o coach: lance o walk-in na Musculação Livre ou peça o check-in do app antes da presença.'
+        : 'Não foi possível marcar a presença: ' + error.message)
+      await loadData(true)
+      return
+    }
     setPresencaManualEm(m => ({ ...m, [agendamentoId]: Date.now() }))
     setAgora(new Date())
     await loadData(true)
