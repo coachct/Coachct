@@ -166,6 +166,12 @@ export function AvisoPopupPinheiros({ unidadeId }: { unidadeId?: string }) {
 // Independente do aviso de Pinheiros. Para REMOVER depois: AVISO_VO_ATIVO = false + deploy.
 const VILA_OLIMPIA_ID = '05eeab3e-5eae-4140-bc3a-1c1d56ac95be'
 const AVISO_VO_ATIVO = true
+// Some sozinho a partir desta data (horário de São Paulo) — sem precisar de deploy.
+const AVISO_VO_ATE_EXCLUSIVO = '2026-11-25'
+function avisoVoNoPrazo(): boolean {
+  const hojeSP = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
+  return hojeSP < AVISO_VO_ATE_EXCLUSIVO
+}
 const AVISO_VO_TITULO = 'Lift for Girls de quarta com novos horários'
 const AVISO_VO_TEXTO = 'A partir de 25/11 as aulas passam a ser às 05:45, 06:45 e 07:45.'
 // Mudar o sufixo (v1 → v2) faz o popup reaparecer para todos.
@@ -180,7 +186,7 @@ export function AvisoPopupVilaOlimpia({ unidadeId }: { unidadeId?: string }) {
   const [aberto, setAberto] = useState(false)
 
   useEffect(() => {
-    if (!AVISO_VO_ATIVO || unidadeId !== VILA_OLIMPIA_ID) return
+    if (!AVISO_VO_ATIVO || !avisoVoNoPrazo() || unidadeId !== VILA_OLIMPIA_ID) return
     let jaViu = false
     try { jaViu = localStorage.getItem(POPUP_VO_STORAGE_KEY) === '1' } catch {}
     if (!jaViu) setAberto(true)
