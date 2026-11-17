@@ -42,6 +42,7 @@ export default function AdminPosicoesPage() {
   const [posicoes,   setPosicoes]   = useState<any[]>([])
   const [salvando,   setSalvando]   = useState<string | null>(null)
   const [loadingPos, setLoadingPos] = useState(false)
+  const [aviso,      setAviso]      = useState<{ titulo: string; linhas: string[] } | null>(null)
 
   useEffect(() => {
     if (loading) return
@@ -68,10 +69,24 @@ export default function AdminPosicoesPage() {
   }
 
   async function toggleBloqueio(pos: any) {
-    setSalvando(pos.id)
     const novoEstado = !pos.bloqueado
-    const { error } = await supabase.from('club_posicoes').update({ bloqueado: novoEstado }).eq('id', pos.id)
+    const label = `${pos.tipo}${String(pos.numero).padStart(2, '0')}`
+    if (novoEstado && !window.confirm(`Bloquear ${label} em todas as aulas?\n\nQuem já está reservado nessa posição nas próximas aulas será movido pra primeira posição livre (ou fica sem posição se a aula estiver lotada).`)) return
+    setSalvando(pos.id)
+    setAviso(null)
+    // A RPC bloqueia E varre as próximas aulas, tirando quem estava na posição.
+    const { data, error } = await supabase.rpc('club_bloquear_posicao_global', { p_posicao_id: pos.id, p_bloquear: novoEstado })
+    if (error) setAviso({ titulo: `Erro ao ${novoEstado ? 'bloquear' : 'desbloquear'} ${label}: ${error.message}`, linhas: [] })
     if (!error) {
+      if (novoEstado) {
+        const det = (data?.detalhes || []) as any[]
+        setAviso({
+          titulo: det.length === 0
+            ? `${label} bloqueada — ninguém estava reservado nela nas próximas aulas.`
+            : `${label} bloqueada — ${det.length} reserva${det.length > 1 ? 's' : ''} realocada${det.length > 1 ? 's' : ''}:`,
+          linhas: det.map(d => `${String(d.data).split('-').reverse().slice(0, 2).join('/')} ${d.horario} · ${d.cliente || 'Cliente'} → ${d.para || 'sem posição (aula lotada)'}`),
+        })
+      }
       setPosicoes(prev => prev.map(p => p.id === pos.id ? { ...p, bloqueado: novoEstado } : p))
       // Se desbloqueou, processa fila das ocorrências futuras desta unidade
       if (!novoEstado) {
@@ -217,9 +232,21 @@ export default function AdminPosicoesPage() {
           </div>
         )}
 
+        {/* Resultado do último bloqueio */}
+        {aviso && (
+          <div className="card border-blue-200 bg-blue-50 text-xs text-blue-800 leading-relaxed">
+            <div className="font-semibold">{aviso.titulo}</div>
+            {aviso.linhas.length > 0 && (
+              <ul className="mt-1.5 space-y-0.5 max-h-48 overflow-y-auto">
+                {aviso.linhas.map((l, i) => <li key={i}>{l}</li>)}
+              </ul>
+            )}
+          </div>
+        )}
+
         {/* Aviso */}
         <div className="card border-amber-200 bg-amber-50 text-xs text-amber-700 leading-relaxed">
-          ⚠️ Posições bloqueadas ficam indisponíveis para reserva imediatamente. O bloqueio é permanente até você desbloquear manualmente.
+          ⚠️ Posições bloqueadas ficam indisponíveis para reserva imediatamente. Quem já estava reservado nela nas próximas aulas é movido pra primeira posição livre. O bloqueio é permanente até você desbloquear manualmente.
         </div>
       </div>
     </div>

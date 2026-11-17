@@ -816,10 +816,13 @@ export default function RecepcaoClubDetalhe() {
       const ehTrocando = posicaoAtualTroca === label
 
       if (modo === 'view') {
+        // Bloqueada E com cliente (não deveria sobrar, mas se sobrar): mostra o nome
+        // pra recepção enxergar quem está ali e tirar pelo "Trocar posição".
+        const nomeNaBloq = tomado ? (reserva?.clientes?.nome?.split(' ')[0] || '?') : null
         if (bloqueadaGlobal) return { bg:`${VERMELHO}15`, border:VERMELHO, icon:VERMELHO, cursor:'not-allowed',
-          nome:null, atual:false, bloqueada:true }
+          nome:nomeNaBloq, atual:false, bloqueada:true }
         if (bloqueadaPontual) return { bg:`${VERMELHO}15`, border:VERMELHO, icon:VERMELHO, cursor:'pointer',
-          nome:null, atual:false, bloqueada:true }
+          nome:nomeNaBloq, atual:false, bloqueada:true }
         if (!tomado) return { bg:`${ACCENT}15`, border:ACCENT, icon:ACCENT, cursor:'pointer',
           nome:null, atual:false, bloqueada:false }
         // ocupada: clicável para bloquear (move o cliente pra primeira livre)
@@ -835,8 +838,10 @@ export default function RecepcaoClubDetalhe() {
       // modo troca
       // fase 1: nenhuma origem escolhida ainda — só ocupadas ficam clicáveis (escolher quem troca)
       if (!trocandoReserva) {
-        if (bloqueadaPontual || bloqueadaGlobal) return { bg:`${VERMELHO}15`, border:VERMELHO, icon:VERMELHO, cursor:'not-allowed',
-          nome:null, atual:false, bloqueada:true }
+        // bloqueada com cliente em cima: continua clicável pra tirar a pessoa dali
+        if (bloqueadaPontual || bloqueadaGlobal) return { bg:`${VERMELHO}15`, border:VERMELHO, icon:VERMELHO,
+          cursor: tomado ? 'pointer' : 'not-allowed',
+          nome: tomado ? (reserva?.clientes?.nome?.split(' ')[0] || '?') : null, atual:false, bloqueada:true }
         if (tomado) return { bg:`${AMARELO}10`, border:AMARELO, icon:AMARELO, cursor:'pointer',
           nome: reserva?.clientes?.nome?.split(' ')[0] || '?', atual:false, bloqueada:false }
         return { bg:'#f3f4f6', border:'#e5e7eb', icon:'#d1d5db', cursor:'default',
@@ -874,8 +879,7 @@ export default function RecepcaoClubDetalhe() {
       if (modo === 'troca') {
         // fase 1: sem origem — clicar num ocupado seleciona quem vai trocar
         if (!trocandoReserva) {
-          if (posicoesBloqueadasPontual.includes(label)) return
-          if (posicoesBloqueadasGlobal.includes(label)) return
+          // posição bloqueada com cliente em cima também pode ser escolhida como origem
           const reservaAqui = reservas.find((r:any) => r.posicao === label && ['reservado','presente'].includes(r.status))
           if (reservaAqui) setTrocandoReserva(reservaAqui)
           return
@@ -906,7 +910,7 @@ export default function RecepcaoClubDetalhe() {
       if (modo === 'view') disabled = salvandoEssa || bloqueadaGlobal
       else if (modo === 'walkin') disabled = (tomado || bloqueadaPontual || bloqueadaGlobal) && label !== posicaoSel
       else if (modo === 'troca') disabled = !trocandoReserva
-        ? (!tomado || bloqueadaPontual || bloqueadaGlobal)                             // fase 1: só ocupadas clicáveis
+        ? !tomado                                                                      // fase 1: só ocupadas clicáveis (mesmo se bloqueada)
         : ((tomado && label !== posicaoAtualTroca) || bloqueadaPontual || bloqueadaGlobal) // fase 2: só livres clicáveis
 
       return (
