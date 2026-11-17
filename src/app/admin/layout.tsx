@@ -1,6 +1,8 @@
 'use client'
 import SidebarLayout from '@/components/layout/SidebarLayout'
-import { Dumbbell, Footprints, Clock, Users, ShoppingCart, BarChart3, UserCog, BookOpen, Settings, MessageCircle, Instagram, Activity, Weight } from 'lucide-react'
+import { Dumbbell, Footprints, Clock, Users, ShoppingCart, BarChart3, UserCog, BookOpen, Settings, MessageCircle, Instagram, Activity, Weight, HandCoins } from 'lucide-react'
+import { useAuth } from '@/hooks/useAuth'
+import { DONO_USER_ID } from '@/lib/dono'
 const nav = [
   {
     label: 'Coach CT',
@@ -144,9 +146,22 @@ const nav = [
     ],
   },
 ]
+// Exclusivo do Ricardo: não aparece pra Ju (coordenadora) nem pro Financeiro (admin).
+// Esconder o item é só visual — a trava real é a RPC acerto_ju, que só responde a ele.
+const navDono = [
+  {
+    label: 'Acerto Ju',
+    icon: HandCoins,
+    children: [
+      { label: 'Acerto Ju', href: '/admin/acerto-ju' },
+    ],
+  },
+]
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth()
+  const navItems = user?.id === DONO_USER_ID ? [...nav, ...navDono] : nav
   return (
-    <SidebarLayout navItems={nav} role="admin" rolesPermitidos={['admin', 'coordenadora']}>
+    <SidebarLayout navItems={navItems}role="admin" rolesPermitidos={['admin', 'coordenadora']}>
       {children}
     </SidebarLayout>
   )
