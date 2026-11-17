@@ -85,7 +85,7 @@ export default function AcertoJuPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-gray-900">Acerto Ju</h1>
+        <h1 className="text-xl font-bold text-gray-900">Financeiro Coordenação</h1>
         <p className="text-sm text-gray-500">
           2% do faturamento dos apps (Wellhub + TotalPass) + R$ 1.000 por unidade
         </p>
