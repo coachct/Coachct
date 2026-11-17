@@ -94,6 +94,9 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
   const [modalDuplicar, setModalDuplicar] = useState(false)
   const [medias, setMedias] = useState<MediaHorario[]>([])
   const [progDia, setProgDia] = useState<Map<number, string>>(new Map())
+  const [descricao, setDescricao] = useState('')
+  const [montando, setMontando] = useState(false)
+  const [rascunho, setRascunho] = useState<{ decisoes: string[]; faltou: string[] } | null>(null)
   const alertaRef = useRef<HTMLElement>(null)
   const blocosRef = useRef<HTMLDivElement>(null)
 
@@ -175,6 +178,35 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
       estacoes: b.estacoes.filter(e => e.id !== eid),
       rodizio: { ...b.rodizio, ordem: (b.rodizio.ordem || []).filter(id => id !== eid) },
     })
+  }
+
+  // ---- montar pelo texto ---------------------------------------------------------
+
+  async function montarPeloTexto() {
+    if (!descricao.trim()) return
+    if (t.blocos.length && !confirm('Substituir o que está na tela pelo treino montado a partir do texto?')) return
+    setErro('')
+    setMontando(true)
+    try {
+      const { data: s } = await supabase.auth.getSession()
+      const r = await fetch('/api/ju/hibrido/montar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s.session?.access_token || ''}` },
+        body: JSON.stringify({ texto: descricao, faixa: t.faixa, duracao_seg: t.duracao_seg }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok || !j.treino) { setErro(j.error || 'Não foi possível montar o treino.'); return }
+      const novo: Treino = j.treino
+      // Mantém o treino que está aberto (id/modelo); o resto vem do rascunho
+      setT(p => ({ ...novo, id: p.id, modelo: p.modelo, nome: novo.nome || p.nome }))
+      setAbertos(new Set(novo.blocos.map(b => b.id)))
+      setRascunho({ decisoes: j.decisoes || [], faltou: j.faltou || [] })
+      setPedirOk(null)
+    } catch {
+      setErro('Não foi possível montar o treino.')
+    } finally {
+      setMontando(false)
+    }
   }
 
   // ---- salvar ----------------------------------------------------------------
@@ -281,6 +313,43 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
       <div className="flex flex-wrap gap-6 items-start">
         {/* Coluna principal */}
         <div ref={blocosRef} className="flex-[999_1_560px] min-w-0 flex flex-col gap-5">
+          <section className={`${cls.card} p-6 flex flex-col gap-3`}>
+            <h2 className={`${cls.titulo} m-0 text-lg font-semibold`}>Descrever o treino</h2>
+            <div className="text-xs text-[#a1a1aa]">
+              Escreva do seu jeito: alunos, estações, quem corre, tempos, rounds, repetições e cargas. O sistema monta o esqueleto aqui embaixo para você conferir e salvar.
+            </div>
+            <textarea
+              value={descricao}
+              onChange={e => setDescricao(e.target.value)}
+              rows={5}
+              aria-label="Descrição do treino"
+              placeholder="Ex.: Faixa 4, 40 alunos. Aquecimento 3 min, explicação 3. 20 na esteira em dupla alternando 30s leve / 30s forte, 20 no chão em 5 estações com 2 duplas cada: remo 250 m cada, ski 200 m, wall ball 15 reps 4/6 kg, sled ida e volta 50/70 kg, burpee + lunge. Troca a cada 4 min, rodízio no chão até passar por todas."
+              className="w-full min-w-0 px-3 py-2.5 rounded-[10px] border border-[#3a3a42] bg-[#0e0e11] text-[#f2f2f4] outline-none focus:border-[#ff2d9b] resize-y"
+            />
+            <div className="flex flex-wrap items-center gap-3">
+              <button onClick={montarPeloTexto} disabled={montando || descricao.trim().length < 10} className={cls.btnRosa}>
+                {montando ? 'Montando… (até 1 min)' : 'Montar treino'}
+              </button>
+              {rascunho && !montando && <span className="text-xs text-[#a1a1aa]">Rascunho na tela, ainda não salvo.</span>}
+            </div>
+            {rascunho && (rascunho.decisoes.length > 0 || rascunho.faltou.length > 0) && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {rascunho.decisoes.length > 0 && (
+                  <div className="rounded-xl bg-[#0e0e11] border border-[#2a2a31] px-3.5 py-3">
+                    <div className="text-xs text-[#a1a1aa] mb-1">O sistema decidiu</div>
+                    <ul className="m-0 pl-4 list-disc text-[13px] space-y-0.5">{rascunho.decisoes.map((d, i) => <li key={i}>{d}</li>)}</ul>
+                  </div>
+                )}
+                {rascunho.faltou.length > 0 && (
+                  <div className="rounded-xl bg-[#2a210b] border border-[#6b4f12] px-3.5 py-3 text-[#f3dfb2]">
+                    <div className="text-xs text-[#ffd27a] mb-1">Faltou / conferir</div>
+                    <ul className="m-0 pl-4 list-disc text-[13px] space-y-0.5">{rascunho.faltou.map((d, i) => <li key={i}>{d}</li>)}</ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+
           <section className={`${cls.card} p-6 flex flex-col gap-5`}>
             <h2 className={`${cls.titulo} m-0 text-lg font-semibold`}>1 · Dados do treino</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
