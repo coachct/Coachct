@@ -210,6 +210,9 @@ function Agenda() {
   // Próximos dias começam amanhã; setas andam de 7 em 7
   const [inicio, setInicio] = useState(addDias(hoje, 1))
   const fim = addDias(inicio, 6)
+  // Abre nos últimos 30 dias (mais recente primeiro); os próximos dias ficam a um toque
+  const [vista, setVista] = useState<'passados' | 'proximos'>('passados')
+  const inicioPassados = addDias(hoje, -30)
   const [itens, setItens] = useState<DiaItem[]>([])
   const [alertas, setAlertas] = useState<Alerta[]>([])
   const [loading, setLoading] = useState(true)
@@ -218,7 +221,7 @@ function Agenda() {
 
   async function carregar() {
     setErro(null)
-    const de = inicio < hoje ? inicio : hoje
+    const de = inicio < inicioPassados ? inicio : inicioPassados
     const ate = fim > hoje ? fim : hoje
     const [{ data, error }, al] = await Promise.all([
       supabase
@@ -238,7 +241,12 @@ function Agenda() {
 
   useEffect(() => { setLoading(true); carregar() }, [inicio])
 
-  const dias = useMemo(() => Array.from({ length: 7 }, (_, i) => addDias(inicio, i)), [inicio])
+  const dias = useMemo(
+    () => vista === 'passados'
+      ? Array.from({ length: 30 }, (_, i) => addDias(hoje, -(i + 1))) // ontem → 30 dias atrás
+      : Array.from({ length: 7 }, (_, i) => addDias(inicio, i)),
+    [inicio, vista, hoje]
+  )
   const porChave = useMemo(() => {
     const m = new Map<string, DiaItem>()
     itens.forEach(i => m.set(`${i.data}|${i.modalidade}`, i))
@@ -279,8 +287,22 @@ function Agenda() {
         </div>
       </div>
 
-      {/* Próximos dias */}
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex gap-2 mb-3">
+        {([['passados', 'Últimos 30 dias'], ['proximos', 'Próximos dias']] as const).map(([k, label]) => (
+          <button
+            key={k}
+            onClick={() => setVista(k)}
+            className={`flex-1 md:flex-none px-3 py-1.5 rounded-lg text-sm ${
+              vista === k ? 'bg-gray-100 text-gray-900 font-medium' : 'text-gray-500'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Próximos dias: setas de 7 em 7 */}
+      <div className={`flex items-center justify-between mb-2 ${vista === 'proximos' ? '' : 'hidden'}`}>
         <button onClick={() => setInicio(addDias(inicio, -7))} className="w-10 h-10 rounded-lg border border-gray-200 bg-white text-lg">‹</button>
         <div className="text-center">
           <div className="text-sm font-medium text-gray-900">{fIni.dm} – {fFim.dm}</div>
