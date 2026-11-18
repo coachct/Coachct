@@ -176,6 +176,35 @@ function gerarHtml(
     return wrapEmail(conteudo, `Resposta ao seu comentário — Just Club & CT`)
   }
 
+  // ── Comunicado avulso (assunto próprio + botão de horários) ──────────────
+  // mensagem vem em JSON: { assunto, texto }. Parágrafos separados por linha
+  // em branco. Usado em avisos pontuais (ex.: aula não realizada + bonificação).
+  if (tipo === 'comunicado') {
+    let assunto = 'Aviso — Just Club & CT'
+    let texto = mensagem
+    try {
+      const p = JSON.parse(mensagem)
+      if (p.assunto) assunto = String(p.assunto)
+      if (p.texto) texto = String(p.texto)
+    } catch { /* mensagem simples — usa o texto cru */ }
+
+    const esc = (s: string) => (s || '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const paragrafos = texto.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean)
+      .map(p => `<div style="font-size:15px;line-height:1.7;color:#444;margin-bottom:16px;">${esc(p).replace(/\n/g, '<br/>')}</div>`)
+      .join('')
+
+    const conteudo = `
+      <div style="font-size:18px;font-weight:700;color:#222;margin-bottom:16px;">Olá, ${esc(primeiroNome)}</div>
+      ${paragrafos}
+      <div style="text-align:center;margin-top:24px;">
+        <a href="${BASE_URL}/aulas" style="display:inline-block;background:#ff2d9b;color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:14px;letter-spacing:0.5px;">
+          Ver horários →
+        </a>
+      </div>`
+    return wrapEmail(conteudo, assunto)
+  }
+
   // ── Genérico (fallback) ──────────────────────────────────────────────────
   const conteudo = `
     <div style="font-size:18px;font-weight:700;color:#222;margin-bottom:16px;">Olá, ${primeiroNome}</div>
