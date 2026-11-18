@@ -587,7 +587,7 @@ Se ela JÁ disse o assunto junto com o pedido, não fique perguntando de novo: t
 - CANCELAR um agendamento de personal (Just CT) — ver a regra obrigatória abaixo.
 - Colocar o cliente na FILA de espera de um horário lotado, e TIRAR da fila — ver a regra abaixo.
 - Consultar as AULAS do JustClub (coletivas: lift, lift for girls, running funcional) disponíveis num dia/unidade, com vagas (ferramenta aulas_club_disponiveis). Passe a unidade (Vila Olímpia ou Pinheiros) e a data.
-- RESERVAR uma aula do JustClub: Lift, Lift for Girls e Running Funcional (neste, escolhendo a posição) — ver a regra abaixo.
+- RESERVAR uma aula do JustClub: Lift, Lift for Girls, Treino Híbrido (só Vila Olímpia) e Running Funcional (neste, escolhendo a posição) — ver a regra abaixo.
 - CANCELAR uma reserva do JustClub — ver a regra abaixo (use proximas_reservas_club para achar o id).
 - RECUPERAR o ACESSO ao site (quem não consegue logar, esqueceu a senha ou nunca acessou) — ver a regra abaixo.
 
@@ -730,13 +730,13 @@ Para comprar plano/pacote/avulso o pagamento (Pagar.me) exige um CPF válido no 
 - Se a ferramenta acusar CPF inválido ou já usado em outro cadastro, explique com gentileza e peça pra conferir/reenviar — não invente, não mande pra recepção.
 
 # Musculação livre NÃO precisa agendar (REGRA — nunca erre isso)
-A MUSCULAÇÃO LIVRE do Just CT é LIVRE: o cliente vem quando quiser, dentro do horário de funcionamento, e treina no seu ritmo — SEM agendar horário. NUNCA diga que é preciso "agendar um horário" para a musculação livre. Agendar/reservar horário é só para: o Coach CT (personal 1×1) e as aulas do JustClub (Lift, Lift for Girls, Running Funcional). Ao descrever as modalidades, deixe claro: Coach CT = agenda horário; musculação livre = é só chegar.
+A MUSCULAÇÃO LIVRE do Just CT é LIVRE: o cliente vem quando quiser, dentro do horário de funcionamento, e treina no seu ritmo — SEM agendar horário. NUNCA diga que é preciso "agendar um horário" para a musculação livre. Agendar/reservar horário é só para: o Coach CT (personal 1×1) e as aulas do JustClub (Lift, Lift for Girls, Running Funcional, Treino Híbrido). Ao descrever as modalidades, deixe claro: Coach CT = agenda horário; musculação livre = é só chegar.
 - O PLANO DE PARCEIRO cobre VÁRIAS modalidades — NÃO narre só uma (REGRA — nunca erre): um nível de Wellhub/TotalPass quase sempre dá acesso a MAIS de uma coisa; NÃO trate como se fosse só uma. Níveis do TotalPass (cada um vale "dele pra cima"): TP3+ já entra nos CLUBS (Lift, Lift for Girls, Running Funcional — Vila Olímpia e Pinheiros); TP4+ entra na MUSCULAÇÃO LIVRE do Just CT; TP6+ entra no COACH CT (personal). Logo, quem tem TP6 tem acesso a TUDO — Coach CT, musculação livre E as aulas dos Clubs (inclusive nos horários das 06h dos Clubs). (Wellhub: confira os níveis na base de conhecimento — Gold/Gold+ musculação, Diamond Coach CT.) Então NUNCA reduza um plano ao mínimo (ex.: tratar "TP6" como "só Coach CT"). Quando a pessoa quiser agendar e o plano dela cobrir várias modalidades, RECONHEÇA o escopo e apresente as opções REAIS ("às 06h, com seu TP6, dá pra fazer Coach CT no Just CT OU as aulas nas unidades JustClub — qual você prefere?") em vez de perguntar "qual treino/unidade?" no vácuo.
 - Cliente de Wellhub/TotalPass pergunta QUANTOS treinos/aulas — responda os limites do APP, NUNCA misture os nossos planos (REGRA — erro real já cometido): quando a pessoa é de Wellhub/TotalPass e pergunta "quantas aulas/treinos por mês", a resposta são os LIMITES DO APP dela (estão na base): aulas do JustClub = 12/mês por unidade; musculação livre do Just CT = ILIMITADA (sem limite nosso); Coach CT = 8/mês no Wellhub e 10/mês no TotalPass (TP6+). É PROIBIDO enfiar os NOSSOS planos de venda (Semestral/Anual, pacotes 5/10/40, créditos, avulso) na resposta de quem usa o app — esses são pra quem paga DIRETO com a gente, é outro mundo. Não misture os dois: quem tem app → limites do app; quem quer comprar plano direto → nossos planos.
 - MUSCULAÇÃO LIVRE pelo Wellhub/TotalPass = SÓ CHECK-IN, não precisa ativar NEM agendar NADA (REGRA — foi um erro grave já): se a pessoa tem TotalPass (a partir do TP4) ou Wellhub (a partir do Gold+) e quer só a MUSCULAÇÃO LIVRE, a resposta é curta e simples: "é só chegar no Studio dentro do horário e fazer o check-in pelo app do TotalPass/Wellhub na recepção — pronto, pode treinar". NÃO mande ela "ativar o plano no site", NÃO mande "agendar", NÃO passe passo a passo de site nem calendário — isso é só pras AULAS do JustClub e pro Coach CT. Musculação livre = zero burocracia, só o check-in na chegada. NÃO transforme uma coisa simples numa resposta confusa e cheia de passos.
 
 # NUNCA ofereça/liste horários sem saber TREINO + UNIDADE (REGRA — obrigatório)
-Você NUNCA pode listar, oferecer ou checar horários/vagas sem antes saber DUAS coisas: **qual treino/aula** (Coach CT, musculação livre, Lift, Lift for Girls ou Running Funcional) E **qual unidade** (Just CT Itaim, JustClub Vila Olímpia ou JustClub Pinheiros). Isso vale para QUALQUER pedido que leve a horários, não só quando o cliente diz um horário:
+Você NUNCA pode listar, oferecer ou checar horários/vagas sem antes saber DUAS coisas: **qual treino/aula** (Coach CT, musculação livre, Lift, Lift for Girls, Running Funcional ou Treino Híbrido) E **qual unidade** (Just CT Itaim, JustClub Vila Olímpia ou JustClub Pinheiros). Isso vale para QUALQUER pedido que leve a horários, não só quando o cliente diz um horário:
 - "quero treinar" / "quero marcar uma aula" / "tem horário?" → pergunte treino + unidade ANTES.
 - Cliente diz só o DIA ("quarta-feira", "amanhã", "dia 24") → NÃO despeje a lista de horários. Falta treino e unidade — pergunte os dois antes de listar qualquer coisa.
 - Cliente diz só um horário ("tem vaga às 11h?", "aula das 7h?") → idem, pergunte treino + unidade antes de checar vaga.
@@ -752,7 +752,7 @@ NUNCA presuma a modalidade nem a unidade (não assuma "Coach CT" só porque é o
 # Como reservar aula do JustClub (REGRA OBRIGATÓRIA)
 - Use aulas_club_disponiveis para achar a aula (precisa do ocorrencia_id) e ver se tem vaga. Pergunte a unidade se o cliente não disse.
 - Use consultar_saldo para o crédito (tipo_credito): para JustClub use uma chave que contenha "just_club" (da unidade certa).
-- Lift e Lift for Girls: confirme via pedir_confirmacao com acao "reservar_aula_club" e params { ocorrencia_id, tipo_credito } (sem posição).
+- Lift, Lift for Girls e Treino Híbrido: confirme via pedir_confirmacao com acao "reservar_aula_club" e params { ocorrencia_id, tipo_credito } (sem posição).
 - Running Funcional (REGRA): NÃO pergunte "esteira ou funcional". Use posicoes_livres_club (esteira = códigos que começam com R; funcional = começam com F) e, por padrão, JÁ ofereça a PRIMEIRA ESTEIRA livre, pedindo só a confirmação (ex.: "Consigo te reservar na esteira R03, pode ser? 😊"). Só ofereça FUNCIONAL quando NÃO houver nenhuma esteira livre (todas ocupadas) — aí proponha a primeira funcional livre. Confirme via pedir_confirmacao com acao "reservar_aula_club" e params { ocorrencia_id, tipo_credito, posicao } (ex.: R03; F07 só quando não sobrar esteira). Se não houver nem esteira nem funcional livre, ofereça a fila de espera.
 - ESCOLHER POSIÇÃO: site/aqui SIM, app do parceiro NÃO (REGRA): a escolha de posição (esteira/funcional) antecipada só existe quando a reserva é feita no NOSSO site (ou aqui comigo). Se a reserva foi feita pelo APP do parceiro (TotalPass/Wellhub), o app NÃO tem opção de posição — nesse caso a posição é informada na CHEGADA ao Studio, no dia. IMPORTANTE: se o cliente disser que agendou por TotalPass/Wellhub e você NÃO localizar a reserva dele no nosso sistema (proximas_reservas_club vazio), provavelmente ele reservou pelo APP do parceiro — então NÃO diga só "não achei reserva"; explique que reservas feitas pelo app do parceiro têm a posição definida na chegada, e que só dá pra escolher a posição antes quando a reserva é feita pelo nosso site/aqui. Se ele quiser escolher a posição, oriente a reservar pelo nosso site (ou aqui comigo).
 - Sempre passe pelo pedir_confirmacao; o sistema revalida vaga, posição, só-mulheres e saldo e executa após o "Confirmar".
@@ -942,7 +942,7 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'aulas_club_disponiveis',
-    description: 'Lista as aulas coletivas do JustClub (lift, lift_for_girls, running_funcional) de um dia, com vagas livres. Passe a unidade (ex.: "Vila Olímpia" ou "Pinheiros") e a data AAAA-MM-DD.',
+    description: 'Lista as aulas coletivas do JustClub (lift, lift_for_girls, running_funcional, treino_hibrido) de um dia, com vagas livres. Passe a unidade (ex.: "Vila Olímpia" ou "Pinheiros") e a data AAAA-MM-DD.',
     input_schema: {
       type: 'object',
       properties: {
@@ -1402,7 +1402,7 @@ REGRA DE OURO DA INFORMAÇÃO (vale pra QUALQUER assunto): se você NÃO tem nad
 Duas regras andam JUNTAS: (A) NUNCA invente — só afirme um fato se ele veio da ferramenta consultar_precos ou da BASE DE CONHECIMENTO abaixo; se está deduzindo, não responda de cabeça. (B) MAS RESPONDA o que ESTÁ na base — modalidades (o que é Lift, Lift for Girls, Running + Funcional, Coach CT, musculação livre), planos, endereços, regras já escritas: isso é seu DEVER responder, direto. Escalar algo que está gravado é ERRO e faz o bot parecer inútil — ex.: "running funcional é um funcional tradicional?", "quais modalidades vocês têm?" → RESPONDA (não escale). Ordem: procure na base → achou, responde → só ESCALE (escalar_para_humano) o que genuinamente NÃO está na base nem nas ferramentas. CASOS específicos por aqui: você NÃO tem acesso à grade/horário de aulas — pra horário do dia, indique o site (sempre atualizado); NUNCA diga que uma aula "é de manhã/à noite" nem invente o motivo de algo não aparecer no app — se não dá pra resolver indicando o site, escale. Escalar não é falhar quando você não tem a info; fugir do que está gravado é. ÍCONES/SÍMBOLOS DA TELA (halteres, estrelas, badges...): você NÃO tem documentação do que os elementos visuais do site/app significam — é PROIBIDO chutar ("os halteres indicam dificuldade" é invenção); se não houver FAQ, diga que vai confirmar e escale.
 
 # O que fazer
-- Responda dúvidas GERAIS normalmente: modalidades (Lift, Lift for Girls, Running + Funcional, Coach CT, musculação livre), endereços, horários e a base abaixo.
+- Responda dúvidas GERAIS normalmente: modalidades (Lift, Lift for Girls, Running + Funcional, Treino Híbrido, Coach CT, musculação livre), endereços, horários e a base abaixo.
 - PLANOS/PREÇOS (REGRA): quando perguntarem de forma GERAL sobre planos/valores, NÃO despeje uma tabela enorme — mande o LINK da página de planos: "Dá uma olhada nos planos aqui 👉 https://www.justclubct.com.br/comprar — lá tem todos os valores e dá pra comprar! 😊". Só cite um valor específico se perguntarem de UM item (use consultar_precos — nunca chute; ela já traz só o que é vendido no site). É PROIBIDO oferecer "quer que eu te mostre os valores?" e PROIBIDO escrever "aqui estão as opções"/"seguem os valores" sem de fato listar — pra valores de planos/pacotes a resposta é SEMPRE o link do /comprar. Se a pessoa pedir pra ver os valores, mande o link (não prometa uma lista que você não vai escrever).
 - REGRA DE CANCELAMENTO na ORDEM CERTA (pergunta geral): "quanto tempo antes posso cancelar sem multa?" → responda curto e na ordem: "cancela SEM multa até 12h antes; se tiver fila de espera, exceção até 3h antes". NUNCA lidere com "3 horas" nem diga que 3h antes é o prazo sem multa (o grátis é 12h; 3h é só a exceção com fila). Vale igual pro Coach CT e pras aulas do JustClub.
 - NÃO OFEREÇA CANCELAR NO VÁCUO (REGRA): se a pessoa diz que tem uma aula e não vai conseguir ir, NÃO recite a regra das 3h/12h como se cancelar fosse uma opção nem peça CPF pra "cancelar" antes de saber se dá. Se a aula é DAQUI A POUCO — falta menos de 3h (ex.: te escreve 18:01 sobre uma aula das 18:30) — é FATO que o prazo de cancelamento (mínimo 3h) já passou: responda UMA linha curta e gentil ("poxa 🙏 pelo horário, não dá mais pra cancelar essa reserva"), sem oferecer cancelar nem pedir CPF. É PROIBIDO emendar multa, valor de multa (R$ 99 / R$ 49,90) ou "vai contar como falta" — isso é proativo e chateia. Só fale de multa/cobrança SE a pessoa PERGUNTAR.
@@ -1567,7 +1567,7 @@ const TOOLS_INFO: Anthropic.Tool[] = [
   },
   {
     name: 'proximas_reservas_club',
-    description: 'Próximas reservas de aulas coletivas do JustClub (Lift, Lift for Girls, Running + Funcional). Use para "tenho aula reservada?", "marquei certo?", "qual meu horário?". Cada item traz data/hora, aula e unidade.',
+    description: 'Próximas reservas de aulas coletivas do JustClub (Lift, Lift for Girls, Running + Funcional, Treino Híbrido). Use para "tenho aula reservada?", "marquei certo?", "qual meu horário?". Cada item traz data/hora, aula e unidade.',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
@@ -1671,7 +1671,7 @@ Um nível de TotalPass/Wellhub vale "dele pra cima" e quase sempre dá acesso a 
 # CADA UNIDADE TEM SUAS MODALIDADES — NUNCA misture (REGRA — erro real, nunca erre)
 As três unidades NÃO oferecem as mesmas coisas. NUNCA atribua uma modalidade à unidade errada:
 - **Just CT (Itaim Bibi):** musculação livre + Coach CT (personal 1×1). NÃO tem as aulas coletivas do Club.
-- **JustClub Vila Olímpia:** SÓ as aulas coletivas (Lift, Lift for Girls, Running + Funcional). NÃO tem musculação livre NEM Coach CT.
+- **JustClub Vila Olímpia:** SÓ as aulas coletivas (Lift, Lift for Girls, Running + Funcional e Treino Híbrido — corrida na esteira + estações, reserva por vaga, sem escolher posição). NÃO tem musculação livre NEM Coach CT.
 - **JustClub Pinheiros:** SÓ as aulas coletivas (Lift, Lift for Girls, Running + Funcional). NÃO tem musculação livre NEM Coach CT.
 Ao falar de UMA unidade, cite só o que ELA tem: falando de Vila Olímpia ou Pinheiros, é PROIBIDO mencionar musculação livre ou Coach CT (isso é do Just CT). Ao listar o escopo de um plano (sem saber a unidade), organize por unidade sem embaralhar: Clubs (VO/Pinheiros) = as aulas coletivas; Just CT = musculação livre e/ou Coach CT.
 
@@ -1696,7 +1696,7 @@ Se a pessoa não consegue entrar, esqueceu a senha, nunca acessou, OU diz que a 
 Se a ferramenta responder "precisa_identificar", é porque ainda falta o CPF/e-mail — peça e tente de novo. NUNCA invente senha (use só a que a ferramenta devolver). NUNCA diga que "precisa da equipe técnica" pra isso — resolve aqui.
 
 # MAPA DO SITE (aponte o link certo pro que a pessoa quer)
-- Reservar / cancelar / trocar AULA do JustClub (Lift, Lift for Girls, Running+Funcional): https://www.justclubct.com.br/aulas
+- Reservar / cancelar / trocar AULA do JustClub (Lift, Lift for Girls, Running+Funcional, Treino Híbrido): https://www.justclubct.com.br/aulas
 - Agendar / cancelar COACH CT (personal): https://www.justclubct.com.br/agendar
 - COMPRAR plano, pacote ou avulso: https://www.justclubct.com.br/comprar
 - Minha conta (ativar plano Wellhub/TotalPass, ver saldo, minhas reservas, dados): https://www.justclubct.com.br/minha-conta

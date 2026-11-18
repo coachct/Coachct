@@ -28,16 +28,29 @@ export default function CalendarioHibridoPage() {
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
   const [novoDia, setNovoDia] = useState('')
+  const [gradeHib, setGradeHib] = useState<Map<string, { horario: string; reservas: number }[]>>(new Map())
 
   async function carregar() {
     setErro('')
-    const [d, p] = await Promise.all([
+    const [d, p, g] = await Promise.all([
       supabase.from('hibrido_dias').select('data').eq('unidade_id', UNIDADE_VO).gte('data', inicio).lte('data', fim),
       supabase.from('hibrido_programacao').select('data, faixa, treino_id, hibrido_treinos(nome)')
         .eq('unidade_id', UNIDADE_VO).gte('data', inicio).lte('data', fim),
+      // Aulas de Treino Híbrido da grade (fase 2), com as reservas ativas
+      supabase.from('club_ocorrencias').select('data, club_aulas!inner(horario, tipo, unidade_id), club_reservas(status)')
+        .gte('data', inicio).lte('data', fim).neq('status', 'cancelada')
+        .eq('club_aulas.tipo', 'treino_hibrido').eq('club_aulas.unidade_id', UNIDADE_VO),
     ])
     if (d.error) setErro(d.error.message)
     else if (p.error) setErro(p.error.message)
+    const grade = new Map<string, { horario: string; reservas: number }[]>()
+    ;(g.data || []).forEach((o: any) => {
+      const reservas = (o.club_reservas || []).filter((r: any) => r.status === 'reservado' || r.status === 'presente').length
+      const l = grade.get(o.data) || []
+      l.push({ horario: String(o.club_aulas.horario).slice(0, 5), reservas })
+      grade.set(o.data, l.sort((a, b) => a.horario.localeCompare(b.horario)))
+    })
+    setGradeHib(grade)
     setDias((d.data || []).map((r: any) => r.data))
     setProgs((p.data || []).map((r: any) => ({ data: r.data, faixa: r.faixa, treino_id: r.treino_id, nome: r.hibrido_treinos?.nome || '' })))
     setLoading(false)
@@ -48,8 +61,8 @@ export default function CalendarioHibridoPage() {
 
   // Dias marcados + dias que já têm treino programado
   const linhas = useMemo(
-    () => Array.from(new Set([...dias, ...progs.map(p => p.data)])).sort(),
-    [dias, progs]
+    () => Array.from(new Set([...dias, ...progs.map(p => p.data), ...Array.from(gradeHib.keys())])).sort(),
+    [dias, progs, gradeHib]
   )
   const porChave = useMemo(() => new Map(progs.map(p => [`${p.data}|${p.faixa}`, p])), [progs])
 
@@ -123,8 +136,15 @@ export default function CalendarioHibridoPage() {
 
             {linhas.map(d => {
               const f = fmtDia(d)
-              const prov = faixasProvaveis(medias, d)
-              const horarios = medias.filter(m => m.dia_semana === diaSemana(d))
+              const aulasGrade = gradeHib.get(d)
+              const mediasDia = medias.filter(m => m.dia_semana === diaSemana(d))
+              // Com aula de Híbrido na grade: faixa de cada aula = maior entre reservas já feitas e a média do horário
+              const faixaAula = (a: { horario: string; reservas: number }) => {
+                const m = mediasDia.find(x => x.horario.slice(0, 5) === a.horario)
+                return faixaDeAlunos(Math.max(a.reservas, Math.round(m?.media || 0)))
+              }
+              const prov = aulasGrade ? new Set(aulasGrade.map(faixaAula)) : faixasProvaveis(medias, d)
+              const horarios = aulasGrade ? [] : mediasDia
               const faltando = Array.from(prov).filter(n => !porChave.has(`${d}|${n}`))
               const alerta = d >= hoje && faltando.length > 0
               const marcado = dias.includes(d)
@@ -141,6 +161,11 @@ export default function CalendarioHibridoPage() {
                     {alerta && (
                       <div className="text-xs text-[#ffd27a]">
                         Falta treino {faltando.length === 1 ? 'na faixa provável' : 'nas faixas prováveis'}: {faltando.sort().map(n => `Faixa ${n}`).join(', ')}
+                      </div>
+                    )}
+                    {aulasGrade && (
+                      <div className="text-[11px] text-[#a1a1aa]" title="Aulas de Treino Híbrido na grade: reservas feitas até agora e a faixa provável (reservas ou média do horário, o que for maior)">
+                        Aulas: {aulasGrade.map(a => `${a.horario} · ${a.reservas} res. (F${faixaAula(a)})`).join(' · ')}
                       </div>
                     )}
                     {horarios.length > 0 && (

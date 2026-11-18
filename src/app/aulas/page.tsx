@@ -65,12 +65,14 @@ function tipoLabel(t: string) {
   if (t === 'lift')              return 'Lift'
   if (t === 'lift_for_girls')   return 'Lift for Girls'
   if (t === 'running_funcional') return 'Running + Funcional'
+  if (t === 'treino_hibrido')    return 'Treino Híbrido'
   return t
 }
 
 function tipoColor(t: string) {
   if (t === 'lift')              return { bg: '#0a1520', border: '#00e5ff22', text: CYAN,  badge: '#00e5ff18' }
   if (t === 'lift_for_girls')   return { bg: '#150a15', border: '#ff2d9b22', text: ACCENT, badge: '#ff2d9b18' }
+  if (t === 'treino_hibrido')   return { bg: '#140a17', border: '#d946ef22', text: '#d946ef', badge: '#d946ef18' }
   return                               { bg: '#0a150a', border: '#2ddd8b22', text: VERDE,  badge: '#2ddd8b18' }
 }
 
@@ -667,6 +669,7 @@ function AulasPageInner() {
           <button onClick={() => router.push('/agendar')} style={{ background:'transparent', border:'1px solid #2a2a2a', borderRadius:'50%', width:36, height:36, color:'#666', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>‹</button>
           <div>
             <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:28, color:'#fff', letterSpacing:1 }}>{unidade?.nome||'Aulas coletivas'}</div>
+            {/* TODO hibrido: subtítulo */}
             <div style={{ fontSize:13, color:'#888', marginTop:2 }}>Lift · Lift for Girls · Running + Funcional</div>
             {unidade?.nome && ENDERECOS_UNIDADES[unidade.nome] && (
               <div style={{ display:'flex', gap:6, alignItems:'flex-start', marginTop:6, fontSize:13, color:'#777', lineHeight:1.4 }}>
