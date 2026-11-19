@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowUp, ArrowDown, Copy, Trash2, ChevronDown, ChevronUp, X } from 'lucide-react'
+import { ArrowUp, ArrowDown, Copy, Trash2, ChevronDown, ChevronUp, X, Mic, Square } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
 import { Spinner } from '@/components/ui'
 import {
@@ -96,6 +96,52 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
   const [progDia, setProgDia] = useState<Map<number, string>>(new Map())
   const [descricao, setDescricao] = useState('')
   const [montando, setMontando] = useState(false)
+  // Ditado: reconhecimento de voz do próprio navegador (Chrome/Edge/Safari), em português
+  const [ouvindo, setOuvindo] = useState(false)
+  const [parcial, setParcial] = useState('')
+  const [semMic, setSemMic] = useState('')
+  const recRef = useRef<any>(null)
+
+  function iniciarDitado() {
+    const SR = typeof window !== 'undefined' && ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)
+    if (!SR) { setSemMic('Este navegador não aceita ditado. Use o Chrome ou o Edge.'); return }
+    setSemMic('')
+    const rec = new SR()
+    rec.lang = 'pt-BR'
+    rec.continuous = true
+    rec.interimResults = true
+    rec.onresult = (ev: any) => {
+      let finais = '', temp = ''
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        const t = ev.results[i][0].transcript
+        if (ev.results[i].isFinal) finais += t
+        else temp += t
+      }
+      if (finais.trim()) setDescricao(d => (d.trim() ? d.trimEnd() + ' ' : '') + finais.trim())
+      setParcial(temp)
+    }
+    rec.onerror = (ev: any) => {
+      if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') setSemMic('O navegador bloqueou o microfone. Libere o microfone para este site e tente de novo.')
+      else if (ev.error !== 'no-speech' && ev.error !== 'aborted') setSemMic('O ditado parou (' + ev.error + '). Toque no microfone para continuar.')
+    }
+    // O navegador encerra sozinho depois de um silêncio; enquanto o botão estiver ligado, religa
+    rec.onend = () => {
+      setParcial('')
+      if (recRef.current === rec) { try { rec.start() } catch { recRef.current = null; setOuvindo(false) } }
+    }
+    recRef.current = rec
+    try { rec.start(); setOuvindo(true) } catch { recRef.current = null }
+  }
+
+  function pararDitado() {
+    const rec = recRef.current
+    recRef.current = null
+    setOuvindo(false)
+    setParcial('')
+    try { rec?.stop() } catch {}
+  }
+
+  useEffect(() => () => { const r = recRef.current; recRef.current = null; try { r?.stop() } catch {} }, [])
   const [rascunho, setRascunho] = useState<{ decisoes: string[]; faltou: string[] } | null>(null)
   const alertaRef = useRef<HTMLElement>(null)
   const blocosRef = useRef<HTMLDivElement>(null)
@@ -316,7 +362,7 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
           <section className={`${cls.card} p-6 flex flex-col gap-3`}>
             <h2 className={`${cls.titulo} m-0 text-lg font-semibold`}>Descrever o treino</h2>
             <div className="text-xs text-[#a1a1aa]">
-              Escreva do seu jeito: alunos, estações, quem corre, tempos, rounds, repetições e cargas. O sistema monta o esqueleto aqui embaixo para você conferir e salvar.
+              Escreva ou fale do seu jeito: alunos, estações, quem corre, tempos, rounds, repetições e cargas. O sistema monta o esqueleto aqui embaixo para você conferir e salvar.
             </div>
             <textarea
               value={descricao}
@@ -324,10 +370,26 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
               rows={5}
               aria-label="Descrição do treino"
               placeholder="Ex.: Faixa 4, 40 alunos. Aquecimento 3 min, explicação 3. 20 na esteira em dupla alternando 30s leve / 30s forte, 20 no chão em 5 estações com 2 duplas cada: remo 250 m cada, ski 200 m, wall ball 15 reps 4/6 kg, sled ida e volta 50/70 kg, burpee + lunge. Troca a cada 4 min, rodízio no chão até passar por todas."
-              className="w-full min-w-0 px-3 py-2.5 rounded-[10px] border border-[#3a3a42] bg-[#0e0e11] text-[#f2f2f4] outline-none focus:border-[#ff2d9b] resize-y"
+              className={`w-full min-w-0 px-3 py-2.5 rounded-[10px] border bg-[#0e0e11] text-[#f2f2f4] outline-none focus:border-[#ff2d9b] resize-y ${ouvindo ? 'border-[#ff2d9b]' : 'border-[#3a3a42]'}`}
             />
+            {ouvindo && (
+              <div className="text-xs text-[#ff6db8] flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-[#ff2d9b] animate-pulse" />
+                Ouvindo… {parcial && <span className="text-[#a1a1aa] italic truncate">{parcial}</span>}
+              </div>
+            )}
+            {semMic && <div className="text-xs text-[#ffd27a]">{semMic}</div>}
             <div className="flex flex-wrap items-center gap-3">
-              <button onClick={montarPeloTexto} disabled={montando || descricao.trim().length < 10} className={cls.btnRosa}>
+              <button
+                onClick={ouvindo ? pararDitado : iniciarDitado}
+                disabled={montando}
+                className={`${cls.btn} inline-flex items-center gap-2 ${ouvindo ? '!border-[#ff2d9b] text-[#ff6db8]' : ''}`}
+                aria-label={ouvindo ? 'Parar o ditado' : 'Falar o treino'}
+              >
+                {ouvindo ? <Square size={16} /> : <Mic size={16} />}
+                {ouvindo ? 'Parar' : 'Falar o treino'}
+              </button>
+              <button onClick={() => { if (ouvindo) pararDitado(); montarPeloTexto() }} disabled={montando || descricao.trim().length < 10} className={cls.btnRosa}>
                 {montando ? 'Montando… (até 1 min)' : 'Montar treino'}
               </button>
               {rascunho && !montando && <span className="text-xs text-[#a1a1aa]">Rascunho na tela, ainda não salvo.</span>}
