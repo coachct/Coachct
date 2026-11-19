@@ -892,7 +892,7 @@ function AulasPageInner() {
                                 ⏳ Fila
                               </button>
                             )) : (
-                              <button onClick={() => tentarReservar(oc)} style={{ width:'100%', background:ACCENT, color:'#fff', border:'none', borderRadius:8, padding:'6px', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                              <button onClick={() => tentarReservar(oc)} style={{ width:'100%', background:'rgba(255,45,155,0.08)', color:'#ff6db8', border:'1px solid rgba(255,45,155,0.45)', borderRadius:8, padding:'6px', fontSize:11, fontWeight:700, cursor:'pointer' }}>
                                 Reservar
                               </button>
                             )}
@@ -1002,8 +1002,9 @@ function AulasPageInner() {
                         </button>
                       )) : (
                         <button onClick={() => tentarReservar(oc)} style={{
-                          width:'100%', background:'#cc2580', color:'#fff',
-                          border:'none', borderRadius:12,
+                          // Discreto: contorno rosa em vez de rosa cheio (muitos botões cheios cansavam a leitura)
+                          width:'100%', background:'rgba(255,45,155,0.08)', color:'#ff6db8',
+                          border:'1px solid rgba(255,45,155,0.45)', borderRadius:12,
                           padding: isMobile ? '0.9rem' : '0.65rem', fontSize: isMobile ? 15 : 13, fontWeight:700,
                           cursor:'pointer', fontFamily:"'DM Sans', sans-serif", letterSpacing:0.3
                         }}>
