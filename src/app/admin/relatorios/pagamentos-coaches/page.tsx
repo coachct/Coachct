@@ -194,10 +194,12 @@ export default function PagamentosCoachesPage() {
       // na ausência dele, o coach da grade recorrente (club_aulas.coach_id).
       // Por isso buscamos TODAS as aulas da unidade (não só as deste coach): uma aula
       // de outro coach pode ter sido corrigida para este coach naquele dia, e vice-versa.
+      // NÃO filtrar por club_aulas.ativo: aula tirada da grade depois (ex.: grade unificada
+      // de Pinheiros em 03/11) continua tendo ocorrências dadas que precisam ser pagas.
+      // Quem diz se a aula aconteceu é o status da ocorrência.
       const { data: aulasUnidade } = await supabase.from('club_aulas')
         .select('id, tipo, horario, coach_id')
         .eq('unidade_id', unidadeSel.id)
-        .eq('ativo', true)
       const ids = (aulasUnidade || []).map((a: any) => a.id)
       if (!ids.length) { setAulas([]); setLoadingAulas(false); return }
 
@@ -381,7 +383,7 @@ export default function PagamentosCoachesPage() {
         }
       } else {
         const { data: aulasUnidade } = await supabase.from('club_aulas')
-          .select('id, tipo, coach_id').eq('unidade_id', u.id).eq('ativo', true)
+          .select('id, tipo, coach_id').eq('unidade_id', u.id)   // sem filtro de ativo (ver relatório individual)
         const ids = (aulasUnidade || []).map((a: any) => a.id)
         if (!ids.length) continue
         const aulaMap: Record<string, any> = {}
