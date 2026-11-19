@@ -124,6 +124,10 @@ export default function SidebarLayout({ children, navItems, role, rolesPermitido
     const filhos = item.children || []
     const isOpen = openGroups.includes(item.label)
     const filhoAtivo = filhos.some(c => rotaAtiva(c.href))
+    // Só o subitem de rota mais específica fica marcado (ex.: /ju/hibrido/calendario não marca /ju/hibrido junto)
+    const hrefAtivo = filhos
+      .filter(c => rotaAtiva(c.href))
+      .sort((a, b) => (b.href || '').length - (a.href || '').length)[0]?.href
     return (
       <div>
         <button
@@ -146,7 +150,7 @@ export default function SidebarLayout({ children, navItems, role, rolesPermitido
                 onClick={() => setOpen(false)}
                 className={cn(
                   'flex items-center gap-3 pl-11 pr-3 py-2 rounded-lg text-[13px] transition-colors',
-                  rotaAtiva(c.href)
+                  c.href === hrefAtivo
                     ? 'bg-primary-50 text-primary-800 font-medium border-l-2 border-primary-400 rounded-l-none'
                     : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
                 )}

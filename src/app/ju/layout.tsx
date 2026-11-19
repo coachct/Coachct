@@ -4,8 +4,15 @@ const nav = [
   { label: 'Biblioteca de exercícios', href: '/ju/biblioteca' },
   { label: 'Biblioteca de treinos', href: '/ju/montar' },
   { label: 'Treinos do mês', href: '/ju/treinos' },
-  { label: 'Treinos híbridos', href: '/ju/hibrido' },
-  { label: 'Calendário híbrido', href: '/ju/hibrido/calendario' },
+  // Categoria própria do Running & Hybrid, separada dos treinos da musculação
+  {
+    label: 'Running & Hybrid',
+    children: [
+      { label: 'Treinos', href: '/ju/hibrido' },
+      { label: 'Calendário', href: '/ju/hibrido/calendario' },
+      // 'TV da sala' (/hibrido-tv) entra junto com a fase 2
+    ],
+  },
   { label: 'Trocar senha', href: '/trocar-senha' },
 ]
 
