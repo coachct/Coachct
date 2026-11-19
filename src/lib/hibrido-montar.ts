@@ -1,5 +1,6 @@
 // Montagem do treino híbrido a partir de texto livre (Claude). Usado só no servidor.
 // Nada é gravado aqui: devolve o rascunho no formato do editor.
+// Dois modos: montar do zero (só o texto) ou ajustar (treino atual + o que mudar).
 
 import Anthropic from '@anthropic-ai/sdk'
 import { Bloco, EstacaoRow, Treino, novoId, resumo, mmss } from '@/lib/hibrido'
@@ -66,30 +67,76 @@ const ESQUEMA = {
   },
 }
 
-const SISTEMA = `VocÃª monta treinos hÃ­bridos (corrida na esteira + estaÃ§Ãµes) da sala de Running da JustClub Vila OlÃ­mpia, a partir da descriÃ§Ã£o em texto livre da coordenadora. Devolva o treino no formato JSON pedido. Escreva tudo em portuguÃªs do Brasil.
+const SISTEMA = `Você monta treinos híbridos (corrida na esteira + estações) da sala de Running da JustClub Vila Olímpia, a partir da descrição em texto livre (escrita ou ditada por voz) da coordenadora. Devolva o treino no formato JSON pedido. Escreva tudo em português do Brasil.
 
 Regras fixas do sistema:
-- Faixas de ocupaÃ§Ã£o: 1 = atÃ© 10 alunos; 2 = 11 a 20; 3 = 21 a 30; 4 = 31 a 40 (20 duplas). Se o texto disser o nÃºmero de alunos, a faixa sai dele.
-- EstaÃ§Ãµes possÃ­veis: corrida (esteira), remo, ski (SkiErg), wall_ball, sled, funcional. Funcional pode aparecer vÃ¡rias vezes no mesmo bloco, com rotulo "Funcional A", "Funcional B"â€¦; nas outras estaÃ§Ãµes deixe rotulo vazio.
-- Esteira: no mÃ¡ximo 10 alunos correndo ao mesmo tempo, ou 20 em dupla (corrida_em_dupla = true). alunos_corrida = quantos alunos estÃ£o na esteira em cada etapa.
-- A aula tem abertura (aquecimento + explicaÃ§Ã£o e arrumaÃ§Ã£o) e depois os blocos. NÃ£o existe volta Ã  calma: a aula termina no Ãºltimo bloco.
+- Faixas de ocupação: 1 = até 10 alunos; 2 = 11 a 20; 3 = 21 a 30; 4 = 31 a 40 (20 duplas). Se o texto disser o número de alunos, a faixa sai dele.
+- Estações possíveis: corrida (esteira), remo, ski (SkiErg), wall_ball, sled, funcional. Funcional pode aparecer várias vezes no mesmo bloco, com rotulo "Funcional A", "Funcional B"…; nas outras estações deixe rotulo vazio.
+- Esteira: no máximo 10 alunos correndo ao mesmo tempo, ou 20 em dupla (corrida_em_dupla = true). alunos_corrida = quantos alunos estão na esteira em cada etapa.
+- A aula tem abertura (aquecimento + explicação e arrumação) e depois os blocos. Não existe volta à calma: a aula termina no último bloco.
 - Todos os tempos em segundos.
+- Texto ditado vem sem pontuação e com números por extenso ("quatro minutos", "duzentos e cinquenta metros", "quatro barra seis quilos" = 4/6 kg): interprete normalmente.
 
 Formatos de bloco:
-- grupos_ab: metade da turma na esteira, metade no chÃ£o; a cada etapa os grupos trocam de lado. UM round = DUAS etapas (A na esteira e B no chÃ£o, depois o inverso). a_comeca diz onde o Grupo A comeÃ§a. A esteira vira UMA linha "corrida" em estacoes (postos = nÃºmero de esteiras, pessoas = alunos_corrida, modo_dupla, instrucao, meta); as outras linhas sÃ£o as estaÃ§Ãµes do chÃ£o (postos = equipamentos; pessoas = quantas pessoas ficam na estaÃ§Ã£o). rodizio_chao = true quando a cada volta ao chÃ£o a dupla vai para a prÃ³xima estaÃ§Ã£o; para todos passarem por todas as estaÃ§Ãµes do chÃ£o, rounds = nÃºmero de estaÃ§Ãµes do chÃ£o. ordem fica vazia.
-- circuito: cada um estÃ¡ numa estaÃ§Ã£o e a cada etapa vai para a prÃ³xima da ordem. ordem = Ã­ndices (base 0) de estacoes na sequÃªncia do circuito (a corrida pode repetir, ex.: [0,1,0,2]); uma passada pela ordem = um round. a_comeca = "corrida", rodizio_chao = false.
-- todos: todo mundo na mesma estaÃ§Ã£o ao mesmo tempo, seguindo a ordem (Ã­ndices de estacoes). a_comeca = "corrida", rodizio_chao = false.
+- grupos_ab: metade da turma na esteira, metade no chão; a cada etapa os grupos trocam de lado. UM round = DUAS etapas (A na esteira e B no chão, depois o inverso). a_comeca diz onde o Grupo A começa. A esteira vira UMA linha "corrida" em estacoes (postos = número de esteiras, pessoas = alunos_corrida, modo_dupla, instrucao, meta); as outras linhas são as estações do chão (postos = equipamentos; pessoas = quantas pessoas ficam na estação). rodizio_chao = true quando a cada volta ao chão a dupla vai para a próxima estação; para todos passarem por todas as estações do chão, rounds = número de estações do chão. ordem fica vazia.
+- circuito: cada um está numa estação e a cada etapa vai para a próxima da ordem. ordem = índices (base 0) de estacoes na sequência do circuito (a corrida pode repetir, ex.: [0,1,0,2]); uma passada pela ordem = um round. a_comeca = "corrida", rodizio_chao = false.
+- todos: todo mundo na mesma estação ao mesmo tempo, seguindo a ordem (índices de estacoes). a_comeca = "corrida", rodizio_chao = false.
 
-Conta do tempo (tem que fechar EXATAMENTE em duracao_seg, padrÃ£o 3000 = 50:00):
-- Etapas do bloco = rounds Ã— (2 em grupos_ab; tamanho da ordem em circuito/todos, ou o nÃºmero de estaÃ§Ãµes se a ordem estiver vazia).
-- Cada etapa Ã© seguida de uma transiÃ§Ã£o, MENOS a Ãºltima etapa do Ãºltimo bloco da aula (a aula acaba ali).
-- Total = aquecimento_seg + explicacao_seg + soma dos blocos (etapas Ã— etapa_seg + transiÃ§Ãµes Ã— transicao_seg).
-- Para fechar a soma, ajuste primeiro a transiÃ§Ã£o, depois a explicaÃ§Ã£o. Nunca mude um valor que o texto disse explicitamente, a nÃ£o ser que seja impossÃ­vel fechar; nesse caso diga em decisoes.
+Conta do tempo (tem que fechar EXATAMENTE em duracao_seg, padrão 3000 = 50:00):
+- Etapas do bloco = rounds × (2 em grupos_ab; tamanho da ordem em circuito/todos, ou o número de estações se a ordem estiver vazia).
+- Cada etapa é seguida de uma transição, MENOS a última etapa do último bloco da aula (a aula acaba ali).
+- Total = aquecimento_seg + explicacao_seg + soma dos blocos (etapas × etapa_seg + transições × transicao_seg).
+- Para fechar a soma, ajuste primeiro a transição, depois a explicação. Nunca mude um valor que o texto disse explicitamente, a não ser que seja impossível fechar; nesse caso diga em decisoes.
 
 Como preencher:
-- Use sÃ³ o que o texto diz. NÃ£o invente carga, meta ou exercÃ­cio: o que nÃ£o estiver no texto fica "" e entra em faltou (ex.: "carga do sled").
-- decisoes: frases curtas com tudo o que vocÃª teve que decidir sozinho (ex.: "transiÃ§Ã£o de 20 s para fechar 50:00", "5 rounds para passar pelas 5 estaÃ§Ãµes").
-- nome: curto, descritivo (ex.: "Esteira Ã— 5 estaÃ§Ãµes").`
+- Use só o que o texto diz. Não invente carga, meta ou exercício: o que não estiver no texto fica "" e entra em faltou (ex.: "carga do sled").
+- decisoes: frases curtas com tudo o que você teve que decidir sozinho (ex.: "transição de 20 s para fechar 50:00", "5 rounds para passar pelas 5 estações").
+- nome: curto, descritivo (ex.: "Esteira × 5 estações").
+
+Modo AJUSTAR (quando vier um TREINO ATUAL junto):
+- O treino atual já está montado e pode ter sido editado à mão. Parta dele e aplique SÓ o que o pedido muda ou completa (ex.: preencher uma carga, trocar uma estação, mudar o tempo).
+- Tudo o que o pedido não menciona fica exatamente igual: nomes, textos, cargas, metas, postos, pessoas, ordem dos blocos e das estações.
+- Se a mudança desfizer a soma de 50:00, feche de novo pelas regras acima e diga em decisoes.
+- decisoes: só o que você decidiu neste ajuste. faltou: o que ainda falta no treino inteiro depois do ajuste.`
+
+// Treino do editor → mesmo formato da resposta (para o modo ajustar)
+function paraEsquema(t: Treino) {
+  return {
+    nome: t.nome,
+    faixa: t.faixa,
+    duracao_seg: t.duracao_seg,
+    aquecimento_desc: t.aquecimento_desc,
+    aquecimento_seg: t.aquecimento_seg,
+    explicacao_desc: t.explicacao_desc,
+    explicacao_seg: t.explicacao_seg,
+    blocos: (t.blocos || []).map(b => {
+      const idx = new Map((b.estacoes || []).map((e, i) => [e.id, i]))
+      return {
+        nome: b.nome,
+        formato: b.formato,
+        etapa_seg: b.etapa_seg,
+        transicao_seg: b.transicao_seg,
+        rounds: b.rounds,
+        a_comeca: b.rodizio?.a_comeca || 'corrida',
+        rodizio_chao: b.formato === 'grupos_ab' ? b.rodizio?.rodizio_chao !== false : false,
+        ordem: (b.rodizio?.ordem || []).map(id => idx.get(id)).filter(i => i !== undefined),
+        alunos_corrida: b.alunos_corrida,
+        corrida_em_dupla: b.corrida_em_dupla,
+        estacoes: (b.estacoes || []).map(e => ({
+          estacao: e.estacao,
+          rotulo: e.rotulo,
+          postos: e.postos === '' ? null : Number(e.postos),
+          pessoas: e.pessoas === '' ? null : Number(e.pessoas),
+          modo_dupla: e.modo_dupla,
+          instrucao: e.instrucao,
+          meta: e.meta,
+          carga_f: e.carga_f,
+          carga_m: e.carga_m,
+        })),
+      }
+    }),
+  }
+}
 
 function paraTreino(o: any, padrao: { faixa: number; duracao_seg: number }): Treino {
   const n = (v: any, d = 0) => (Number.isFinite(Number(v)) ? Math.max(0, Math.round(Number(v))) : d)
@@ -136,18 +183,23 @@ function paraTreino(o: any, padrao: { faixa: number; duracao_seg: number }): Tre
   }
 }
 
-
 export async function montarTreino(
   textoBruto: string,
   pad: { faixa: number; duracao_seg: number },
+  atual?: Treino | null,
 ): Promise<{ status: number; body: any }> {
   const texto = textoBruto.trim()
-  if (texto.length < 10) return { status: 400, body: { error: 'Descreva o treino com um pouco mais de detalhe.' } }
+  const minimo = atual ? 3 : 10
+  if (texto.length < minimo) return { status: 400, body: { error: atual ? 'Diga o que quer mudar no treino.' : 'Descreva o treino com um pouco mais de detalhe.' } }
   if (texto.length > 6000) return { status: 400, body: { error: 'Texto muito longo (máx. 6000 caracteres).' } }
   const padrao = {
     faixa: [1, 2, 3, 4].includes(pad.faixa) ? pad.faixa : 1,
     duracao_seg: pad.duracao_seg > 0 ? Math.round(pad.duracao_seg) : 3000,
   }
+
+  const conteudo = atual
+    ? `MODO AJUSTAR.\n\nTREINO ATUAL:\n${JSON.stringify(paraEsquema(atual))}\n\nO QUE MUDAR OU COMPLETAR:\n${texto}`
+    : `Faixa selecionada na tela (use se o texto não disser): ${padrao.faixa}. Duração da aula: ${padrao.duracao_seg} s.\n\nDescrição do treino:\n${texto}`
 
   let resp: Anthropic.Message
   try {
@@ -157,10 +209,7 @@ export async function montarTreino(
       max_tokens: 16000,
       system: SISTEMA,
       output_config: { effort: 'medium', format: { type: 'json_schema', schema: ESQUEMA } },
-      messages: [{
-        role: 'user',
-        content: `Faixa selecionada na tela (use se o texto não disser): ${padrao.faixa}. Duração da aula: ${padrao.duracao_seg} s.\n\nDescrição do treino:\n${texto}`,
-      }],
+      messages: [{ role: 'user', content: conteudo }],
     })
   } catch (e: any) {
     console.error('[hibrido/montar]', e?.status, e?.message)

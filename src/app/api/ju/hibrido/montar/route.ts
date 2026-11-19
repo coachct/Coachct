@@ -27,6 +27,8 @@ export async function POST(req: NextRequest) {
   const negado = await autenticar(req)
   if (negado) return negado
   const body = await req.json().catch(() => ({}))
-  const r = await montarTreino(String(body.texto || ''), { faixa: Number(body.faixa), duracao_seg: Number(body.duracao_seg) })
+  // modo 'ajustar': vem o treino que está na tela e o texto é só o que mudar
+  const atual = body.modo === 'ajustar' && body.atual && Array.isArray(body.atual.blocos) ? body.atual : null
+  const r = await montarTreino(String(body.texto || ''), { faixa: Number(body.faixa), duracao_seg: Number(body.duracao_seg) }, atual)
   return NextResponse.json(r.body, { status: r.status })
 }
