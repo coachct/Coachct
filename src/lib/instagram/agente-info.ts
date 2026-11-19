@@ -16,6 +16,7 @@ import {
   type UnidadeInfo,
 } from '@/lib/whatsapp/conhecimento'
 import { avisoBlackNovemberBot } from '@/lib/blackFriday'
+import { hojeSP } from '@/lib/tempo'
 // Mesmas travas determinísticas do WhatsApp (piso de 100%): o Instagram era um cérebro
 // separado SEM nenhuma trava, então lamento/concordância/promessa vazavam. Aplicadas na saída.
 import { semLamentacao, semCanalExterno, semJanelaInventada, semAdmitirCulpaCancel, semPrazoRelogioCancel, semRestricaoGoldClub, semValidacaoRetroativa } from '@/lib/whatsapp/agente'
@@ -34,6 +35,32 @@ export interface TurnoConversa {
 interface Ctx {
   enderecos: UnidadeInfo[]
   faq: { categoria: string | null; pergunta: string; resposta: string }[]
+  datas: {
+    hojeStr: string
+    hojeExtenso: string
+    amanhaStr: string
+    amanhaExtenso: string
+    feriadoHoje: string | null
+    feriadoAmanha: string | null
+  }
+}
+
+/** Datas de hoje/amanhã no fuso de SP, prontas (dia da semana + data). Evita o bot
+ *  dizer que "não sabe que dia é hoje/amanhã" — ele está falando com a pessoa AGORA. */
+function calcularDatas(): Omit<Ctx['datas'], 'feriadoHoje' | 'feriadoAmanha'> {
+  const hojeStr = hojeSP()
+  const extensoFmt = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long',
+  })
+  // Ancorado ao meio-dia UTC do dia-calendário de SP → soma de 1 dia é segura.
+  const hojeNoon = new Date(hojeStr + 'T12:00:00Z')
+  const amanhaNoon = new Date(hojeNoon.getTime() + 24 * 60 * 60 * 1000)
+  return {
+    hojeStr,
+    hojeExtenso: extensoFmt.format(hojeNoon),
+    amanhaStr: amanhaNoon.toISOString().slice(0, 10),
+    amanhaExtenso: extensoFmt.format(amanhaNoon),
+  }
 }
 
 function systemPrompt(ctx: Ctx): string {
@@ -46,6 +73,11 @@ function systemPrompt(ctx: Ctx): string {
     : '(nenhum item cadastrado ainda)'
 
   return `Você é a voz da **Just Club & CT** no Direct do Instagram — uma marca premium de São Paulo que reúne o personal training (Just CT) e as aulas coletivas (JustClub). Fale como gente da equipe: descontraído, com a cara da Just, próximo e simpático. NUNCA se apresente como "assistente virtual", "bot" ou "IA" — você é a Just Club & CT conversando.
+
+# Data de hoje (fuso de São Paulo — você SABE que dia é, NUNCA pergunte nem diga que não sabe)
+- HOJE é ${ctx.datas.hojeExtenso} — ${ctx.datas.hojeStr}.${ctx.datas.feriadoHoje ? ` ⚠️ HOJE é FERIADO (${ctx.datas.feriadoHoje}).` : ''}
+- AMANHÃ é ${ctx.datas.amanhaExtenso} — ${ctx.datas.amanhaStr}.${ctx.datas.feriadoAmanha ? ` ⚠️ AMANHÃ é FERIADO (${ctx.datas.feriadoAmanha}).` : ''}
+Você está falando com a pessoa AGORA, então é ABSURDO dizer "não sei que dia é hoje/amanhã" — é TERMINANTEMENTE PROIBIDO. Quando perguntarem do funcionamento/horário de "hoje", "amanhã" ou um dia da semana, use as datas acima pra saber o dia e responda o horário certo do dia. ATENÇÃO AO FERIADO: se o dia perguntado for FERIADO (marcado acima), o Just CT (musculação livre) funciona no HORÁRIO DE FERIADO/DOMINGO (09h às 14h), NUNCA o de dia útil — e as aulas do JustClub seguem a grade de feriado (a pessoa vê em https://www.justclubct.com.br/aulas). Se não houver marcação de feriado, use o horário normal do dia da semana (seg–sex, sábado ou domingo).
 
 # ENDEREÇO DO SITE — escreva EXATO (erro comum, ATENÇÃO)
 O endereço é EXATAMENTE https://www.justclubct.com.br — "club" colado em "ct" (j-u-s-t-c-l-u-b-c-t), SEM nenhum "e" entre eles. NUNCA escreva "justclubect" nem qualquer variação. Sempre copie certinho.
@@ -118,11 +150,28 @@ export async function responderInstagram(params: {
   const { supabase, mensagem, historico = [] } = params
   const client = new Anthropic() // lê ANTHROPIC_API_KEY do ambiente
 
-  const [enderecos, faq] = await Promise.all([
+  const base = calcularDatas()
+  const [enderecos, faq, feriadoRes] = await Promise.all([
     listarEnderecos(supabase),
     listarConhecimento(supabase),
+    // HOJE ou AMANHÃ é feriado? (muda o horário de funcionamento — senão o bot
+    // responde horário de dia útil num feriado). Fail-safe: erro → sem feriado.
+    supabase
+      .from('feriados')
+      .select('data, descricao')
+      .in('data', [base.hojeStr, base.amanhaStr])
+      .eq('ativo', true),
   ])
-  const ctx: Ctx = { enderecos, faq }
+  const feriados = (feriadoRes as any)?.data as { data: string; descricao: string }[] | null
+  const ctx: Ctx = {
+    enderecos,
+    faq,
+    datas: {
+      ...base,
+      feriadoHoje: feriados?.find((f) => f.data === base.hojeStr)?.descricao ?? null,
+      feriadoAmanha: feriados?.find((f) => f.data === base.amanhaStr)?.descricao ?? null,
+    },
+  }
 
   const messages: Anthropic.MessageParam[] = [
     ...historico.map((t) => ({ role: t.role, content: t.content })),
