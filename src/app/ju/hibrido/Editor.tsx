@@ -111,6 +111,7 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
     rec.continuous = true
     rec.interimResults = true
     rec.onresult = (ev: any) => {
+      if (recRef.current !== rec) return // já parado: ignora resultado atrasado
       let finais = '', temp = ''
       for (let i = ev.resultIndex; i < ev.results.length; i++) {
         const t = ev.results[i][0].transcript
@@ -121,6 +122,7 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
       setParcial(temp)
     }
     rec.onerror = (ev: any) => {
+      if (recRef.current !== rec) return
       if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') setSemMic('O navegador bloqueou o microfone. Libere o microfone para este site e tente de novo.')
       else if (ev.error !== 'no-speech' && ev.error !== 'aborted') setSemMic('O ditado parou (' + ev.error + '). Toque no microfone para continuar.')
     }
@@ -133,15 +135,27 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
     try { rec.start(); setOuvindo(true) } catch { recRef.current = null }
   }
 
+  // Para de verdade: solta os eventos (nada religa nem escreve depois) e aborta na hora,
+  // em vez de stop(), que ainda espera o navegador fechar a última frase.
+  function encerrar(rec: any) {
+    if (!rec) return
+    rec.onresult = null
+    rec.onerror = null
+    rec.onend = null
+    try { rec.abort() } catch { try { rec.stop() } catch {} }
+  }
+
   function pararDitado() {
     const rec = recRef.current
     recRef.current = null
     setOuvindo(false)
+    // A última frase que ainda estava sendo reconhecida não se perde
+    if (parcial.trim()) setDescricao(d => (d.trim() ? d.trimEnd() + ' ' : '') + parcial.trim())
     setParcial('')
-    try { rec?.stop() } catch {}
+    encerrar(rec)
   }
 
-  useEffect(() => () => { const r = recRef.current; recRef.current = null; try { r?.stop() } catch {} }, [])
+  useEffect(() => () => { const r = recRef.current; recRef.current = null; encerrar(r) }, [])
   const [rascunho, setRascunho] = useState<{ decisoes: string[]; faltou: string[] } | null>(null)
   const alertaRef = useRef<HTMLElement>(null)
   const blocosRef = useRef<HTMLDivElement>(null)
