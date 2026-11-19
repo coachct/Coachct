@@ -83,7 +83,7 @@ export function nomeAulaClub(tipo?: string | null, grupo?: string | null): strin
   const g = (grupo || '').trim()
   if (tipo === 'running_funcional') return g ? `Running + Funcional · ${g}` : 'Running + Funcional'
   if (tipo === 'lift_for_girls') return g ? `Lift For Girls · ${g}` : 'Lift For Girls'
-  if (tipo === 'treino_hibrido') return 'Treino Híbrido'
+  if (tipo === 'treino_hibrido') return 'Running & Hybrid'
   return g ? `Lift ${g}` : 'Lift'
 }
 

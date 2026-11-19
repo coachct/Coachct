@@ -448,7 +448,7 @@ export default function TotemPage() {
 
   const posLabel = (p: string | null) => (!p ? '' : p.toUpperCase().startsWith('F') ? `Funcional ${p}` : `Esteira ${p}`)
   const tipoClasse = (t: string) => (t === 'running_funcional' ? 'run' : t === 'treino_hibrido' ? 'hibrido' : 'lift')
-  const tipoLabel = (t: string) => (t === 'running_funcional' ? 'Running + Funcional' : t === 'treino_hibrido' ? 'Treino Híbrido' : t === 'lift_for_girls' ? 'Lift For Girls' : 'Lift')
+  const tipoLabel = (t: string) => (t === 'running_funcional' ? 'Running + Funcional' : t === 'treino_hibrido' ? 'Running & Hybrid' : t === 'lift_for_girls' ? 'Lift For Girls' : 'Lift')
 
   // =================== RENDER ===================
   return (

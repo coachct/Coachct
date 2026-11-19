@@ -1,4 +1,4 @@
-// Treino Híbrido (sala de Running da JustClub Vila Olímpia): tipos, contas e acesso ao banco.
+// Running & Hybrid (sala de Running da JustClub Vila Olímpia): tipos, contas e acesso ao banco.
 // Tempos ficam em segundos no banco e aparecem como mm:ss.
 
 export const UNIDADE_VO = '05eeab3e-5eae-4140-bc3a-1c1d56ac95be'

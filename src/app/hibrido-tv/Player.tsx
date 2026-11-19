@@ -1,5 +1,5 @@
 'use client'
-// Player da TV do Treino Híbrido: roda o treino com cronômetro, etapa por etapa.
+// Player da TV do Running & Hybrid: roda o treino com cronômetro, etapa por etapa.
 // Usado pelo teste da Ju (/hibrido-tv/[id], logado) e pela TV da sala (/hibrido-tv, com PIN).
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { SkipBack, SkipForward, Play, Pause, RotateCcw, Maximize, X } from 'lucide-react'

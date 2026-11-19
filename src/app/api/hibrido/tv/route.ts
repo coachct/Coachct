@@ -1,6 +1,6 @@
 // POST /api/hibrido/tv  { pin, faixa? }
 // TV da sala de Running (Vila Olímpia), entrada pelo mesmo PIN dos coaches (/playlist).
-// Sem faixa: aulas de Treino Híbrido de hoje com as reservas e a faixa sugerida, e o que está
+// Sem faixa: aulas de Running & Hybrid de hoje com as reservas e a faixa sugerida, e o que está
 // programado em cada faixa. Com faixa: devolve o treino programado para hoje nessa faixa.
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/api-admin'
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ treino })
     }
 
-    // Aulas de Treino Híbrido de hoje na VO, com reservas ativas (reservado + presente)
+    // Aulas de Running & Hybrid de hoje na VO, com reservas ativas (reservado + presente)
     const { data: ocs } = await sb
       .from('club_ocorrencias')
       .select('id, status, club_aulas!inner(horario, tipo, unidade_id), club_reservas(status)')

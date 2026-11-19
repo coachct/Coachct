@@ -16,7 +16,7 @@ function tipoLabel(t: string) {
   if (t === 'lift') return 'Lift'
   if (t === 'lift_for_girls') return 'Lift for Girls'
   if (t === 'running_funcional') return 'Running + Funcional'
-  if (t === 'treino_hibrido')    return 'Treino Híbrido'
+  if (t === 'treino_hibrido')    return 'Running & Hybrid'
   return t || '—'
 }
 

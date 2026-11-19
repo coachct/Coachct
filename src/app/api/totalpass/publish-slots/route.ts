@@ -27,12 +27,12 @@ const TITULO: Record<string, string> = {
   lift: 'Lift',
   lift_for_girls: 'Lift for Girls',
   running_funcional: 'Running Funcional',
-  treino_hibrido: 'Treino Híbrido',
+  treino_hibrido: 'Running & Hybrid',
 }
 
 // Modalidades habilitadas. Running incluído: o pull-bookings auto-atribui a
 // posição (primeira esteira livre, depois funcional) na hora da reserva.
-// Treino Híbrido: só vagas, sem posição (mesmo caminho do Lift).
+// Running & Hybrid: só vagas, sem posição (mesmo caminho do Lift).
 const MODALIDADES_ATIVAS = new Set(['lift', 'lift_for_girls', 'running_funcional', 'treino_hibrido'])
 
 // horario "HH:MM" (24h) -> "HH:MM AM/PM" (formato que a TotalPass espera).

@@ -18,7 +18,7 @@ function tipoLabel(t: string) {
   if (t==='lift')              return 'Lift'
   if (t==='lift_for_girls')   return 'Lift for Girls'
   if (t==='running_funcional') return 'Running + Funcional'
-  if (t==='treino_hibrido')    return 'Treino Híbrido'
+  if (t==='treino_hibrido')    return 'Running & Hybrid'
   return t
 }
 // Rótulo curto da modalidade, pra caber na tag "1ª vez • …"
@@ -26,7 +26,7 @@ function tipoLabelCurto(t: string) {
   if (t==='lift')              return 'Lift'
   if (t==='lift_for_girls')   return 'Lift for Girls'
   if (t==='running_funcional') return 'Running'
-  if (t==='treino_hibrido')    return 'Híbrido'
+  if (t==='treino_hibrido')    return 'Hybrid'
   return t
 }
 const ROXO = '#7c3aed'

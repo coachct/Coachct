@@ -15,9 +15,9 @@ const TIPOS = [
   { value: 'lift',               label: 'Lift' },
   { value: 'lift_for_girls',    label: 'Lift for Girls' },
   { value: 'running_funcional', label: 'Running + Funcional' },
-  { value: 'treino_hibrido',    label: 'Treino Híbrido' },
+  { value: 'treino_hibrido',    label: 'Running & Hybrid' },
 ]
-// Treino Híbrido: sala de Running, reserva só por vagas (sem mapa) e sem grupo muscular
+// Running & Hybrid: sala de Running, reserva só por vagas (sem mapa) e sem grupo muscular
 const TIPOS_SEM_GRUPO = ['treino_hibrido']
 const HORARIOS_VILA_OLIMPIA = [
   '06:00','07:00','08:00','09:00','10:00','10:15',
@@ -1202,7 +1202,7 @@ export default function JustClubAdminPage() {
 
               {TIPOS_SEM_GRUPO.includes(form.tipo) ? (
                 <div className="bg-fuchsia-50 border border-fuchsia-100 rounded-xl px-3 py-2 text-xs text-fuchsia-700">
-                  Treino Híbrido: reserva só por vagas (sem mapa) e sem grupo muscular. O treino de cada dia vem da área da Ju (Treinos híbridos).
+                  Running & Hybrid: reserva só por vagas (sem mapa) e sem grupo muscular. O treino de cada dia vem da área da Ju (Treinos híbridos).
                 </div>
               ) : (
               <div>

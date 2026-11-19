@@ -27,7 +27,7 @@ const MODALIDADES = [
   { tipo: 'lift_for_girls',     name: 'Lift for Girls',    description: 'Treino de força em circuito (turma feminina).' },
   { tipo: 'running_funcional',  name: 'Running Funcional', description: 'Corrida em esteira + treino funcional.' },
   // TODO hibrido: descrição a confirmar com o Ricardo antes de ligar
-  { tipo: 'treino_hibrido',     name: 'Treino Híbrido',    description: 'Corrida em esteira + estações (remo, ski, wall ball, sled e funcional).' },
+  { tipo: 'treino_hibrido',     name: 'Running & Hybrid',    description: 'Corrida em esteira + estações (remo, ski, wall ball, sled e funcional).' },
 ]
 
 export async function POST(req: NextRequest) {
