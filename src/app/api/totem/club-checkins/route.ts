@@ -22,6 +22,14 @@ export const dynamic = 'force-dynamic'
 // totem religado não mostra presença de muito tempo atrás
 const JANELA_MIN = 5
 
+// Ritmo da consulta do totem: rápido só perto do início de uma aula (98% dos
+// check-ins caem entre 30 min antes e 25 min depois); fora disso não há check-in.
+const POLL_RAPIDO_MS = 2000
+const POLL_LENTO_MS = 30000
+const JANELA_AULA_MIN = 30 // antes e depois do início da aula
+const HORARIOS_TTL_MS = 5 * 60 * 1000
+const horariosCache = new Map<string, { em: number; inicios: number[] }>()
+
 const soDigitos = (v: any) => String(v ?? '').replace(/\D/g, '')
 
 // "Mariana de Souza Costa" → "Mariana Costa"
@@ -41,6 +49,35 @@ function minutosSP(iso: string): number {
   return minutos(partesSP(new Date(iso))?.hora || '')
 }
 
+// De quanto em quanto tempo o totem deve voltar a consultar. Os horários das
+// aulas de hoje ficam em memória por 5 min (não consulta o banco a cada poll).
+// Na dúvida (erro), devolve o ritmo rápido — nunca atrasa o card por falha nossa.
+async function ritmoDoPoll(sb: any, unidadeId: string, hoje: string): Promise<number> {
+  try {
+    const chave = `${unidadeId}:${hoje}`
+    let c = horariosCache.get(chave)
+    if (!c || Date.now() - c.em > HORARIOS_TTL_MS) {
+      const { data, error } = await sb
+        .from('club_ocorrencias')
+        .select('aula:club_aulas ( horario, unidade_id )')
+        .eq('data', hoje)
+        .eq('status', 'ativa')
+      if (error) return POLL_RAPIDO_MS
+      const inicios = ((data || []) as any[])
+        .filter((o) => o.aula?.unidade_id === unidadeId)
+        .map((o) => minutos(o.aula.horario))
+      c = { em: Date.now(), inicios }
+      // limpa só o que é de outro dia (as duas unidades dividem o cache)
+      Array.from(horariosCache.keys()).forEach((k) => { if (!k.endsWith(`:${hoje}`)) horariosCache.delete(k) })
+      horariosCache.set(chave, c)
+    }
+    const agora = minutos(partesSP(new Date())?.hora || '')
+    return c.inicios.some((i) => Math.abs(i - agora) <= JANELA_AULA_MIN) ? POLL_RAPIDO_MS : POLL_LENTO_MS
+  } catch {
+    return POLL_RAPIDO_MS
+  }
+}
+
 export async function GET(req: NextRequest) {
   try {
     if (!totemTokenOk(req)) return NextResponse.json({ erro: 'nao_autorizado' }, { status: 401 })
@@ -52,6 +89,7 @@ export async function GET(req: NextRequest) {
 
     const historico = searchParams.get('historico') === '1'
     const hoje = hojeSP()
+    const proximoMs = historico ? undefined : await ritmoDoPoll(sb, unidade.id, hoje)
     // feed: só os últimos minutos; histórico: desde 00:00 de hoje (SP, UTC-3)
     const desde = historico
       ? new Date(`${hoje}T00:00:00-03:00`).toISOString()
@@ -68,7 +106,7 @@ export async function GET(req: NextRequest) {
     const { data: entradas, error } = await q
       .order('recebido_em', { ascending: false })
       .limit(historico ? 40 : 12)
-    if (error || !entradas?.length) return NextResponse.json({ checkins: [] })
+    if (error || !entradas?.length) return NextResponse.json({ checkins: [], proximoMs })
 
     const coachCache = new Map<string, string>()
     const checkins: any[] = []
@@ -148,7 +186,7 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    return NextResponse.json({ checkins })
+    return NextResponse.json({ checkins, proximoMs })
   } catch {
     return NextResponse.json({ checkins: [] })
   }
