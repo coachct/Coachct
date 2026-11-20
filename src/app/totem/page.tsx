@@ -18,6 +18,7 @@ type Screen =
   | 'ctUsarCredito'
 
 const POLL_MS = 3000
+const FEED_POLL_MS = 2000 // feed da tela parada (Club e CT): consulta check-ins novos a cada 2s
 const FEED_CARD_MS = 120000 // CT: card "Entrada liberada" fica 2 min na tela e some sozinho
 const CLUB_CARD_MS = 60000 // Club: card "Presença confirmada" fica 1 min na tela
 const CLUB_FEED_MAX = 6    // Club: no máximo 6 cards; chegando mais, o mais antigo sai
@@ -395,7 +396,7 @@ export default function TotemPage() {
   useEffect(() => {
     if (screen !== 'idle' || unidade?.tipo !== 'ct') return
     carregarFeed()
-    const id = setInterval(carregarFeed, 10000)
+    const id = setInterval(carregarFeed, FEED_POLL_MS)
     return () => clearInterval(id)
   }, [screen, unidade?.tipo, carregarFeed])
 
@@ -403,7 +404,7 @@ export default function TotemPage() {
   useEffect(() => {
     if (screen !== 'idle' || !unidade || unidade.tipo === 'ct') return
     carregarFeedClub()
-    const id = setInterval(carregarFeedClub, 10000)
+    const id = setInterval(carregarFeedClub, FEED_POLL_MS)
     return () => clearInterval(id)
   }, [screen, unidade, carregarFeedClub])
 
