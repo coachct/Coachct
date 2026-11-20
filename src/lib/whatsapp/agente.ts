@@ -1592,11 +1592,13 @@ export async function responderInfo(params: {
   const { supabase, mensagem, historico = [], cliente = null, imagens = [] } = params
   const temImagem = imagens.length > 0
 
-  // AULA GRÁTIS/GRATUITA (pergunta ESPECÍFICA): o Ricardo quer uma resposta com bom humor,
+  // AULA GRÁTIS/GRATUITA/FREE (pergunta ESPECÍFICA): o Ricardo quer uma resposta com bom humor,
   // sorteada entre 3 variações fixas, sempre puxando pro treino avulso. Determinístico (o
-  // modelo não sorteia de verdade nem mantém a copy exata). Só dispara quando a mensagem
-  // ATUAL fala de grátis E não é outro contexto (estacionamento/wifi/reserva/taxa...).
-  if (!temImagem && /(gr[áa]tis|gratuit|de\s+gra[çc]a)/i.test(mensagem) && !/(estacion|wi-?fi|reserva|cancel|taxa|frete|entrega)/i.test(mensagem)) {
+  // modelo não sorteia de verdade nem mantém a copy exata). Dispara quando a mensagem ATUAL
+  // pede aula grátis/free/de graça ("aula free", "queria uma free pra ver se gosto") E não é
+  // outro contexto. EXCLUI o "FREE" da campanha Black November ("X + X FREE") — se a pessoa
+  // fala de black/promo/pacote/dobro, NÃO é pedido de aula grátis, é dúvida da campanha.
+  if (!temImagem && /(gr[áa]tis|gratuit|de\s+gra[çc]a|\bfree\b)/i.test(mensagem) && !/(estacion|wi-?fi|reserva|cancel|taxa|frete|entrega|black|novemb|dobro|em\s+dobro|pacote|pague|ganhe|cupom|desconto|promo[çc]|campanha|\d\s*\+\s*\d)/i.test(mensagem)) {
     const LINK = 'https://www.justclubct.com.br/comprar'
     const variacoesGratis = [
       `Ahh, o famoso grátis! 😏 De graça aqui só o bom dia da recepção e a água pra se hidratar 💧. Nosso treino é diferenciado demais pra sair de graça — alta intensidade, coaches excelentes e cada detalhe pensado pra te dar resultado de verdade 💪. Pra sentir na pele, o caminho é o treino avulso 👉 ${LINK}`,
