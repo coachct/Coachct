@@ -18,7 +18,7 @@ type Screen =
   | 'ctUsarCredito'
 
 const POLL_MS = 3000
-const FEED_POLL_MS = 2000 // feed da tela parada do CT: consulta check-ins novos a cada 2s
+const FEED_POLL_MS = 10000 // feed da tela parada do CT: consulta check-ins novos a cada 10s
 const FEED_POLL_FALLBACK_MS = 10000 // Club: o servidor manda o ritmo (2s perto de aula, 30s fora); sem resposta, 10s
 const FEED_CARD_MS = 120000 // CT: card "Entrada liberada" fica 2 min na tela e some sozinho
 const CLUB_CARD_MS = 60000 // Club: card "Presença confirmada" fica 1 min na tela
