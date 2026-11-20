@@ -157,10 +157,10 @@ export default function LandingPage() {
         {/* Running & Hybrid — em breve: só a imagem, sem link */}
         <div style={{ maxWidth: 1100, margin: '0 auto', padding: '2rem 2.5rem 1rem' }} className="hybrid-breve-wrap">
           <img
-            src="/running-hybrid-em-breve.webp"
+            src="/running-hybrid-em-breve-v2.webp"
             alt="Running & Hybrid — em breve"
-            width={1672}
-            height={941}
+            width={1448}
+            height={1086}
             style={{ display: 'block', width: '100%', height: 'auto', borderRadius: 18, border: '1px solid #222' }}
           />
         </div>
