@@ -135,6 +135,7 @@ export default function LandingPage() {
           .planos-spoiler-grid-r { grid-template-columns: 1fr !important; }
           .unidades-grid-r { grid-template-columns: 1fr !important; }
           .hero-frase-wrap { padding: 4rem 1.25rem 0.25rem !important; }
+          .hybrid-breve-wrap { padding: 1.25rem 1.25rem 0.5rem !important; }
         }
       `}</style>
 
@@ -143,14 +144,25 @@ export default function LandingPage() {
 
       {/* HERO — frase de efeito da Just (grafite style) */}
       <div style={{ background: '#080808', paddingTop: 64 }}>
-        {/* Campanha Summer Mode — só aparece dentro da janela de venda (data, não deploy) */}
-        <SummerBanner />
-        {/* Campanha Black November — some sozinha depois de 30/11 */}
-        <BlackNovemberBanner />
+        {/* A frase fica SEMPRE no topo; campanhas vêm depois dela (regra do Ricardo) */}
         <div className="hero-frase-wrap" style={{ maxWidth: 1200, margin: '0 auto', padding: '6rem 2.5rem 1rem', textAlign: 'center' as const }}>
           <div className="hero-frase">
             "There's no PLACE like <span className="hero-frase-just">JUST.</span>" <span className="hero-frase-smiley">:)</span>
           </div>
+        </div>
+        {/* Campanha Summer Mode — só aparece dentro da janela de venda (data, não deploy) */}
+        <SummerBanner />
+        {/* Campanha Black November — some sozinha depois de 30/11 */}
+        <BlackNovemberBanner />
+        {/* Running & Hybrid — em breve: só a imagem, sem link */}
+        <div style={{ maxWidth: 1100, margin: '0 auto', padding: '2rem 2.5rem 1rem' }} className="hybrid-breve-wrap">
+          <img
+            src="/running-hybrid-em-breve.webp"
+            alt="Running & Hybrid — em breve"
+            width={1672}
+            height={941}
+            style={{ display: 'block', width: '100%', height: 'auto', borderRadius: 18, border: '1px solid #222' }}
+          />
         </div>
 
         {/* PRÉVIA A — escolha de unidade */}
