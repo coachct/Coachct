@@ -352,7 +352,7 @@ function MapaPageInner() {
     const selecionado = posicaoSel === label
     if (tomado)      return { borderColor:'#111', bg:'#0a0a0a', iconColor:'#1a1a1a', labelColor:'#1a1a1a' }
     if (selecionado) return { borderColor:'#333', bg:'#1a1a1a', iconColor:'#333', labelColor:'#444' }
-    return                  { borderColor:ACCENT, bg:`${ACCENT}18`, iconColor:ACCENT, labelColor:ACCENT }
+    return                  { borderColor:ACCENT, bg:`${ACCENT}18`, iconColor:ACCENT, labelColor:'#fff' }
   }
 
   if (loading) return (
