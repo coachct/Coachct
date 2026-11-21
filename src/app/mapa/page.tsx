@@ -420,8 +420,8 @@ function MapaPageInner() {
                     style={{ border:`1.5px solid ${s.borderColor}`, background:s.bg, borderRadius:8,
                       cursor:tomado?'not-allowed':'pointer', padding:'6px 0',
                       display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
-                    <div style={{ width:'70%', maxWidth:36 }}><IconEsteira color={s.iconColor}/></div>
-                    <span style={{ fontSize:8, fontFamily:"'DM Mono', monospace", fontWeight:700, color:s.labelColor, lineHeight:1 }}>{label}</span>
+                    <div style={{ width:'50%', maxWidth:22 }}><IconEsteira color={s.iconColor}/></div>
+                    <span style={{ fontSize:12, fontFamily:"'DM Mono', monospace", fontWeight:700, color:s.labelColor, lineHeight:1 }}>{label}</span>
                   </button>
                 )
               })}
@@ -444,8 +444,8 @@ function MapaPageInner() {
                     style={{ border:`1.5px solid ${s.borderColor}`, background:s.bg, borderRadius:8,
                       cursor:tomado?'not-allowed':'pointer', padding:'6px 0',
                       display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
-                    <div style={{ width:'70%', maxWidth:36 }}><IconHaltere color={s.iconColor}/></div>
-                    <span style={{ fontSize:8, fontFamily:"'DM Mono', monospace", fontWeight:700, color:s.labelColor, lineHeight:1 }}>{label}</span>
+                    <div style={{ width:'50%', maxWidth:22 }}><IconHaltere color={s.iconColor}/></div>
+                    <span style={{ fontSize:12, fontFamily:"'DM Mono', monospace", fontWeight:700, color:s.labelColor, lineHeight:1 }}>{label}</span>
                   </button>
                 )
               })}
@@ -462,8 +462,8 @@ function MapaPageInner() {
                       style={{ border:`1.5px solid ${s.borderColor}`, background:s.bg, borderRadius:8,
                         cursor:tomado?'not-allowed':'pointer', padding:'6px 0',
                         display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
-                      <div style={{ width:'70%', maxWidth:36 }}><IconHaltere color={s.iconColor}/></div>
-                      <span style={{ fontSize:8, fontFamily:"'DM Mono', monospace", fontWeight:700, color:s.labelColor, lineHeight:1 }}>{label}</span>
+                      <div style={{ width:'50%', maxWidth:22 }}><IconHaltere color={s.iconColor}/></div>
+                      <span style={{ fontSize:12, fontFamily:"'DM Mono', monospace", fontWeight:700, color:s.labelColor, lineHeight:1 }}>{label}</span>
                     </button>
                   )
                 })}
