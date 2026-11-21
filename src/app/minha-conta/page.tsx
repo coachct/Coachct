@@ -184,6 +184,21 @@ export default function MinhaContaPage() {
   const [erroTroca,  setErroTroca]  = useState('')
   const [trocaFeita, setTrocaFeita] = useState<any>(null)
 
+  // Taxa fora do prazo (cancelar/trocar pagando) — regras em supabase/taxa-flex.sql.
+  // Se taxa_flex_info não vier ativo, nada disto aparece e a página segue como sempre.
+  const [taxaInfo,       setTaxaInfo]       = useState<any>(null)
+  const [trocaTaxaInfo,  setTrocaTaxaInfo]  = useState<Record<string, any>>({})
+  const [modalTaxa,      setModalTaxa]      = useState<any>(null)   // { acao, item, valor, info?, motivoTroca?, pro? }
+  const [taxaOpcao,      setTaxaOpcao]      = useState<any>(null)
+  const [taxaPos,        setTaxaPos]        = useState('')
+  const [taxaOutroCartao,setTaxaOutroCartao]= useState(false)
+  const [taxaSalvar,     setTaxaSalvar]     = useState(true)
+  const [taxaCartao,     setTaxaCartao]     = useState({ numero:'', nome:'', validade:'', cvv:'' })
+  const [taxaPagando,    setTaxaPagando]    = useState(false)
+  const [taxaErro,       setTaxaErro]       = useState('')
+  const [taxaPrecisaCadastro, setTaxaPrecisaCadastro] = useState(false)
+  const [taxaFeita,      setTaxaFeita]      = useState<any>(null)
+
   const [modalAtivar,    setModalAtivar]    = useState<any>(null)
   const [contratoAceito, setContratoAceito] = useState(false)
   const [ativando,       setAtivando]       = useState(false)
@@ -662,7 +677,129 @@ export default function MinhaContaPage() {
         aviso = `Faltam ${faltaTxt}. Nessa faixa (3h–12h) o cancelamento só é liberado se houver alguém na fila de espera — e há. Você pode cancelar; o crédito volta e a vaga passa para o próximo da fila.`
       }
     }
+    // Fora do prazo gratuito: se a taxa estiver ativa e o banco liberar, abre a oferta
+    // de cancelar pagando no lugar do aviso de bloqueio. Qualquer falha → modal de sempre.
+    if (!pode && taxaInfo?.ativo) {
+      try {
+        const { data: t } = await supabase.rpc('taxa_cancelamento_cliente', { p_tipo: item.tipo, p_id: item.id })
+        if (t?.pode) {
+          abrirModalTaxa({ acao:'cancelar', item, valor: Number(t.valor), pro: item.tipo==='ct' && temPlanoProAtivo(clientePlanos) })
+          return
+        }
+      } catch {}
+    }
     setModalCancelar({...item, pode, aviso}); setErroCancelar('')
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // TAXA FORA DO PRAZO — cancelar/trocar pagando
+  // A tela só pergunta ao banco e manda pagar em /api/taxa-flex/pagar, que cobra
+  // e SÓ ENTÃO cancela/troca (e estorna se a ação falhar depois de cobrar).
+  // ───────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!cliente?.id) return
+    let vivo = true
+    ;(async () => {
+      try {
+        const { data, error } = await supabase.rpc('taxa_flex_info')
+        if (vivo) setTaxaInfo(error ? null : data)
+      } catch { if (vivo) setTaxaInfo(null) }
+    })()
+    return () => { vivo = false }
+  }, [cliente?.id])
+
+  useEffect(() => {
+    if (!taxaInfo?.ativo) { setTrocaTaxaInfo({}); return }
+    // Só pergunta pelas reservas em que a troca gratuita está travada por um
+    // motivo que a taxa destrava (origem lotada ou já trocou uma vez).
+    const alvos = Object.entries(trocaInfo).filter(([,v]:any) => !v?.pode && ['ORIGEM_LOTADA','JA_TROCOU'].includes(v?.motivo))
+    if (alvos.length===0) { setTrocaTaxaInfo({}); return }
+    let vivo = true
+    ;(async () => {
+      const res = await Promise.all(alvos.map(async ([chave, v]:any) => {
+        try {
+          const i = chave.indexOf('-')
+          const { data, error } = await supabase.rpc('opcoes_troca_taxa_cliente', { p_tipo: chave.slice(0,i), p_id: chave.slice(i+1) })
+          return error || !data?.pode ? null : ([chave, { ...data, motivoTroca: v.motivo }] as const)
+        } catch { return null }
+      }))
+      if (!vivo) return
+      const mapa: Record<string, any> = {}
+      for (const r of res) if (r) mapa[r[0]] = r[1]
+      setTrocaTaxaInfo(mapa)
+    })()
+    return () => { vivo = false }
+  }, [trocaInfo, taxaInfo?.ativo])
+
+  const reais = (v:any) => `R$ ${Number(v||0).toFixed(2).replace('.',',')}`
+
+  function abrirModalTaxa(m: any) {
+    setModalTaxa(m)
+    setTaxaErro(''); setTaxaFeita(null); setTaxaPrecisaCadastro(false)
+    setTaxaOutroCartao(false); setTaxaSalvar(true)
+    setTaxaCartao({ numero:'', nome:'', validade:'', cvv:'' })
+    const unica = (m.info?.opcoes||[]).length===1 ? m.info.opcoes[0] : null
+    setTaxaOpcao(unica)
+    setTaxaPos(unica?.exige_posicao ? (unica.posicoes_livres?.[0]||'') : '')
+  }
+
+  async function pagarTaxa() {
+    if (!modalTaxa || taxaPagando) return
+    const { acao, item } = modalTaxa
+    if (acao==='trocar' && (!taxaOpcao || (taxaOpcao.exige_posicao && !taxaPos))) return
+    setTaxaPagando(true); setTaxaErro(''); setTaxaPrecisaCadastro(false)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) { setTaxaErro('Sessão expirada. Faça login novamente.'); return }
+      const headers = { 'Content-Type':'application/json', 'Authorization':`Bearer ${session.access_token}` }
+
+      const temSalvo = !!(cliente?.pagarme_card_id && cliente?.pagarme_card_last4)
+      let cartao: any = null
+      if (!temSalvo || taxaOutroCartao) {
+        const numero = taxaCartao.numero.replace(/\D/g,'')
+        const val = taxaCartao.validade.replace(/\D/g,'')
+        const mes = val.slice(0,2), ano = val.length>=4 ? `20${val.slice(2,4)}` : ''
+        if (numero.length<13 || !taxaCartao.nome.trim() || !(Number(mes)>=1 && Number(mes)<=12) || !ano || taxaCartao.cvv.length<3) {
+          setTaxaErro('Dados do cartão inválidos. Confira e tente de novo.'); return
+        }
+        if (taxaSalvar) {
+          // Salva pelo fluxo de sempre (valida o cartão e passa a ser o cartão do cadastro)
+          const r = await fetch('/api/cliente/cadastrar-cartao', { method:'POST', headers,
+            body: JSON.stringify({ numero, nome: taxaCartao.nome.trim(), cvv: taxaCartao.cvv, mes, ano }) })
+          const d = await r.json().catch(()=>({}))
+          if (!r.ok) {
+            setTaxaErro(d.error || 'Cartão recusado. Nada mudou na sua reserva. Tente outro cartão.')
+            if (d.precisa_cpf || d.precisa_telefone) setTaxaPrecisaCadastro(true)
+            return
+          }
+          setCliente((c:any) => ({ ...c, pagarme_card_id: c?.pagarme_card_id || 'salvo', pagarme_card_last4: d.cartao?.last4, pagarme_card_brand: d.cartao?.brand }))
+          setTaxaOutroCartao(false)
+        } else {
+          cartao = { numero, nome: taxaCartao.nome.trim(), mes, ano, cvv: taxaCartao.cvv }
+        }
+      }
+
+      const res = await fetch('/api/taxa-flex/pagar', { method:'POST', headers, body: JSON.stringify({
+        acao, tipo: item.tipo, id: item.id,
+        destino: acao==='trocar' ? (item.tipo==='ct' ? taxaOpcao.horario : taxaOpcao.ocorrencia_id) : undefined,
+        posicao: acao==='trocar' && taxaOpcao.exige_posicao ? (taxaPos||null) : null,
+        cartao,
+      }) })
+      const data = await res.json().catch(()=>({}))
+      if (!res.ok) {
+        setTaxaErro(data.error || 'Não foi possível concluir agora. Tente de novo.')
+        if (data.precisa_cadastro) setTaxaPrecisaCadastro(true)
+        if (data.precisa_cartao) setTaxaOutroCartao(true)
+        return
+      }
+      if (acao==='cancelar') { setModalTaxa(null) }
+      else setTaxaFeita({ de: item.horario, para: taxaOpcao.horario, tipo: item.tipo, tipoAula: taxaOpcao.tipo })
+      await loadDados()
+    } catch {
+      setTaxaErro('Não foi possível concluir agora. Tente de novo.')
+    } finally {
+      setTaxaPagando(false)
+    }
   }
 
   async function confirmarCancelamento() {
@@ -872,11 +1009,18 @@ export default function MinhaContaPage() {
   const botoesTreino = (item:any, grande=false) => {
     const podeCancelar = ['agendado','confirmado','reservado'].includes(item.status)
     const infoTroca = trocaInfo[`${item.tipo}-${item.id}`]
-    if (!podeCancelar && !infoTroca?.pode) return null
+    // Troca paga: só quando a gratuita não está disponível e a taxa destrava
+    const infoTaxa = !infoTroca?.pode ? trocaTaxaInfo[`${item.tipo}-${item.id}`] : null
+    if (!podeCancelar && !infoTroca?.pode && !infoTaxa?.pode) return null
     const b: React.CSSProperties = {flex:1,background:'transparent',borderRadius:10,padding:grande?'0.6rem':'0.45rem',fontSize:grande?13:12,fontWeight:600,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}
     return (
       <div style={{display:'flex',gap:8,marginTop:grande?14:10}}>
         {infoTroca?.pode && <button onClick={()=>abrirModalTroca(item,infoTroca)} style={{...b,border:`1px solid ${CYAN}55`,color:CYAN}}>⇄ Trocar horário</button>}
+        {infoTaxa?.pode && (
+          <button onClick={()=>abrirModalTaxa({acao:'trocar',item,info:infoTaxa,valor:Number(infoTaxa.valor),motivoTroca:infoTaxa.motivoTroca})} style={{...b,border:`1px solid ${CYAN}55`,color:CYAN}}>
+            ⇄ Trocar horário <span style={{marginLeft:4,background:`${AMARELO}22`,color:AMARELO,fontSize:11,padding:'1px 7px',borderRadius:20,fontWeight:700}}>{reais(infoTaxa.valor)}</span>
+          </button>
+        )}
         {podeCancelar && <button onClick={()=>abrirModalCancelar(item)} style={{...b,border:'1px solid #333',color:'#bbb'}}>Cancelar</button>}
       </div>
     )
@@ -1821,6 +1965,146 @@ export default function MinhaContaPage() {
                       {trocando?'Trocando...':'Confirmar troca'}
                     </button>
                   </div>
+                </>
+              )}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* MODAL TAXA FORA DO PRAZO (cancelar / trocar pagando) */}
+      {modalTaxa&&(()=>{
+        const it = modalTaxa.item
+        const ehTroca = modalTaxa.acao==='trocar'
+        const opcoes = modalTaxa.info?.opcoes || []
+        const temSalvo = !!(cliente?.pagarme_card_id && cliente?.pagarme_card_last4)
+        const formNovo = !temSalvo || taxaOutroCartao
+        const marca = String(cliente?.pagarme_card_brand||'Cartão')
+        const dataCurta = new Date(it.data+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})
+        const nomeAula = it.tipo==='club' && it.tipoAula ? tipoAulaLabel(it.tipoAula) : 'Treino'
+        const inp: React.CSSProperties = {width:'100%',background:'#161616',border:'1px solid #2a2a2a',borderRadius:10,padding:'0.7rem 0.85rem',color:'#fff',fontSize:14,fontFamily:"'DM Sans', sans-serif",outline:'none',boxSizing:'border-box'}
+        const linha = (rot:string, val:React.ReactNode, forte=false) => (
+          <div style={{display:'flex',justifyContent:'space-between',gap:12,padding:'3px 0',fontSize:13}}>
+            <span style={{color:'#777'}}>{rot}</span><span style={{color:'#fff',fontWeight:forte?700:400,textAlign:'right'}}>{val}</span>
+          </div>
+        )
+        const travado = taxaPagando || (ehTroca && (!taxaOpcao || (taxaOpcao.exige_posicao && !taxaPos)))
+        const fechar = () => { if (!taxaPagando) { setModalTaxa(null); setTaxaFeita(null) } }
+        return (
+          <div style={{position:'fixed',inset:0,background:'#000000cc',zIndex:100,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
+            <div style={{background:'#111',border:`1px solid ${AMARELO}44`,borderRadius:20,width:'100%',maxWidth:440,padding:'1.5rem',maxHeight:'88vh',overflowY:'auto'}}>
+              {taxaFeita ? (
+                <div style={{textAlign:'center'}}>
+                  <div style={{fontSize:40,marginBottom:8}}>⇄</div>
+                  <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:24,color:VERDE,letterSpacing:1}}>HORÁRIO TROCADO!</div>
+                  <div style={{fontSize:14,color:'#ddd',marginTop:10}}>
+                    <span style={{color:'#666',textDecoration:'line-through'}}>{taxaFeita.de}</span>
+                    <span style={{margin:'0 8px',color:CYAN}}>→</span>
+                    <strong style={{color:'#fff'}}>{taxaFeita.para}</strong>
+                    {taxaFeita.tipo==='club'&&taxaFeita.tipoAula&&<span style={{color:ACCENT,fontSize:12}}> · {tipoAulaLabel(taxaFeita.tipoAula)}</span>}
+                  </div>
+                  <button onClick={fechar} style={{width:'100%',marginTop:'1.25rem',background:VERDE,color:'#000',border:'none',borderRadius:12,padding:'0.85rem',fontWeight:700,fontSize:14,cursor:'pointer',fontFamily:"'DM Sans', sans-serif"}}>
+                    Fechar
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div style={{fontFamily:"'Bebas Neue', sans-serif",fontSize:20,color:'#fff',marginBottom:6,letterSpacing:0.5}}>
+                    {ehTroca ? 'TROCAR DE HORÁRIO' : 'CANCELAR FORA DO PRAZO'}
+                  </div>
+                  <div style={{fontSize:13,color:'#aaa',lineHeight:1.6,marginBottom:'1rem'}}>
+                    {ehTroca
+                      ? (modalTaxa.motivoTroca==='JA_TROCOU'
+                          ? 'Você já usou a troca gratuita desta reserva. Você pode trocar de novo pagando a taxa.'
+                          : 'Sua aula está lotada, então a troca gratuita não está disponível. Você pode trocar pagando a taxa.')
+                      : `O prazo gratuito de ${modalTaxa.pro?'3h':'12h'} já passou. Você ainda pode cancelar até 1h antes pagando a taxa. Seu crédito volta.`}
+                  </div>
+
+                  {ehTroca && opcoes.length>1 && (
+                    <>
+                      <div style={{fontSize:10,color:'#666',fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:8}}>Escolha o novo horário</div>
+                      <div style={{display:'flex',flexDirection:'column',gap:6,marginBottom:'1rem'}}>
+                        {opcoes.map((op:any) => {
+                          const sel = it.tipo==='ct' ? taxaOpcao?.horario===op.horario : taxaOpcao?.ocorrencia_id===op.ocorrencia_id
+                          return (
+                            <button key={op.ocorrencia_id||op.horario} onClick={()=>{setTaxaOpcao(op);setTaxaErro('');setTaxaPos(op.exige_posicao?(op.posicoes_livres?.[0]||''):'')}}
+                              style={{background:sel?`${CYAN}15`:'#161616',border:`1px solid ${sel?CYAN:'#2a2a2a'}`,borderRadius:10,padding:'0.75rem 0.9rem',cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,fontFamily:"'DM Sans', sans-serif"}}>
+                              <span style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
+                                <span style={{fontSize:15,fontWeight:700,color:sel?'#fff':'#ddd'}}>{op.horario}</span>
+                                {op.tipo&&<span style={{fontSize:10,color:ACCENT,background:`${ACCENT}15`,padding:'1px 7px',borderRadius:20,fontWeight:600}}>{tipoAulaLabel(op.tipo)}</span>}
+                              </span>
+                              <span style={{fontSize:11,color:op.vagas<=2?AMARELO:'#777',flexShrink:0}}>{op.vagas} vaga{op.vagas!==1?'s':''}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </>
+                  )}
+
+                  {ehTroca && taxaOpcao?.exige_posicao && (
+                    <div style={{marginBottom:'1rem'}}>
+                      <div style={{fontSize:10,color:'#666',fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:8}}>Sua posição</div>
+                      <div style={{display:'flex',flexWrap:'wrap',gap:6,maxHeight:150,overflowY:'auto'}}>
+                        {(taxaOpcao.posicoes_livres||[]).map((p:string) => (
+                          <button key={p} onClick={()=>setTaxaPos(p)}
+                            style={{background:taxaPos===p?VERDE:'#161616',color:taxaPos===p?'#000':'#999',border:`1px solid ${taxaPos===p?VERDE:'#2a2a2a'}`,borderRadius:8,padding:'0.35rem 0.6rem',fontSize:11,fontWeight:700,fontFamily:"'DM Mono', monospace",cursor:'pointer'}}>
+                            {p}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{borderTop:'1px solid #222',borderBottom:'1px solid #222',padding:'10px 0',marginBottom:'1rem'}}>
+                    {ehTroca ? (
+                      <>
+                        {linha('De', `${nomeAula} às ${it.horario}`)}
+                        {linha('Para', taxaOpcao ? `${taxaOpcao.tipo?tipoAulaLabel(taxaOpcao.tipo):nomeAula} às ${taxaOpcao.horario}` : '—')}
+                      </>
+                    ) : linha('Reserva', `${nomeAula}, ${dataCurta} às ${it.horario}`)}
+                    {linha('Taxa', reais(modalTaxa.valor), true)}
+                  </div>
+
+                  {!formNovo ? (
+                    <>
+                      <div style={{border:'1px solid #333',borderRadius:10,padding:'0.7rem 0.85rem',display:'flex',alignItems:'center',gap:10,fontSize:13,color:'#fff',marginBottom:8}}>
+                        <span>💳</span>
+                        <span style={{flex:1,textTransform:'capitalize'}}>{marca} final {cliente.pagarme_card_last4}</span>
+                        <span style={{color:VERDE}}>✓</span>
+                      </div>
+                      <button onClick={()=>{setTaxaOutroCartao(true);setTaxaErro('')}} style={{background:'transparent',border:'none',padding:0,color:CYAN,fontSize:13,cursor:'pointer',marginBottom:'1rem',fontFamily:"'DM Sans', sans-serif"}}>Usar outro cartão</button>
+                    </>
+                  ) : (
+                    <div style={{marginBottom:'1rem'}}>
+                      <input style={{...inp,marginBottom:8}} type="text" inputMode="numeric" autoComplete="cc-number" placeholder="Número do cartão" value={taxaCartao.numero}
+                        onChange={e=>setTaxaCartao({...taxaCartao,numero:e.target.value.replace(/\D/g,'').slice(0,19).replace(/(\d{4})(?=\d)/g,'$1 ')})} />
+                      <input style={{...inp,marginBottom:8}} type="text" autoComplete="cc-name" placeholder="Nome impresso no cartão" value={taxaCartao.nome}
+                        onChange={e=>setTaxaCartao({...taxaCartao,nome:e.target.value.toUpperCase()})} />
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10}}>
+                        <input style={inp} type="text" inputMode="numeric" autoComplete="cc-exp" placeholder="MM/AA" value={taxaCartao.validade}
+                          onChange={e=>{const d=e.target.value.replace(/\D/g,'').slice(0,4);setTaxaCartao({...taxaCartao,validade:d.length>2?`${d.slice(0,2)}/${d.slice(2)}`:d})}} />
+                        <input style={inp} type="text" inputMode="numeric" autoComplete="cc-csc" placeholder="CVV" maxLength={4} value={taxaCartao.cvv}
+                          onChange={e=>setTaxaCartao({...taxaCartao,cvv:e.target.value.replace(/\D/g,'')})} />
+                      </div>
+                      <label style={{display:'flex',alignItems:'center',gap:8,fontSize:13,color:'#aaa',cursor:'pointer'}}>
+                        <input type="checkbox" checked={taxaSalvar} onChange={e=>setTaxaSalvar(e.target.checked)} />
+                        Salvar cartão para as próximas
+                      </label>
+                    </div>
+                  )}
+
+                  {taxaErro&&<div style={{background:'#ff2d9b15',border:'1px solid #ff2d9b44',borderRadius:8,padding:'0.6rem 1rem',fontSize:13,color:ACCENT,marginBottom:'1rem'}}>{taxaErro}</div>}
+                  {taxaPrecisaCadastro&&(
+                    <button onClick={()=>router.push('/cadastrar-cartao')} style={{width:'100%',background:'transparent',border:`1px solid ${AMARELO}66`,color:AMARELO,borderRadius:10,padding:'0.7rem',fontSize:13,fontWeight:600,cursor:'pointer',marginBottom:'1rem',fontFamily:"'DM Sans', sans-serif"}}>Cadastrar cartão</button>
+                  )}
+
+                  <button onClick={pagarTaxa} disabled={travado}
+                    style={{width:'100%',background:travado?'#3a3320':AMARELO,color:travado?'#887':'#000',border:'none',borderRadius:10,padding:'0.85rem',fontWeight:700,fontSize:14,cursor:travado?'default':'pointer',fontFamily:"'DM Sans', sans-serif"}}>
+                    {taxaPagando ? 'Processando...' : `Pagar ${reais(modalTaxa.valor)} e ${ehTroca?'trocar':'cancelar'}`}
+                  </button>
+                  <button onClick={fechar} disabled={taxaPagando} style={{width:'100%',marginTop:8,background:'transparent',border:'1px solid #333',borderRadius:10,padding:'0.85rem',color:'#888',fontSize:14,cursor:taxaPagando?'default':'pointer',fontFamily:"'DM Sans', sans-serif"}}>
+                    {ehTroca ? 'Manter horário atual' : 'Manter reserva'}
+                  </button>
                 </>
               )}
             </div>
