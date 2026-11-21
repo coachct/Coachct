@@ -505,7 +505,7 @@ function DashboardClub({ unidadeId, unidadeNome }: { unidadeId: string; unidadeN
   async function carregarDia(dataStr: string) {
     const { data: ocs } = await supabase
       .from('club_ocorrencias')
-      .select('id, data, vagas_bloqueadas, coach_escalado:coaches!coach_id(nome), club_aulas!inner(tipo, horario, capacidade, unidade_id, coaches(nome), grupos_musculares(nome))')
+      .select('id, data, capacidade, vagas_bloqueadas, coach_escalado:coaches!coach_id(nome), club_aulas!inner(tipo, horario, capacidade, unidade_id, coaches(nome), grupos_musculares(nome))')
       .eq('data', dataStr)
       .eq('club_aulas.unidade_id', unidadeId)
       .eq('status', 'ativa')
@@ -528,7 +528,8 @@ function DashboardClub({ unidadeId, unidadeNome }: { unidadeId: string; unidadeN
       const reservas  = rs.length
       const presentes = rs.filter(r => r.status === 'presente').length
       const faltas    = rs.filter(r => r.status === 'falta').length
-      const cap  = o.club_aulas?.capacidade || 0
+      // Capacidade do dia (gravada na ocorrência): mudar a sala não reescreve o passado.
+      const cap  = o.capacidade ?? o.club_aulas?.capacidade ?? 0
       const bloq = o.vagas_bloqueadas || 0
       const capacidade = Math.max(0, cap - bloq)
       return {

@@ -170,7 +170,7 @@ export default function AdminRelatorioClubPage() {
 
     // 1) Ocorrências do período nessas unidades (join interno na grade pra filtrar por unidade)
     const ocs = await buscarTudo(() => supabase.from('club_ocorrencias')
-      .select('id, aula_id, data, coach_id, coach_escalado:coaches!coach_id(id, nome), club_aulas!inner(unidade_id, tipo, horario, capacidade, coaches(id, nome))')
+      .select('id, aula_id, data, capacidade, coach_id, coach_escalado:coaches!coach_id(id, nome), club_aulas!inner(unidade_id, tipo, horario, capacidade, coaches(id, nome))')
       .gte('data', dataIni).lte('data', dataFim).eq('status', 'ativa')
       .in('club_aulas.unidade_id', unitIds))
 
@@ -201,7 +201,8 @@ export default function AdminRelatorioClubPage() {
     for (const oc of ocs) {
       const aula = (oc as any).club_aulas
       const unidadeId = aula?.unidade_id
-      const cap   = aula?.capacidade || 0
+      // Capacidade do dia (gravada na ocorrência): mudar a sala não reescreve o passado.
+      const cap   = (oc as any).capacidade ?? aula?.capacidade ?? 0
       const tipo  = aula?.tipo || '—'
       const hora  = (aula?.horario || '').slice(0, 5) || '—'
       const dia   = new Date(oc.data + 'T12:00:00').getDay()
