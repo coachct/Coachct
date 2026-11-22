@@ -147,6 +147,8 @@ declare
 begin
   if p_cli is null or not _taxa_flex_ativa(p_cli) then raise exception 'TAXA_DESLIGADA'; end if;
   select * into c from taxa_flex_config where id = 1;
+  -- Cancelamento pago por enquanto só no Club; no CT fica desligado (22/11/2026).
+  if p_tipo = 'ct' and not c.cancelamento_ct_ativo then raise exception 'TAXA_DESLIGADA'; end if;
 
   if p_tipo = 'ct' then
     select * into v_ag from agendamentos where id = p_id;
@@ -753,3 +755,10 @@ revoke all on function opcoes_troca_taxa_cliente(text, uuid)   from public, anon
 grant execute on function taxa_flex_info()                      to authenticated;
 grant execute on function taxa_cancelamento_cliente(text, uuid) to authenticated;
 grant execute on function opcoes_troca_taxa_cliente(text, uuid) to authenticated;
+
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- 22/11/2026 — cancelamento pago só no Club. No CT fica desligado até o Ricardo
+-- decidir ligar: update taxa_flex_config set cancelamento_ct_ativo = true where id = 1;
+-- (a coluna precisa existir antes de recriar _taxa_cancelar acima)
+alter table taxa_flex_config add column if not exists cancelamento_ct_ativo boolean not null default false;
