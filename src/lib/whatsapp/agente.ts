@@ -346,11 +346,14 @@ const RE_MULTA = /multa|cobran|no.?show|cart[ãa]o|cadastrar-cartao/i
 // "cancelar ... hoje") e a resposta afirma que dá, troca pela realidade. Prompt sozinho
 // não segura esse padrão (o modelo insiste em "sim, dá, desde que dentro de 12h").
 const RE_AFIRMA_CANCEL_POSSIVEL = /\bsim\b|d[áa]\s+sim|é só cancel|pode cancel|consegue cancel|dentro do prazo|ainda (d[áa]\b|est[áa] dentro|tem tempo)/i
-const HOJE_NAO_DA = 'Poxa 🙏 como é uma reserva de hoje, a essa altura já não dá mais pra cancelar nem alterar essa aula. Te espero na próxima! 💪'
-function semSimDaHoje(texto: string, reservaHoje: boolean): string {
+const HOJE_NAO_DA = 'Poxa 🙏 como é uma reserva de hoje, a essa altura já não dá mais pra cancelar essa aula. Te espero na próxima! 💪'
+function semSimDaHoje(texto: string, reservaHoje: boolean, pedeTroca = false): string {
   const t = String(texto || '')
   if (!reservaHoje) return t
   if (RE_FRASE_PRO.test(t)) return t // frase aprovada do Coach CT (PRO até 3h)
+  // Trocar NÃO é cancelar (Ricardo, 23/11/2026): cliente pediu pra ALTERAR o horário e a
+  // resposta é a regra da troca (não fala de cancelar) → passa, mesmo sendo treino de hoje.
+  if (pedeTroca && /troca/i.test(t) && !/cancel/i.test(t)) return t
   // Só troca se a resposta é sobre cancelar/trocar E afirma que dá.
   if (/(cancel|remarc|reagend|trocar|alter)/i.test(t) && RE_AFIRMA_CANCEL_POSSIVEL.test(t)) return HOJE_NAO_DA
   return t
@@ -1636,9 +1639,10 @@ Se a intenção não estiver clara, faça UMA pergunta curta pra entender antes 
 
 # ENTENDER O CONTEXTO ≠ OFERECER SOLUÇÃO — você só INFORMA (nunca proponha uma ação)
 Depois de entender a situação, você INFORMA a realidade/regra que se aplica a ela — você NUNCA oferece nem propõe uma ação, e NUNCA pergunta "quer que eu cancele?", "quer que eu faça X?", "você quer cancelar a reserva?". Oferecer uma solução (ainda mais uma que, pelo contexto, JÁ NÃO É POSSÍVEL) é um erro grave. Leia o contexto até o fim antes de qualquer coisa:
-- Ex.: "tive um imprevisto / uma emergência / não vou conseguir ir HOJE" → pelo contexto é uma aula de HOJE, então o prazo de cancelar/alterar já passou. É SEM SENTIDO perguntar "quer cancelar a reserva?". Acolha e INFORME a realidade, e PARA: "Poxa 🙏 Como esse treino é ainda pra hoje, a essa altura não dá mais pra cancelar nem alterar essa reserva. Te espero na próxima! 💪".
+- Ex.: "tive um imprevisto / uma emergência / não vou conseguir ir HOJE" → pelo contexto é uma aula de HOJE, então o prazo de cancelar/alterar já passou. É SEM SENTIDO perguntar "quer cancelar a reserva?". Acolha e INFORME a realidade, e PARA: "Poxa 🙏 Como esse treino é ainda pra hoje, a essa altura não dá mais pra cancelar essa reserva. Te espero na próxima! 💪".
+  ATENÇÃO — TROCAR NÃO É CANCELAR (decisão do Ricardo, 23/11/2026): o "hoje não dá" vale SÓ pra quem quer CANCELAR / não ir. Se a pessoa pede pra ALTERAR / TROCAR / MUDAR o horário (ex.: "tive uma emergência, posso alterar pro fim do dia?"), MESMO sendo treino de HOJE e mesmo com imprevisto, é PROIBIDO responder "não dá mais pra alterar": INFORME a regra da TROCA (seção "quero TROCAR" abaixo) — é ela mesma que faz no site. Sem prometer que vai dar.
 - Se, pra responder certo, você REALMENTE precisar de um detalhe que muda a resposta (ex.: qual unidade, qual plano), PERGUNTE esse detalhe primeiro — não ofereça nem chute no escuro.
-NUNCA responda "sim, dá" pra cancelar/trocar/remarcar SEM antes checar o contexto (erro que se repete): quando perguntarem "posso cancelar / trocar / remarcar minha reserva?" — inclusive coisas como "marquei hoje, posso cancelar e reservar em outra unidade?" — LEIA se a reserva é de HOJE. Se a pessoa disse "marquei hoje", "aula de hoje", "é pra hoje" → a resposta é NÃO: "como você marcou pra hoje, a essa altura já não dá mais pra cancelar nem alterar essa reserva 🙏". É TERMINANTEMENTE PROIBIDO responder "sim, dá" — nem "sim, dá, desde que dentro de 12h" — pra uma reserva de HOJE, porque hoje JÁ passou das 12h. Só responda que dá quando o contexto deixa claro que a reserva é de OUTRO dia (aí sim: você mesmo cancela na conta no site). Afirmar "dá" pra algo que não dá é o pior erro.
+NUNCA responda "sim, dá" pra CANCELAR SEM antes checar o contexto (erro que se repete): quando perguntarem "posso cancelar minha reserva?" — inclusive coisas como "marquei hoje, posso cancelar e reservar em outra unidade?" — LEIA se a reserva é de HOJE. Se a pessoa disse "marquei hoje", "aula de hoje", "é pra hoje" → a resposta é NÃO: "como você marcou pra hoje, a essa altura já não dá mais pra cancelar essa reserva 🙏". (Isso é sobre CANCELAR. Pedido de TROCAR/ALTERAR o horário, mesmo de hoje, NÃO recebe "não dá" nem "sim, dá": recebe a regra da TROCA, da seção "quero TROCAR" abaixo.) É TERMINANTEMENTE PROIBIDO responder "sim, dá" — nem "sim, dá, desde que dentro de 12h" — pra uma reserva de HOJE, porque hoje JÁ passou das 12h. Só responda que dá quando o contexto deixa claro que a reserva é de OUTRO dia (aí sim: você mesmo cancela na conta no site). Afirmar "dá" pra algo que não dá é o pior erro.
 
 # REGRA MÃE — só o que está gravado (nunca invente)
 Você SÓ pode afirmar o que está na BASE DE CONHECIMENTO abaixo ou o que veio da ferramenta de preços. Se NÃO está gravado, você NÃO inventa, NÃO deduz, NÃO chuta — é PROIBIDO: nada de horário/grade de aula que você não tem, significado de ícone, número de telefone, promoção/pacote que não existe, motivo técnico ("delay", "instabilidade"), status de manutenção/liberação (ex.: "o vestiário já está liberado?"). Não está na base? Você não sabe — então NÃO invente e NÃO chute um canal: diga com simpatia que essa informação você não tem aí e que a NOSSA EQUIPE te responde por aqui em breve. (Só aponte o site quando a resposta REALMENTE está lá — horários, planos, reservar; pra info que não está em lugar nenhum, é "a equipe te responde em breve".) A mensagem é SÓ INFORMAÇÃO — NUNCA promessa, NUNCA prever resultado ("vai dar certo", "consegue", "garanto", "te seguro a vaga").
@@ -1796,6 +1800,8 @@ A última mensagem inclui uma IMAGEM (quase sempre um print da tela do app/site:
   // imprevisto). Fora disso (fila, planos, preço, personal...), NÃO deixamos a política de
   // cancelamento sequestrar a resposta — foi o que derrubou os casos da fila e do plano.
   const contextoCancel = /(cancel|desmarc|remarc|reagend|faltar|falto|imprevisto|n[ãa]o\s+(vou|consigo|poder|poderei|conseguirei|vou\s+conseguir))/i.test(textoCliente)
+  // A ÚLTIMA mensagem pede pra ALTERAR/TROCAR o horário (não cancelar)? Aí vale a regra da troca.
+  const pedeTroca = /(trocar|\btroca\b|alterar|mudar|antecipar|adiantar|adiar|remarc|reagend|outro\s+hor[áa]rio)/i.test(mensagem || '')
 
   const FALLBACK_SEM_INFO = FALLBACK_EQUIPE
 
@@ -1860,7 +1866,7 @@ A última mensagem inclui uma IMAGEM (quase sempre um print da tela do app/site:
     // Revisor (barato) como rede: pega invenção/promessa. Aqui NÃO existe transferir —
     // se o revisor achar que a resposta não tem base, cai no fallback de informação.
     const finaliza = (tx: string) => {
-      const out = semSimDaHoje(semMultaProativa(finalizarTexto(tx, contextoCancel), perguntouMulta), reservaHoje)
+      const out = semSimDaHoje(semMultaProativa(finalizarTexto(tx, contextoCancel), perguntouMulta), reservaHoje, pedeTroca)
       // Diagnóstico: quando uma trava muda a resposta, guarda o original no log do servidor
       // (o banco só grava o que foi enviado — sem isso não dá pra saber o que a trava cortou).
       if (out !== tx) console.warn('[whatsapp-bot] trava alterou a resposta', JSON.stringify({ antes: tx, depois: out }))
