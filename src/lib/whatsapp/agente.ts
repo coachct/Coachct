@@ -1636,7 +1636,7 @@ Se a intenção não estiver clara, faça UMA pergunta curta pra entender antes 
 
 # ENTENDER O CONTEXTO ≠ OFERECER SOLUÇÃO — você só INFORMA (nunca proponha uma ação)
 Depois de entender a situação, você INFORMA a realidade/regra que se aplica a ela — você NUNCA oferece nem propõe uma ação, e NUNCA pergunta "quer que eu cancele?", "quer que eu faça X?", "você quer cancelar a reserva?". Oferecer uma solução (ainda mais uma que, pelo contexto, JÁ NÃO É POSSÍVEL) é um erro grave. Leia o contexto até o fim antes de qualquer coisa:
-- Ex.: "tive um imprevisto / uma emergência / não vou conseguir ir HOJE" → pelo contexto é uma aula de HOJE, então o prazo de cancelar/alterar já passou. É SEM SENTIDO perguntar "quer cancelar a reserva?". Acolha e INFORME a realidade, e PARA: "Poxa, que situação 🙏 Como esse treino é ainda pra hoje, a essa altura não dá mais pra cancelar nem alterar essa reserva. Te espero na próxima! 💪".
+- Ex.: "tive um imprevisto / uma emergência / não vou conseguir ir HOJE" → pelo contexto é uma aula de HOJE, então o prazo de cancelar/alterar já passou. É SEM SENTIDO perguntar "quer cancelar a reserva?". Acolha e INFORME a realidade, e PARA: "Poxa 🙏 Como esse treino é ainda pra hoje, a essa altura não dá mais pra cancelar nem alterar essa reserva. Te espero na próxima! 💪".
 - Se, pra responder certo, você REALMENTE precisar de um detalhe que muda a resposta (ex.: qual unidade, qual plano), PERGUNTE esse detalhe primeiro — não ofereça nem chute no escuro.
 NUNCA responda "sim, dá" pra cancelar/trocar/remarcar SEM antes checar o contexto (erro que se repete): quando perguntarem "posso cancelar / trocar / remarcar minha reserva?" — inclusive coisas como "marquei hoje, posso cancelar e reservar em outra unidade?" — LEIA se a reserva é de HOJE. Se a pessoa disse "marquei hoje", "aula de hoje", "é pra hoje" → a resposta é NÃO: "como você marcou pra hoje, a essa altura já não dá mais pra cancelar nem alterar essa reserva 🙏". É TERMINANTEMENTE PROIBIDO responder "sim, dá" — nem "sim, dá, desde que dentro de 12h" — pra uma reserva de HOJE, porque hoje JÁ passou das 12h. Só responda que dá quando o contexto deixa claro que a reserva é de OUTRO dia (aí sim: você mesmo cancela na conta no site). Afirmar "dá" pra algo que não dá é o pior erro.
 
@@ -1859,7 +1859,13 @@ A última mensagem inclui uma IMAGEM (quase sempre um print da tela do app/site:
     const draft = texto || FALLBACK_SEM_INFO
     // Revisor (barato) como rede: pega invenção/promessa. Aqui NÃO existe transferir —
     // se o revisor achar que a resposta não tem base, cai no fallback de informação.
-    const finaliza = (tx: string) => semSimDaHoje(semMultaProativa(finalizarTexto(tx, contextoCancel), perguntouMulta), reservaHoje)
+    const finaliza = (tx: string) => {
+      const out = semSimDaHoje(semMultaProativa(finalizarTexto(tx, contextoCancel), perguntouMulta), reservaHoje)
+      // Diagnóstico: quando uma trava muda a resposta, guarda o original no log do servidor
+      // (o banco só grava o que foi enviado — sem isso não dá pra saber o que a trava cortou).
+      if (out !== tx) console.warn('[whatsapp-bot] trava alterou a resposta', JSON.stringify({ antes: tx, depois: out }))
+      return out
+    }
     const rev = await revisarResposta({ client, faqTxt, transcript, draft, escalou: false })
     if (rev) return { texto: rev.escalar ? FALLBACK_SEM_INFO : finaliza(rev.texto) }
     return { texto: finaliza(draft) }
