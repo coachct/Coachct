@@ -19,6 +19,17 @@ function detalhes(e?: EstacaoRow) {
   return [e.instrucao, e.meta, carga, dupla].filter(Boolean)
 }
 
+// Texto do chão sem repetir o que já está no título do card ("E1 Grama: …") e sem o modo da dupla.
+function textoChao(e: EstacaoRow, p: number) {
+  // Nome mais longo primeiro ("SkiErg" antes de "Ski"); só tira o nome se vier seguido de ":" ou do fim/ponto
+  const nomes = [nomeNaSala(e, p), nomeEstacao(e), labelEstacao(e.estacao), 'SkiErg', 'Grama']
+    .sort((a, b) => b.length - a.length).map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  const inicio = new RegExp(`^\\s*(${codChao(p)}\\s*)?((${nomes.join('|')})\\b\\s*)?[:·–-]?\\s*`, 'i')
+  const instr = e.instrucao.replace(inicio, '').trim()
+  const carga = [e.carga_f, e.carga_m].some(Boolean) ? `F ${e.carga_f || '—'} / M ${e.carga_m || '—'}` : ''
+  return [instr, e.meta, carga].filter(Boolean).join(' · ')
+}
+
 // Bip curto (WebAudio). Só toca depois do primeiro "iniciar" (o navegador exige um clique).
 function useBip() {
   const ctx = useRef<AudioContext | null>(null)
@@ -180,6 +191,9 @@ export default function Player({ treino: t, onFechar, cabecalho }: {
   const decorrido = fim ? totalAula : offsets[idx] + (seg.dur - restante / 1000)
   const seg1 = Math.ceil(restante / 1000)
   const proximo = segs[idx + 1]
+  // Esteira × chão com corrida por código: as 5 colunas precisam de altura, o relógio encolhe um pouco
+  const blocoAtual = !fim && (seg.tipo === 'etapa' || seg.tipo === 'transicao') ? t.blocos[seg.bloco] : null
+  const mapaCodigos = !!blocoAtual && blocoAtual.formato === 'grupos_ab' && estacoesChao(blocoAtual).some(e => e.esteira?.trim())
 
   return (
     // --u = 1% da largura de uma tela 16:9 que cabe na tela atual (celular deitado espelhado, TV ou notebook):
@@ -222,7 +236,7 @@ export default function Player({ treino: t, onFechar, cabecalho }: {
           ) : (
             <div className="flex flex-col items-center gap-[calc(var(--u)*0.4)]">
               <div className={`text-[calc(var(--u)*2.2)] font-semibold tracking-[0.12em] uppercase ${corRotulo(seg)}`}>{rotuloSeg(seg, t)}</div>
-              <div className={`${G} font-bold leading-none tabular-nums text-[calc(var(--u)*14)] ${seg1 <= 3 && rodando ? 'text-[#ff8a9a] animate-pulse' : corRelogio(seg)}`}>
+              <div className={`${G} font-bold leading-none tabular-nums ${mapaCodigos ? 'text-[calc(var(--u)*8.5)]' : 'text-[calc(var(--u)*14)]'} ${seg1 <= 3 && rodando ? 'text-[#ff8a9a] animate-pulse' : corRelogio(seg)}`}>
                 {mmss(seg1)}
               </div>
             </div>
@@ -430,6 +444,40 @@ function ConteudoAB({ seg, b }: { seg: Extract<Segmento, { tipo: 'etapa' | 'tran
   const regraTroca = !rod || voltaChao === 0
     ? 'Esteira E1 ↔ chão E1, E2 ↔ E2… troca com o mesmo código'
     : 'Chão → esteira do mesmo código · Esteira → chão do código seguinte (E5 → E1)'
+  // Corrida por código: uma coluna por código (E1…E5) com o chão em cima e a esteira embaixo,
+  // texto inteiro (quebra linha, sem cortar). Quem está em cada lado vai no topo.
+  if (porCodigo) {
+    const grupoEsteira = aEsteira ? 'A' : 'B'
+    const grupoChao = aEsteira ? 'B' : 'A'
+    const vai = seg.tipo === 'transicao' ? 'vai para ' : ''
+    return (
+      <div className="h-full flex flex-col gap-[calc(var(--u)*0.9)]">
+        {seg.tipo === 'transicao'
+          ? <div className="text-center text-[calc(var(--u)*2.1)] font-semibold text-[#ffd27a]">{regraTroca}</div>
+          : (
+            <div className="flex justify-center gap-[calc(var(--u)*1.2)] text-[calc(var(--u)*2)] font-semibold">
+              <span className="px-[calc(var(--u)*1.2)] py-[calc(var(--u)*0.3)] rounded-full bg-[#2a0f1e] border border-[#ff2d9b] text-[#ff6db8]">Grupo {grupoEsteira} {vai}na esteira</span>
+              <span className="px-[calc(var(--u)*1.2)] py-[calc(var(--u)*0.3)] rounded-full bg-[#0d2a1f] border border-[#1f5a43] text-[#7ff0bd]">Grupo {grupoChao} {vai}no chão{rod ? ` · ${voltaChao + 1}ª volta` : ''}</span>
+            </div>
+          )}
+        <div className="flex-1 min-h-0 grid gap-[calc(var(--u)*0.8)]" style={{ gridTemplateColumns: `repeat(${chao.length}, minmax(0, 1fr))` }}>
+          {chao.map((e, p) => (
+            <div key={p} className="rounded-[calc(var(--u)*1)] border-2 border-[#2a2a31] bg-[#16161a] p-[calc(var(--u)*0.9)] flex flex-col gap-[calc(var(--u)*0.6)] min-w-0">
+              <div className="flex items-baseline gap-[calc(var(--u)*0.6)]">
+                <span className={`${G} text-[calc(var(--u)*2.8)] font-bold text-[#7ff0bd] leading-none`}>{codChao(p)}</span>
+                <span className={`${G} text-[calc(var(--u)*1.9)] font-bold leading-tight`}>{nomeNaSala(e, p)}</span>
+              </div>
+              <div className="text-[calc(var(--u)*1.45)] leading-snug text-[#e4e4e7]">{textoChao(e, p)}</div>
+              <div className="mt-auto rounded-[calc(var(--u)*0.6)] bg-[#2a0f1e] border border-[#ff2d9b] px-[calc(var(--u)*0.7)] py-[calc(var(--u)*0.4)]">
+                <div className="text-[calc(var(--u)*1.1)] uppercase tracking-[0.1em] text-[#ff6db8]">Esteira</div>
+                <div className="text-[calc(var(--u)*1.65)] font-semibold leading-tight">{e.esteira || '—'}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
   return (
     <div className="h-full flex flex-col gap-[calc(var(--u)*1)]">
     {seg.tipo === 'transicao' && chao.length > 0 && (
