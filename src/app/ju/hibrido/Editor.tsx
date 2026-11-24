@@ -13,7 +13,7 @@ import {
   labelEstacao, estacoesUsadas, treinoVazio, blocoVazio, estacaoVazia, clonarBlocos,
   carregarTreino, salvarTreino, programar, carregarMedias, faixasProvaveis, fmtDia,
   estacoesChao, rodizioChaoLigado, roteiroAB, estacaoNaVolta, inconsistencias,
-  SALA_CHAO, codChao, ordenarComoSala, foraDaSala,
+  SALA_CHAO, codChao, ordenarComoSala, foraDaSala, circuitoPorCodigo,
 } from '@/lib/hibrido'
 import { cls, Modal } from './ui'
 import { hojeSP } from '@/lib/tempo'
@@ -604,7 +604,7 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial, mod
             >
               <div className="font-semibold text-[#ffd27a]">Pouco tempo de corrida</div>
               <div className="text-[#f3dfb2]">
-                Cada {todasDupla ? 'dupla' : 'aluno'} fica {mmss(r.corrida)} na esteira de {mmss(r.blocos)} de blocos ({r.pctCorrida}%). O ideal é pelo menos metade.
+                Cada {todasDupla ? 'dupla' : 'aluno'} fica {mmss(r.corrida)} na esteira de {mmss(r.blocosMedidos)} de blocos ({r.pctCorrida}%). O ideal é pelo menos metade.
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -719,6 +719,8 @@ function BlocoCard(p: {
   const ab = b.formato === 'grupos_ab'
   // Em Grupos A/B a esteira fica no card próprio; a tabela é só do chão
   const linhas = ab ? estacoesChao(b) : b.estacoes
+  // Esteira x chão ou passagem por código: as linhas são os códigos E1…E5 da sala, cada um com a sua esteira
+  const codigos = ab || circuitoPorCodigo(b)
 
   return (
     <section className={`${cls.card} p-6 flex flex-col gap-4`}>
@@ -811,22 +813,27 @@ function BlocoCard(p: {
           )}
 
           <div className="overflow-x-auto border border-[#2a2a31] rounded-xl">
-            <div className={`grid text-[13px] ${ab
+            <div className={`grid text-[13px] ${codigos
               ? 'min-w-[1120px] grid-cols-[1.3fr_0.55fr_0.65fr_1fr_2.1fr_1.2fr_0.9fr_1.4fr_40px]'
               : 'min-w-[960px] grid-cols-[1.3fr_0.55fr_0.65fr_1fr_2.1fr_1.2fr_0.9fr_40px]'}`}>
-              {['Estação', 'Postos', 'Pessoas', 'Dupla', 'O que fazer', 'Meta', 'Carga F / M', ...(ab ? ['Esteira do mesmo código'] : []), ''].map((h, k) => (
+              {['Estação', 'Postos', 'Pessoas', 'Dupla', 'O que fazer', 'Meta', 'Carga F / M', ...(codigos ? ['Esteira do mesmo código'] : []), ''].map((h, k) => (
                 <div key={k} className={`px-3 py-2.5 bg-[#222228] text-xs ${h.startsWith('Esteira') ? 'text-[#ff6db8]' : 'text-[#a1a1aa]'}`}>{h}</div>
               ))}
               {linhas.length === 0 && (
                 <div className="col-span-full px-3 py-4 border-t border-[#2a2a31] text-[#a1a1aa]">{ab ? 'Nenhuma estação no chão ainda.' : 'Nenhuma estação ainda.'}</div>
               )}
               {linhas.map((e, k) => (
-                <LinhaEstacao key={e.id} e={e} ab={ab} cod={ab ? `${codChao(k)}${SALA_CHAO[k] ? ` · ${SALA_CHAO[k].nome}` : ''}` : undefined}
+                <LinhaEstacao key={e.id} e={e} ab={codigos} cod={codigos ? `${codChao(k)}${SALA_CHAO[k] ? ` · ${SALA_CHAO[k].nome}` : ''}` : undefined}
                   set={patch => p.setEstacao(e.id, patch)} remover={() => p.removerEstacao(e.id)} />
               ))}
             </div>
           </div>
-          {ab && foraDaSala(linhas).length > 0 && (
+          {circuitoPorCodigo(b) && (
+            <div className="text-xs text-[#a1a1aa]">
+              Passagem por código: no tempo de cada estação ({mmss(b.etapa_seg)}) as pessoas do código se revezam entre a esteira e o chão; depois da transição, todos giram para o código seguinte, sentido horário (E5 → E1).
+            </div>
+          )}
+          {codigos && foraDaSala(linhas).length > 0 && (
             <div className="flex flex-wrap items-center gap-3 px-3.5 py-2.5 rounded-xl bg-[#2a210b] text-[#f3dfb2] text-[13px]">
               <span>A ordem do chão não bate com a sala (E1 Grama, E2 Ski, E3 Funcional, E4 Remo, E5 Wall Ball).</span>
               <button onClick={() => p.setBloco({ estacoes: ordenarComoSala(b) })} className="min-h-[36px] px-3 rounded-lg bg-[#ffd27a] text-[#2a1d00] font-semibold">

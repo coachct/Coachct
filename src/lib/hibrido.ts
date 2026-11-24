@@ -72,6 +72,14 @@ export function ordenarComoSala(b: Bloco): EstacaoRow[] {
   return [...corrida, ...chao]
 }
 
+/**
+ * Passagem por código (formato da Ju): circuito sem linha de corrida, uma linha por código E1…E5.
+ * Cada etapa é uma passagem: no tempo da estação (ex.: 3:40) a dupla faz o chão E a esteira daquele
+ * código, trocando entre si (ex.: tiro 45'' cada). Depois da transição, gira para o código seguinte.
+ */
+export const circuitoPorCodigo = (b: Bloco) =>
+  b.formato === 'circuito' && b.estacoes.length > 0 && !b.estacoes.some(e => e.estacao === 'corrida')
+
 /** Linha do chão que não bate com a estação da sala daquele código (E1 Grama aceita qualquer uma). */
 export function foraDaSala(chao: EstacaoRow[]) {
   return chao.map((e, p) => ({ e, p, sala: SALA_CHAO[p] })).filter(x => x.sala?.tipo && x.e.estacao !== x.sala.tipo)
@@ -287,7 +295,9 @@ export function resumo(t: Treino) {
   const corrida = t.blocos.reduce((s, b) => s + corridaBloco(b), 0)
   const soma = abertura + blocos
   const diff = t.duracao_seg - soma
-  const pctCorrida = blocos > 0 ? Math.round((100 * corrida) / blocos) : 0
+  // Passagem por código: a corrida acontece dentro do tempo da estação (não dá para medir à parte)
+  const blocosMedidos = t.blocos.reduce((s, b, i) => s + (circuitoPorCodigo(b) ? 0 : totalBloco(b, i === t.blocos.length - 1)), 0)
+  const pctCorrida = blocosMedidos > 0 ? Math.round((100 * corrida) / blocosMedidos) : 0
   return {
     abertura,
     blocos,
@@ -296,7 +306,8 @@ export function resumo(t: Treino) {
     diff,
     fecha: diff === 0,
     pctCorrida,
-    poucaCorrida: blocos > 0 && corrida * 2 < blocos,
+    blocosMedidos,
+    poucaCorrida: blocosMedidos > 0 && corrida * 2 < blocosMedidos,
     esteiraEstourada: t.blocos.some(passouEsteira),
   }
 }
@@ -346,6 +357,15 @@ export function inconsistencias(t: Treino): string[] {
       }
     }
 
+    if (circuitoPorCodigo(b)) {
+      const linhas = ordemCircuito(b)
+      if (linhas.length !== SALA_CHAO.length) {
+        out.push(`${nome}: são ${linhas.length} passagens; a sala tem ${SALA_CHAO.length} códigos (E1 a E5).`)
+      }
+      linhas.forEach((e, p) => { if (!e.esteira.trim()) out.push(`${nome}: falta dizer o que se faz na esteira ${codChao(p)}.`) })
+      foraDaSala(linhas).forEach(x => out.push(`${nome}: ${x.sala.cod} na sala é ${x.sala.nome}, mas a passagem ${x.p + 1} está como ${nomeEstacao(x.e)}.`))
+    }
+
     const esteiraPorCodigo = b.formato === 'grupos_ab' && b.estacoes.some(e => e.estacao !== 'corrida' && e.esteira.trim())
     b.estacoes.forEach(e => {
       if (e.estacao === 'corrida' && esteiraPorCodigo) return
@@ -354,7 +374,7 @@ export function inconsistencias(t: Treino): string[] {
       if (!e.instrucao.trim() && !e.meta.trim()) out.push(`${nome}: ${en} sem instrução nem meta.`)
     })
   })
-  if (r.poucaCorrida) out.push(`Pouca corrida: ${mmss(r.corrida)} na esteira de ${mmss(r.blocos)} de blocos (${r.pctCorrida}%). O ideal é pelo menos metade.`)
+  if (r.poucaCorrida) out.push(`Pouca corrida: ${mmss(r.corrida)} na esteira de ${mmss(r.blocosMedidos)} de blocos (${r.pctCorrida}%). O ideal é pelo menos metade.`)
   return out
 }
 
@@ -571,7 +591,7 @@ export async function salvarTreino(supabase: any, t: Treino): Promise<{ id: stri
         meta: e.meta.trim() || null,
         carga_f: e.carga_f.trim() || null,
         carga_m: e.carga_m.trim() || null,
-        esteira: b.formato === 'grupos_ab' && e.estacao !== 'corrida' ? (e.esteira || '').trim() || null : null,
+        esteira: b.formato !== 'todos' && e.estacao !== 'corrida' ? (e.esteira || '').trim() || null : null,
       }))
     )
     if (estacoes.length) {

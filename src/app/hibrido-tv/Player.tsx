@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { SkipBack, SkipForward, Play, Pause, RotateCcw, Maximize, X } from 'lucide-react'
 import {
   Treino, Bloco, EstacaoRow, Segmento,
-  linhaDoTempo, mmss, estacoesChao, rodizioChaoLigado, ordemCircuito, codChao, SALA_CHAO,
+  linhaDoTempo, mmss, estacoesChao, rodizioChaoLigado, ordemCircuito, codChao, SALA_CHAO, circuitoPorCodigo,
   nomeEstacao, labelEstacao, MODOS_DUPLA,
 } from '@/lib/hibrido'
 
@@ -286,6 +286,7 @@ function rotuloSeg(seg: Segmento, t: Treino) {
   if (seg.tipo === 'transicao') return b.formato === 'grupos_ab' ? 'Troca de lado' : 'Troca de estação'
   if (b.formato === 'grupos_ab') return 'Esteira × chão'
   if (b.formato === 'todos') return 'Todos juntos'
+  if (circuitoPorCodigo(b) && seg.tipo === 'etapa') return `Passagem ${seg.etapa + 1} de ${seg.etapasBloco}`
   return 'Circuito'
 }
 
@@ -402,6 +403,34 @@ function ConteudoCircuito({ seg, b }: { seg: Extract<Segmento, { tipo: 'etapa' |
       <div className="h-full flex flex-col items-center justify-center gap-[calc(var(--u)*1)] text-center">
         <div className={`${G} text-[calc(var(--u)*6)] font-bold`}>{e ? nomeEstacao(e) : labelEstacao('funcional')}</div>
         <div className="text-[calc(var(--u)*2.4)] text-[#d4d4d8]">{detalhes(e).join(' · ')}</div>
+      </div>
+    )
+  }
+  // Passagem por código: cada código junta as 2 esteiras e o chão; revezam dentro do tempo e giram no horário
+  if (circuitoPorCodigo(b)) {
+    return (
+      <div className="h-full flex flex-col gap-[calc(var(--u)*0.8)]">
+        <div className={`text-center text-[calc(var(--u)*2)] font-semibold ${seg.tipo === 'transicao' ? 'text-[#ffd27a]' : 'text-[#a1a1aa]'}`}>
+          {seg.tipo === 'transicao'
+            ? 'Gire para o próximo código · E1 → E2 → E3 → E4 → E5 → E1'
+            : 'Em cada código: revezem esteira e chão até o tempo acabar'}
+        </div>
+        <div className="flex-1 min-h-0 grid gap-[calc(var(--u)*0.8)]" style={{ gridTemplateColumns: `repeat(${Math.max(1, o.length)}, minmax(0, 1fr))` }}>
+          {o.map((e, p) => (
+            <div key={p} className="rounded-[calc(var(--u)*1)] p-[calc(var(--u)*1.1)] border-2 border-[#2a2a31] bg-[#16161a] flex flex-col gap-[calc(var(--u)*0.7)] min-w-0">
+              <div className={`${G} text-[calc(var(--u)*3.4)] font-bold text-[#7ff0bd] leading-none`}>{codChao(p)}</div>
+              <div className="flex flex-col gap-[calc(var(--u)*0.3)]">
+                <div className="text-[calc(var(--u)*1.3)] uppercase tracking-[0.1em] text-[#a1a1aa]">Chão{SALA_CHAO[p] && !SALA_CHAO[p].tipo ? ` · ${SALA_CHAO[p].nome}` : ''}</div>
+                <div className={`${G} text-[calc(var(--u)*1.9)] font-bold leading-tight`}>{nomeEstacao(e)}</div>
+                <div className="text-[calc(var(--u)*1.45)] text-[#d4d4d8] leading-snug">{detalhes(e).join(' · ')}</div>
+              </div>
+              <div className="mt-auto rounded-[calc(var(--u)*0.7)] bg-[#2a0f1e] border border-[#ff2d9b] p-[calc(var(--u)*0.8)]">
+                <div className="text-[calc(var(--u)*1.3)] uppercase tracking-[0.1em] text-[#ff6db8]">Esteira</div>
+                <div className="text-[calc(var(--u)*1.9)] font-semibold leading-tight">{e.esteira || '—'}</div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     )
   }
