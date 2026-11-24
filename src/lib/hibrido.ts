@@ -62,6 +62,8 @@ export const SALA_CHAO: { cod: string; nome: string; tipo: Estacao | null }[] = 
   { cod: 'E5', nome: 'Wall Ball', tipo: 'wall_ball' },
 ]
 export const codChao = (p: number) => SALA_CHAO[p]?.cod || `E${p + 1}`
+/** Nome que aparece ao lado do código: sempre o nome da estação na sala (E1 Grama, E2 Ski…), não o tipo. */
+export const nomeNaSala = (e: EstacaoRow, p: number) => SALA_CHAO[p]?.nome || nomeEstacao(e)
 
 /** Linhas do chão na ordem da sala (E1…E5): cada tipo vai para o código dele; o resto fica na Grama (E1). */
 export function ordenarComoSala(b: Bloco): EstacaoRow[] {

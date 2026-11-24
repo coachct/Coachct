@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { SkipBack, SkipForward, Play, Pause, RotateCcw, Maximize, X } from 'lucide-react'
 import {
   Treino, Bloco, EstacaoRow, Segmento,
-  linhaDoTempo, mmss, estacoesChao, rodizioChaoLigado, ordemCircuito, codChao, SALA_CHAO, circuitoPorCodigo,
+  linhaDoTempo, mmss, estacoesChao, rodizioChaoLigado, ordemCircuito, codChao, SALA_CHAO, circuitoPorCodigo, nomeNaSala,
   nomeEstacao, labelEstacao, MODOS_DUPLA,
 } from '@/lib/hibrido'
 import { Pictograma, itensAquecimento } from './Pictogramas'
@@ -358,7 +358,7 @@ function ConteudoExplicacao({ t, desc }: { t: Treino; desc: string }) {
                 <div key={p} className="rounded-[calc(var(--u)*0.9)] p-[calc(var(--u)*0.9)] border-2 border-[#2a2a31] bg-[#16161a] flex flex-col gap-[calc(var(--u)*0.5)] min-w-0">
                   <div className="flex items-baseline gap-[calc(var(--u)*0.6)]">
                     <span className={`${G} text-[calc(var(--u)*2.6)] font-bold text-[#7ff0bd] leading-none`}>{codigos ? codChao(p) : p + 1}</span>
-                    <span className={`${G} text-[calc(var(--u)*1.7)] font-bold leading-tight truncate`}>{nomeEstacao(e)}</span>
+                    <span className={`${G} text-[calc(var(--u)*1.7)] font-bold leading-tight truncate`}>{codigos ? nomeNaSala(e, p) : nomeEstacao(e)}</span>
                   </div>
                   <div className="text-[calc(var(--u)*1.35)] text-[#d4d4d8] leading-snug">{detalhes(e).join(' · ')}</div>
                   {comEsteira && (
@@ -468,7 +468,7 @@ function ConteudoAB({ seg, b }: { seg: Extract<Segmento, { tipo: 'etapa' | 'tran
               {chao.map((e, p) => (
                 <div key={p} className="flex gap-[calc(var(--u)*0.8)] items-baseline text-[calc(var(--u)*1.6)] leading-snug">
                   <span className={`${G} text-[#7ff0bd] font-bold w-[calc(var(--u)*2.8)] shrink-0`}>{codChao(p)}</span>
-                  <span className="font-semibold shrink-0">{nomeEstacao(e)}{SALA_CHAO[p] && !SALA_CHAO[p].tipo ? ` · ${SALA_CHAO[p].nome.toLowerCase()}` : ''}</span>
+                  <span className="font-semibold shrink-0">{nomeNaSala(e, p)}</span>
                   <span className="text-[#d4d4d8] truncate">{detalhes(e).join(' · ')}</span>
                 </div>
               ))}
@@ -510,8 +510,8 @@ function ConteudoCircuito({ seg, b }: { seg: Extract<Segmento, { tipo: 'etapa' |
             <div key={p} className="rounded-[calc(var(--u)*1)] p-[calc(var(--u)*1.1)] border-2 border-[#2a2a31] bg-[#16161a] flex flex-col gap-[calc(var(--u)*0.7)] min-w-0">
               <div className={`${G} text-[calc(var(--u)*3.4)] font-bold text-[#7ff0bd] leading-none`}>{codChao(p)}</div>
               <div className="flex flex-col gap-[calc(var(--u)*0.3)]">
-                <div className="text-[calc(var(--u)*1.3)] uppercase tracking-[0.1em] text-[#a1a1aa]">Chão{SALA_CHAO[p] && !SALA_CHAO[p].tipo ? ` · ${SALA_CHAO[p].nome}` : ''}</div>
-                <div className={`${G} text-[calc(var(--u)*1.9)] font-bold leading-tight`}>{nomeEstacao(e)}</div>
+                <div className="text-[calc(var(--u)*1.3)] uppercase tracking-[0.1em] text-[#a1a1aa]">Chão</div>
+                <div className={`${G} text-[calc(var(--u)*1.9)] font-bold leading-tight`}>{nomeNaSala(e, p)}</div>
                 <div className="text-[calc(var(--u)*1.45)] text-[#d4d4d8] leading-snug">{detalhes(e).join(' · ')}</div>
               </div>
               <div className="mt-auto rounded-[calc(var(--u)*0.7)] bg-[#2a0f1e] border border-[#ff2d9b] p-[calc(var(--u)*0.8)]">
