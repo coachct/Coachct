@@ -119,11 +119,31 @@ export default function Player({ treino: t, onFechar, cabecalho }: {
     setIdx(0)
     if (segs[0]) setRestante(segs[0].dur * 1000)
   }
-  function telaCheia() {
-    const el = document.documentElement
-    if (document.fullscreenElement) document.exitFullscreen?.()
-    else el.requestFullscreen?.()
+  async function telaCheia() {
+    const el = document.documentElement as any
+    if (document.fullscreenElement) { document.exitFullscreen?.(); return }
+    try { await (el.requestFullscreen?.() ?? el.webkitRequestFullscreen?.()) } catch {}
+    // Android/Chrome deixa travar na horizontal em tela cheia; no iPhone é só girar o aparelho
+    try { await (screen.orientation as any)?.lock?.('landscape') } catch {}
   }
+
+  // Celular em pé: pede para girar (espelhado na TV, em pé fica uma faixa estreita no meio)
+  const [retrato, setRetrato] = useState(false)
+  useEffect(() => {
+    const ver = () => setRetrato(window.innerHeight > window.innerWidth && window.innerWidth < 900)
+    ver()
+    window.addEventListener('resize', ver)
+    window.addEventListener('orientationchange', ver)
+    return () => { window.removeEventListener('resize', ver); window.removeEventListener('orientationchange', ver) }
+  }, [])
+
+  // Tela não apaga enquanto a aula roda
+  useEffect(() => {
+    if (!rodando) return
+    let lock: any = null
+    ;(navigator as any).wakeLock?.request?.('screen').then((l: any) => { lock = l }).catch(() => {})
+    return () => { try { lock?.release?.() } catch {} }
+  }, [rodando])
 
   // Controle remoto / teclado: espaço = iniciar/pausar, setas = etapa
   useEffect(() => {
@@ -143,29 +163,39 @@ export default function Player({ treino: t, onFechar, cabecalho }: {
   const proximo = segs[idx + 1]
 
   return (
-    <div className="min-h-screen flex flex-col p-[2.2vw] gap-[1.6vw] select-none">
+    // --u = 1% da largura de uma tela 16:9 que cabe na tela atual (celular deitado espelhado, TV ou notebook):
+    // tudo cresce junto e a aula ocupa a tela inteira sem cortar nada.
+    <div className="h-[100dvh] overflow-hidden flex flex-col p-[calc(var(--u)*2.2)] gap-[calc(var(--u)*1.6)] select-none"
+      style={{ ['--u' as any]: 'min(1vw, 1.7778vh)' }}>
+      {retrato && (
+        <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center gap-5 p-8 text-center">
+          <div className={`${G} text-3xl font-bold`}>Gire o celular para a horizontal</div>
+          <div className="text-[#a1a1aa]">Assim a aula ocupa a TV inteira no espelhamento.</div>
+          <button onClick={telaCheia} className="min-h-[52px] px-6 rounded-xl bg-[#ff2d9b] text-[#1a0010] font-semibold">Tela cheia na horizontal</button>
+        </div>
+      )}
       {/* topo */}
-      <div className="flex flex-col gap-[0.8vw]">
-        <div className="flex justify-between items-baseline text-[1.6vw] text-[#a1a1aa]">
+      <div className="flex flex-col gap-[calc(var(--u)*0.8)]">
+        <div className="flex justify-between items-baseline text-[calc(var(--u)*1.6)] text-[#a1a1aa]">
           <span>{cabecalho ? `${cabecalho} · ` : ''}{fim ? 'Fim da aula' : tituloSeg(seg, t)}</span>
           <span className={`${G} text-[#f2f2f4]`}>{mmss(decorrido)} <span className="text-[#a1a1aa]">/ {mmss(totalAula)}</span></span>
         </div>
-        <div className="h-[0.5vw] min-h-[4px] rounded-full bg-[#1c1c22] overflow-hidden">
+        <div className="h-[calc(var(--u)*0.5)] min-h-[4px] rounded-full bg-[#1c1c22] overflow-hidden">
           <div className="h-full bg-[#ff2d9b] transition-[width] duration-200" style={{ width: `${(100 * decorrido) / Math.max(1, totalAula)}%` }} />
         </div>
       </div>
 
       {fim ? (
-        <div className="flex-1 flex flex-col items-center justify-center gap-[1vw]">
-          <div className={`${G} text-[9vw] font-bold text-[#ff2d9b] leading-none`}>Fim da aula</div>
-          <div className="text-[2vw] text-[#a1a1aa]">{t.nome}</div>
+        <div className="flex-1 flex flex-col items-center justify-center gap-[calc(var(--u)*1)]">
+          <div className={`${G} text-[calc(var(--u)*9)] font-bold text-[#ff2d9b] leading-none`}>Fim da aula</div>
+          <div className="text-[calc(var(--u)*2)] text-[#a1a1aa]">{t.nome}</div>
         </div>
       ) : (
         <>
           {/* cronômetro */}
-          <div className="flex flex-col items-center gap-[0.4vw]">
-            <div className={`text-[2.2vw] font-semibold tracking-[0.12em] uppercase ${corRotulo(seg)}`}>{rotuloSeg(seg, t)}</div>
-            <div className={`${G} font-bold leading-none tabular-nums text-[14vw] ${seg1 <= 3 && rodando ? 'text-[#ff8a9a] animate-pulse' : corRelogio(seg)}`}>
+          <div className="flex flex-col items-center gap-[calc(var(--u)*0.4)]">
+            <div className={`text-[calc(var(--u)*2.2)] font-semibold tracking-[0.12em] uppercase ${corRotulo(seg)}`}>{rotuloSeg(seg, t)}</div>
+            <div className={`${G} font-bold leading-none tabular-nums text-[calc(var(--u)*14)] ${seg1 <= 3 && rodando ? 'text-[#ff8a9a] animate-pulse' : corRelogio(seg)}`}>
               {mmss(seg1)}
             </div>
           </div>
@@ -176,7 +206,7 @@ export default function Player({ treino: t, onFechar, cabecalho }: {
           </div>
 
           {proximo && (
-            <div className="text-center text-[1.6vw] text-[#a1a1aa]">A seguir: {resumoProximo(proximo, t)}</div>
+            <div className="text-center text-[calc(var(--u)*1.6)] text-[#a1a1aa]">A seguir: {resumoProximo(proximo, t)}</div>
           )}
         </>
       )}
@@ -243,7 +273,7 @@ function Conteudo({ seg, t }: { seg: Segmento; t: Treino }) {
   if (seg.tipo === 'aquecimento' || seg.tipo === 'explicacao') {
     return (
       <div className="h-full flex items-center justify-center text-center">
-        <div className="text-[3.4vw] font-semibold max-w-[80vw] leading-tight">{seg.desc || ' '}</div>
+        <div className="text-[calc(var(--u)*3.4)] font-semibold max-w-[calc(var(--u)*80)] leading-tight">{seg.desc || ' '}</div>
       </div>
     )
   }
@@ -265,26 +295,26 @@ function ConteudoAB({ seg, b }: { seg: Extract<Segmento, { tipo: 'etapa' | 'tran
     { g: 'B', esteira: !aEsteira },
   ]
   return (
-    <div className="h-full grid grid-cols-2 gap-[1.4vw]">
+    <div className="h-full grid grid-cols-2 gap-[calc(var(--u)*1.4)]">
       {cards.map(c => (
-        <div key={c.g} className={`rounded-[1.2vw] p-[1.6vw] flex flex-col gap-[0.8vw] ${c.esteira ? 'bg-[#2a0f1e] border-2 border-[#ff2d9b]' : 'bg-[#16161a] border-2 border-[#2a2a31]'}`}>
+        <div key={c.g} className={`rounded-[calc(var(--u)*1.2)] p-[calc(var(--u)*1.6)] flex flex-col gap-[calc(var(--u)*0.8)] ${c.esteira ? 'bg-[#2a0f1e] border-2 border-[#ff2d9b]' : 'bg-[#16161a] border-2 border-[#2a2a31]'}`}>
           <div className="flex items-baseline justify-between">
-            <span className={`${G} text-[3vw] font-bold`}>Grupo {c.g}</span>
-            <span className={`text-[1.8vw] font-semibold uppercase tracking-[0.1em] ${c.esteira ? 'text-[#ff6db8]' : 'text-[#7ff0bd]'}`}>
+            <span className={`${G} text-[calc(var(--u)*3)] font-bold`}>Grupo {c.g}</span>
+            <span className={`text-[calc(var(--u)*1.8)] font-semibold uppercase tracking-[0.1em] ${c.esteira ? 'text-[#ff6db8]' : 'text-[#7ff0bd]'}`}>
               {seg.tipo === 'transicao' ? 'vai para ' : ''}{c.esteira ? 'Esteira' : `Chão${chao.length && rod ? ` · ${voltaChao + 1}ª volta` : ''}`}
             </span>
           </div>
           {c.esteira ? (
-            <div className="flex flex-col gap-[0.5vw] text-[2vw]">
-              {detalhes(corrida).map((d, i) => <div key={i} className={i === 0 ? 'text-[2.6vw] font-semibold' : 'text-[#d4d4d8]'}>{d}</div>)}
+            <div className="flex flex-col gap-[calc(var(--u)*0.5)] text-[calc(var(--u)*2)]">
+              {detalhes(corrida).map((d, i) => <div key={i} className={i === 0 ? 'text-[calc(var(--u)*2.6)] font-semibold' : 'text-[#d4d4d8]'}>{d}</div>)}
             </div>
           ) : chao.length ? (
-            <div className="flex flex-col gap-[0.5vw]">
+            <div className="flex flex-col gap-[calc(var(--u)*0.5)]">
               {chao.map((_, p) => {
                 const e = estacaoNaVolta(chao, p, voltaChao, rod)!
                 return (
-                  <div key={p} className="flex gap-[0.8vw] items-baseline text-[1.6vw] leading-snug">
-                    <span className="text-[#a1a1aa] w-[2.2vw] shrink-0">{p + 1}</span>
+                  <div key={p} className="flex gap-[calc(var(--u)*0.8)] items-baseline text-[calc(var(--u)*1.6)] leading-snug">
+                    <span className="text-[#a1a1aa] w-[calc(var(--u)*2.2)] shrink-0">{p + 1}</span>
                     <span className="font-semibold shrink-0">{nomeEstacao(e)}</span>
                     <span className="text-[#d4d4d8] truncate">{detalhes(e).join(' · ')}</span>
                   </div>
@@ -292,7 +322,7 @@ function ConteudoAB({ seg, b }: { seg: Extract<Segmento, { tipo: 'etapa' | 'tran
               })}
             </div>
           ) : (
-            <div className="text-[2vw] text-[#a1a1aa]">Estações</div>
+            <div className="text-[calc(var(--u)*2)] text-[#a1a1aa]">Estações</div>
           )}
         </div>
       ))}
@@ -307,24 +337,24 @@ function ConteudoCircuito({ seg, b }: { seg: Extract<Segmento, { tipo: 'etapa' |
   if (b.formato === 'todos') {
     const e = o[pos]
     return (
-      <div className="h-full flex flex-col items-center justify-center gap-[1vw] text-center">
-        <div className={`${G} text-[6vw] font-bold`}>{e ? nomeEstacao(e) : labelEstacao('funcional')}</div>
-        <div className="text-[2.4vw] text-[#d4d4d8]">{detalhes(e).join(' · ')}</div>
+      <div className="h-full flex flex-col items-center justify-center gap-[calc(var(--u)*1)] text-center">
+        <div className={`${G} text-[calc(var(--u)*6)] font-bold`}>{e ? nomeEstacao(e) : labelEstacao('funcional')}</div>
+        <div className="text-[calc(var(--u)*2.4)] text-[#d4d4d8]">{detalhes(e).join(' · ')}</div>
       </div>
     )
   }
   // Circuito: cada um está numa estação; a cada troca vai para a próxima da ordem
   return (
-    <div className="h-full flex flex-col gap-[0.8vw]">
-      <div className="text-[1.6vw] text-[#a1a1aa]">A cada troca, cada um vai para a próxima estação: {o.map(nomeEstacao).join(' → ')}</div>
-      <div className="grid gap-[0.8vw]" style={{ gridTemplateColumns: `repeat(${Math.min(3, Math.max(1, o.length))}, minmax(0, 1fr))` }}>
+    <div className="h-full flex flex-col gap-[calc(var(--u)*0.8)]">
+      <div className="text-[calc(var(--u)*1.6)] text-[#a1a1aa]">A cada troca, cada um vai para a próxima estação: {o.map(nomeEstacao).join(' → ')}</div>
+      <div className="grid gap-[calc(var(--u)*0.8)]" style={{ gridTemplateColumns: `repeat(${Math.min(3, Math.max(1, o.length))}, minmax(0, 1fr))` }}>
         {o.map((e, i) => (
-          <div key={i} className={`rounded-[1vw] p-[1.2vw] border-2 ${e.estacao === 'corrida' ? 'border-[#ff2d9b] bg-[#2a0f1e]' : 'border-[#2a2a31] bg-[#16161a]'}`}>
-            <div className="flex items-baseline gap-[0.6vw]">
-              <span className="text-[#a1a1aa] text-[1.4vw]">{i + 1}</span>
-              <span className={`${G} text-[2.2vw] font-bold`}>{nomeEstacao(e)}</span>
+          <div key={i} className={`rounded-[calc(var(--u)*1)] p-[calc(var(--u)*1.2)] border-2 ${e.estacao === 'corrida' ? 'border-[#ff2d9b] bg-[#2a0f1e]' : 'border-[#2a2a31] bg-[#16161a]'}`}>
+            <div className="flex items-baseline gap-[calc(var(--u)*0.6)]">
+              <span className="text-[#a1a1aa] text-[calc(var(--u)*1.4)]">{i + 1}</span>
+              <span className={`${G} text-[calc(var(--u)*2.2)] font-bold`}>{nomeEstacao(e)}</span>
             </div>
-            <div className="text-[1.5vw] text-[#d4d4d8]">{detalhes(e).join(' · ')}</div>
+            <div className="text-[calc(var(--u)*1.5)] text-[#d4d4d8]">{detalhes(e).join(' · ')}</div>
           </div>
         ))}
       </div>
@@ -335,7 +365,7 @@ function ConteudoCircuito({ seg, b }: { seg: Extract<Segmento, { tipo: 'etapa' |
 function FimBloco() {
   return (
     <div className="h-full flex items-center justify-center">
-      <div className={`${G} text-[5vw] font-bold text-[#ffd27a]`}>Fim do bloco · prepara o próximo</div>
+      <div className={`${G} text-[calc(var(--u)*5)] font-bold text-[#ffd27a]`}>Fim do bloco · prepara o próximo</div>
     </div>
   )
 }
