@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { SkipBack, SkipForward, Play, Pause, RotateCcw, Maximize, X } from 'lucide-react'
 import {
   Treino, Bloco, EstacaoRow, Segmento,
-  linhaDoTempo, mmss, estacoesChao, rodizioChaoLigado, estacaoNaVolta, ordemCircuito,
+  linhaDoTempo, mmss, estacoesChao, rodizioChaoLigado, ordemCircuito, codChao, SALA_CHAO,
   nomeEstacao, labelEstacao, MODOS_DUPLA,
 } from '@/lib/hibrido'
 
@@ -333,8 +333,16 @@ function ConteudoAB({ seg, b }: { seg: Extract<Segmento, { tipo: 'etapa' | 'tran
     { g: 'A', esteira: aEsteira },
     { g: 'B', esteira: !aEsteira },
   ]
+  // Na 1ª troca do bloco (quem vai ao chão pela 1ª vez) o código é o mesmo; depois o chão gira no sentido horário
+  const regraTroca = !rod || voltaChao === 0
+    ? 'Esteira E1 ↔ chão E1, E2 ↔ E2… troca com o mesmo código'
+    : 'Chão → esteira do mesmo código · Esteira → chão do código seguinte (E5 → E1)'
   return (
-    <div className="h-full grid grid-cols-2 gap-[calc(var(--u)*1.4)]">
+    <div className="h-full flex flex-col gap-[calc(var(--u)*1)]">
+    {seg.tipo === 'transicao' && chao.length > 0 && (
+      <div className="text-center text-[calc(var(--u)*2.2)] font-semibold text-[#ffd27a]">{regraTroca}</div>
+    )}
+    <div className="flex-1 min-h-0 grid grid-cols-2 gap-[calc(var(--u)*1.4)]">
       {cards.map(c => (
         <div key={c.g} className={`rounded-[calc(var(--u)*1.2)] p-[calc(var(--u)*1.6)] flex flex-col gap-[calc(var(--u)*0.8)] ${c.esteira ? 'bg-[#2a0f1e] border-2 border-[#ff2d9b]' : 'bg-[#16161a] border-2 border-[#2a2a31]'}`}>
           <div className="flex items-baseline justify-between">
@@ -346,25 +354,24 @@ function ConteudoAB({ seg, b }: { seg: Extract<Segmento, { tipo: 'etapa' | 'tran
           {c.esteira ? (
             <div className="flex flex-col gap-[calc(var(--u)*0.5)] text-[calc(var(--u)*2)]">
               {detalhes(corrida).map((d, i) => <div key={i} className={i === 0 ? 'text-[calc(var(--u)*2.6)] font-semibold' : 'text-[#d4d4d8]'}>{d}</div>)}
+              <div className="text-[calc(var(--u)*1.5)] text-[#a1a1aa]">Esteiras E1 a E5 · duas por código</div>
             </div>
           ) : chao.length ? (
             <div className="flex flex-col gap-[calc(var(--u)*0.5)]">
-              {chao.map((_, p) => {
-                const e = estacaoNaVolta(chao, p, voltaChao, rod)!
-                return (
-                  <div key={p} className="flex gap-[calc(var(--u)*0.8)] items-baseline text-[calc(var(--u)*1.6)] leading-snug">
-                    <span className="text-[#a1a1aa] w-[calc(var(--u)*2.2)] shrink-0">{p + 1}</span>
-                    <span className="font-semibold shrink-0">{nomeEstacao(e)}</span>
-                    <span className="text-[#d4d4d8] truncate">{detalhes(e).join(' · ')}</span>
-                  </div>
-                )
-              })}
+              {chao.map((e, p) => (
+                <div key={p} className="flex gap-[calc(var(--u)*0.8)] items-baseline text-[calc(var(--u)*1.6)] leading-snug">
+                  <span className={`${G} text-[#7ff0bd] font-bold w-[calc(var(--u)*2.8)] shrink-0`}>{codChao(p)}</span>
+                  <span className="font-semibold shrink-0">{nomeEstacao(e)}{SALA_CHAO[p] && !SALA_CHAO[p].tipo ? ` · ${SALA_CHAO[p].nome.toLowerCase()}` : ''}</span>
+                  <span className="text-[#d4d4d8] truncate">{detalhes(e).join(' · ')}</span>
+                </div>
+              ))}
             </div>
           ) : (
             <div className="text-[calc(var(--u)*2)] text-[#a1a1aa]">Estações</div>
           )}
         </div>
       ))}
+    </div>
     </div>
   )
 }

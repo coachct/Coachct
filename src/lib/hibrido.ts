@@ -49,6 +49,34 @@ export const MODOS_DUPLA: { key: ModoDupla; label: string }[] = [
   { key: 'meta_dividida', label: 'Meta dividida' },
 ]
 
+// Sala de Running VO (Ricardo, 24/11): as 10 esteiras ficam em pares E1…E5 e as 5 estações do chão
+// usam os mesmos códigos. Na 1ª troca, esteira E1 ↔ chão E1; depois sempre no sentido horário
+// (E1 → E2 → … → E5 → E1). Em Grupos A/B a ordem das linhas do chão = E1…E5.
+export const SALA_CHAO: { cod: string; nome: string; tipo: Estacao | null }[] = [
+  { cod: 'E1', nome: 'Grama', tipo: null },
+  { cod: 'E2', nome: 'Ski', tipo: 'ski' },
+  { cod: 'E3', nome: 'Funcional', tipo: 'funcional' },
+  { cod: 'E4', nome: 'Remo', tipo: 'remo' },
+  { cod: 'E5', nome: 'Wall Ball', tipo: 'wall_ball' },
+]
+export const codChao = (p: number) => SALA_CHAO[p]?.cod || `E${p + 1}`
+
+/** Linhas do chão na ordem da sala (E1…E5): cada tipo vai para o código dele; o resto fica na Grama (E1). */
+export function ordenarComoSala(b: Bloco): EstacaoRow[] {
+  const pos = (e: EstacaoRow) => {
+    const k = SALA_CHAO.findIndex(s => s.tipo === e.estacao)
+    return k < 0 ? 0 : k
+  }
+  const corrida = b.estacoes.filter(e => e.estacao === 'corrida')
+  const chao = b.estacoes.filter(e => e.estacao !== 'corrida').map((e, i) => ({ e, i })).sort((x, y) => pos(x.e) - pos(y.e) || x.i - y.i).map(x => x.e)
+  return [...corrida, ...chao]
+}
+
+/** Linha do chão que não bate com a estação da sala daquele código (E1 Grama aceita qualquer uma). */
+export function foraDaSala(chao: EstacaoRow[]) {
+  return chao.map((e, p) => ({ e, p, sala: SALA_CHAO[p] })).filter(x => x.sala?.tipo && x.e.estacao !== x.sala.tipo)
+}
+
 export const LIMITE_ESTEIRA = 10
 export const LIMITE_ESTEIRA_DUPLA = 20
 
@@ -304,6 +332,10 @@ export function inconsistencias(t: Treino): string[] {
         if (total > max) out.push(`${nome}: ${total} alunos (${b.alunos_corrida} na esteira + ${noChao} no chão), a Faixa ${t.faixa} vai até ${max}.`)
         else if (total < max) out.push(`${nome}: cabem ${total} alunos (${b.alunos_corrida} na esteira + ${noChao} no chão); na Faixa ${t.faixa}, com ${max}, sobram ${max - total} sem lugar.`)
       }
+      if (chao.length !== SALA_CHAO.length) {
+        out.push(`${nome}: o chão tem ${chao.length} ${chao.length === 1 ? 'estação' : 'estações'}; a sala tem ${SALA_CHAO.length} (E1 a E5), uma para cada par de esteiras.`)
+      }
+      foraDaSala(chao).forEach(x => out.push(`${nome}: ${x.sala.cod} na sala é ${x.sala.nome}, mas a linha ${x.p + 1} do chão está como ${nomeEstacao(x.e)}.`))
       if (rodizioChaoLigado(b) && chao.length > 1 && b.rounds % chao.length !== 0) {
         out.push(`${nome}: ${b.rounds} rounds para ${chao.length} estações no chão, nem todos passam pelas mesmas estações.`)
       }

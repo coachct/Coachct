@@ -13,6 +13,7 @@ import {
   labelEstacao, estacoesUsadas, treinoVazio, blocoVazio, estacaoVazia, clonarBlocos,
   carregarTreino, salvarTreino, programar, carregarMedias, faixasProvaveis, fmtDia,
   estacoesChao, rodizioChaoLigado, roteiroAB, estacaoNaVolta, inconsistencias,
+  SALA_CHAO, codChao, ordenarComoSala, foraDaSala,
 } from '@/lib/hibrido'
 import { cls, Modal } from './ui'
 import { hojeSP } from '@/lib/tempo'
@@ -817,11 +818,20 @@ function BlocoCard(p: {
               {linhas.length === 0 && (
                 <div className="col-span-8 px-3 py-4 border-t border-[#2a2a31] text-[#a1a1aa]">{ab ? 'Nenhuma estação no chão ainda.' : 'Nenhuma estação ainda.'}</div>
               )}
-              {linhas.map(e => (
-                <LinhaEstacao key={e.id} e={e} set={patch => p.setEstacao(e.id, patch)} remover={() => p.removerEstacao(e.id)} />
+              {linhas.map((e, k) => (
+                <LinhaEstacao key={e.id} e={e} cod={ab ? `${codChao(k)}${SALA_CHAO[k] ? ` · ${SALA_CHAO[k].nome}` : ''}` : undefined}
+                  set={patch => p.setEstacao(e.id, patch)} remover={() => p.removerEstacao(e.id)} />
               ))}
             </div>
           </div>
+          {ab && foraDaSala(linhas).length > 0 && (
+            <div className="flex flex-wrap items-center gap-3 px-3.5 py-2.5 rounded-xl bg-[#2a210b] text-[#f3dfb2] text-[13px]">
+              <span>A ordem do chão não bate com a sala (E1 Grama, E2 Ski, E3 Funcional, E4 Remo, E5 Wall Ball).</span>
+              <button onClick={() => p.setBloco({ estacoes: ordenarComoSala(b) })} className="min-h-[36px] px-3 rounded-lg bg-[#ffd27a] text-[#2a1d00] font-semibold">
+                Ordenar como a sala
+              </button>
+            </div>
+          )}
           <select
             value=""
             onChange={e => { if (e.target.value) p.addEstacao(e.target.value as Estacao) }}
@@ -947,7 +957,7 @@ function RoteiroAB({ b, setBloco, ultimo }: { b: Bloco; setBloco: (patch: Partia
             <table className="w-full text-[13px] border-collapse">
               <thead>
                 <tr className="bg-[#222228] text-[#a1a1aa] text-xs">
-                  <th className="px-3 py-2 text-left font-normal">Posição</th>
+                  <th className="px-3 py-2 text-left font-normal">Começa em</th>
                   {Array.from({ length: voltas }, (_, v) => (
                     <th key={v} className="px-3 py-2 text-left font-normal whitespace-nowrap">{v + 1}ª volta</th>
                   ))}
@@ -956,16 +966,20 @@ function RoteiroAB({ b, setBloco, ultimo }: { b: Bloco; setBloco: (patch: Partia
               <tbody>
                 {chao.map((e, p) => (
                   <tr key={e.id} className="border-t border-[#2a2a31]">
-                    <td className="px-3 py-2 text-[#a1a1aa] whitespace-nowrap">{p + 1}{e.pessoas ? ` · ${e.pessoas} pessoas` : ''}</td>
-                    {Array.from({ length: voltas }, (_, v) => (
-                      <td key={v} className="px-3 py-2 whitespace-nowrap">{nomeEstacao(estacaoNaVolta(chao, p, v, rod)!)}</td>
-                    ))}
+                    <td className="px-3 py-2 text-[#a1a1aa] whitespace-nowrap">{codChao(p)}{e.pessoas ? ` · ${e.pessoas} pessoas` : ''}</td>
+                    {Array.from({ length: voltas }, (_, v) => {
+                      const k = rod ? (p + v) % n : p
+                      return <td key={v} className="px-3 py-2 whitespace-nowrap"><span className="text-[#7ff0bd] font-semibold">{codChao(k)}</span> {nomeEstacao(chao[k])}</td>
+                    })}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <div className="text-xs text-[#a1a1aa]">Quem desce da esteira pela primeira vez escolhe uma posição livre e segue a linha dela.</div>
+          <div className="text-xs text-[#a1a1aa]">
+            Esteiras e chão usam os mesmos códigos (E1 a E5, duas esteiras por código). Na 1ª troca, esteira E1 ↔ chão E1.
+            {rod ? ' Depois: do chão vai para a esteira do mesmo código e da esteira para o chão do código seguinte, sempre no sentido horário (E5 → E1).' : ' Sem rodízio, cada dupla volta sempre para o mesmo código do chão.'}
+          </div>
         </div>
       )}
 
@@ -1027,11 +1041,12 @@ function OrdemEditor({ b, setBloco }: { b: Bloco; setBloco: (patch: Partial<Bloc
   )
 }
 
-function LinhaEstacao({ e, set, remover }: { e: EstacaoRow; set: (patch: Partial<EstacaoRow>) => void; remover: () => void }) {
+function LinhaEstacao({ e, cod, set, remover }: { e: EstacaoRow; cod?: string; set: (patch: Partial<EstacaoRow>) => void; remover: () => void }) {
   const cel = 'px-1.5 py-1.5 border-t border-[#2a2a31] flex items-center'
   return (
     <>
       <div className={`${cel} flex-col items-stretch gap-1`}>
+        {cod && <span className="px-1.5 text-[11px] font-semibold text-[#7ff0bd] tracking-[0.04em]">{cod}</span>}
         <select
           value={e.estacao}
           onChange={ev => set({ estacao: ev.target.value as Estacao })}
