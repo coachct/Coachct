@@ -272,7 +272,7 @@ export default function CoachesPage() {
     // (correção pontual em club_ocorrencias.coach_id; na ausência, o da grade em club_aulas.coach_id).
     for (const u of unidadesClub) {
       const { data: aulasUnidade } = await supabase.from('club_aulas')
-        .select('id, tipo, horario, coach_id').eq('unidade_id', u.id).eq('ativo', true)
+        .select('id, tipo, horario, coach_id').eq('unidade_id', u.id)   // sem filtro de ativo: aula tirada da grade ainda tem ocorrências dadas a pagar
       const ids = (aulasUnidade || []).map((a: any) => a.id)
       if (!ids.length) continue
       const aulaMap: Record<string, any> = {}

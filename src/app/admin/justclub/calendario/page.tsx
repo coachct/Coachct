@@ -99,7 +99,7 @@ export default function AdminCalendarioClubPage() {
       const cont: Record<string, any> = {}
       for (const oc of lista) {
         const rs = (reservas || []).filter((r: any) => r.ocorrencia_id === oc.id)
-        const cap = oc.club_aulas?.capacidade || 0
+        const cap = oc.capacidade ?? oc.club_aulas?.capacidade ?? 0
         const bloqueadas = oc.club_aulas?.tipo === 'running_funcional'
           ? qtdBloqGlobal + (bloqPont || []).filter((b: any) => b.ocorrencia_id === oc.id).length
           : (oc.vagas_bloqueadas || 0)

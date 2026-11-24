@@ -116,6 +116,10 @@ export default function LandingPage() {
         .hero-frase-just { color: ${ACCENT}; text-shadow: 0 0 25px ${ACCENT}73; font-size: 1.25em; }
         .hero-frase-smiley { color: ${ACCENT}; }
 
+        /* Running & Hybrid: botão "Saiba mais" sobre a imagem */
+        .hybrid-saiba { position: absolute; left: 50%; bottom: 7%; transform: translateX(-50%); z-index: 1; background: #d4f53c; color: #0b0b0b; font-weight: 700; font-size: 16px; padding: .85rem 2rem; border-radius: 999px; white-space: nowrap; transition: opacity .2s; box-shadow: 0 8px 30px #0009; }
+        .hybrid-breve-link:hover .hybrid-saiba { opacity: .85; }
+
         /* Popup go-live */
         .popup-overlay { position: fixed; inset: 0; background: #000000d9; backdrop-filter: blur(6px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1rem; animation: fadeInUp .25s ease-out both; }
         .popup-card { position: relative; background: #111; border: 1.5px solid ${ACCENT}55; border-radius: 20px; padding: 2.5rem 2rem 2rem; max-width: 520px; width: 100%; box-shadow: 0 20px 60px -10px ${ACCENT}33; animation: popupIn .3s ease-out both; max-height: 92vh; overflow-y: auto; }
@@ -135,6 +139,8 @@ export default function LandingPage() {
           .planos-spoiler-grid-r { grid-template-columns: 1fr !important; }
           .unidades-grid-r { grid-template-columns: 1fr !important; }
           .hero-frase-wrap { padding: 4rem 1.25rem 0.25rem !important; }
+          .hybrid-breve-wrap { padding: 1.25rem 1.25rem 0.5rem !important; }
+          .hybrid-saiba { font-size: 14px; padding: .65rem 1.4rem; bottom: 5%; }
         }
       `}</style>
 
@@ -143,14 +149,28 @@ export default function LandingPage() {
 
       {/* HERO — frase de efeito da Just (grafite style) */}
       <div style={{ background: '#080808', paddingTop: 64 }}>
-        {/* Campanha Summer Mode — só aparece dentro da janela de venda (data, não deploy) */}
-        <SummerBanner />
-        {/* Campanha Black November — some sozinha depois de 30/11 */}
-        <BlackNovemberBanner />
+        {/* A frase fica SEMPRE no topo; campanhas vêm depois dela (regra do Ricardo) */}
         <div className="hero-frase-wrap" style={{ maxWidth: 1200, margin: '0 auto', padding: '6rem 2.5rem 1rem', textAlign: 'center' as const }}>
           <div className="hero-frase">
             "There's no PLACE like <span className="hero-frase-just">JUST.</span>" <span className="hero-frase-smiley">:)</span>
           </div>
+        </div>
+        {/* Campanha Summer Mode — só aparece dentro da janela de venda (data, não deploy) */}
+        <SummerBanner />
+        {/* Campanha Black November — some sozinha depois de 30/11 */}
+        <BlackNovemberBanner />
+        {/* Running & Hybrid — em breve: imagem com "Saiba mais" levando à página explicativa */}
+        <div style={{ maxWidth: 1100, margin: '0 auto', padding: '2rem 2.5rem 1rem' }} className="hybrid-breve-wrap">
+          <a href="/running-hybrid" style={{ position: 'relative', display: 'block' }} className="hybrid-breve-link">
+          <span className="hybrid-saiba">Saiba mais →</span>
+          <img
+            src="/running-hybrid-em-breve-v2.webp"
+            alt="Running & Hybrid — em breve"
+            width={1448}
+            height={1086}
+            style={{ display: 'block', width: '100%', height: 'auto', borderRadius: 18, border: '1px solid #222' }}
+          />
+          </a>
         </div>
 
         {/* PRÉVIA A — escolha de unidade */}

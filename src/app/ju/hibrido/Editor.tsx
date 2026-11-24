@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowUp, ArrowDown, Copy, Trash2, ChevronDown, ChevronUp, X } from 'lucide-react'
+import { ArrowUp, ArrowDown, Copy, Trash2, ChevronDown, ChevronUp, X, Mic, Square } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
 import { Spinner } from '@/components/ui'
 import {
@@ -96,6 +96,67 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
   const [progDia, setProgDia] = useState<Map<number, string>>(new Map())
   const [descricao, setDescricao] = useState('')
   const [montando, setMontando] = useState(false)
+  const [ultimaDescricao, setUltimaDescricao] = useState('')
+  // Ditado: reconhecimento de voz do próprio navegador (Chrome/Edge/Safari), em português
+  const [ouvindo, setOuvindo] = useState(false)
+  const [parcial, setParcial] = useState('')
+  const [semMic, setSemMic] = useState('')
+  const recRef = useRef<any>(null)
+
+  function iniciarDitado() {
+    const SR = typeof window !== 'undefined' && ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)
+    if (!SR) { setSemMic('Este navegador não aceita ditado. Use o Chrome ou o Edge.'); return }
+    setSemMic('')
+    const rec = new SR()
+    rec.lang = 'pt-BR'
+    rec.continuous = true
+    rec.interimResults = true
+    rec.onresult = (ev: any) => {
+      if (recRef.current !== rec) return // já parado: ignora resultado atrasado
+      let finais = '', temp = ''
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        const t = ev.results[i][0].transcript
+        if (ev.results[i].isFinal) finais += t
+        else temp += t
+      }
+      if (finais.trim()) setDescricao(d => (d.trim() ? d.trimEnd() + ' ' : '') + finais.trim())
+      setParcial(temp)
+    }
+    rec.onerror = (ev: any) => {
+      if (recRef.current !== rec) return
+      if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') setSemMic('O navegador bloqueou o microfone. Libere o microfone para este site e tente de novo.')
+      else if (ev.error !== 'no-speech' && ev.error !== 'aborted') setSemMic('O ditado parou (' + ev.error + '). Toque no microfone para continuar.')
+    }
+    // O navegador encerra sozinho depois de um silêncio; enquanto o botão estiver ligado, religa
+    rec.onend = () => {
+      setParcial('')
+      if (recRef.current === rec) { try { rec.start() } catch { recRef.current = null; setOuvindo(false) } }
+    }
+    recRef.current = rec
+    try { rec.start(); setOuvindo(true) } catch { recRef.current = null }
+  }
+
+  // Para de verdade: solta os eventos (nada religa nem escreve depois) e aborta na hora,
+  // em vez de stop(), que ainda espera o navegador fechar a última frase.
+  function encerrar(rec: any) {
+    if (!rec) return
+    rec.onresult = null
+    rec.onerror = null
+    rec.onend = null
+    try { rec.abort() } catch { try { rec.stop() } catch {} }
+  }
+
+  function pararDitado() {
+    const rec = recRef.current
+    recRef.current = null
+    setOuvindo(false)
+    // A última frase que ainda estava sendo reconhecida não se perde
+    if (parcial.trim()) setDescricao(d => (d.trim() ? d.trimEnd() + ' ' : '') + parcial.trim())
+    setParcial('')
+    encerrar(rec)
+  }
+
+  useEffect(() => () => { const r = recRef.current; recRef.current = null; encerrar(r) }, [])
   const [rascunho, setRascunho] = useState<{ decisoes: string[]; faltou: string[] } | null>(null)
   const alertaRef = useRef<HTMLElement>(null)
   const blocosRef = useRef<HTMLDivElement>(null)
@@ -182,9 +243,22 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
 
   // ---- montar pelo texto ---------------------------------------------------------
 
-  async function montarPeloTexto() {
+  const temTreino = t.blocos.length > 0
+
+  // Se o microfone está ligado, para e já inclui a frase que estava sendo reconhecida
+  function enviar(modo: 'ajustar' | 'zero') {
+    let texto = descricao
+    if (ouvindo) {
+      if (parcial.trim()) texto = (texto.trim() ? texto.trimEnd() + ' ' : '') + parcial.trim()
+      pararDitado()
+    }
+    montarPeloTexto(modo, texto)
+  }
+
+  // 'ajustar' parte do treino da tela e aplica só o que o texto pede; 'zero' monta tudo de novo
+  async function montarPeloTexto(modo: 'ajustar' | 'zero', descricao: string) {
     if (!descricao.trim()) return
-    if (t.blocos.length && !confirm('Substituir o que está na tela pelo treino montado a partir do texto?')) return
+    if (modo === 'zero' && t.blocos.length && !confirm('Montar do zero apaga o treino que está na tela e monta só com o texto da caixa. Continuar?')) return
     setErro('')
     setMontando(true)
     try {
@@ -192,7 +266,10 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
       const r = await fetch('/api/ju/hibrido/montar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s.session?.access_token || ''}` },
-        body: JSON.stringify({ texto: descricao, faixa: t.faixa, duracao_seg: t.duracao_seg }),
+        body: JSON.stringify({
+          texto: descricao, faixa: t.faixa, duracao_seg: t.duracao_seg,
+          ...(modo === 'ajustar' ? { modo: 'ajustar', atual: t } : {}),
+        }),
       })
       const j = await r.json().catch(() => ({}))
       if (!r.ok || !j.treino) { setErro(j.error || 'Não foi possível montar o treino.'); return }
@@ -202,6 +279,9 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
       setAbertos(new Set(novo.blocos.map(b => b.id)))
       setRascunho({ decisoes: j.decisoes || [], faltou: j.faltou || [] })
       setPedirOk(null)
+      // A caixa fica livre para o próximo ajuste (fala ou digita só o que mudar)
+      setUltimaDescricao(descricao)
+      setDescricao('')
     } catch {
       setErro('Não foi possível montar o treino.')
     } finally {
@@ -316,21 +396,57 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
           <section className={`${cls.card} p-6 flex flex-col gap-3`}>
             <h2 className={`${cls.titulo} m-0 text-lg font-semibold`}>Descrever o treino</h2>
             <div className="text-xs text-[#a1a1aa]">
-              Escreva do seu jeito: alunos, estações, quem corre, tempos, rounds, repetições e cargas. O sistema monta o esqueleto aqui embaixo para você conferir e salvar.
+              Escreva ou fale do seu jeito: alunos, estações, quem corre, tempos, rounds, repetições e cargas. O sistema monta o esqueleto aqui embaixo para você conferir e salvar.
             </div>
             <textarea
               value={descricao}
               onChange={e => setDescricao(e.target.value)}
               rows={5}
               aria-label="Descrição do treino"
-              placeholder="Ex.: Faixa 4, 40 alunos. Aquecimento 3 min, explicação 3. 20 na esteira em dupla alternando 30s leve / 30s forte, 20 no chão em 5 estações com 2 duplas cada: remo 250 m cada, ski 200 m, wall ball 15 reps 4/6 kg, sled ida e volta 50/70 kg, burpee + lunge. Troca a cada 4 min, rodízio no chão até passar por todas."
-              className="w-full min-w-0 px-3 py-2.5 rounded-[10px] border border-[#3a3a42] bg-[#0e0e11] text-[#f2f2f4] outline-none focus:border-[#ff2d9b] resize-y"
+              placeholder={temTreino
+                ? 'Fale ou escreva só o que mudar ou completar. Ex.: carga do sled 60/80 kg, burpee + lunge 10 repetições, troca o ski por remo.'
+                : "Ex.: Faixa 4, 40 alunos. Aquecimento 3 min, explicação 3. 20 na esteira em dupla alternando 30s leve / 30s forte, 20 no chão em 5 estações com 2 duplas cada: remo 250 m cada, ski 200 m, wall ball 15 reps 4/6 kg, sled ida e volta 50/70 kg, burpee + lunge. Troca a cada 4 min, rodízio no chão até passar por todas."}
+              className={`w-full min-w-0 px-3 py-2.5 rounded-[10px] border bg-[#0e0e11] text-[#f2f2f4] outline-none focus:border-[#ff2d9b] resize-y ${ouvindo ? 'border-[#ff2d9b]' : 'border-[#3a3a42]'}`}
             />
+            {ouvindo && (
+              <div className="text-xs text-[#ff6db8] flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-[#ff2d9b] animate-pulse" />
+                Ouvindo… {parcial && <span className="text-[#a1a1aa] italic truncate">{parcial}</span>}
+              </div>
+            )}
+            {semMic && <div className="text-xs text-[#ffd27a]">{semMic}</div>}
             <div className="flex flex-wrap items-center gap-3">
-              <button onClick={montarPeloTexto} disabled={montando || descricao.trim().length < 10} className={cls.btnRosa}>
-                {montando ? 'Montando… (até 1 min)' : 'Montar treino'}
+              <button
+                onClick={ouvindo ? pararDitado : iniciarDitado}
+                disabled={montando}
+                className={`${cls.btn} inline-flex items-center gap-2 ${ouvindo ? '!border-[#ff2d9b] text-[#ff6db8]' : ''}`}
+                aria-label={ouvindo ? 'Parar o ditado' : 'Falar o treino'}
+              >
+                {ouvindo ? <Square size={16} /> : <Mic size={16} />}
+                {ouvindo ? 'Parar' : 'Falar o treino'}
               </button>
+              {temTreino ? (
+                <>
+                  <button onClick={() => enviar('ajustar')} disabled={montando || descricao.trim().length < 3} className={cls.btnRosa}
+                    title="Aplica só o que você falou/escreveu no treino que está na tela">
+                    {montando ? 'Ajustando… (até 1 min)' : 'Ajustar o treino'}
+                  </button>
+                  <button onClick={() => enviar('zero')} disabled={montando || descricao.trim().length < 10} className={cls.btn}
+                    title="Apaga o treino da tela e monta tudo de novo só com o texto da caixa">
+                    Montar do zero
+                  </button>
+                </>
+              ) : (
+                <button onClick={() => enviar('zero')} disabled={montando || descricao.trim().length < 10} className={cls.btnRosa}>
+                  {montando ? 'Montando… (até 1 min)' : 'Montar treino'}
+                </button>
+              )}
               {rascunho && !montando && <span className="text-xs text-[#a1a1aa]">Rascunho na tela, ainda não salvo.</span>}
+              {ultimaDescricao && !descricao && !montando && (
+                <button onClick={() => setDescricao(ultimaDescricao)} className="text-xs text-[#ff6db8] hover:underline">
+                  Recuperar a última descrição
+                </button>
+              )}
             </div>
             {rascunho && (rascunho.decisoes.length > 0 || rascunho.faltou.length > 0) && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

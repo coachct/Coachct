@@ -1028,7 +1028,7 @@ export default function JustClubAdminPage() {
                                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${tipoColor(oc.club_aulas?.tipo||'')}`}>{tipoLabel(oc.club_aulas?.tipo||'')}</span>
                                   <span className="text-xs text-gray-600 flex-1 truncate order-last md:order-none min-w-full md:min-w-0">{oc.club_aulas?.grupos_musculares?.nome||'—'}</span>
                                   <span className="text-xs text-gray-400 flex-shrink-0 ml-auto md:ml-0">👤 <NomeCoach nome={oc.club_aulas?.coaches?.nome}/></span>
-                                  <span className="text-xs text-gray-400 flex-shrink-0 flex items-center gap-1"><Users size={10}/> {oc.club_aulas?.capacidade||'—'}</span>
+                                  <span className="text-xs text-gray-400 flex-shrink-0 flex items-center gap-1"><Users size={10}/> {oc.capacidade ?? oc.club_aulas?.capacidade ?? '—'}</span>
                                   <button onClick={()=>abrirExcluirOcorrencia(oc)} className="text-gray-400 hover:text-red-600 flex-shrink-0" title="Excluir"><Trash2 size={13}/></button>
                                 </div>
                               ))}

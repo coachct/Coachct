@@ -149,7 +149,7 @@ export default function RecepcaoClubPage() {
       for (const oc of ocsList) {
         const rs = (reservas || []).filter((r: any) => r.ocorrencia_id === oc.id)
         cont[oc.id] = {
-          total:    oc.club_aulas?.capacidade || 0,
+          total:    oc.capacidade ?? oc.club_aulas?.capacidade ?? 0,
           reservado: rs.filter((r: any) => r.status === 'reservado').length,
           presente:  rs.filter((r: any) => r.status === 'presente').length,
           falta:     rs.filter((r: any) => r.status === 'falta').length,

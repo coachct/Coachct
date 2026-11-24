@@ -223,6 +223,8 @@ export default function RecepcaoClubDetalhe() {
       .from('club_ocorrencias')
       .select('*, coach_escalado:coaches!coach_id(id, nome), club_aulas(tipo, horario, capacidade, unidade_id, coaches(nome), grupos_musculares(nome), unidades(nome))')
       .eq('id', ocId).maybeSingle()
+    // Capacidade do dia (gravada na ocorrência): aula antiga mostra a sala como era.
+    if (oc?.club_aulas && (oc as any).capacidade != null) (oc as any).club_aulas.capacidade = (oc as any).capacidade
     setOcorrencia(oc)
     setVagasBloqueadas(oc?.vagas_bloqueadas || 0)
 
@@ -282,13 +284,16 @@ export default function RecepcaoClubDetalhe() {
     setPosicoesBloqueadasPontual((bloq || []).map((b: any) => b.posicao))
 
     if (oc?.club_aulas?.tipo === 'running_funcional' && oc?.club_aulas?.unidade_id) {
-      const { data: pos } = await supabase.from('club_posicoes').select('*')
+      // Posição desativada (sala encolheu) ainda aparece na aula em que teve reserva — histórico.
+      const usadas = new Set((res || []).map((r: any) => r.posicao).filter(Boolean))
+      const { data: todasPos } = await supabase.from('club_posicoes').select('*')
         .eq('unidade_id', oc.club_aulas.unidade_id)
-        .eq('ativo', true).order('tipo').order('numero')
+        .order('tipo').order('numero')
+      const pos = (todasPos || []).filter((p: any) => p.ativo || usadas.has(`${p.tipo}${String(p.numero).padStart(2, '0')}`))
       setPosicoes(pos || [])
       // NOVO: posições bloqueadas globalmente (club_posicoes.bloqueado) — valem pra todas as aulas
       setPosicoesBloqueadasGlobal(
-        (pos || []).filter((p: any) => p.bloqueado).map((p: any) => `${p.tipo}${String(p.numero).padStart(2, '0')}`)
+        (pos || []).filter((p: any) => p.ativo && p.bloqueado).map((p: any) => `${p.tipo}${String(p.numero).padStart(2, '0')}`)
       )
     }
     if (!silent) setLoadingData(false)

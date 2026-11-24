@@ -18,6 +18,8 @@ type Screen =
   | 'ctUsarCredito'
 
 const POLL_MS = 3000
+const FEED_POLL_MS = 10000 // feed da tela parada do CT: consulta check-ins novos a cada 10s
+const FEED_POLL_FALLBACK_MS = 10000 // Club: o servidor manda o ritmo (2s perto de aula, 30s fora); sem resposta, 10s
 const FEED_CARD_MS = 120000 // CT: card "Entrada liberada" fica 2 min na tela e some sozinho
 const CLUB_CARD_MS = 60000 // Club: card "Presença confirmada" fica 1 min na tela
 const CLUB_FEED_MAX = 6    // Club: no máximo 6 cards; chegando mais, o mais antigo sai
@@ -272,13 +274,15 @@ export default function TotemPage() {
 
   // ---------- Feed de check-ins do Club ----------
   const carregarFeedClub = useCallback(async () => {
-    if (!unidade || unidade.tipo === 'ct') return
+    if (!unidade || unidade.tipo === 'ct') return FEED_POLL_FALLBACK_MS
     const r = await api(`/api/totem/club-checkins?unidade=${encodeURIComponent(unidade.slug)}`)
+    // o servidor diz o ritmo: rápido perto do início de uma aula, lento fora
+    const proximo = typeof r?.proximoMs === 'number' && r.proximoMs >= 1000 ? r.proximoMs : FEED_POLL_FALLBACK_MS
     // API vem do mais novo pro mais antigo; enfileira na ordem de chegada
     const novos = ((r?.checkins || []) as { id: string; nome: string; aulaTipo: string; horario: string; coach: string; posicao: string | null }[])
       .filter((c) => !feedVistosRef.current.has(c.id))
       .reverse()
-    if (!novos.length) return
+    if (!novos.length) return proximo
     const agora = Date.now()
     novos.forEach((c) => {
       feedVistosRef.current.add(c.id)
@@ -287,6 +291,7 @@ export default function TotemPage() {
     })
     // no máximo CLUB_FEED_MAX na tela: o mais antigo sai antes da hora
     setClubFeed((prev) => [...prev, ...novos.map((c) => ({ ...c, expira: agora + CLUB_CARD_MS }))].slice(-CLUB_FEED_MAX))
+    return proximo
   }, [unidade, api])
 
   // ---------- Lista da recepção: últimos check-ins de hoje ----------
@@ -395,16 +400,21 @@ export default function TotemPage() {
   useEffect(() => {
     if (screen !== 'idle' || unidade?.tipo !== 'ct') return
     carregarFeed()
-    const id = setInterval(carregarFeed, 10000)
+    const id = setInterval(carregarFeed, FEED_POLL_MS)
     return () => clearInterval(id)
   }, [screen, unidade?.tipo, carregarFeed])
 
   // ---------- feed de check-ins: atualiza na idle do Club ----------
   useEffect(() => {
     if (screen !== 'idle' || !unidade || unidade.tipo === 'ct') return
-    carregarFeedClub()
-    const id = setInterval(carregarFeedClub, 10000)
-    return () => clearInterval(id)
+    let vivo = true
+    let id: ReturnType<typeof setTimeout> | undefined
+    const rodar = async () => {
+      const proximo = await carregarFeedClub().catch(() => FEED_POLL_FALLBACK_MS)
+      if (vivo) id = setTimeout(rodar, proximo)
+    }
+    rodar()
+    return () => { vivo = false; if (id) clearTimeout(id) }
   }, [screen, unidade, carregarFeedClub])
 
   // ---------- CPF ----------

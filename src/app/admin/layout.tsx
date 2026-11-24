@@ -1,6 +1,6 @@
 'use client'
 import SidebarLayout from '@/components/layout/SidebarLayout'
-import { Dumbbell, Footprints, Clock, Users, ShoppingCart, BarChart3, UserCog, BookOpen, Settings, MessageCircle, Instagram, Activity, Weight } from 'lucide-react'
+import { Dumbbell, Footprints, Clock, Users, ShoppingCart, BarChart3, UserCog, BookOpen, Settings, MessageCircle, Instagram, Activity, Weight, Timer } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { DONO_USER_ID } from '@/lib/dono'
 const nav = [
@@ -134,6 +134,15 @@ const nav = [
       { label: 'Biblioteca de exercícios', href: '/ju/biblioteca' },
       { label: 'Biblioteca de treinos',    href: '/ju/montar' },
       { label: 'Treinos do mês',           href: '/ju/treinos' },
+    ],
+  },
+  {
+    // Categoria própria, separada dos treinos de musculação da Ju
+    label: 'Running & Hybrid',
+    icon: Timer,
+    children: [
+      { label: 'Treinos',    href: '/ju/hibrido' },
+      { label: 'Calendário', href: '/ju/hibrido/calendario' },
     ],
   },
   {

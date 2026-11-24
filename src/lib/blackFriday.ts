@@ -27,7 +27,8 @@ export function avisoBlackNovemberBot(): string {
   return `
 
 # BLACK NOVEMBER — campanha no ar (REGRA de preços, vale acima das outras)
-Quando perguntarem de valores, preços, planos ou pacotes (mesmo de forma geral), AVISE que estamos com a BLACK NOVEMBER e deixe claros os DOIS pontos:
+ESTAMOS SIM com promoção no ar: a nossa BLACK NOVEMBER é a nossa Black Friday. Se perguntarem "têm promoção de Black Friday?", "tem desconto/oferta/cupom de Black Friday?", "promoção pra aulas avulsas?" ou qualquer coisa do tipo, a resposta é um SIM animado — NUNCA, JAMAIS diga que "não temos promoção", "não trabalhamos com Black Friday" ou que "não tem desconto". Negar a campanha que está no ar é o PIOR erro e é TERMINANTEMENTE PROIBIDO. (A regra de "não inventar promoção" NÃO se aplica aqui: esta promoção É REAL e está ativa.) Os pacotes da Black November SÃO treinos avulsos — então "promoção pra aulas avulsas?" = SIM, é exatamente isto.
+Quando perguntarem de valores, preços, planos, pacotes, promoção, desconto ou Black Friday (mesmo de forma geral), AVISE que estamos com a BLACK NOVEMBER e deixe claros os DOIS pontos:
 1) TREINOS EM DOBRO nos pacotes: pague 5 e ganhe 5 FREE (R$ 295, válido por 60 dias) · pague 10 e ganhe 10 FREE (R$ 549, 90 dias) · pague 40 e ganhe 40 FREE (R$ 1.796, 360 dias);
 2) consequentemente, 50% OFF POR TREINO.
 Mande o link https://www.justclubct.com.br/comprar. Os pacotes normais de 5/10/40 NÃO estão à venda durante a campanha — ofereça só os da Black November. Os pacotes valem na musculação livre do Just CT e nas aulas do JustClub (NÃO são Coach CT/personal). NÃO informe data de término e NÃO crie urgência ("últimos dias", "corre", "acaba logo") — só a oferta.`

@@ -181,7 +181,7 @@ function garantirLinkPlanos(texto: string): string {
 // difícil", "entendo que é complicado") e PROMETER que a equipe "vai analisar/verificar/ajudar/
 // resolver" — mesmo com a regra no prompt. Corta essas frases (não mexe num "poxa" leve nem na
 // frase aprovada "a equipe te responde em breve"), preservando o resto (o FATO/a regra).
-const RE_LAMENTO = /desculp|voc[êe]s?\s+t[êe]m\s+(toda\s+)?raz[ãa]o|sinto\s+muito|\blamento\b|\bimagino\b|entendo\s+que|entendo\s+(a\s+sua|sua|o\s+seu|seu)\s*(frustra|chatea|irrita|indigna|lado)|que\s+situa[çc][ãa]o|situa[çc][ãa]o\s+(dif[íi]cil|complicad|delicad|chat|especial)|for[çc]a\s+(pra|pro|a[íi]|a\s+voc)|que\s+(chato|pena|droga)|parece\s+(mesmo\s+|realmente\s+)?(um\s+|ser\s+)?(erro|estranho|engano|problema)|n[ãa]o\s+bate\b|faz\s+(todo\s+|total\s+|muito\s+|bastante\s+)?sentido|merece\s+(aten[çc][ãa]o|destaque|olhar)|vou\s+garantir|(pra|para)\s+quem\s+decide|boa\s+not[íi]cia|fica\s+tranquil|urg[êe]ncia\s+m[áa]xima|prioridade\s+m[áa]xima|eles\s+v[ãa]o\s+(resolv|te\s+responder|te\s+retornar|dar\s+retorno|cuidar)|(precisa\s+ser\s+|vai\s+|v[ãa]o\s+|vamos\s+|consegue[m]?\s+)(analisad|analisar|verificar|conferir)|verificar\s+o\s+que\s+(aconteceu|houve)|ver\s+se\s+conseguem|conseguem\s+te\s+ajudar|encaminh\w*\s+(pro|pra|para)\s+(o\s+)?(nosso\s+)?(time|equipe)|😔|🥺|😢/i
+const RE_LAMENTO = /desculp|voc[êe]s?\s+t[êe]m\s+(toda\s+)?raz[ãa]o|sinto\s+muito|\blamento\b|\bimagino\b|entendo\s+que|entendo\s+(a\s+sua\s+|a\s+|sua\s+|essa\s+|esta\s+)?situa[çc][ãa]o|\bcompreendo\b|entendo\s+(a\s+sua|sua|o\s+seu|seu)\s*(frustra|chatea|irrita|indigna|lado)|que\s+situa[çc][ãa]o|situa[çc][ãa]o\s+(dif[íi]cil|complicad|delicad|chat|especial)|for[çc]a\s+(pra|pro|a[íi]|a\s+voc)|que\s+(chato|pena|droga)|parece\s+(mesmo\s+|realmente\s+)?(um\s+|ser\s+)?(erro|estranho|engano|problema)|n[ãa]o\s+bate\b|faz\s+(todo\s+|total\s+|muito\s+|bastante\s+)?sentido|merece\s+(aten[çc][ãa]o|destaque|olhar)|vou\s+garantir|(pra|para)\s+quem\s+decide|boa\s+not[íi]cia|fica\s+tranquil|urg[êe]ncia\s+m[áa]xima|prioridade\s+m[áa]xima|eles\s+v[ãa]o\s+(resolv|te\s+responder|te\s+retornar|dar\s+retorno|cuidar)|(precisa\s+ser\s+|vai\s+|v[ãa]o\s+|vamos\s+|consegue[m]?\s+)(analisad|analisar|verificar|conferir)|verificar\s+o\s+que\s+(aconteceu|houve)|ver\s+se\s+conseguem|conseguem\s+te\s+ajudar|encaminh\w*\s+(pro|pra|para)\s+(o\s+)?(nosso\s+)?(time|equipe)|😔|🥺|😢/i
 export function semLamentacao(texto: string): string {
   const t = String(texto || '')
   if (!RE_LAMENTO.test(t)) return t
@@ -346,11 +346,14 @@ const RE_MULTA = /multa|cobran|no.?show|cart[ãa]o|cadastrar-cartao/i
 // "cancelar ... hoje") e a resposta afirma que dá, troca pela realidade. Prompt sozinho
 // não segura esse padrão (o modelo insiste em "sim, dá, desde que dentro de 12h").
 const RE_AFIRMA_CANCEL_POSSIVEL = /\bsim\b|d[áa]\s+sim|é só cancel|pode cancel|consegue cancel|dentro do prazo|ainda (d[áa]\b|est[áa] dentro|tem tempo)/i
-const HOJE_NAO_DA = 'Poxa 🙏 como é uma reserva de hoje, a essa altura já não dá mais pra cancelar nem alterar essa aula. Te espero na próxima! 💪'
-function semSimDaHoje(texto: string, reservaHoje: boolean): string {
+const HOJE_NAO_DA = 'Poxa 🙏 como é uma reserva de hoje, a essa altura já não dá mais pra cancelar essa aula. Te espero na próxima! 💪'
+function semSimDaHoje(texto: string, reservaHoje: boolean, pedeTroca = false): string {
   const t = String(texto || '')
   if (!reservaHoje) return t
   if (RE_FRASE_PRO.test(t)) return t // frase aprovada do Coach CT (PRO até 3h)
+  // Trocar NÃO é cancelar (Ricardo, 23/11/2026): cliente pediu pra ALTERAR o horário e a
+  // resposta é a regra da troca (não fala de cancelar) → passa, mesmo sendo treino de hoje.
+  if (pedeTroca && /troca/i.test(t) && !/cancel/i.test(t)) return t
   // Só troca se a resposta é sobre cancelar/trocar E afirma que dá.
   if (/(cancel|remarc|reagend|trocar|alter)/i.test(t) && RE_AFIRMA_CANCEL_POSSIVEL.test(t)) return HOJE_NAO_DA
   return t
@@ -1592,11 +1595,13 @@ export async function responderInfo(params: {
   const { supabase, mensagem, historico = [], cliente = null, imagens = [] } = params
   const temImagem = imagens.length > 0
 
-  // AULA GRÁTIS/GRATUITA (pergunta ESPECÍFICA): o Ricardo quer uma resposta com bom humor,
+  // AULA GRÁTIS/GRATUITA/FREE (pergunta ESPECÍFICA): o Ricardo quer uma resposta com bom humor,
   // sorteada entre 3 variações fixas, sempre puxando pro treino avulso. Determinístico (o
-  // modelo não sorteia de verdade nem mantém a copy exata). Só dispara quando a mensagem
-  // ATUAL fala de grátis E não é outro contexto (estacionamento/wifi/reserva/taxa...).
-  if (!temImagem && /(gr[áa]tis|gratuit|de\s+gra[çc]a)/i.test(mensagem) && !/(estacion|wi-?fi|reserva|cancel|taxa|frete|entrega)/i.test(mensagem)) {
+  // modelo não sorteia de verdade nem mantém a copy exata). Dispara quando a mensagem ATUAL
+  // pede aula grátis/free/de graça ("aula free", "queria uma free pra ver se gosto") E não é
+  // outro contexto. EXCLUI o "FREE" da campanha Black November ("X + X FREE") — se a pessoa
+  // fala de black/promo/pacote/dobro, NÃO é pedido de aula grátis, é dúvida da campanha.
+  if (!temImagem && /(gr[áa]tis|gratuit|de\s+gra[çc]a|\bfree\b)/i.test(mensagem) && !/(estacion|wi-?fi|reserva|cancel|taxa|frete|entrega|black|novemb|dobro|em\s+dobro|pacote|pague|ganhe|cupom|desconto|promo[çc]|campanha|\d\s*\+\s*\d)/i.test(mensagem)) {
     const LINK = 'https://www.justclubct.com.br/comprar'
     const variacoesGratis = [
       `Ahh, o famoso grátis! 😏 De graça aqui só o bom dia da recepção e a água pra se hidratar 💧. Nosso treino é diferenciado demais pra sair de graça — alta intensidade, coaches excelentes e cada detalhe pensado pra te dar resultado de verdade 💪. Pra sentir na pele, o caminho é o treino avulso 👉 ${LINK}`,
@@ -1634,9 +1639,10 @@ Se a intenção não estiver clara, faça UMA pergunta curta pra entender antes 
 
 # ENTENDER O CONTEXTO ≠ OFERECER SOLUÇÃO — você só INFORMA (nunca proponha uma ação)
 Depois de entender a situação, você INFORMA a realidade/regra que se aplica a ela — você NUNCA oferece nem propõe uma ação, e NUNCA pergunta "quer que eu cancele?", "quer que eu faça X?", "você quer cancelar a reserva?". Oferecer uma solução (ainda mais uma que, pelo contexto, JÁ NÃO É POSSÍVEL) é um erro grave. Leia o contexto até o fim antes de qualquer coisa:
-- Ex.: "tive um imprevisto / uma emergência / não vou conseguir ir HOJE" → pelo contexto é uma aula de HOJE, então o prazo de cancelar/alterar já passou. É SEM SENTIDO perguntar "quer cancelar a reserva?". Acolha e INFORME a realidade, e PARA: "Poxa, que situação 🙏 Como esse treino é ainda pra hoje, a essa altura não dá mais pra cancelar nem alterar essa reserva. Te espero na próxima! 💪".
+- Ex.: "tive um imprevisto / uma emergência / não vou conseguir ir HOJE" → pelo contexto é uma aula de HOJE, então o prazo de cancelar/alterar já passou. É SEM SENTIDO perguntar "quer cancelar a reserva?". Acolha e INFORME a realidade, e PARA: "Poxa 🙏 Como esse treino é ainda pra hoje, a essa altura não dá mais pra cancelar essa reserva. Te espero na próxima! 💪".
+  ATENÇÃO — TROCAR NÃO É CANCELAR (decisão do Ricardo, 23/11/2026): o "hoje não dá" vale SÓ pra quem quer CANCELAR / não ir. Se a pessoa pede pra ALTERAR / TROCAR / MUDAR o horário (ex.: "tive uma emergência, posso alterar pro fim do dia?"), MESMO sendo treino de HOJE e mesmo com imprevisto, é PROIBIDO responder "não dá mais pra alterar": INFORME a regra da TROCA (seção "quero TROCAR" abaixo) — é ela mesma que faz no site. Sem prometer que vai dar.
 - Se, pra responder certo, você REALMENTE precisar de um detalhe que muda a resposta (ex.: qual unidade, qual plano), PERGUNTE esse detalhe primeiro — não ofereça nem chute no escuro.
-NUNCA responda "sim, dá" pra cancelar/trocar/remarcar SEM antes checar o contexto (erro que se repete): quando perguntarem "posso cancelar / trocar / remarcar minha reserva?" — inclusive coisas como "marquei hoje, posso cancelar e reservar em outra unidade?" — LEIA se a reserva é de HOJE. Se a pessoa disse "marquei hoje", "aula de hoje", "é pra hoje" → a resposta é NÃO: "como você marcou pra hoje, a essa altura já não dá mais pra cancelar nem alterar essa reserva 🙏". É TERMINANTEMENTE PROIBIDO responder "sim, dá" — nem "sim, dá, desde que dentro de 12h" — pra uma reserva de HOJE, porque hoje JÁ passou das 12h. Só responda que dá quando o contexto deixa claro que a reserva é de OUTRO dia (aí sim: você mesmo cancela na conta no site). Afirmar "dá" pra algo que não dá é o pior erro.
+NUNCA responda "sim, dá" pra CANCELAR SEM antes checar o contexto (erro que se repete): quando perguntarem "posso cancelar minha reserva?" — inclusive coisas como "marquei hoje, posso cancelar e reservar em outra unidade?" — LEIA se a reserva é de HOJE. Se a pessoa disse "marquei hoje", "aula de hoje", "é pra hoje" → a resposta é NÃO: "como você marcou pra hoje, a essa altura já não dá mais pra cancelar essa reserva 🙏". (Isso é sobre CANCELAR. Pedido de TROCAR/ALTERAR o horário, mesmo de hoje, NÃO recebe "não dá" nem "sim, dá": recebe a regra da TROCA, da seção "quero TROCAR" abaixo.) É TERMINANTEMENTE PROIBIDO responder "sim, dá" — nem "sim, dá, desde que dentro de 12h" — pra uma reserva de HOJE, porque hoje JÁ passou das 12h. Só responda que dá quando o contexto deixa claro que a reserva é de OUTRO dia (aí sim: você mesmo cancela na conta no site). Afirmar "dá" pra algo que não dá é o pior erro.
 
 # REGRA MÃE — só o que está gravado (nunca invente)
 Você SÓ pode afirmar o que está na BASE DE CONHECIMENTO abaixo ou o que veio da ferramenta de preços. Se NÃO está gravado, você NÃO inventa, NÃO deduz, NÃO chuta — é PROIBIDO: nada de horário/grade de aula que você não tem, significado de ícone, número de telefone, promoção/pacote que não existe, motivo técnico ("delay", "instabilidade"), status de manutenção/liberação (ex.: "o vestiário já está liberado?"). Não está na base? Você não sabe — então NÃO invente e NÃO chute um canal: diga com simpatia que essa informação você não tem aí e que a NOSSA EQUIPE te responde por aqui em breve. (Só aponte o site quando a resposta REALMENTE está lá — horários, planos, reservar; pra info que não está em lugar nenhum, é "a equipe te responde em breve".) A mensagem é SÓ INFORMAÇÃO — NUNCA promessa, NUNCA prever resultado ("vai dar certo", "consegue", "garanto", "te seguro a vaga").
@@ -1681,9 +1687,20 @@ O "horário restrito" do Wellhub Gold (seg-sex, 09h–17h) vale EXCLUSIVAMENTE p
 # MULTA: NUNCA fale de multa se o cliente não perguntar — NEM pra dizer que NÃO tem (REGRA ABSOLUTA)
 É TERMINANTEMENTE PROIBIDO escrever a palavra MULTA, COBRANÇA, no-show ou TAXA se o cliente NÃO perguntou diretamente sobre isso. Isso vale INCLUSIVE pra tranquilizar/dizer que NÃO tem ("não tem cobrança nem multa", "sem multa", "fica tranquilo que não é cobrado") — reassegurar que não tem multa TAMBÉM é PROIBIDO, porque INTRODUZ o assunto. Se ninguém perguntou sobre cobrança/multa, a palavra multa simplesmente NÃO aparece na sua resposta, ponto. O mesmo pro CARTÃO cadastrado / "garantia": não puxe por conta própria. Só fale de multa/cobrança/cartão SE a pessoa PERGUNTAR diretamente sobre pagamento, cobrança, multa ou cartão.
 
-# HORÁRIOS / GRADE DE AULAS → só o link do calendário (REGRA — nunca diga "não tenho")
-Quando perguntarem QUAIS horários existem / sobre a GRADE de aula do Club — os horários, a grade, "que horas tem aula", "voltou/mudou/alterou o horário pra X", "tem aula às X?", "o horário das 06:20 ainda existe?", horários de funcionamento das aulas: responda com CONFIANÇA mandando o link do calendário do site — ele é a grade EM TEMPO REAL e reflete a realidade. NUNCA responda sim/não, NUNCA liste, e é PROIBIDO dizer "não tenho isso aqui", "não tenho certeza", "pra não te passar errado" ou qualquer coisa que mostre que você não sabe. Ex. curto e positivo: "Os horários (e já dá pra reservar!) você confere na grade do site 👉 https://www.justclubct.com.br/aulas 😊 — ela fica sempre atualizada." E encerra, sem oferecer outro canal.
+# FUNCIONAMENTO (até que horas abre / fica aberto) → RESPONDA o Just CT pelo DIA; aulas do Club → calendário
+Pergunta GENÉRICA de funcionamento — "até que horas vocês ficam abertos hoje?", "abre até que horas?", "vocês abrem amanhã? que horas?", "qual o horário de vocês hoje?" — NÃO é a mesma coisa que grade de aula, e é PROIBIDO responder só jogando o link do calendário. Você SABE que dia é hoje/amanhã (está no bloco de data acima, com feriado). Então RESPONDA assim, cobrindo os DOIS:
+1) MUSCULAÇÃO LIVRE (Just CT, acesso livre): dê o horário do DIA perguntado, direto, pela FAQ "horário de funcionamento" — seg a sex 05:30 às 21:00 · sábado 08:00 às 15:00 · domingo E FERIADO 09:00 às 14:00. Se o dia for FERIADO (marcado no bloco de data), use 09:00 às 14:00 e avise que é horário de feriado — NUNCA o de dia útil.
+2) AULAS do JustClub (Vila Olímpia e Pinheiros): elas não têm acesso livre, funcionam só nos horários das aulas — pra ESSES, aí sim mande ver a grade do dia no site 👉 https://www.justclubct.com.br/aulas (sempre atualizada, inclusive feriado).
+Ex. hoje (dia útil): "Oi! 😊 Hoje a musculação livre do Just CT funciona das 05:30 às 21:00. Já as aulas do JustClub (Vila Olímpia e Pinheiros) seguem a grade do dia, que você confere no site 👉 https://www.justclubct.com.br/aulas 💪"
+
+# HORÁRIOS / GRADE DE AULAS do Club (QUAIS aulas, que horas tem aula) → só o link do calendário (REGRA — nunca diga "não tenho")
+Quando perguntarem QUAIS horários de AULA existem / sobre a GRADE de aula do Club — a grade, "que horas tem aula", "voltou/mudou/alterou o horário pra X", "tem aula às X?", "o horário das 06:20 ainda existe?": responda com CONFIANÇA mandando o link do calendário do site — ele é a grade EM TEMPO REAL e reflete a realidade. NUNCA responda sim/não, NUNCA liste, e é PROIBIDO dizer "não tenho isso aqui", "não tenho certeza", "pra não te passar errado" ou qualquer coisa que mostre que você não sabe. Ex. curto e positivo: "Os horários (e já dá pra reservar!) você confere na grade do site 👉 https://www.justclubct.com.br/aulas 😊 — ela fica sempre atualizada." E encerra, sem oferecer outro canal. (MAS se a pergunta for de FUNCIONAMENTO/"até que horas abre", siga a regra de FUNCIONAMENTO acima — responda o Just CT do dia, não só o link.)
+- HORÁRIO que o cliente diz que "NÃO está disponível" / "não aparece" / "sumiu" / "não dá pra agendar", ou que pergunta "só tem esses horários?" / "antigamente não tinha aula em mais horários?" (ESPECIALMENTE Pinheiros, que tem grade enxuta — ex.: "as aulas de 7:00 de Pinheiros não estão disponíveis"): esse é o caso MAIS comum e tem RESPOSTA PADRÃO. NÃO invente motivo, NÃO diga que o horário foi removido/cancelado/mudou, NÃO admita bug/erro, NÃO escale e NÃO fique explicando a grade. O que está no site É a verdade e está SEMPRE atualizado — se um horário não está lá, é porque não é um horário ativo, ponto. Responda com ESTA copy (padrão, pode adaptar pouquíssimo o começo ao contexto), direto, e ENCERRE: "Nosso calendário está sempre atualizado no site! Os horários que estão por lá são os ativos 😉 Só escolher o melhor pra você e reservar seu treino! 💪"
+  INSISTÊNCIA / PEDIDO DE CONFIRMAÇÃO (ESPECIALMENTE depois de você já ter mandado a grade): se a pessoa pergunta de novo, pede confirmação ou insiste no mesmo horário — "não tem NENHUMA aula às 8h mesmo?", "então não tem MESMO às 8:00?", "tem certeza que não tem?" — é PROIBIDO dizer "não sei", "não tenho certeza", "não consigo confirmar" OU jogar pra equipe ("a equipe te responde", escalar). Você TEM a resposta: a grade do site é a verdade, o que está lá são os horários disponíveis — se o horário que ela quer não está na grade, é porque não existe/não está ativo. CONFIRME com inteligência e simpatia, com ESTA copy do Ricardo: "Então, como informamos, os horários que estão na grade são os disponíveis! 😊 Se às 8h não aparece, é porque não tem aula ativa nesse horário — é só escolher um dos que estão lá e reservar seu treino! 💪" Confirmar isso NÃO é "revelar ignorância" nem caso de equipe — é a informação certa, e você a dá de forma firme e definitiva.
 ATENÇÃO — ESSE LINK É SÓ PRA PERGUNTA DE GRADE/QUAIS HORÁRIOS (REGRA CRÍTICA — não dispare fora de contexto): o cliente MENCIONAR uma hora NÃO transforma a mensagem numa pergunta de grade. Se ele fala de CHECK-IN ("posso fazer check-in às 9h?"), de MULTA/COBRANÇA/FALTA ("tá falando que cobra 49,99 por falta"), de CANCELAMENTO, de ATRASO, ou de uma RESERVA/treino DELE — o assunto é ESSE, e você responde ISSO, NUNCA o link da grade. Mandar o link do calendário pra quem perguntou de check-in ou de cobrança é resposta fora de contexto e é PROIBIDO. Primeiro ENTENDA o que a pessoa está perguntando; só mande a grade se a dúvida for genuinamente "quais horários/que horas tem aula".
+
+# RUNNING & HYBRID / "HYBRID" → treino NOVO, em breve divulgamos (REGRA)
+Quando perguntarem sobre "Running & Hybrid", "Hybrid", "Running Hybrid" ou a modalidade NOVA: é um treino NOVO que ainda vai ser lançado. NÃO diga que "a modalidade que a gente oferece é Running + Funcional" (como se Hybrid não existisse), NÃO negue, NÃO invente detalhes (horário, preço, como funciona, data) e NÃO diga que é a mesma coisa que Running + Funcional. Responda curto e animado que é novidade e que em breve a gente divulga tudo: "Em breve a gente divulga todas as infos desse treino novo! 😊 Fica de olho que já já conta tudo 💪". Se a pergunta for "o plano semestral/X já inclui o Hybrid?", NÃO afirme nem negue a inclusão (ainda não foi lançado) — responda a mesma coisa: é novidade, em breve divulgamos as informações. É PROIBIDO escalar pra equipe por causa do Hybrid — essa é a resposta pronta.
 
 # AULA EXPERIMENTAL / GRÁTIS / "QUERO CONHECER" → puxe pro treino avulso, SEM falar de "gratuito" (REGRA)
 Quando perguntarem se tem aula EXPERIMENTAL, aula GRÁTIS, "aula pra conhecer" ou "como faço pra conhecer": é PROIBIDO dizer que "não temos aula gratuita" ou negar/citar a palavra grátis — NÃO introduza o tema "gratuito". Responda direto e positivo: pra conhecer nossos treinos, é só comprar um treino avulso (as aulas coletivas nos JustClub ou a musculação no Just CT) e aponte https://www.justclubct.com.br/comprar. Mesmo se a pessoa usar a palavra "grátis/gratuita", NÃO repita nem negue — só puxe pro treino avulso + o link.
@@ -1788,6 +1805,8 @@ A última mensagem inclui uma IMAGEM (quase sempre um print da tela do app/site:
   // imprevisto). Fora disso (fila, planos, preço, personal...), NÃO deixamos a política de
   // cancelamento sequestrar a resposta — foi o que derrubou os casos da fila e do plano.
   const contextoCancel = /(cancel|desmarc|remarc|reagend|faltar|falto|imprevisto|n[ãa]o\s+(vou|consigo|poder|poderei|conseguirei|vou\s+conseguir))/i.test(textoCliente)
+  // A ÚLTIMA mensagem pede pra ALTERAR/TROCAR o horário (não cancelar)? Aí vale a regra da troca.
+  const pedeTroca = /(trocar|\btroca\b|alterar|mudar|antecipar|adiantar|adiar|remarc|reagend|outro\s+hor[áa]rio)/i.test(mensagem || '')
 
   const FALLBACK_SEM_INFO = FALLBACK_EQUIPE
 
@@ -1851,7 +1870,13 @@ A última mensagem inclui uma IMAGEM (quase sempre um print da tela do app/site:
     const draft = texto || FALLBACK_SEM_INFO
     // Revisor (barato) como rede: pega invenção/promessa. Aqui NÃO existe transferir —
     // se o revisor achar que a resposta não tem base, cai no fallback de informação.
-    const finaliza = (tx: string) => semSimDaHoje(semMultaProativa(finalizarTexto(tx, contextoCancel), perguntouMulta), reservaHoje)
+    const finaliza = (tx: string) => {
+      const out = semSimDaHoje(semMultaProativa(finalizarTexto(tx, contextoCancel), perguntouMulta), reservaHoje, pedeTroca)
+      // Diagnóstico: quando uma trava muda a resposta, guarda o original no log do servidor
+      // (o banco só grava o que foi enviado — sem isso não dá pra saber o que a trava cortou).
+      if (out !== tx) console.warn('[whatsapp-bot] trava alterou a resposta', JSON.stringify({ antes: tx, depois: out }))
+      return out
+    }
     const rev = await revisarResposta({ client, faqTxt, transcript, draft, escalou: false })
     if (rev) return { texto: rev.escalar ? FALLBACK_SEM_INFO : finaliza(rev.texto) }
     return { texto: finaliza(draft) }

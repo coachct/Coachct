@@ -30,7 +30,7 @@ export default function BlackNovemberBanner() {
         }
         .bnb-wrap:hover .bnb-card { border-color: ${ROSA}; transform: translateY(-3px); }
         .bnb-tag {
-          font-family: 'DM Mono', monospace; font-size: 12px; letter-spacing: 2px;
+          font-family: 'DM Mono', monospace; font-size: clamp(16px, 1.9vw, 20px); font-weight: 500; letter-spacing: 3px;
           text-transform: uppercase; color: ${ROSA}; margin-bottom: 1.75rem;
         }
         .bnb-linha { display: flex; align-items: center; gap: 2.5rem; flex-wrap: wrap; }
