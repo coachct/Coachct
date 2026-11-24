@@ -1,4 +1,8 @@
 import type { Metadata } from 'next'
+import { pinheirosNoSite } from '@/lib/pinheiros'
+
+// Página estática: revalida de hora em hora para o texto de Pinheiros sair em 28/11 13h sem deploy
+export const revalidate = 3600
 
 export const metadata: Metadata = {
   title: 'Política de Privacidade — Just Club & CT',
@@ -73,7 +77,7 @@ export default function PoliticaPrivacidade() {
         <p style={p}>
           Dúvidas sobre esta Política ou sobre seus dados? Fale conosco pelo WhatsApp, pelo Direct do Instagram
           <strong style={{ color: '#fff' }}> @justclub.ct</strong>, ou pessoalmente em nossas unidades (Just CT — Rua Fiandeiras, 392,
-          Itaim Bibi; JustClub — Vila Olímpia e Pinheiros), São Paulo/SP.
+          Itaim Bibi; JustClub — {pinheirosNoSite() ? 'Vila Olímpia e Pinheiros' : 'Vila Olímpia'}), São Paulo/SP.
         </p>
       </div>
     </div>

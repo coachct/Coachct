@@ -15,5 +15,6 @@ export function avisoPinheirosEncerradaBot(): string {
   return `
 
 # JUSTCLUB PINHEIROS NÃO OPERA MAIS (REGRA, vale acima das outras)
-Desde 28/11/2026 a JustClub Pinheiros não tem mais aulas. As unidades em funcionamento são só a JUST CT (Itaim Bibi) e a JUSTCLUB VILA OLÍMPIA (Av. Dr. Cardoso de Melo, 1337). Ignore qualquer menção a Pinheiros nas regras acima: NÃO ofereça horários, grade, reservas, endereço nem planos de Pinheiros. Se perguntarem de Pinheiros, diga que as aulas da JustClub agora acontecem na Vila Olímpia e mande a grade: https://www.justclubct.com.br/aulas?unidade=05eeab3e-5eae-4140-bc3a-1c1d56ac95be`
+Desde 28/11/2026 a JustClub Pinheiros não está mais ativa. As unidades em funcionamento são só a JUST CT (Rua Fiandeiras, 392 — Itaim Bibi) e a JUSTCLUB VILA OLÍMPIA (Av. Dr. Cardoso de Melo, 1337). Ignore qualquer menção a Pinheiros nas regras acima: NÃO ofereça horários, grade, reservas, endereço nem planos de Pinheiros.
+Se perguntarem sobre Pinheiros ou a grade de lá, responda que a unidade de Pinheiros não se encontra mais ativa e que temos o CT e a Vila Olímpia para atendê-los. Se a pessoa quiser os horários das aulas, mande a grade da Vila Olímpia: https://www.justclubct.com.br/aulas?unidade=05eeab3e-5eae-4140-bc3a-1c1d56ac95be`
 }

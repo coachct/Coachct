@@ -489,7 +489,7 @@ export default function TotemPage() {
               <section className="screen on center">
                 <div className="badge-warn">!</div>
                 <h2>Totem não configurado</h2>
-                <p className="sub">Falta o parâmetro da unidade na URL. Ex.:<br /><b>/totem?unidade=just_club_pinheiros</b></p>
+                <p className="sub">Falta o parâmetro da unidade na URL. Ex.:<br /><b>/totem?unidade=just_club_vila_olimpia</b></p>
               </section>
             )}
 
