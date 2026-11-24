@@ -332,7 +332,6 @@ export function inconsistencias(t: Treino): string[] {
   if (t.aquecimento_seg <= 0) out.push('Aquecimento sem tempo.')
   if (!t.blocos.length) out.push('Nenhum bloco no treino.')
 
-  const max = MAX_ALUNOS_FAIXA[t.faixa]
   t.blocos.forEach((b, i) => {
     const nome = `Bloco ${i + 1}${b.nome ? ` (${b.nome})` : ''}`
     if (!b.estacoes.length) { out.push(`${nome}: sem estações.`); return }
@@ -340,15 +339,8 @@ export function inconsistencias(t: Treino): string[] {
     if (passouEsteira(b)) out.push(`${nome}: ${b.alunos_corrida} na esteira, o máximo é ${limiteEsteira(b)}${b.corrida_em_dupla ? ' em dupla' : ''}.`)
 
     if (b.formato === 'grupos_ab') {
+      // Pessoas por estação não se cobra: o treino é montado para a Faixa 3 e cada estação é em dupla ou sozinho
       const chao = estacoesChao(b)
-      const semPessoas = chao.filter(e => e.pessoas.trim() === '')
-      semPessoas.forEach(e => out.push(`${nome}: falta dizer quantas pessoas ficam em ${nomeEstacao(e)}.`))
-      if (max && !semPessoas.length) {
-        const noChao = chao.reduce((s, e) => s + (Number(e.pessoas) || 0), 0)
-        const total = b.alunos_corrida + noChao
-        if (total > max) out.push(`${nome}: ${total} alunos (${b.alunos_corrida} na esteira + ${noChao} no chão), a Faixa ${t.faixa} vai até ${max}.`)
-        else if (total < max) out.push(`${nome}: cabem ${total} alunos (${b.alunos_corrida} na esteira + ${noChao} no chão); na Faixa ${t.faixa}, com ${max}, sobram ${max - total} sem lugar.`)
-      }
       if (chao.length !== SALA_CHAO.length) {
         out.push(`${nome}: o chão tem ${chao.length} ${chao.length === 1 ? 'estação' : 'estações'}; a sala tem ${SALA_CHAO.length} (E1 a E5), uma para cada par de esteiras.`)
       }
