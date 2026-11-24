@@ -10,6 +10,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { gradeExtraDoDia, coachesComFixaSubstituida } from '@/lib/grade'
 import { coachesFdsPorHora } from '@/lib/fds-ct'
+import { pinheirosNoSite } from '@/lib/pinheiros'
 import { mensagemTravaApp } from '@/lib/utils'
 import { clienteTemPlanoPro } from '@/lib/planoPro'
 import { registrarAcessoLgpd, agoraEmSaoPaulo, consultarSaldo } from './consultas'
@@ -193,7 +194,7 @@ export async function aulasClubDisponiveis(
 ): Promise<any> {
   const u = await resolverUnidadeClub(supabase, termoUnidade)
   if (!u) {
-    return { erro: 'Não identifiquei a unidade do JustClub.', opcoes: ['JustClub Vila Olímpia', 'JustClub Pinheiros'] }
+    return { erro: 'Não identifiquei a unidade do JustClub.', opcoes: pinheirosNoSite() ? ['JustClub Vila Olímpia', 'JustClub Pinheiros'] : ['JustClub Vila Olímpia'] }
   }
 
   const { data: aulasIds } = await supabase.from('club_aulas').select('id').eq('unidade_id', u.id).eq('ativo', true)

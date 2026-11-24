@@ -7,6 +7,7 @@ import SiteHeader from '@/components/SiteHeader'
 import AvisoUnidade from '@/components/AvisoUnidade'
 import SummerBanner from '@/components/SummerBanner'
 import BlackNovemberBanner from '@/components/BlackNovemberBanner'
+import { pinheirosNoSite } from '@/lib/pinheiros'
 
 const ACCENT = '#ff2d9b'
 
@@ -28,7 +29,7 @@ const DADOS_UNIDADES: Record<string, {
     endereco: 'Av. Dr. Cardoso de Melo, 1337 — Vila Olímpia, São Paulo',
     bairro: 'Vila Olímpia',
     horariosFixos: null,
-    aulas: 'Lift · Lift for Girls · Running + Funcional',
+    aulas: 'Lift · Lift for Girls · Running + Funcional · Running & Hybrid',
   },
   'JustClub Pinheiros': {
     endereco: 'Rua Deputado Lacerda Franco, 342 — Pinheiros, São Paulo',
@@ -45,6 +46,8 @@ export default function LandingPage() {
 
   const isCliente = perfil?.role === 'cliente'
   const isLogado = !!perfil
+  // Pinheiros sai do site às 13h de 28/11 (sem deploy)
+  const pin = pinheirosNoSite()
 
   const [unidades, setUnidades] = useState<any[]>([])
   const [aulaAberta, setAulaAberta] = useState<string | null>(null)
@@ -53,7 +56,7 @@ export default function LandingPage() {
     async function carregarUnidades() {
       const { data } = await supabase
         .from('unidades')
-        .select('id, nome, tipo')
+        .select('id, nome, tipo, ativo')
         .order('tipo', { ascending: true })
         .order('nome', { ascending: true })
       // Ordem fixa: Just CT primeiro, depois JustClub Vila Olímpia, depois Pinheiros
@@ -62,7 +65,7 @@ export default function LandingPage() {
         const ia = ord.indexOf(a.nome); const ib = ord.indexOf(b.nome)
         return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
       })
-      setUnidades(lista)
+      setUnidades(lista.filter((u: any) => u.ativo !== false && (pinheirosNoSite() || u.nome !== 'JustClub Pinheiros')))
     }
     carregarUnidades()
   }, [])
@@ -180,8 +183,8 @@ export default function LandingPage() {
             <div style={{ position: 'absolute' as const, inset: 0, background: 'linear-gradient(to top, #080808f2 10%, #08080855 70%)' }} />
             <div style={{ position: 'relative' as const, padding: '1.75rem', height: '100%', minHeight: 260, display: 'flex', flexDirection: 'column' as const, justifyContent: 'flex-end' }}>
               <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(44px, 5vw, 64px)', color: '#fff', lineHeight: 0.95, letterSpacing: 1 }}>JUST<span style={{ color: ACCENT }}>CLUB</span></div>
-              <div style={{ fontSize: 15, color: '#ddd', marginTop: 6 }}>Aulas coletivas · Vila Olímpia e Pinheiros</div>
-              <div style={{ fontSize: 13, color: '#999', marginTop: 10 }}>Lift · Lift for Girls · Running + Funcional <span className="escolha-seta" style={{ color: ACCENT }}>→</span></div>
+              <div style={{ fontSize: 15, color: '#ddd', marginTop: 6 }}>Aulas coletivas · {pin ? 'Vila Olímpia e Pinheiros' : 'Vila Olímpia'}</div>
+              <div style={{ fontSize: 13, color: '#999', marginTop: 10 }}>Lift · Lift for Girls · Running + Funcional · Running &amp; Hybrid <span className="escolha-seta" style={{ color: ACCENT }}>→</span></div>
             </div>
           </a>
           <a href="#coach-ct" className="escolha-h" style={{ position: 'relative' as const, display: 'block', borderRadius: 18, overflow: 'hidden', minHeight: 260, border: '1px solid #222', textDecoration: 'none' }}>
@@ -237,7 +240,7 @@ export default function LandingPage() {
 
       {/* JUSTCLUB — aulas coletivas */}
       <div id="justclub" style={s.section}>
-        <div style={s.sTag}>// aulas coletivas · vila olímpia e pinheiros</div>
+        <div style={s.sTag}>{pin ? '// aulas coletivas · vila olímpia e pinheiros' : '// aulas coletivas · vila olímpia'}</div>
         <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(64px, 9vw, 120px)', color: '#fff', lineHeight: 0.9, letterSpacing: 2, marginBottom: '1rem' }}>
           JUST<span style={{ color: ACCENT }}>CLUB</span>
         </div>
@@ -452,7 +455,7 @@ export default function LandingPage() {
         <div style={s.sTag}>// planos</div>
         <div style={s.sTitle}>ESCOLHA SEU PLANO</div>
         <div style={{ ...s.sSub, marginBottom: '2rem' }}>
-          Planos próprios e apps parceiros aceitos nas três unidades — Just CT, JustClub Vila Olímpia e JustClub Pinheiros.
+          Planos próprios e apps parceiros {pin ? 'aceitos nas três unidades — Just CT, JustClub Vila Olímpia e JustClub Pinheiros.' : 'aceitos nas duas unidades — Just CT e JustClub Vila Olímpia.'}
         </div>
 
         <div onClick={() => router.push('/comprar')} className="planos-spoiler-h"
@@ -484,7 +487,7 @@ export default function LandingPage() {
                 <div><span style={{ color: '#aaa' }}>Just CT</span> <span style={{ color: '#555' }}>(musculação)</span> → <span style={{ color: '#fff', fontWeight: 600 }}>Gold+</span></div>
                 <div><span style={{ color: '#aaa' }}>Just CT</span> <span style={{ color: '#555' }}>(Coach CT)</span> → <span style={{ color: '#fff', fontWeight: 600 }}>Diamond</span></div>
                 <div><span style={{ color: '#aaa' }}>JustClub Vila Olímpia</span> → <span style={{ color: '#fff', fontWeight: 600 }}>Gold</span></div>
-                <div><span style={{ color: '#aaa' }}>JustClub Pinheiros</span> → <span style={{ color: '#fff', fontWeight: 600 }}>Gold</span></div>
+                {pin && <div><span style={{ color: '#aaa' }}>JustClub Pinheiros</span> → <span style={{ color: '#fff', fontWeight: 600 }}>Gold</span></div>}
               </div>
             </div>
 
@@ -497,7 +500,7 @@ export default function LandingPage() {
                 <div><span style={{ color: '#aaa' }}>Just CT</span> <span style={{ color: '#555' }}>(musculação)</span> → <span style={{ color: '#fff', fontWeight: 600 }}>TP4</span></div>
                 <div><span style={{ color: '#aaa' }}>Just CT</span> <span style={{ color: '#555' }}>(Coach CT)</span> → <span style={{ color: '#fff', fontWeight: 600 }}>TP6</span></div>
                 <div><span style={{ color: '#aaa' }}>JustClub Vila Olímpia</span> → <span style={{ color: '#fff', fontWeight: 600 }}>TP3</span></div>
-                <div><span style={{ color: '#aaa' }}>JustClub Pinheiros</span> → <span style={{ color: '#fff', fontWeight: 600 }}>TP3</span></div>
+                {pin && <div><span style={{ color: '#aaa' }}>JustClub Pinheiros</span> → <span style={{ color: '#fff', fontWeight: 600 }}>TP3</span></div>}
               </div>
             </div>
           </div>
@@ -524,10 +527,10 @@ export default function LandingPage() {
         <div style={s.sTag}>// onde estamos</div>
         <div style={s.sTitle}>NOSSAS UNIDADES</div>
         <div style={{ ...s.sSub, marginBottom: '2.5rem' }}>
-          São Paulo · três endereços, três experiências.
+          {pin ? 'São Paulo · três endereços, três experiências.' : 'São Paulo · dois endereços, duas experiências.'}
         </div>
 
-        <div className="unidades-grid-r" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.25rem' }}>
+        <div className="unidades-grid-r" style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.max(1, unidades.filter((u: any) => DADOS_UNIDADES[u.nome]).length)}, 1fr)`, gap: '1.25rem' }}>
           {unidades.map((u: any) => {
             const dados = DADOS_UNIDADES[u.nome]
             if (!dados) return null

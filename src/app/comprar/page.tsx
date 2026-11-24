@@ -8,6 +8,7 @@ import SummerToggle from '@/components/SummerToggle'
 import SummerModeCards from '@/components/SummerModeCards'
 import { CAMPANHA_SUMMER, dentroDaJanela, dataBR, COMPRAR_TITULO, COMPRAR_SUB } from '@/lib/summer'
 import { rastrear } from '@/lib/rastreio'
+import { pinheirosNoSite } from '@/lib/pinheiros'
 import { APP_PRO_PRODUTO_ID } from '@/lib/appPro'
 import {
   CAMPANHA_BF, ehBlackFriday, precoRefPorTreino, BF_TAG, BF_TITULO, BF_SUB, BF_SELO,
@@ -444,7 +445,7 @@ export default function ComprarPage() {
                         <div style={{ background: `${ACCENT}10`, border: `1px solid ${ACCENT}33`, borderRadius: 8, padding: '0.6rem 0.85rem', marginBottom: '1rem' }}>
                           <div style={{ fontSize: 11, color: ACCENT, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 }}>📍 Studios incluídos</div>
                           <div style={{ fontSize: 13, color: '#fff', fontWeight: 600, lineHeight: 1.6 }}>
-                            JustClub Pinheiros<br />JustClub Vila Olímpia
+                            {pinheirosNoSite() && <>JustClub Pinheiros<br /></>}JustClub Vila Olímpia
                           </div>
                         </div>
 

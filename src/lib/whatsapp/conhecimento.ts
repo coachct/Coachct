@@ -9,6 +9,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { passouDaJanela } from '@/lib/summer'
 import { ehBlackFriday, treinosPagos } from '@/lib/blackFriday'
+import { pinheirosNoSite } from '@/lib/pinheiros'
 
 // Endereço fixo de fallback — mesma fonte usada nas telas (agendar/aulas),
 // caso unidades.endereco esteja vazio no banco.
@@ -32,7 +33,9 @@ export async function listarEnderecos(supabase: SupabaseClient): Promise<Unidade
     .eq('ativo', true)
   if (error) {
     // Sem acesso ao banco: devolve ao menos os endereços conhecidos.
-    return Object.entries(FALLBACK_ENDERECOS).map(([nome, endereco]) => ({ nome, endereco, tipo: null }))
+    return Object.entries(FALLBACK_ENDERECOS)
+      .filter(([nome]) => pinheirosNoSite() || nome !== 'JustClub Pinheiros') // Pinheiros encerra 28/11 13h
+      .map(([nome, endereco]) => ({ nome, endereco, tipo: null }))
   }
   return (data ?? []).map((u: any) => ({
     nome: u.nome,

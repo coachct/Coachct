@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
+import { pinheirosNoSite } from '@/lib/pinheiros'
 
 const REMETENTE = 'Just CT <nao-responda@justct.com.br>'
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://coach-ct.vercel.app'
@@ -199,7 +200,7 @@ export async function POST(req: NextRequest) {
             <td style="background:#111;padding:22px 32px;text-align:center;">
               <div style="font-size:11px;color:#555;line-height:1.8;">
                 Just CT — Vila Olímpia · Rua Fiandeiras, 392<br/>
-                JustClub — Pinheiros &amp; Vila Olímpia
+                ${pinheirosNoSite() ? 'JustClub — Pinheiros &amp; Vila Olímpia' : 'JustClub — Vila Olímpia'}
               </div>
               <div style="font-size:10px;color:#333;margin-top:12px;">Email automático — não responda a esta mensagem.</div>
             </td>

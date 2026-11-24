@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
+import { pinheirosNoSite } from '@/lib/pinheiros'
 import { NOME_PARCEIRO, registrarEventoAppPro, type LocalOferta } from '@/lib/appPro'
 import { carregarClubExtraOferta, CLUB_EXTRA_PRODUTO_ID, type ClubExtraOferta } from '@/lib/clubExtra'
 
@@ -93,7 +94,7 @@ export default function ClubExtraCard({ clienteId }: { clienteId: string }) {
         </div>
         <div style={{ fontSize: 11.5, color: '#999', textAlign: 'right', marginBottom: 6 }}>à vista · você mantém seu {parceiro}</div>
         <Item icone="✓">Não utiliza seu check in do dia</Item>
-        <Item icone="✓">Use na Vila Olímpia ou em Pinheiros</Item>
+        <Item icone="✓">{pinheirosNoSite() ? 'Use na Vila Olímpia ou em Pinheiros' : 'Use na Vila Olímpia'}</Item>
         <Item icone="◷">Válidos por 30 dias</Item>
         <button onClick={comprar} style={{ ...btn, marginTop: 10 }}>Comprar →</button>
       </div>

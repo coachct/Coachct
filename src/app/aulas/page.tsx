@@ -12,6 +12,7 @@ import EnqueteHorario from '@/components/EnqueteHorario'
 import CamposClassPass, { CLASSPASS_VAZIO, classPassFaltando, classPassPayload } from '@/components/CamposClassPass'
 import { enqueteDoHorario } from '@/lib/enquete-horario'
 import { aulaEncerrada, aulaJaComecou, dataHojeSP, hojeSP, filaEncerrada } from '@/lib/tempo'
+import { PINHEIROS_ID, pinheirosNoSite } from '@/lib/pinheiros'
 import AvisoCancelamento from '@/components/AvisoCancelamento'
 import { mensagemTravaApp } from '@/lib/utils'
 
@@ -225,7 +226,12 @@ function AulasPageInner() {
   useEffect(() => { carregarPlanosIlimitados() }, [])
 
   async function carregarUnidade() {
-    const { data } = await supabase.from('unidades').select('id, nome, tipo').eq('id', unidadeId).maybeSingle()
+    const { data } = await supabase.from('unidades').select('id, nome, tipo, ativo').eq('id', unidadeId).maybeSingle()
+    // Unidade encerrada (Pinheiros, desde 28/11 13h): link antigo cai na grade da Vila Olímpia
+    if (data && (data.ativo === false || (data.id === PINHEIROS_ID && !pinheirosNoSite()))) {
+      router.replace('/aulas?unidade=05eeab3e-5eae-4140-bc3a-1c1d56ac95be')
+      return
+    }
     setUnidade(data)
   }
 
@@ -671,8 +677,9 @@ function AulasPageInner() {
           <button onClick={() => router.push('/agendar')} style={{ background:'transparent', border:'1px solid #2a2a2a', borderRadius:'50%', width:36, height:36, color:'#666', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>‹</button>
           <div>
             <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:28, color:'#fff', letterSpacing:1 }}>{unidade?.nome||'Aulas coletivas'}</div>
-            {/* TODO hibrido: subtítulo */}
-            <div style={{ fontSize:13, color:'#888', marginTop:2 }}>Lift · Lift for Girls · Running + Funcional</div>
+            <div style={{ fontSize:13, color:'#888', marginTop:2 }}>
+              {unidade?.nome === 'JustClub Vila Olímpia' ? 'Lift · Lift for Girls · Running + Funcional · Running & Hybrid' : 'Lift · Lift for Girls · Running + Funcional'}
+            </div>
             {unidade?.nome && ENDERECOS_UNIDADES[unidade.nome] && (
               <div style={{ display:'flex', gap:6, alignItems:'flex-start', marginTop:6, fontSize:13, color:'#777', lineHeight:1.4 }}>
                 <span style={{ flexShrink:0 }}>📍</span>

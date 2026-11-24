@@ -9,7 +9,7 @@ const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'Just Club & CT - The End Of Boring Gyms',
-  description: 'Personal ou treino coletivo: duas escolhas, um só resultado. Coach CT, Lift e Running em Vila Olímpia e Pinheiros.',
+  description: 'Personal ou treino coletivo: duas escolhas, um só resultado. Coach CT, Lift e Running na Vila Olímpia.',
   // Atalho na tela de início do iPhone: nome "Just" e abre em tela cheia (sem a barra do Safari).
   // O ícone vem de src/app/apple-icon.png (o Next gera o <link> sozinho).
   appleWebApp: {
