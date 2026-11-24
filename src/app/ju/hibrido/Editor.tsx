@@ -13,7 +13,7 @@ import {
   labelEstacao, estacoesUsadas, treinoVazio, blocoVazio, estacaoVazia, clonarBlocos,
   carregarTreino, salvarTreino, programar, carregarMedias, faixasProvaveis, fmtDia,
   estacoesChao, rodizioChaoLigado, roteiroAB, estacaoNaVolta, inconsistencias,
-  SALA_CHAO, codChao, ordenarComoSala, foraDaSala, circuitoPorCodigo,
+  SALA_CHAO, codChao, ordenarComoSala, foraDaSala, circuitoPorCodigo, CHAVE_PREVIA_TV,
 } from '@/lib/hibrido'
 import { cls, Modal } from './ui'
 import { hojeSP } from '@/lib/tempo'
@@ -300,6 +300,16 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial, mod
 
   // ---- salvar ----------------------------------------------------------------
 
+  // Prévia da TV com o rascunho da tela (não precisa salvar nem fechar a soma)
+  function verNaTv() {
+    try {
+      localStorage.setItem(CHAVE_PREVIA_TV, JSON.stringify(t))
+      window.open('/hibrido-tv/previa', '_blank')
+    } catch {
+      setErro('Não foi possível abrir a prévia da TV neste navegador.')
+    }
+  }
+
   function aviso(m: string) {
     setMsg(m)
     setTimeout(() => setMsg(''), 2500)
@@ -388,6 +398,8 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial, mod
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button onClick={verNaTv} disabled={!t.blocos.length} className={cls.btn}
+            title="Abre a TV numa aba nova com o treino como está na tela, sem salvar">Ver na TV</button>
           <button onClick={() => setModalDuplicar(true)} disabled={salvando} className={cls.btn}>Duplicar para outra faixa</button>
           {!coach && <button onClick={() => salvar('modelo')} disabled={salvando || !r.fecha} className={cls.btn}
             title={r.fecha ? '' : `A soma precisa dar ${mmss(t.duracao_seg)}`}>Salvar como modelo</button>}
@@ -628,7 +640,7 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial, mod
           <PreviaTV t={t} />
           {t.id && (
             <a href={`/hibrido-tv/${t.id}`} target="_blank" rel="noreferrer" className={`${cls.btn} inline-flex items-center justify-center -mt-2`}>
-              Abrir na TV (teste) · usa o último salvo
+              Abrir na TV · versão salva
             </a>
           )}
 

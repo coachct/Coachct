@@ -3,6 +3,8 @@
 
 export const UNIDADE_VO = '05eeab3e-5eae-4140-bc3a-1c1d56ac95be'
 export const DURACAO_PADRAO = 3000
+// Rascunho do editor para a prévia da TV (/hibrido-tv/previa), antes de salvar
+export const CHAVE_PREVIA_TV = 'hibrido-previa-tv'
 
 export type Formato = 'grupos_ab' | 'circuito' | 'todos'
 export type Estacao = 'corrida' | 'remo' | 'ski' | 'wall_ball' | 'sled' | 'funcional'
