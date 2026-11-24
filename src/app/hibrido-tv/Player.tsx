@@ -127,6 +127,16 @@ export default function Player({ treino: t, onFechar, cabecalho }: {
     try { await (screen.orientation as any)?.lock?.('landscape') } catch {}
   }
 
+  // Sabe se já está em tela cheia (o botão grande some quando está)
+  const [cheia, setCheia] = useState(false)
+  useEffect(() => {
+    const ver = () => setCheia(!!(document.fullscreenElement || (document as any).webkitFullscreenElement))
+    ver()
+    document.addEventListener('fullscreenchange', ver)
+    document.addEventListener('webkitfullscreenchange', ver)
+    return () => { document.removeEventListener('fullscreenchange', ver); document.removeEventListener('webkitfullscreenchange', ver) }
+  }, [])
+
   // Celular em pé: pede para girar (espelhado na TV, em pé fica uma faixa estreita no meio)
   const [retrato, setRetrato] = useState(false)
   useEffect(() => {
@@ -212,6 +222,12 @@ export default function Player({ treino: t, onFechar, cabecalho }: {
       )}
 
       {/* controles */}
+      {!cheia && (
+        <button onClick={telaCheia}
+          className="fixed top-3 right-3 z-40 inline-flex items-center gap-2 min-h-[48px] px-5 rounded-xl bg-[#ff2d9b] text-[#1a0010] font-semibold shadow-lg">
+          <Maximize size={18} /> Tela cheia
+        </button>
+      )}
       <div className="flex justify-center items-center gap-2 opacity-40 hover:opacity-100 transition-opacity">
         <Botao label="Etapa anterior" onClick={() => ir(idx - 1)} disabled={idx === 0}><SkipBack size={20} /></Botao>
         {rodando
