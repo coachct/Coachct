@@ -329,6 +329,8 @@ function ConteudoAB({ seg, b }: { seg: Extract<Segmento, { tipo: 'etapa' | 'tran
   const corrida = b.estacoes.find(e => e.estacao === 'corrida')
   const chao = estacoesChao(b)
   const rod = rodizioChaoLigado(b)
+  // Cada código com a sua corrida (a dupla da esteira E1 troca com a do chão E1)
+  const porCodigo = chao.some(e => e.esteira?.trim())
   const cards = [
     { g: 'A', esteira: aEsteira },
     { g: 'B', esteira: !aEsteira },
@@ -353,8 +355,22 @@ function ConteudoAB({ seg, b }: { seg: Extract<Segmento, { tipo: 'etapa' | 'tran
           </div>
           {c.esteira ? (
             <div className="flex flex-col gap-[calc(var(--u)*0.5)] text-[calc(var(--u)*2)]">
-              {detalhes(corrida).map((d, i) => <div key={i} className={i === 0 ? 'text-[calc(var(--u)*2.6)] font-semibold' : 'text-[#d4d4d8]'}>{d}</div>)}
-              <div className="text-[calc(var(--u)*1.5)] text-[#a1a1aa]">Esteiras E1 a E5 · duas por código</div>
+              {porCodigo ? (
+                <>
+                  {chao.map((e, p) => (
+                    <div key={p} className="flex gap-[calc(var(--u)*0.8)] items-baseline text-[calc(var(--u)*1.8)] leading-snug">
+                      <span className={`${G} text-[#ff6db8] font-bold w-[calc(var(--u)*2.8)] shrink-0`}>{codChao(p)}</span>
+                      <span className="font-semibold">{e.esteira || '—'}</span>
+                    </div>
+                  ))}
+                  {detalhes(corrida).length > 0 && <div className="text-[calc(var(--u)*1.5)] text-[#d4d4d8]">{detalhes(corrida).join(' · ')}</div>}
+                </>
+              ) : (
+                <>
+                  {detalhes(corrida).map((d, i) => <div key={i} className={i === 0 ? 'text-[calc(var(--u)*2.6)] font-semibold' : 'text-[#d4d4d8]'}>{d}</div>)}
+                  <div className="text-[calc(var(--u)*1.5)] text-[#a1a1aa]">Esteiras E1 a E5 · duas por código</div>
+                </>
+              )}
             </div>
           ) : chao.length ? (
             <div className="flex flex-col gap-[calc(var(--u)*0.5)]">

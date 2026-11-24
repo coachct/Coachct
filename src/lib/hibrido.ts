@@ -91,6 +91,8 @@ export interface EstacaoRow {
   meta: string
   carga_f: string
   carga_m: string
+  // Grupos A/B: o que se faz na esteira do mesmo código desta estação do chão (ex.: E1 "Tiro 45'' cada")
+  esteira: string
 }
 
 export interface Rodizio {
@@ -335,13 +337,18 @@ export function inconsistencias(t: Treino): string[] {
       if (chao.length !== SALA_CHAO.length) {
         out.push(`${nome}: o chão tem ${chao.length} ${chao.length === 1 ? 'estação' : 'estações'}; a sala tem ${SALA_CHAO.length} (E1 a E5), uma para cada par de esteiras.`)
       }
+      if (chao.some(e => e.esteira.trim())) {
+        chao.forEach((e, p) => { if (!e.esteira.trim()) out.push(`${nome}: falta dizer o que se faz na esteira ${codChao(p)}.`) })
+      }
       foraDaSala(chao).forEach(x => out.push(`${nome}: ${x.sala.cod} na sala é ${x.sala.nome}, mas a linha ${x.p + 1} do chão está como ${nomeEstacao(x.e)}.`))
       if (rodizioChaoLigado(b) && chao.length > 1 && b.rounds % chao.length !== 0) {
-        out.push(`${nome}: ${b.rounds} rounds para ${chao.length} estações no chão, nem todos passam pelas mesmas estações.`)
+        out.push(`${nome}: ${b.rounds} ${b.rounds === 1 ? 'round' : 'rounds'} para ${chao.length} estações no chão, nem todos passam pelas mesmas estações.`)
       }
     }
 
+    const esteiraPorCodigo = b.formato === 'grupos_ab' && b.estacoes.some(e => e.estacao !== 'corrida' && e.esteira.trim())
     b.estacoes.forEach(e => {
+      if (e.estacao === 'corrida' && esteiraPorCodigo) return
       const en = nomeEstacao(e)
       if ((e.estacao === 'sled' || e.estacao === 'wall_ball') && !e.carga_f.trim() && !e.carga_m.trim()) out.push(`${nome}: ${en} sem carga.`)
       if (!e.instrucao.trim() && !e.meta.trim()) out.push(`${nome}: ${en} sem instrução nem meta.`)
@@ -413,6 +420,7 @@ export function estacaoVazia(estacao: Estacao, existentes: EstacaoRow[]): Estaca
     meta: '',
     carga_f: '',
     carga_m: '',
+    esteira: '',
   }
 }
 
@@ -467,6 +475,7 @@ export function treinoDoBanco(r: any): Treino {
           meta: txt(e.meta),
           carga_f: txt(e.carga_f),
           carga_m: txt(e.carga_m),
+          esteira: txt(e.esteira),
         })),
     }))
   return {
@@ -562,6 +571,7 @@ export async function salvarTreino(supabase: any, t: Treino): Promise<{ id: stri
         meta: e.meta.trim() || null,
         carga_f: e.carga_f.trim() || null,
         carga_m: e.carga_m.trim() || null,
+        esteira: b.formato === 'grupos_ab' && e.estacao !== 'corrida' ? (e.esteira || '').trim() || null : null,
       }))
     )
     if (estacoes.length) {

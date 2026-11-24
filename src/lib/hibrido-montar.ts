@@ -45,7 +45,7 @@ const ESQUEMA = {
             items: {
               type: 'object',
               additionalProperties: false,
-              required: ['estacao', 'rotulo', 'postos', 'pessoas', 'modo_dupla', 'instrucao', 'meta', 'carga_f', 'carga_m'],
+              required: ['estacao', 'rotulo', 'postos', 'pessoas', 'modo_dupla', 'instrucao', 'meta', 'carga_f', 'carga_m', 'esteira'],
               properties: {
                 estacao: { type: 'string', enum: ['corrida', 'remo', 'ski', 'wall_ball', 'sled', 'funcional'] },
                 rotulo: str,
@@ -56,6 +56,7 @@ const ESQUEMA = {
                 meta: str,
                 carga_f: str,
                 carga_m: str,
+                esteira: str,
               },
             },
           },
@@ -80,6 +81,9 @@ Regras fixas do sistema:
 Formatos de bloco:
 - grupos_ab: metade da turma na esteira, metade no chão; a cada etapa os grupos trocam de lado. UM round = DUAS etapas (A na esteira e B no chão, depois o inverso). a_comeca diz onde o Grupo A começa. A esteira vira UMA linha "corrida" em estacoes (postos = número de esteiras, pessoas = alunos_corrida, modo_dupla, instrucao, meta); as outras linhas são as estações do chão (postos = equipamentos; pessoas = quantas pessoas ficam na estação). rodizio_chao = true quando a cada volta ao chão a dupla vai para a próxima estação; rounds é o que o texto disser (se não disser, não calcule: 1 e entra em faltou). ordem fica vazia.
   Sala (fixa): as 10 esteiras ficam em pares E1 a E5 e o chão tem 5 estações com os mesmos códigos: E1 Grama (sled ou outro exercício na grama), E2 Ski, E3 Funcional, E4 Remo, E5 Wall Ball. As linhas do chão vão SEMPRE nesta ordem (E1, E2, E3, E4, E5), mesmo que o texto liste em outra ordem. Se o texto tiver estação que não cabe na sala (ex.: duas de remo, ou mais de 5 no chão), monte como está e diga em duvidas.
+  Esteira por código: a dupla da esteira E1 troca com a dupla do chão E1, então cada código tem a sua corrida. Quando o texto escreve, dentro de cada código, o exercício do chão E MAIS uma linha "Esteira: …" (ex.: "E1 Grama: passada sandbag … Esteira: tiro 45'' cada"), isso é grupos_ab (NÃO é circuito): a linha do chão daquele código leva o exercício do chão nos campos de sempre e o texto da esteira no campo esteira, literal (ex.: "Tiro 45'' cada"). A linha "corrida" fica com o que vale para todas as esteiras (modo_dupla, postos, pessoas) e instrucao/meta vazias se o texto não disser nada geral. Nos outros formatos e nas linhas sem esteira própria, esteira = "".
+  "Execução X – transição Y" = etapa_seg X e transicao_seg Y.
+  Regra da sala: em grupos_ab o rodízio no chão é SEMPRE ligado (rodizio_chao = true): na 1ª troca esteira E1 ↔ chão E1 e depois gira no sentido horário. Só desligue se o texto disser explicitamente que cada dupla fica sempre na mesma estação.
 - circuito: cada um está numa estação e a cada etapa vai para a próxima da ordem. ordem = índices (base 0) de estacoes na sequência do circuito (a corrida pode repetir, ex.: [0,1,0,2]); uma passada pela ordem = um round. a_comeca = "corrida", rodizio_chao = false.
 - todos: todo mundo na mesma estação ao mesmo tempo, seguindo a ordem (índices de estacoes). a_comeca = "corrida", rodizio_chao = false.
 
@@ -133,6 +137,7 @@ function paraEsquema(t: Treino) {
           meta: e.meta,
           carga_f: e.carga_f,
           carga_m: e.carga_m,
+          esteira: e.esteira || '',
         })),
       }
     }),
@@ -153,6 +158,7 @@ function paraTreino(o: any, padrao: { faixa: number; duracao_seg: number }): Tre
       meta: e.meta || '',
       carga_f: e.carga_f || '',
       carga_m: e.carga_m || '',
+      esteira: b.formato === 'grupos_ab' && e.estacao !== 'corrida' ? e.esteira || '' : '',
     }))
     const ab = b.formato === 'grupos_ab'
     return {

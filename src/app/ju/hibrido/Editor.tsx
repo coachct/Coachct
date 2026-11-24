@@ -811,15 +811,17 @@ function BlocoCard(p: {
           )}
 
           <div className="overflow-x-auto border border-[#2a2a31] rounded-xl">
-            <div className="min-w-[960px] grid grid-cols-[1.3fr_0.55fr_0.65fr_1fr_2.1fr_1.2fr_0.9fr_40px] text-[13px]">
-              {['Estação', 'Postos', 'Pessoas', 'Dupla', 'O que fazer', 'Meta', 'Carga F / M', ''].map((h, k) => (
-                <div key={k} className="px-3 py-2.5 bg-[#222228] text-[#a1a1aa] text-xs">{h}</div>
+            <div className={`grid text-[13px] ${ab
+              ? 'min-w-[1120px] grid-cols-[1.3fr_0.55fr_0.65fr_1fr_2.1fr_1.2fr_0.9fr_1.4fr_40px]'
+              : 'min-w-[960px] grid-cols-[1.3fr_0.55fr_0.65fr_1fr_2.1fr_1.2fr_0.9fr_40px]'}`}>
+              {['Estação', 'Postos', 'Pessoas', 'Dupla', 'O que fazer', 'Meta', 'Carga F / M', ...(ab ? ['Esteira do mesmo código'] : []), ''].map((h, k) => (
+                <div key={k} className={`px-3 py-2.5 bg-[#222228] text-xs ${h.startsWith('Esteira') ? 'text-[#ff6db8]' : 'text-[#a1a1aa]'}`}>{h}</div>
               ))}
               {linhas.length === 0 && (
-                <div className="col-span-8 px-3 py-4 border-t border-[#2a2a31] text-[#a1a1aa]">{ab ? 'Nenhuma estação no chão ainda.' : 'Nenhuma estação ainda.'}</div>
+                <div className="col-span-full px-3 py-4 border-t border-[#2a2a31] text-[#a1a1aa]">{ab ? 'Nenhuma estação no chão ainda.' : 'Nenhuma estação ainda.'}</div>
               )}
               {linhas.map((e, k) => (
-                <LinhaEstacao key={e.id} e={e} cod={ab ? `${codChao(k)}${SALA_CHAO[k] ? ` · ${SALA_CHAO[k].nome}` : ''}` : undefined}
+                <LinhaEstacao key={e.id} e={e} ab={ab} cod={ab ? `${codChao(k)}${SALA_CHAO[k] ? ` · ${SALA_CHAO[k].nome}` : ''}` : undefined}
                   set={patch => p.setEstacao(e.id, patch)} remover={() => p.removerEstacao(e.id)} />
               ))}
             </div>
@@ -1041,7 +1043,7 @@ function OrdemEditor({ b, setBloco }: { b: Bloco; setBloco: (patch: Partial<Bloc
   )
 }
 
-function LinhaEstacao({ e, cod, set, remover }: { e: EstacaoRow; cod?: string; set: (patch: Partial<EstacaoRow>) => void; remover: () => void }) {
+function LinhaEstacao({ e, cod, ab, set, remover }: { e: EstacaoRow; cod?: string; ab?: boolean; set: (patch: Partial<EstacaoRow>) => void; remover: () => void }) {
   const cel = 'px-1.5 py-1.5 border-t border-[#2a2a31] flex items-center'
   return (
     <>
@@ -1073,6 +1075,9 @@ function LinhaEstacao({ e, cod, set, remover }: { e: EstacaoRow; cod?: string; s
         <span className="text-[#a1a1aa]">/</span>
         <input value={e.carga_m} onChange={ev => set({ carga_m: ev.target.value })} placeholder="M" aria-label="Carga M" className={cls.inputTabela} />
       </div>
+      {ab && (
+        <div className={cel}><input value={e.esteira} onChange={ev => set({ esteira: ev.target.value })} placeholder="ex.: Tiro 45'' cada" aria-label="Esteira do mesmo código" className={cls.inputTabela} /></div>
+      )}
       <div className={`${cel} justify-center`}>
         <button onClick={remover} aria-label="Remover estação" className="w-8 h-8 inline-flex items-center justify-center text-[#a1a1aa] hover:text-[#ff8a9a]"><X size={14} /></button>
       </div>
