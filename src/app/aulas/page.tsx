@@ -885,7 +885,7 @@ function AulasPageInner() {
                                 {livres===1?'ÚLTIMA VAGA':`${livres} VAGAS`}
                               </div>
                             )}
-                            {lotado ? (semFila ? (
+                            {lotado ? ((semFila || !user) ? (
                               <div style={{ width:'100%', textAlign:'center', color:'#ff4444', fontSize:10, fontWeight:700, fontFamily:"'DM Mono', monospace", letterSpacing:0.5, border:'1px solid #2a2a2a', borderRadius:8, padding:'5px' }}>
                                 LOTADA
                               </div>
@@ -984,7 +984,7 @@ function AulasPageInner() {
                   {/* Botão de ação — full-width, só aparece se não tiver reservado/fila */}
                   {!encerrada && (!minhaRes || cliente?.is_classpass) && !naFila && (
                     <div style={{ padding: isMobile ? '0 1.25rem 1.25rem' : '0 1rem 1rem' }}>
-                      {lotado ? (semFila ? (
+                      {lotado ? ((semFila || !user) ? (
                         <div style={{
                           width:'100%', textAlign:'center', color:'#ff4444',
                           border:'1px solid #222', borderRadius:12,
