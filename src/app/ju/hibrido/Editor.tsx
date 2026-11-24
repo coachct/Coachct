@@ -12,7 +12,7 @@ import {
   mmss, resumo, totalBloco, limiteEsteira, passouEsteira, ordemCircuito, nomeEstacao,
   labelEstacao, estacoesUsadas, treinoVazio, blocoVazio, estacaoVazia, clonarBlocos,
   carregarTreino, salvarTreino, programar, carregarMedias, faixasProvaveis, fmtDia,
-  estacoesChao, rodizioChaoLigado, roteiroAB, estacaoNaVolta,
+  estacoesChao, rodizioChaoLigado, roteiroAB, estacaoNaVolta, inconsistencias,
 } from '@/lib/hibrido'
 import { cls, Modal } from './ui'
 import { hojeSP } from '@/lib/tempo'
@@ -163,7 +163,7 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial, mod
   }
 
   useEffect(() => () => { const r = recRef.current; recRef.current = null; encerrar(r) }, [])
-  const [rascunho, setRascunho] = useState<{ decisoes: string[]; faltou: string[] } | null>(null)
+  const [rascunho, setRascunho] = useState<{ duvidas: string[]; faltou: string[] } | null>(null)
   const alertaRef = useRef<HTMLElement>(null)
   const blocosRef = useRef<HTMLDivElement>(null)
 
@@ -195,6 +195,8 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial, mod
   }, [data, msg])
 
   const r = resumo(t)
+  // O sistema não corrige nada: só aponta o que o coach precisa conferir
+  const pontos = inconsistencias(t)
 
   // ---- edição ----------------------------------------------------------------
 
@@ -283,7 +285,7 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial, mod
       // Mantém o treino que está aberto (id/modelo); o resto vem do rascunho
       setT(p => ({ ...novo, id: p.id, modelo: p.modelo, nome: novo.nome || p.nome }))
       setAbertos(new Set(novo.blocos.map(b => b.id)))
-      setRascunho({ decisoes: j.decisoes || [], faltou: j.faltou || [] })
+      setRascunho({ duvidas: j.duvidas || [], faltou: j.faltou || [] })
       setPedirOk(null)
       // A caixa fica livre para o próximo ajuste (fala ou digita só o que mudar)
       setUltimaDescricao(descricao)
@@ -457,17 +459,17 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial, mod
                 </button>
               )}
             </div>
-            {rascunho && (rascunho.decisoes.length > 0 || rascunho.faltou.length > 0) && (
+            {rascunho && (rascunho.duvidas.length > 0 || rascunho.faltou.length > 0) && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {rascunho.decisoes.length > 0 && (
-                  <div className="rounded-xl bg-[#0e0e11] border border-[#2a2a31] px-3.5 py-3">
-                    <div className="text-xs text-[#a1a1aa] mb-1">O sistema decidiu</div>
-                    <ul className="m-0 pl-4 list-disc text-[13px] space-y-0.5">{rascunho.decisoes.map((d, i) => <li key={i}>{d}</li>)}</ul>
+                {rascunho.duvidas.length > 0 && (
+                  <div className="rounded-xl bg-[#2a210b] border border-[#6b4f12] px-3.5 py-3 text-[#f3dfb2]">
+                    <div className="text-xs text-[#ffd27a] mb-1">Texto com mais de uma leitura: confira</div>
+                    <ul className="m-0 pl-4 list-disc text-[13px] space-y-0.5">{rascunho.duvidas.map((d, i) => <li key={i}>{d}</li>)}</ul>
                   </div>
                 )}
                 {rascunho.faltou.length > 0 && (
                   <div className="rounded-xl bg-[#2a210b] border border-[#6b4f12] px-3.5 py-3 text-[#f3dfb2]">
-                    <div className="text-xs text-[#ffd27a] mb-1">Faltou / conferir</div>
+                    <div className="text-xs text-[#ffd27a] mb-1">Não estava no texto: preencha</div>
                     <ul className="m-0 pl-4 list-disc text-[13px] space-y-0.5">{rascunho.faltou.map((d, i) => <li key={i}>{d}</li>)}</ul>
                   </div>
                 )}
@@ -580,6 +582,19 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial, mod
               ))}
             </div>
           </section>
+
+          {pontos.length > 0 ? (
+            <section className="rounded-2xl p-5 flex flex-col gap-2 bg-[#2a210b] border border-[#6b4f12]">
+              <div className="font-semibold text-[#ffd27a]">Pontos para conferir ({pontos.length})</div>
+              <ul className="m-0 pl-4 list-disc text-[13px] text-[#f3dfb2] space-y-1">
+                {pontos.map((p, i) => <li key={i}>{p}</li>)}
+              </ul>
+            </section>
+          ) : t.blocos.length > 0 && (
+            <section className="rounded-2xl px-5 py-3.5 bg-[#0d2a1f] border border-[#1f5a43] text-[#7ff0bd] text-[13px] font-medium">
+              Nenhuma inconsistência encontrada.
+            </section>
+          )}
 
           {r.poucaCorrida && (
             <section

@@ -3,7 +3,7 @@
 // Dois modos: montar do zero (só o texto) ou ajustar (treino atual + o que mudar).
 
 import Anthropic from '@anthropic-ai/sdk'
-import { Bloco, EstacaoRow, Treino, novoId, resumo, mmss } from '@/lib/hibrido'
+import { Bloco, EstacaoRow, Treino, novoId } from '@/lib/hibrido'
 
 const MODELO = process.env.HIBRIDO_MODELO || 'claude-opus-5-5'
 
@@ -14,7 +14,7 @@ const intOuNull = { type: ['integer', 'null'] }
 const ESQUEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['nome', 'faixa', 'duracao_seg', 'aquecimento_desc', 'aquecimento_seg', 'explicacao_desc', 'explicacao_seg', 'blocos', 'decisoes', 'faltou'],
+  required: ['nome', 'faixa', 'duracao_seg', 'aquecimento_desc', 'aquecimento_seg', 'explicacao_desc', 'explicacao_seg', 'blocos', 'duvidas', 'faltou'],
   properties: {
     nome: str,
     faixa: { type: 'integer', enum: [1, 2, 3] },
@@ -62,12 +62,12 @@ const ESQUEMA = {
         },
       },
     },
-    decisoes: { type: 'array', items: str },
+    duvidas: { type: 'array', items: str },
     faltou: { type: 'array', items: str },
   },
 }
 
-const SISTEMA = `Você monta treinos híbridos (corrida na esteira + estações) da sala de Running da JustClub Vila Olímpia, a partir da descrição em texto livre (escrita ou ditada por voz) da coordenadora. Devolva o treino no formato JSON pedido. Escreva tudo em português do Brasil.
+const SISTEMA = `Você monta treinos híbridos (corrida na esteira + estações) da sala de Running da JustClub Vila Olímpia, a partir da descrição em texto livre escrita pelo coach (muitas vezes colada do Notes do celular). Devolva o treino no formato JSON pedido. Escreva tudo em português do Brasil.
 
 Regras fixas do sistema:
 - Faixas de ocupação: 1 = até 20 alunos; 2 = 21 a 32; 3 = 33 a 40 (20 duplas). Se o texto disser o número de alunos, a faixa sai dele; se não disser, use a faixa selecionada na tela.
@@ -78,26 +78,26 @@ Regras fixas do sistema:
 - Texto ditado vem sem pontuação e com números por extenso ("quatro minutos", "duzentos e cinquenta metros", "quatro barra seis quilos" = 4/6 kg): interprete normalmente.
 
 Formatos de bloco:
-- grupos_ab: metade da turma na esteira, metade no chão; a cada etapa os grupos trocam de lado. UM round = DUAS etapas (A na esteira e B no chão, depois o inverso). a_comeca diz onde o Grupo A começa. A esteira vira UMA linha "corrida" em estacoes (postos = número de esteiras, pessoas = alunos_corrida, modo_dupla, instrucao, meta); as outras linhas são as estações do chão (postos = equipamentos; pessoas = quantas pessoas ficam na estação). rodizio_chao = true quando a cada volta ao chão a dupla vai para a próxima estação; para todos passarem por todas as estações do chão, rounds = número de estações do chão. ordem fica vazia.
+- grupos_ab: metade da turma na esteira, metade no chão; a cada etapa os grupos trocam de lado. UM round = DUAS etapas (A na esteira e B no chão, depois o inverso). a_comeca diz onde o Grupo A começa. A esteira vira UMA linha "corrida" em estacoes (postos = número de esteiras, pessoas = alunos_corrida, modo_dupla, instrucao, meta); as outras linhas são as estações do chão (postos = equipamentos; pessoas = quantas pessoas ficam na estação). rodizio_chao = true quando a cada volta ao chão a dupla vai para a próxima estação; rounds é o que o texto disser (se não disser, não calcule: 1 e entra em faltou). ordem fica vazia.
 - circuito: cada um está numa estação e a cada etapa vai para a próxima da ordem. ordem = índices (base 0) de estacoes na sequência do circuito (a corrida pode repetir, ex.: [0,1,0,2]); uma passada pela ordem = um round. a_comeca = "corrida", rodizio_chao = false.
 - todos: todo mundo na mesma estação ao mesmo tempo, seguindo a ordem (índices de estacoes). a_comeca = "corrida", rodizio_chao = false.
 
-Conta do tempo (tem que fechar EXATAMENTE em duracao_seg, padrão 3000 = 50:00):
+Conta do tempo (a aula tem duracao_seg, padrão 3000 = 50:00):
 - Etapas do bloco = rounds × (2 em grupos_ab; tamanho da ordem em circuito/todos, ou o número de estações se a ordem estiver vazia).
 - Cada etapa é seguida de uma transição, MENOS a última etapa do último bloco da aula (a aula acaba ali).
 - Total = aquecimento_seg + explicacao_seg + soma dos blocos (etapas × etapa_seg + transições × transicao_seg).
-- Para fechar a soma, ajuste primeiro a transição, depois a explicação. Nunca mude um valor que o texto disse explicitamente, a não ser que seja impossível fechar; nesse caso diga em decisoes.
 
-Como preencher:
-- Use só o que o texto diz. Não invente carga, meta ou exercício: o que não estiver no texto fica "" e entra em faltou (ex.: "carga do sled").
-- decisoes: frases curtas com tudo o que você teve que decidir sozinho (ex.: "transição de 20 s para fechar 50:00", "5 rounds para passar pelas 5 estações").
-- nome: curto, descritivo (ex.: "Esteira × 5 estações").
+REGRA PRINCIPAL: você NÃO decide nada pelo coach. Você só transcreve o que o texto diz para o formato.
+- Nunca ajuste tempos para fechar a soma. Se o que o texto diz não fecha em duracao_seg, monte exatamente como está: o sistema mostra a diferença e o coach corrige.
+- Valor que o texto não diz (tempo, rounds, carga, meta, número de pessoas, exercício): não invente nem calcule. Tempo ou número sem informação = 0 (rounds = 1; postos/pessoas = null); texto sem informação = "". Cada um entra em faltou, dizendo onde (ex.: "Bloco 1: tempo da transição", "Bloco 1: carga do sled").
+- Se um trecho do texto dá para ler de mais de um jeito, use a leitura mais literal e coloque em duvidas qual foi a leitura e qual seria a outra (ex.: "Bloco 1: li 3:45 como tempo de cada etapa; se for de cada round, cada etapa teria 1:52").
+- Se o texto contradiz uma regra fixa (ex.: 12 alunos na esteira sem dupla), monte como está e diga em duvidas.
+- nome: curto, descritivo (ex.: "Esteira × 5 estações"). É o único campo que você pode criar se o texto não der.
 
 Modo AJUSTAR (quando vier um TREINO ATUAL junto):
 - O treino atual já está montado e pode ter sido editado à mão. Parta dele e aplique SÓ o que o pedido muda ou completa (ex.: preencher uma carga, trocar uma estação, mudar o tempo).
-- Tudo o que o pedido não menciona fica exatamente igual: nomes, textos, cargas, metas, postos, pessoas, ordem dos blocos e das estações.
-- Se a mudança desfizer a soma de 50:00, feche de novo pelas regras acima e diga em decisoes.
-- decisoes: só o que você decidiu neste ajuste. faltou: o que ainda falta no treino inteiro depois do ajuste.`
+- Tudo o que o pedido não menciona fica exatamente igual: nomes, textos, cargas, metas, postos, pessoas, tempos, ordem dos blocos e das estações. Nunca mexa em outro tempo para compensar.
+- duvidas: só as deste ajuste. faltou: o que ainda falta no treino inteiro depois do ajuste.`
 
 // Treino do editor → mesmo formato da resposta (para o modo ajustar)
 function paraEsquema(t: Treino) {
@@ -222,13 +222,10 @@ export async function montarTreino(
   let o: any
   try { o = JSON.parse(txt || '') } catch { return { status: 502, body: { error: 'A montagem voltou num formato inválido. Tente de novo.' } } }
 
+  // Soma, esteira, pessoas etc. o editor confere sozinho (inconsistencias) e mostra fixo na tela
   const treino = paraTreino(o, padrao)
-  const r = resumo(treino)
   const faltou: string[] = Array.isArray(o.faltou) ? o.faltou.map(String) : []
-  if (!r.fecha) faltou.unshift(r.diff > 0
-    ? `A soma ficou em ${mmss(r.soma)}: faltam ${mmss(r.diff)} para ${mmss(treino.duracao_seg)}.`
-    : `A soma ficou em ${mmss(r.soma)}: passou ${mmss(-r.diff)} de ${mmss(treino.duracao_seg)}.`)
-  if (r.esteiraEstourada) faltou.unshift('Algum bloco passou de 10 na esteira (ou 20 em dupla).')
+  const duvidas: string[] = Array.isArray(o.duvidas) ? o.duvidas.map(String) : []
 
-  return { status: 200, body: { treino, decisoes: Array.isArray(o.decisoes) ? o.decisoes.map(String) : [], faltou } }
+  return { status: 200, body: { treino, duvidas, faltou } }
 }

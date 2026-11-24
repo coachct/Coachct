@@ -271,6 +271,54 @@ export function resumo(t: Treino) {
   }
 }
 
+// Máximo de alunos de cada faixa (Faixa 1 até 20, 2 até 32, 3 até 40).
+export const MAX_ALUNOS_FAIXA: Record<number, number> = { 1: 20, 2: 32, 3: 40 }
+
+/**
+ * Pontos do treino que o coach precisa conferir. O sistema não corrige nada sozinho:
+ * só aponta onde está a possível falha para quem montou ajustar.
+ */
+export function inconsistencias(t: Treino): string[] {
+  const out: string[] = []
+  const r = resumo(t)
+  if (!r.fecha) out.push(r.diff > 0
+    ? `A soma dá ${mmss(r.soma)}: faltam ${mmss(r.diff)} para ${mmss(t.duracao_seg)}.`
+    : `A soma dá ${mmss(r.soma)}: passou ${mmss(-r.diff)} de ${mmss(t.duracao_seg)}.`)
+  if (t.aquecimento_seg <= 0) out.push('Aquecimento sem tempo.')
+  if (!t.blocos.length) out.push('Nenhum bloco no treino.')
+
+  const max = MAX_ALUNOS_FAIXA[t.faixa]
+  t.blocos.forEach((b, i) => {
+    const nome = `Bloco ${i + 1}${b.nome ? ` (${b.nome})` : ''}`
+    if (!b.estacoes.length) { out.push(`${nome}: sem estações.`); return }
+    if (b.etapa_seg <= 0) out.push(`${nome}: sem tempo de etapa.`)
+    if (passouEsteira(b)) out.push(`${nome}: ${b.alunos_corrida} na esteira, o máximo é ${limiteEsteira(b)}${b.corrida_em_dupla ? ' em dupla' : ''}.`)
+
+    if (b.formato === 'grupos_ab') {
+      const chao = estacoesChao(b)
+      const semPessoas = chao.filter(e => e.pessoas.trim() === '')
+      semPessoas.forEach(e => out.push(`${nome}: falta dizer quantas pessoas ficam em ${nomeEstacao(e)}.`))
+      if (max && !semPessoas.length) {
+        const noChao = chao.reduce((s, e) => s + (Number(e.pessoas) || 0), 0)
+        const total = b.alunos_corrida + noChao
+        if (total > max) out.push(`${nome}: ${total} alunos (${b.alunos_corrida} na esteira + ${noChao} no chão), a Faixa ${t.faixa} vai até ${max}.`)
+        else if (total < max) out.push(`${nome}: cabem ${total} alunos (${b.alunos_corrida} na esteira + ${noChao} no chão); na Faixa ${t.faixa}, com ${max}, sobram ${max - total} sem lugar.`)
+      }
+      if (rodizioChaoLigado(b) && chao.length > 1 && b.rounds % chao.length !== 0) {
+        out.push(`${nome}: ${b.rounds} rounds para ${chao.length} estações no chão, nem todos passam pelas mesmas estações.`)
+      }
+    }
+
+    b.estacoes.forEach(e => {
+      const en = nomeEstacao(e)
+      if ((e.estacao === 'sled' || e.estacao === 'wall_ball') && !e.carga_f.trim() && !e.carga_m.trim()) out.push(`${nome}: ${en} sem carga.`)
+      if (!e.instrucao.trim() && !e.meta.trim()) out.push(`${nome}: ${en} sem instrução nem meta.`)
+    })
+  })
+  if (r.poucaCorrida) out.push(`Pouca corrida: ${mmss(r.corrida)} na esteira de ${mmss(r.blocos)} de blocos (${r.pctCorrida}%). O ideal é pelo menos metade.`)
+  return out
+}
+
 export function faixaDeAlunos(n: number) {
   if (n <= 20) return 1
   if (n <= 32) return 2
