@@ -309,7 +309,66 @@ function resumoProximo(seg: Segmento, t: Treino) {
 
 // ---- conteúdo do meio ----------------------------------------------------------
 
+// Explicação: o mapa do treino sai do que já está montado (o coach não precisa escrever).
+// O texto que ele escrever, se houver, aparece em cima.
+function ConteudoExplicacao({ t, desc }: { t: Treino; desc: string }) {
+  return (
+    <div className="h-full flex flex-col gap-[calc(var(--u)*1)] overflow-hidden">
+      {desc.trim() && <div className="text-center text-[calc(var(--u)*2)] font-semibold leading-tight">{desc}</div>}
+      {t.blocos.map((b, bi) => {
+        const ab = b.formato === 'grupos_ab'
+        const porCod = circuitoPorCodigo(b)
+        const linhas = ab ? estacoesChao(b) : ordemCircuito(b)
+        const comEsteira = linhas.some(e => e.esteira?.trim())
+        const codigos = ab || porCod
+        const corrida = b.estacoes.find(e => e.estacao === 'corrida')
+        const titulo = ab
+          ? `${b.rounds} ${b.rounds === 1 ? 'passagem' : 'passagens'} · ${mmss(b.etapa_seg)} no chão + ${mmss(b.etapa_seg)} na esteira · troca ${mmss(b.transicao_seg)}`
+          : porCod
+            ? `${linhas.length} passagens · ${mmss(b.etapa_seg)} por código · troca ${mmss(b.transicao_seg)}`
+            : b.formato === 'todos'
+              ? `Todos juntos · ${mmss(b.etapa_seg)} por estação · troca ${mmss(b.transicao_seg)}`
+              : `Circuito · ${b.rounds} ${b.rounds === 1 ? 'volta' : 'voltas'} · ${mmss(b.etapa_seg)} por estação · troca ${mmss(b.transicao_seg)}`
+        const regra = ab
+          ? (rodizioChaoLigado(b)
+            ? 'Cada um faz o chão e a esteira do mesmo código. Depois gira para o código seguinte, sentido horário (E5 → E1).'
+            : 'Esteira e chão do mesmo código trocam entre si; cada dupla volta sempre para o mesmo código do chão.')
+          : porCod
+            ? 'Em cada código, revezem esteira e chão até o tempo acabar. Depois girem para o código seguinte (E5 → E1).'
+            : 'A cada troca, cada um vai para a próxima estação.'
+        return (
+          <div key={bi} className="flex-1 min-h-0 flex flex-col gap-[calc(var(--u)*0.7)]">
+            <div className="flex flex-wrap items-baseline gap-x-[calc(var(--u)*1.2)]">
+              <span className={`${G} text-[calc(var(--u)*2.6)] font-bold`}>{t.blocos.length > 1 ? `Bloco ${bi + 1} · ` : ''}{b.nome || 'Bloco'}</span>
+              <span className="text-[calc(var(--u)*1.8)] text-[#ff6db8] font-semibold">{titulo}</span>
+            </div>
+            <div className="text-[calc(var(--u)*1.6)] text-[#d4d4d8]">{regra}{ab && !comEsteira && corrida && detalhes(corrida).length ? ` Esteira: ${detalhes(corrida).join(' · ')}` : ''}</div>
+            <div className="flex-1 min-h-0 grid gap-[calc(var(--u)*0.7)]" style={{ gridTemplateColumns: `repeat(${Math.max(1, Math.min(5, linhas.length))}, minmax(0, 1fr))` }}>
+              {linhas.map((e, p) => (
+                <div key={p} className="rounded-[calc(var(--u)*0.9)] p-[calc(var(--u)*0.9)] border-2 border-[#2a2a31] bg-[#16161a] flex flex-col gap-[calc(var(--u)*0.5)] min-w-0">
+                  <div className="flex items-baseline gap-[calc(var(--u)*0.6)]">
+                    <span className={`${G} text-[calc(var(--u)*2.6)] font-bold text-[#7ff0bd] leading-none`}>{codigos ? codChao(p) : p + 1}</span>
+                    <span className={`${G} text-[calc(var(--u)*1.7)] font-bold leading-tight truncate`}>{nomeEstacao(e)}</span>
+                  </div>
+                  <div className="text-[calc(var(--u)*1.35)] text-[#d4d4d8] leading-snug">{detalhes(e).join(' · ')}</div>
+                  {comEsteira && (
+                    <div className="mt-auto rounded-[calc(var(--u)*0.6)] bg-[#2a0f1e] border border-[#ff2d9b] px-[calc(var(--u)*0.7)] py-[calc(var(--u)*0.5)]">
+                      <span className="text-[calc(var(--u)*1.2)] uppercase tracking-[0.1em] text-[#ff6db8]">Esteira </span>
+                      <span className="text-[calc(var(--u)*1.6)] font-semibold">{e.esteira || '—'}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function Conteudo({ seg, t }: { seg: Segmento; t: Treino }) {
+  if (seg.tipo === 'explicacao' && t.blocos.length) return <ConteudoExplicacao t={t} desc={seg.desc} />
   if (seg.tipo === 'aquecimento' || seg.tipo === 'explicacao') {
     return (
       <div className="h-full flex items-center justify-center text-center">

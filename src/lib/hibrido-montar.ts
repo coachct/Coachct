@@ -99,6 +99,7 @@ REGRA PRINCIPAL: você NÃO decide nada pelo coach. Você só transcreve o que o
 - Valor que o texto não diz (tempo, rounds, carga, meta, número de pessoas, exercício): não invente nem calcule. Tempo ou número sem informação = 0 (rounds = 1; postos/pessoas = null); texto sem informação = "". Cada um entra em faltou, dizendo onde (ex.: "Bloco 1: tempo da transição", "Bloco 1: carga do sled").
 - Se um trecho do texto dá para ler de mais de um jeito, use a leitura mais literal e coloque em duvidas qual foi a leitura e qual seria a outra (ex.: "Bloco 1: li 3:45 como tempo de cada etapa; se for de cada round, cada etapa teria 1:52").
 - Se o texto contradiz uma regra fixa (ex.: 12 alunos na esteira sem dupla), monte como está e diga em duvidas.
+- explicacao_desc: só o que o texto disser sobre a explicação (pode ficar ""). NÃO coloque a descrição da explicação em faltou: durante a explicação a TV mostra sozinha o mapa do treino montado (códigos, chão, esteira, tempos). Só o TEMPO da explicação entra em faltou se não vier no texto.
 - nome: curto, descritivo (ex.: "Esteira × 5 estações"). É o único campo que você pode criar se o texto não der.
 
 Modo AJUSTAR (quando vier um TREINO ATUAL junto):

@@ -527,7 +527,8 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial, mod
               <input value={t.aquecimento_desc} onChange={e => set('aquecimento_desc', e.target.value)} aria-label="Descrição do aquecimento" className={cls.input} />
               <TempoInput valor={t.aquecimento_seg} onChange={v => set('aquecimento_seg', v)} className="text-center" ariaLabel="Tempo do aquecimento" />
               <div className="font-medium col-span-2 md:col-span-1">Explicação e arrumação</div>
-              <input value={t.explicacao_desc} onChange={e => set('explicacao_desc', e.target.value)} aria-label="Descrição da explicação e arrumação" className={cls.input} />
+              <input value={t.explicacao_desc} onChange={e => set('explicacao_desc', e.target.value)} aria-label="Descrição da explicação e arrumação"
+                placeholder="Opcional: a TV já mostra o mapa do treino (códigos, chão, esteira e tempos)" className={cls.input} />
               <TempoInput valor={t.explicacao_seg} onChange={v => set('explicacao_seg', v)} className="text-center" ariaLabel="Tempo da explicação e arrumação" />
             </div>
           </section>
