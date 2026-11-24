@@ -210,13 +210,22 @@ export default function Player({ treino: t, onFechar, cabecalho }: {
         </div>
       ) : (
         <>
-          {/* cronômetro */}
-          <div className="flex flex-col items-center gap-[calc(var(--u)*0.4)]">
-            <div className={`text-[calc(var(--u)*2.2)] font-semibold tracking-[0.12em] uppercase ${corRotulo(seg)}`}>{rotuloSeg(seg, t)}</div>
-            <div className={`${G} font-bold leading-none tabular-nums text-[calc(var(--u)*14)] ${seg1 <= 3 && rodando ? 'text-[#ff8a9a] animate-pulse' : corRelogio(seg)}`}>
-              {mmss(seg1)}
+          {/* cronômetro (na explicação fica compacto numa linha: o mapa do treino precisa da tela) */}
+          {seg.tipo === 'explicacao' && t.blocos.length ? (
+            <div className="flex items-baseline justify-center gap-[calc(var(--u)*1.6)]">
+              <div className={`text-[calc(var(--u)*2.2)] font-semibold tracking-[0.12em] uppercase ${corRotulo(seg)}`}>{rotuloSeg(seg, t)}</div>
+              <div className={`${G} font-bold leading-none tabular-nums text-[calc(var(--u)*6)] ${seg1 <= 3 && rodando ? 'text-[#ff8a9a] animate-pulse' : corRelogio(seg)}`}>
+                {mmss(seg1)}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="flex flex-col items-center gap-[calc(var(--u)*0.4)]">
+              <div className={`text-[calc(var(--u)*2.2)] font-semibold tracking-[0.12em] uppercase ${corRotulo(seg)}`}>{rotuloSeg(seg, t)}</div>
+              <div className={`${G} font-bold leading-none tabular-nums text-[calc(var(--u)*14)] ${seg1 <= 3 && rodando ? 'text-[#ff8a9a] animate-pulse' : corRelogio(seg)}`}>
+                {mmss(seg1)}
+              </div>
+            </div>
+          )}
 
           {/* conteúdo */}
           <div className="flex-1 min-h-0">
