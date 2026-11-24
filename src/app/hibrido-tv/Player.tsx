@@ -129,7 +129,15 @@ export default function Player({ treino: t, onFechar, cabecalho }: {
 
   // Sabe se já está em tela cheia (o botão grande some quando está)
   const [cheia, setCheia] = useState(false)
+  // iPhone (Safari ou Chrome, todos usam o motor da Apple) não deixa o site entrar em tela cheia:
+  // lá o caminho é o atalho na tela de início, que abre sem barra do navegador (modoApp).
+  const [suportaCheia, setSuportaCheia] = useState(true)
+  const [modoApp, setModoApp] = useState(false)
+  const [ajudaCheia, setAjudaCheia] = useState(false)
   useEffect(() => {
+    const d = document as any
+    setSuportaCheia(!!(d.fullscreenEnabled || d.webkitFullscreenEnabled))
+    setModoApp(window.matchMedia?.('(display-mode: standalone)').matches || (navigator as any).standalone === true)
     const ver = () => setCheia(!!(document.fullscreenElement || (document as any).webkitFullscreenElement))
     ver()
     document.addEventListener('fullscreenchange', ver)
@@ -181,7 +189,7 @@ export default function Player({ treino: t, onFechar, cabecalho }: {
         <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center gap-5 p-8 text-center">
           <div className={`${G} text-3xl font-bold`}>Gire o celular para a horizontal</div>
           <div className="text-[#a1a1aa]">Assim a aula ocupa a TV inteira no espelhamento.</div>
-          <button onClick={telaCheia} className="min-h-[52px] px-6 rounded-xl bg-[#ff2d9b] text-[#1a0010] font-semibold">Tela cheia na horizontal</button>
+          <button onClick={() => (suportaCheia ? telaCheia() : setAjudaCheia(true))} className="min-h-[52px] px-6 rounded-xl bg-[#ff2d9b] text-[#1a0010] font-semibold">Tela cheia na horizontal</button>
         </div>
       )}
       {/* topo */}
@@ -222,8 +230,23 @@ export default function Player({ treino: t, onFechar, cabecalho }: {
       )}
 
       {/* controles */}
-      {!cheia && (
-        <button onClick={telaCheia}
+      {ajudaCheia && (
+        <div className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center p-6" onClick={() => setAjudaCheia(false)}>
+          <div className="max-w-[520px] w-full rounded-2xl bg-[#16161a] border border-[#2a2a31] p-6 flex flex-col gap-3 text-[15px]" onClick={e => e.stopPropagation()}>
+            <div className={`${G} text-xl font-bold`}>Tela cheia no iPhone</div>
+            <div className="text-[#d4d4d8]">O iPhone não deixa a página ocupar a tela sozinha. Faça uma vez:</div>
+            <ol className="list-decimal pl-5 flex flex-col gap-1.5 text-[#d4d4d8]">
+              <li>Toque em compartilhar (Safari: quadrado com seta · Chrome: o ícone ao lado do endereço).</li>
+              <li>Escolha <b>Adicionar à Tela de Início</b>.</li>
+              <li>Abra pelo ícone &quot;Just&quot; que aparece na tela do celular: a TV abre sem a barra do navegador.</li>
+            </ol>
+            <div className="text-[#a1a1aa] text-[13px]">No Android o botão funciona direto.</div>
+            <button onClick={() => setAjudaCheia(false)} className="self-end min-h-[44px] px-5 rounded-xl bg-[#ff2d9b] text-[#1a0010] font-semibold">Entendi</button>
+          </div>
+        </div>
+      )}
+      {!cheia && !modoApp && (
+        <button onClick={() => (suportaCheia ? telaCheia() : setAjudaCheia(true))}
           className="fixed top-3 right-3 z-40 inline-flex items-center gap-2 min-h-[48px] px-5 rounded-xl bg-[#ff2d9b] text-[#1a0010] font-semibold shadow-lg">
           <Maximize size={18} /> Tela cheia
         </button>
