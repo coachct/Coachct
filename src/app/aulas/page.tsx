@@ -272,9 +272,11 @@ function AulasPageInner() {
 
     const ocIds = ocsComGrupo.map((o: any) => o.id)
     if (ocIds.length) {
-      const { data: reservas } = await supabase.from('club_reservas').select('ocorrencia_id').in('ocorrencia_id', ocIds).in('status', ['reservado','presente'])
+      // Contagem por RPC (sem identificação): visitante sem login não lê club_reservas,
+      // então a leitura direta vinha vazia e nenhuma aula aparecia como lotada.
+      const { data: reservas } = await supabase.rpc('club_ocupacao', { p_ocorrencia_ids: ocIds })
       const cont: Record<string, number> = {}
-      for (const r of (reservas||[])) cont[r.ocorrencia_id] = (cont[r.ocorrencia_id]||0)+1
+      for (const r of (reservas||[])) cont[r.ocorrencia_id] = r.reservas
       setReservasCont(cont)
 
       const { data: bloqData } = await supabase.from('club_posicoes').select('id').eq('unidade_id', unidadeId).eq('ativo', true).eq('bloqueado', true)
@@ -368,9 +370,9 @@ function AulasPageInner() {
     if (!ocsComGrupo.length) { setLoadingOcs(false); return }
 
     const ocIds = ocsComGrupo.map((o: any) => o.id)
-    const { data: reservas } = await supabase.from('club_reservas').select('ocorrencia_id, posicao, status').in('ocorrencia_id', ocIds).in('status', ['reservado','presente'])
+    const { data: reservas } = await supabase.rpc('club_ocupacao', { p_ocorrencia_ids: ocIds })
     const cont: Record<string, number> = {}
-    for (const r of (reservas||[])) cont[r.ocorrencia_id] = (cont[r.ocorrencia_id]||0)+1
+    for (const r of (reservas||[])) cont[r.ocorrencia_id] = r.reservas
     setReservasCont(cont)
 
     const { data: bloqData } = await supabase.from('club_posicoes').select('id').eq('unidade_id', unidadeId).eq('ativo', true).eq('bloqueado', true)
