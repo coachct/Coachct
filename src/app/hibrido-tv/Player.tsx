@@ -8,6 +8,7 @@ import {
   linhaDoTempo, mmss, estacoesChao, rodizioChaoLigado, ordemCircuito, codChao, SALA_CHAO, circuitoPorCodigo,
   nomeEstacao, labelEstacao, MODOS_DUPLA,
 } from '@/lib/hibrido'
+import { Pictograma, itensAquecimento } from './Pictogramas'
 
 const G = 'font-[family-name:var(--font-grotesk)]'
 
@@ -376,8 +377,29 @@ function ConteudoExplicacao({ t, desc }: { t: Treino; desc: string }) {
   )
 }
 
+// Aquecimento em cards: pictograma + quantidade + nome de cada exercício
+function ConteudoAquecimento({ desc }: { desc: string }) {
+  const itens = itensAquecimento(desc)
+  return (
+    <div className="h-full flex items-center justify-center">
+      <div className="grid gap-[calc(var(--u)*1.4)] w-full" style={{ gridTemplateColumns: `repeat(${Math.min(5, itens.length)}, minmax(0, 1fr))` }}>
+        {itens.map((it, i) => (
+          <div key={i} className="rounded-[calc(var(--u)*1.2)] border-2 border-[#2a2a31] bg-[#16161a] p-[calc(var(--u)*1)] flex items-center gap-[calc(var(--u)*1)] min-w-0">
+            <Pictograma nome={it.nome} className="w-[calc(var(--u)*7)] h-[calc(var(--u)*7)] shrink-0 text-[#7ff0bd]" />
+            <div className="flex flex-col gap-[calc(var(--u)*0.3)] min-w-0">
+              {it.qtd && <div className={`${G} text-[calc(var(--u)*4.4)] font-bold leading-none text-[#ff2d9b]`}>{it.qtd}</div>}
+              <div className="text-[calc(var(--u)*1.7)] font-semibold leading-tight">{it.nome}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function Conteudo({ seg, t }: { seg: Segmento; t: Treino }) {
   if (seg.tipo === 'explicacao' && t.blocos.length) return <ConteudoExplicacao t={t} desc={seg.desc} />
+  if (seg.tipo === 'aquecimento' && itensAquecimento(seg.desc).length >= 2) return <ConteudoAquecimento desc={seg.desc} />
   if (seg.tipo === 'aquecimento' || seg.tipo === 'explicacao') {
     return (
       <div className="h-full flex items-center justify-center text-center">
