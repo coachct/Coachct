@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/api-admin'
 import { hojeSP } from '@/lib/tempo'
 import { conferirPin } from '@/lib/playlist'
-import { UNIDADE_VO, carregarTreino, faixaDeAlunos } from '@/lib/hibrido'
+import { UNIDADE_VO, FAIXA_PADRAO, carregarTreino, faixaDeAlunos, faixaComTreino } from '@/lib/hibrido'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -24,11 +24,17 @@ export async function POST(req: NextRequest) {
       .select('faixa, treino_id, hibrido_treinos(nome)')
       .eq('data', hoje)
       .eq('unidade_id', UNIDADE_VO)
-    const porFaixa: Record<number, { treino_id: string; nome: string }> = {}
-    ;(progs || []).forEach((p: any) => { porFaixa[p.faixa] = { treino_id: p.treino_id, nome: p.hibrido_treinos?.nome || '' } })
+    const programado: Record<number, { treino_id: string; nome: string }> = {}
+    ;(progs || []).forEach((p: any) => { programado[p.faixa] = { treino_id: p.treino_id, nome: p.hibrido_treinos?.nome || '' } })
+    // O treino da Faixa 2 também serve na Faixa 3 (quando a 3 não tem o próprio)
+    const porFaixa: Record<number, { treino_id: string; nome: string; da_faixa: number }> = {}
+    for (const f of [1, 2, 3]) {
+      const origem = faixaComTreino(f, Object.keys(programado).map(Number))
+      if (origem) porFaixa[f] = { ...programado[origem], da_faixa: origem }
+    }
 
     const faixa = Number(body?.faixa)
-    if ([1, 2, 3, 4].includes(faixa)) {
+    if ([1, 2, 3].includes(faixa)) {
       const prog = porFaixa[faixa]
       if (!prog) return NextResponse.json({ error: `Sem treino programado hoje na Faixa ${faixa}.` }, { status: 404 })
       const treino = await carregarTreino(sb, prog.treino_id)
@@ -47,7 +53,7 @@ export async function POST(req: NextRequest) {
     const aulas = (ocs || [])
       .map((o: any) => {
         const reservas = (o.club_reservas || []).filter((r: any) => r.status === 'reservado' || r.status === 'presente').length
-        return { id: o.id, horario: String(o.club_aulas.horario).slice(0, 5), reservas, faixa: faixaDeAlunos(reservas) }
+        return { id: o.id, horario: String(o.club_aulas.horario).slice(0, 5), reservas, faixa: FAIXA_PADRAO ?? faixaDeAlunos(reservas) }
       })
       .sort((a: any, b: any) => a.horario.localeCompare(b.horario))
 

@@ -4,14 +4,14 @@
 // (dá para trocar) e roda o treino programado para hoje nessa faixa.
 import { useEffect, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
-import { FAIXAS, Treino } from '@/lib/hibrido'
+import { FAIXAS, FAIXA_PADRAO, Treino } from '@/lib/hibrido'
 import Player, { Centro } from './Player'
 
 const CHAVE_PIN = 'playlist_pin' // mesmo PIN da página de playlist dos coaches
 const G = 'font-[family-name:var(--font-grotesk)]'
 
 type Aula = { id: string; horario: string; reservas: number; faixa: number }
-type Dia = { data: string; aulas: Aula[]; programacao: Record<number, { treino_id: string; nome: string }> }
+type Dia = { data: string; aulas: Aula[]; programacao: Record<number, { treino_id: string; nome: string; da_faixa?: number }> }
 
 function lerPin() { try { return localStorage.getItem(CHAVE_PIN) || '' } catch { return '' } }
 function gravarPin(p: string | null) { try { p ? localStorage.setItem(CHAVE_PIN, p) : localStorage.removeItem(CHAVE_PIN) } catch {} }
@@ -85,7 +85,7 @@ export default function HibridoTvSalaPage() {
   }
 
   const d = dia!
-  const sugerida = aula?.faixa ?? null
+  const sugerida = FAIXA_PADRAO ?? aula?.faixa ?? null
   return (
     <div className="min-h-screen p-[3vw] flex flex-col gap-[2vw]">
       <div className="flex items-center justify-between">
@@ -114,7 +114,7 @@ export default function HibridoTvSalaPage() {
       </div>
 
       <div className="flex flex-col gap-3">
-        <div className="text-[#a1a1aa] text-lg">2 · Faixa {sugerida ? `(sugerida pelas reservas: Faixa ${sugerida})` : ''}</div>
+        <div className="text-[#a1a1aa] text-lg">2 · Faixa {sugerida ? (FAIXA_PADRAO ? `(padrão: Faixa ${sugerida})` : `(sugerida pelas reservas: Faixa ${sugerida})`) : ''}</div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {FAIXAS.map(f => {
             const prog = d.programacao[f.n]
@@ -123,7 +123,7 @@ export default function HibridoTvSalaPage() {
                 className={`rounded-2xl p-5 text-left border-2 disabled:opacity-40 ${sugerida === f.n ? 'border-[#ff2d9b] bg-[#2a0f1e]' : 'border-[#2a2a31] bg-[#18181c]'}`}>
                 <div className={`${G} text-[2.4vw] font-bold`}>Faixa {f.n}</div>
                 <div className="text-[#a1a1aa]">{f.alunos}</div>
-                <div className={`mt-2 text-lg ${prog ? 'text-[#7ff0bd]' : 'text-[#a1a1aa]'}`}>{prog ? prog.nome : 'sem treino hoje'}</div>
+                <div className={`mt-2 text-lg ${prog ? 'text-[#7ff0bd]' : 'text-[#a1a1aa]'}`}>{prog ? (prog.da_faixa && prog.da_faixa !== f.n ? `(${prog.nome} (treino da Faixa ${prog.da_faixa})` : prog.nome) : 'sem treino hoje'}</div>
               </button>
             )
           })}

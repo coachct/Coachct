@@ -8,7 +8,7 @@ import { createClient } from '@/lib/supabase'
 import { Spinner } from '@/components/ui'
 import {
   Bloco, EstacaoRow, Estacao, Formato, ModoDupla, Treino, MediaHorario,
-  FAIXAS, FORMATOS, ESTACOES, MODOS_DUPLA, UNIDADE_VO,
+  FAIXAS, FAIXA_PADRAO, FORMATOS, ESTACOES, MODOS_DUPLA, UNIDADE_VO,
   mmss, resumo, totalBloco, limiteEsteira, passouEsteira, ordemCircuito, nomeEstacao,
   labelEstacao, estacoesUsadas, treinoVazio, blocoVazio, estacaoVazia, clonarBlocos,
   carregarTreino, salvarTreino, programar, carregarMedias, faixasProvaveis, fmtDia,
@@ -18,6 +18,8 @@ import { cls, Modal } from './ui'
 import { hojeSP } from '@/lib/tempo'
 
 type Acao = 'treino' | 'modelo'
+
+const DITADO_ATIVO = false
 
 // Tempo em dois campos: minutos e segundos, cada um só com número.
 function TempoInput({ valor, onChange, ariaLabel }: {
@@ -83,7 +85,7 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
 }) {
   const supabase = createClient()
   const router = useRouter()
-  const [t, setT] = useState<Treino>(() => treinoVazio(faixaInicial && faixaInicial >= 1 && faixaInicial <= 4 ? faixaInicial : 1))
+  const [t, setT] = useState<Treino>(() => treinoVazio(faixaInicial && faixaInicial >= 1 && faixaInicial <= 3 ? faixaInicial : (FAIXA_PADRAO ?? 1)))
   const [data, setData] = useState(dataInicial || '')
   const [abertos, setAbertos] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(!!treinoId)
@@ -396,7 +398,7 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
           <section className={`${cls.card} p-6 flex flex-col gap-3`}>
             <h2 className={`${cls.titulo} m-0 text-lg font-semibold`}>Descrever o treino</h2>
             <div className="text-xs text-[#a1a1aa]">
-              Escreva ou fale do seu jeito: alunos, estações, quem corre, tempos, rounds, repetições e cargas. O sistema monta o esqueleto aqui embaixo para você conferir e salvar.
+              Escreva ou cole o treino (pode ser do Notes do celular): alunos, estações, quem corre, tempos, rounds, repetições e cargas. O sistema monta o esqueleto aqui embaixo para você conferir e salvar.
             </div>
             <textarea
               value={descricao}
@@ -405,7 +407,7 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
               aria-label="Descrição do treino"
               placeholder={temTreino
                 ? 'Fale ou escreva só o que mudar ou completar. Ex.: carga do sled 60/80 kg, burpee + lunge 10 repetições, troca o ski por remo.'
-                : "Ex.: Faixa 4, 40 alunos. Aquecimento 3 min, explicação 3. 20 na esteira em dupla alternando 30s leve / 30s forte, 20 no chão em 5 estações com 2 duplas cada: remo 250 m cada, ski 200 m, wall ball 15 reps 4/6 kg, sled ida e volta 50/70 kg, burpee + lunge. Troca a cada 4 min, rodízio no chão até passar por todas."}
+                : "Ex.: Faixa 3, 40 alunos. Aquecimento 3 min, explicação 3. 20 na esteira em dupla alternando 30s leve / 30s forte, 20 no chão em 5 estações com 2 duplas cada: remo 250 m cada, ski 200 m, wall ball 15 reps 4/6 kg, sled ida e volta 50/70 kg, burpee + lunge. Troca a cada 4 min, rodízio no chão até passar por todas."}
               className={`w-full min-w-0 px-3 py-2.5 rounded-[10px] border bg-[#0e0e11] text-[#f2f2f4] outline-none focus:border-[#ff2d9b] resize-y ${ouvindo ? 'border-[#ff2d9b]' : 'border-[#3a3a42]'}`}
             />
             {ouvindo && (
@@ -416,6 +418,8 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
             )}
             {semMic && <div className="text-xs text-[#ffd27a]">{semMic}</div>}
             <div className="flex flex-wrap items-center gap-3">
+              {/* Ditado por voz desligado (24/11: os coaches montam no Notes do celular e colam aqui) */}
+              {DITADO_ATIVO && (
               <button
                 onClick={ouvindo ? pararDitado : iniciarDitado}
                 disabled={montando}
@@ -425,6 +429,7 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
                 {ouvindo ? <Square size={16} /> : <Mic size={16} />}
                 {ouvindo ? 'Parar' : 'Falar o treino'}
               </button>
+              )}
               {temTreino ? (
                 <>
                   <button onClick={() => enviar('ajustar')} disabled={montando || descricao.trim().length < 3} className={cls.btnRosa}
@@ -485,7 +490,7 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
             </div>
             <div className="flex flex-col gap-2">
               <div className="text-xs text-[#a1a1aa]">Faixa de ocupação</div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
                 {FAIXAS.map(f => {
                   const sel = t.faixa === f.n
                   return (

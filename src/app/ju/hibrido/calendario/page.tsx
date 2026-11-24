@@ -9,7 +9,7 @@ import { Spinner } from '@/components/ui'
 import { hojeSP } from '@/lib/tempo'
 import {
   FAIXAS, UNIDADE_VO, MediaHorario,
-  carregarMedias, faixasProvaveis, diaSemana, faixaDeAlunos, addDias, fmtDia,
+  carregarMedias, faixasProvaveis, diaSemana, faixaDeAlunos, addDias, fmtDia, FAIXA_PADRAO, faixaComTreino,
 } from '@/lib/hibrido'
 import { cls } from '../ui'
 
@@ -122,7 +122,7 @@ export default function CalendarioHibridoPage() {
 
       {loading ? <Spinner /> : (
         <section className={`${cls.card} overflow-x-auto`}>
-          <div className="min-w-[860px] grid grid-cols-[1.3fr_repeat(4,minmax(0,1fr))] text-[13px]">
+          <div className="min-w-[860px] grid grid-cols-[1.3fr_repeat(3,minmax(0,1fr))] text-[13px]">
             <div className="px-3 py-2.5 bg-[#222228] text-[#a1a1aa] text-xs">Dia</div>
             {FAIXAS.map(f => (
               <div key={f.n} className="px-3 py-2.5 bg-[#222228] text-[#a1a1aa] text-xs">Faixa {f.n} · {f.curto}</div>
@@ -143,9 +143,10 @@ export default function CalendarioHibridoPage() {
                 const m = mediasDia.find(x => x.horario.slice(0, 5) === a.horario)
                 return faixaDeAlunos(Math.max(a.reservas, Math.round(m?.media || 0)))
               }
-              const prov = aulasGrade ? new Set(aulasGrade.map(faixaAula)) : faixasProvaveis(medias, d)
+              const prov = FAIXA_PADRAO ? new Set([FAIXA_PADRAO]) : aulasGrade ? new Set(aulasGrade.map(faixaAula)) : faixasProvaveis(medias, d)
               const horarios = aulasGrade ? [] : mediasDia
-              const faltando = Array.from(prov).filter(n => !porChave.has(`${d}|${n}`))
+              const programadasDia = FAIXAS.map(x => x.n).filter(n => porChave.has(`${d}|${n}`))
+              const faltando = Array.from(prov).filter(n => !faixaComTreino(n, programadasDia))
               const alerta = d >= hoje && faltando.length > 0
               const marcado = dias.includes(d)
               const cel = `px-2 py-2 border-t border-[#2a2a31] ${alerta ? 'bg-[#1f1a0d]' : ''}`
@@ -176,6 +177,8 @@ export default function CalendarioHibridoPage() {
                   </div>
                   {FAIXAS.map(fx => {
                     const p = porChave.get(`${d}|${fx.n}`)
+                    // Faixa 3 sem treino próprio usa o da Faixa 2
+                    const emprestado = !p && faixaComTreino(fx.n, programadasDia) === 2 ? porChave.get(`${d}|2`) : undefined
                     const provavel = prov.has(fx.n)
                     return (
                       <div key={fx.n} className={cel}>
@@ -183,6 +186,13 @@ export default function CalendarioHibridoPage() {
                           <Link href={`/ju/hibrido/${p.treino_id}?data=${d}`}
                             className="block h-full rounded-lg px-2.5 py-2 bg-[#0f2a1e] text-[#7ff0bd] hover:ring-1 hover:ring-[#7ff0bd]">
                             <div className="font-medium line-clamp-2">{p.nome}</div>
+                          </Link>
+                        ) : emprestado ? (
+                          <Link href={`/ju/hibrido/novo?data=${d}&faixa=${fx.n}`}
+                            title="Sem treino próprio: a Faixa 3 usa o da Faixa 2. Clique para montar um só da Faixa 3."
+                            className="block h-full rounded-lg px-2.5 py-2 border border-dashed border-[#2f5a45] text-[#7ff0bd] hover:border-[#7ff0bd]">
+                            <div className="text-xs text-[#a1a1aa]">usa o da Faixa 2</div>
+                            <div className="font-medium line-clamp-2">{emprestado.nome}</div>
                           </Link>
                         ) : (
                           <Link href={`/ju/hibrido/novo?data=${d}&faixa=${fx.n}`}

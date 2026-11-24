@@ -8,12 +8,24 @@ export type Formato = 'grupos_ab' | 'circuito' | 'todos'
 export type Estacao = 'corrida' | 'remo' | 'ski' | 'wall_ball' | 'sled' | 'funcional'
 export type ModoDupla = 'individual' | 'alternado' | 'juntos' | 'meta_dividida'
 
+// 3 faixas por número de reservas (Ricardo, 24/11). O treino da Faixa 2 também serve na Faixa 3.
 export const FAIXAS: { n: number; alunos: string; curto: string }[] = [
-  { n: 1, alunos: 'até 10 alunos', curto: 'até 10' },
-  { n: 2, alunos: '11 a 20 alunos', curto: '11 a 20' },
-  { n: 3, alunos: '21 a 30 alunos', curto: '21 a 30' },
-  { n: 4, alunos: '31 a 40 alunos · 20 duplas', curto: '31 a 40' },
+  { n: 1, alunos: 'até 20 alunos', curto: 'até 20' },
+  { n: 2, alunos: '21 a 32 alunos', curto: '21 a 32' },
+  { n: 3, alunos: '33 a 40 alunos · 20 duplas', curto: '33 a 40' },
 ]
+
+// Nas primeiras aulas, usar sempre a Faixa 3 (a que mais caracteriza o formato do treino).
+// A TV sugere esta faixa e o calendário cobra treino nela. Para voltar a seguir as reservas: null.
+export const FAIXA_PADRAO: number | null = 3
+
+/** Faixa cujo treino vale para a faixa pedida: a Faixa 3 usa o da Faixa 2 quando não tem o próprio. */
+export function faixaComTreino(faixa: number, programadas: Set<number> | number[]): number | null {
+  const tem = new Set(programadas)
+  if (tem.has(faixa)) return faixa
+  if (faixa === 3 && tem.has(2)) return 2
+  return null
+}
 
 export const FORMATOS: { key: Formato; label: string }[] = [
   { key: 'grupos_ab', label: 'Grupos A/B (troca)' },
@@ -260,10 +272,9 @@ export function resumo(t: Treino) {
 }
 
 export function faixaDeAlunos(n: number) {
-  if (n <= 10) return 1
-  if (n <= 20) return 2
-  if (n <= 30) return 3
-  return 4
+  if (n <= 20) return 1
+  if (n <= 32) return 2
+  return 3
 }
 
 export function estacoesUsadas(blocos: { estacoes: { estacao: Estacao }[] }[]): Estacao[] {
@@ -507,6 +518,7 @@ export function diaSemana(data: string) {
 }
 
 export function faixasProvaveis(medias: MediaHorario[], data: string): Set<number> {
+  if (FAIXA_PADRAO) return new Set([FAIXA_PADRAO])
   const dw = diaSemana(data)
   return new Set(medias.filter(m => m.dia_semana === dw).map(m => faixaDeAlunos(Math.round(m.media))))
 }

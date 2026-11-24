@@ -17,7 +17,7 @@ const ESQUEMA = {
   required: ['nome', 'faixa', 'duracao_seg', 'aquecimento_desc', 'aquecimento_seg', 'explicacao_desc', 'explicacao_seg', 'blocos', 'decisoes', 'faltou'],
   properties: {
     nome: str,
-    faixa: { type: 'integer', enum: [1, 2, 3, 4] },
+    faixa: { type: 'integer', enum: [1, 2, 3] },
     duracao_seg: int,
     aquecimento_desc: str,
     aquecimento_seg: int,
@@ -70,7 +70,7 @@ const ESQUEMA = {
 const SISTEMA = `Você monta treinos híbridos (corrida na esteira + estações) da sala de Running da JustClub Vila Olímpia, a partir da descrição em texto livre (escrita ou ditada por voz) da coordenadora. Devolva o treino no formato JSON pedido. Escreva tudo em português do Brasil.
 
 Regras fixas do sistema:
-- Faixas de ocupação: 1 = até 10 alunos; 2 = 11 a 20; 3 = 21 a 30; 4 = 31 a 40 (20 duplas). Se o texto disser o número de alunos, a faixa sai dele.
+- Faixas de ocupação: 1 = até 20 alunos; 2 = 21 a 32; 3 = 33 a 40 (20 duplas). Se o texto disser o número de alunos, a faixa sai dele; se não disser, use a faixa selecionada na tela.
 - Estações possíveis: corrida (esteira), remo, ski (SkiErg), wall_ball, sled, funcional. Funcional pode aparecer várias vezes no mesmo bloco, com rotulo "Funcional A", "Funcional B"…; nas outras estações deixe rotulo vazio.
 - Esteira: no máximo 10 alunos correndo ao mesmo tempo, ou 20 em dupla (corrida_em_dupla = true). alunos_corrida = quantos alunos estão na esteira em cada etapa.
 - A aula tem abertura (aquecimento + explicação e arrumação) e depois os blocos. Não existe volta à calma: a aula termina no último bloco.
@@ -172,7 +172,7 @@ function paraTreino(o: any, padrao: { faixa: number; duracao_seg: number }): Tre
   return {
     id: null,
     nome: o.nome || '',
-    faixa: [1, 2, 3, 4].includes(o.faixa) ? o.faixa : padrao.faixa,
+    faixa: [1, 2, 3].includes(o.faixa) ? o.faixa : padrao.faixa,
     duracao_seg: n(o.duracao_seg, padrao.duracao_seg) || padrao.duracao_seg,
     aquecimento_desc: o.aquecimento_desc || '',
     aquecimento_seg: n(o.aquecimento_seg),
@@ -193,7 +193,7 @@ export async function montarTreino(
   if (texto.length < minimo) return { status: 400, body: { error: atual ? 'Diga o que quer mudar no treino.' : 'Descreva o treino com um pouco mais de detalhe.' } }
   if (texto.length > 6000) return { status: 400, body: { error: 'Texto muito longo (máx. 6000 caracteres).' } }
   const padrao = {
-    faixa: [1, 2, 3, 4].includes(pad.faixa) ? pad.faixa : 1,
+    faixa: [1, 2, 3].includes(pad.faixa) ? pad.faixa : 3,
     duracao_seg: pad.duracao_seg > 0 ? Math.round(pad.duracao_seg) : 3000,
   }
 
