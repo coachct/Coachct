@@ -23,15 +23,17 @@ function tipoLabel(t: string) {
   if (t === 'lift')              return 'Lift'
   if (t === 'lift_for_girls')    return 'Lift for Girls'
   if (t === 'running_funcional') return 'Running + Funcional'
+  if (t === 'treino_hibrido')    return 'Running & Hybrid'
   return t
 }
 function tipoColor(t: string) {
   if (t === 'lift')              return CYAN
   if (t === 'lift_for_girls')    return ACCENT
+  if (t === 'treino_hibrido')    return '#d946ef'
   return VERDE
 }
 
-const TIPOS_CLUB = ['lift', 'lift_for_girls', 'running_funcional']
+const TIPOS_CLUB = ['lift', 'lift_for_girls', 'running_funcional', 'treino_hibrido']
 
 // Datas de fds (sáb/dom) de uma competência 'YYYY-MM', em data local.
 function fdsDoMes(comp: string) {

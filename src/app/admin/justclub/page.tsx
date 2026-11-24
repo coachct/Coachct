@@ -15,7 +15,10 @@ const TIPOS = [
   { value: 'lift',               label: 'Lift' },
   { value: 'lift_for_girls',    label: 'Lift for Girls' },
   { value: 'running_funcional', label: 'Running + Funcional' },
+  { value: 'treino_hibrido',    label: 'Running & Hybrid' },
 ]
+// Running & Hybrid: sala de Running, reserva só por vagas (sem mapa) e sem grupo muscular
+const TIPOS_SEM_GRUPO = ['treino_hibrido']
 const HORARIOS_VILA_OLIMPIA = [
   '06:00','07:00','08:00','09:00','10:00','10:15',
   '11:00','11:15','12:00','12:15','18:30','19:30',
@@ -46,12 +49,14 @@ function tipoLabel(t: string) { return TIPOS.find(x => x.value === t)?.label ?? 
 function tipoColor(t: string) {
   if (t === 'lift')            return 'bg-blue-100 text-blue-700'
   if (t === 'lift_for_girls') return 'bg-pink-100 text-pink-700'
+  if (t === 'treino_hibrido') return 'bg-fuchsia-100 text-fuchsia-700'
   return 'bg-cyan-100 text-cyan-700'
 }
 function capacidadePorUnidadeTipo(nomeUnidade: string, tipo: string): number {
   const nome = (nomeUnidade || '').toLowerCase()
   const isVila = nome.includes('vila') || nome.includes('olímpia') || nome.includes('olimpia')
   const isPinheiros = nome.includes('pinheiros')
+  if (tipo === 'treino_hibrido') return 40 // faixa 4: 20 duplas
   if (tipo === 'running_funcional') {
     if (isVila)      return 26
     if (isPinheiros) return 30
@@ -422,7 +427,7 @@ export default function JustClubAdminPage() {
 
   async function salvar() {
     if (!unidadeAtiva) return
-    if (!form.grupo_muscular_id) { showMsg('Selecione o grupo muscular.'); return }
+    if (!form.grupo_muscular_id && !TIPOS_SEM_GRUPO.includes(form.tipo)) { showMsg('Selecione o grupo muscular.'); return }
 
     // Editou e trocou o coach da grade → pede a data de corte antes de salvar.
     // Sem corte, a troca repintaria o histórico (relatório lê oc.coach_id || aula.coach_id).
@@ -445,7 +450,7 @@ export default function JustClubAdminPage() {
     if (feriadoCtx) {
       const payload = {
         unidade_id: unidadeAtiva.id, tipo: form.tipo,
-        grupo_muscular_id: form.grupo_muscular_id,
+        grupo_muscular_id: TIPOS_SEM_GRUPO.includes(form.tipo) ? null : form.grupo_muscular_id,
         coach_id: form.coach_id || null,
         dia_semana: form.dia_semana, horario: form.horario+':00',
         duracao_min: form.duracao_min, capacidade: form.capacidade,
@@ -465,7 +470,7 @@ export default function JustClubAdminPage() {
 
     const payload = {
       unidade_id: unidadeAtiva.id, tipo: form.tipo,
-      grupo_muscular_id: form.grupo_muscular_id,
+      grupo_muscular_id: TIPOS_SEM_GRUPO.includes(form.tipo) ? null : form.grupo_muscular_id,
       coach_id: form.coach_id || null,
       dia_semana: form.dia_semana, horario: form.horario+':00',
       duracao_min: form.duracao_min, capacidade: form.capacidade,
@@ -1179,7 +1184,7 @@ export default function JustClubAdminPage() {
 
               <div>
                 <label className="label">Tipo de aula *</label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                   {TIPOS.map(t => (
                     <button key={t.value} type="button"
                       onClick={()=>setForm(f=>({...f, tipo:t.value, capacidade:capacidadePorUnidadeTipo(unidadeAtiva?.nome||'',t.value)}))}
@@ -1195,6 +1200,11 @@ export default function JustClubAdminPage() {
                 )}
               </div>
 
+              {TIPOS_SEM_GRUPO.includes(form.tipo) ? (
+                <div className="bg-fuchsia-50 border border-fuchsia-100 rounded-xl px-3 py-2 text-xs text-fuchsia-700">
+                  Running & Hybrid: reserva só por vagas (sem mapa) e sem grupo muscular. O treino de cada dia vem da área da Ju (Treinos híbridos).
+                </div>
+              ) : (
               <div>
                 <label className="label">Grupo muscular *</label>
                 {gruposAtivos.length===0 ? (
@@ -1206,6 +1216,7 @@ export default function JustClubAdminPage() {
                   </select>
                 )}
               </div>
+              )}
 
               <div>
                 <label className="label">Coach responsável</label>

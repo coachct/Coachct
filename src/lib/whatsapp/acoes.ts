@@ -369,7 +369,7 @@ export async function reservarClub(
   await registrarAcessoLgpd(supabase, {
     clienteId, acao: 'reservar_club', detalhe: { ocorrencia_id: ocorrenciaId, tipo_credito: tipoCredito },
   })
-  const nome = aula.tipo === 'lift_for_girls' ? 'Lift for Girls' : aula.tipo === 'running_funcional' ? 'Running Funcional' : 'Lift'
+  const nome = aula.tipo === 'lift_for_girls' ? 'Lift for Girls' : aula.tipo === 'running_funcional' ? 'Running Funcional' : aula.tipo === 'treino_hibrido' ? 'Running & Hybrid' : 'Lift'
   const posTxt = posicaoFinal ? ` (posição ${posicaoFinal})` : ''
   return { ok: true, mensagem: `Aula reservada! ${nome} dia ${dataBr} às ${horario}${posTxt}. Te esperamos! 💪` }
 }

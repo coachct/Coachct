@@ -19,6 +19,7 @@ const TIPOS_CLUB  = [
   { key: 'lift',              label: 'Lift' },
   { key: 'lift_for_girls',   label: 'Lift for Girls' },
   { key: 'running_funcional', label: 'Running + Funcional' },
+  { key: 'treino_hibrido',    label: 'Running & Hybrid' },
 ]
 
 function tiposParaUnidade(u: any) {

@@ -457,8 +457,8 @@ export default function TotemPage() {
   }
 
   const posLabel = (p: string | null) => (!p ? '' : p.toUpperCase().startsWith('F') ? `Funcional ${p}` : `Esteira ${p}`)
-  const tipoClasse = (t: string) => (t === 'running_funcional' ? 'run' : 'lift')
-  const tipoLabel = (t: string) => (t === 'running_funcional' ? 'Running + Funcional' : t === 'lift_for_girls' ? 'Lift For Girls' : 'Lift')
+  const tipoClasse = (t: string) => (t === 'running_funcional' ? 'run' : t === 'treino_hibrido' ? 'hibrido' : 'lift')
+  const tipoLabel = (t: string) => (t === 'running_funcional' ? 'Running + Funcional' : t === 'treino_hibrido' ? 'Running & Hybrid' : t === 'lift_for_girls' ? 'Lift For Girls' : 'Lift')
 
   // =================== RENDER ===================
   return (
@@ -1018,6 +1018,7 @@ const CSS = `
 #tt .chip{font-size:11px;font-weight:700;padding:5px 10px;border-radius:8px}
 #tt .chip.lift{background:rgba(91,141,239,.15);color:#9cbcff}
 #tt .chip.run{background:rgba(34,197,94,.15);color:#86efac}
+#tt .chip.hibrido{background:rgba(217,70,239,.15);color:#f0abfc}
 #tt .chip.time{background:#1c1c28;color:#cfcfe0}
 #tt .origem{display:flex;align-items:center;gap:9px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);font-size:13px;color:#cfcfe0}
 #tt .origem .oico{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px}

@@ -110,6 +110,7 @@ export default function BibliotecaHibridoPage() {
           <div className={cls.muted}>JustClub Vila Olímpia · sala de Running (dias híbridos)</div>
         </div>
         <div className="flex flex-wrap gap-2">
+          <a href="/hibrido-tv" target="_blank" rel="noreferrer" className={`${cls.btn} inline-flex items-center`} title="Abre a TV da sala (PIN dos coaches, o mesmo da playlist)">TV da sala</a>
           <Link href="/ju/hibrido/calendario" className={`${cls.btn} inline-flex items-center`}>Calendário híbrido</Link>
           <Link href="/ju/hibrido/novo" className={`${cls.btnRosa} inline-flex items-center`}>Novo treino</Link>
         </div>

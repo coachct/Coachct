@@ -28,6 +28,7 @@ const MODALIDADE: Record<string, string> = {
   lift: 'Lift',
   lift_for_girls: 'Lift for Girls',
   running_funcional: 'Running + Funcional',
+  treino_hibrido: 'Running & Hybrid',
 }
 
 function formatarData(dataStr?: string | null): string {

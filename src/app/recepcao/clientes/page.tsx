@@ -50,11 +50,13 @@ function tipoLabelClub(t: string) {
   if (t==='lift')              return 'Lift'
   if (t==='lift_for_girls')   return 'Lift for Girls'
   if (t==='running_funcional') return 'Running + Funcional'
+  if (t==='treino_hibrido')    return 'Running & Hybrid'
   return t
 }
 function tipoCorClub(t: string) {
   if (t==='lift')              return '#00e5ff'
   if (t==='lift_for_girls')   return '#ff2d9b'
+  if (t==='treino_hibrido')    return '#d946ef'
   return '#2ddd8b'
 }
 function parsePlanoKey(key: string) {

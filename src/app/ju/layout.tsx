@@ -10,7 +10,7 @@ const nav = [
     children: [
       { label: 'Treinos', href: '/ju/hibrido' },
       { label: 'Calendário', href: '/ju/hibrido/calendario' },
-      // 'TV da sala' (/hibrido-tv) entra junto com a fase 2
+      { label: 'TV da sala', href: '/hibrido-tv' },
     ],
   },
   { label: 'Trocar senha', href: '/trocar-senha' },
