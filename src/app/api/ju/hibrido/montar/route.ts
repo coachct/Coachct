@@ -19,7 +19,7 @@ async function autenticar(req: NextRequest) {
   const { data: { user }, error } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''))
   if (error || !user) return NextResponse.json({ error: 'Sessão inválida' }, { status: 401 })
   const { data: perfil } = await supabase.from('perfis').select('role').eq('id', user.id).maybeSingle()
-  if (!perfil || !['admin', 'coordenadora'].includes(perfil.role)) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
+  if (!perfil || !['admin', 'coordenadora', 'coach'].includes(perfil.role)) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
   return null
 }
 

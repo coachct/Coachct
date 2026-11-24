@@ -25,10 +25,11 @@ export default function HibridoTvTestePage() {
   }, [id, authLoading, user])
 
   if (authLoading) return <Centro>Carregando…</Centro>
-  if (!user || !perfil || !['admin', 'coordenadora'].includes(perfil.role)) {
-    return <Centro>Entre com o usuário de admin ou coordenadora para abrir a TV. <Link href="/equipe" className="text-[#ff6db8] underline ml-2">Entrar</Link></Centro>
+  if (!user || !perfil || !['admin', 'coordenadora', 'coach'].includes(perfil.role)) {
+    return <Centro>Entre com o seu usuário da equipe para abrir a TV. <Link href="/equipe" className="text-[#ff6db8] underline ml-2">Entrar</Link></Centro>
   }
   if (erro) return <Centro>{erro}</Centro>
   if (!t) return <Centro>Carregando treino…</Centro>
-  return <Player treino={t} onFechar={() => router.push(`/ju/hibrido/${t.id}`)} />
+  const voltar = perfil.role === 'coach' ? `/coach/hibrido/${t.id}` : `/ju/hibrido/${t.id}`
+  return <Player treino={t} onFechar={() => router.push(voltar)} />
 }

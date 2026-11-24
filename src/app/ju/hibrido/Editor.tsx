@@ -78,11 +78,15 @@ function NumInput({ valor, onChange, min = 0, ariaLabel }: { valor: number; onCh
   )
 }
 
-export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
+export default function EditorHibrido({ treinoId, dataInicial, faixaInicial, modo = 'ju' }: {
   treinoId?: string
   dataInicial?: string
   faixaInicial?: number
+  // 'coach': coach monta e salva os próprios treinos; data e programação ficam com a Ju/admin
+  modo?: 'ju' | 'coach'
 }) {
+  const coach = modo === 'coach'
+  const base = coach ? '/coach/hibrido' : '/ju/hibrido'
   const supabase = createClient()
   const router = useRouter()
   const [t, setT] = useState<Treino>(() => treinoVazio(faixaInicial && faixaInicial >= 1 && faixaInicial <= 3 ? faixaInicial : (FAIXA_PADRAO ?? 1)))
@@ -164,14 +168,14 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
   const blocosRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    carregarMedias(supabase).then(setMedias)
+    if (!coach) carregarMedias(supabase).then(setMedias)
     if (!treinoId) return
     ;(async () => {
       const tr = await carregarTreino(supabase, treinoId)
       if (!tr) { setErro('Treino não encontrado'); setLoading(false); return }
       setT(tr)
       setAbertos(new Set(tr.blocos[0] ? [tr.blocos[0].id] : []))
-      if (!dataInicial && !tr.modelo) {
+      if (!coach && !dataInicial && !tr.modelo) {
         // Sem data na URL: a próxima data em que o treino está programado
         const { data: pr } = await supabase
           .from('hibrido_programacao').select('data').eq('treino_id', treinoId)
@@ -184,7 +188,7 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
 
   // "Este dia nas outras faixas"
   useEffect(() => {
-    if (!data) { setProgDia(new Map()); return }
+    if (!data || coach) { setProgDia(new Map()); return }
     supabase.from('hibrido_programacao').select('faixa, treino_id')
       .eq('data', data).eq('unidade_id', UNIDADE_VO)
       .then(({ data: rows }: any) => setProgDia(new Map((rows || []).map((r: any) => [r.faixa, r.treino_id]))))
@@ -317,7 +321,7 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
       const { id, erro: e } = await salvarTreino(supabase, modelo)
       setSalvando(false)
       if (e || !id) { setErro(e || 'Não foi possível salvar'); return }
-      if (!t.id) { router.replace(`/ju/hibrido/${id}`); setT(p => ({ ...p, id, modelo: true })) }
+      if (!t.id) { router.replace(`${base}/${id}`); setT(p => ({ ...p, id, modelo: true })) }
       else if (t.modelo) setT(p => ({ ...p, id }))
       aviso('Modelo salvo na biblioteca')
       return
@@ -339,7 +343,7 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
     setSalvando(false)
     if (!t.id) {
       setT(p => ({ ...p, id }))
-      router.replace(`/ju/hibrido/${id}${data ? `?data=${data}` : ''}`)
+      router.replace(`${base}/${id}${data ? `?data=${data}` : ''}`)
     }
     aviso('Treino salvo')
   }
@@ -353,7 +357,7 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
     setSalvando(false)
     setModalDuplicar(false)
     if (e || !id) { setErro(e || 'Não foi possível duplicar'); return }
-    router.push(`/ju/hibrido/${id}${data ? `?data=${data}` : ''}`)
+    router.push(`${base}/${id}${data ? `?data=${data}` : ''}`)
   }
 
   // ---- derivados ---------------------------------------------------------------
@@ -373,7 +377,7 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1">
           <div className="text-xs text-[#a1a1aa] tracking-[0.04em]">
-            Área da Ju › <Link href="/ju/hibrido" className="hover:text-[#ff6db8]">Treinos híbridos</Link> › {t.id ? (t.nome || 'Treino') : 'Novo treino'}
+            {coach ? 'Área do coach' : 'Área da Ju'} › <Link href={base} className="hover:text-[#ff6db8]">{coach ? 'Meus treinos' : 'Treinos híbridos'}</Link> › {t.id ? (t.nome || 'Treino') : 'Novo treino'}
           </div>
           <h1 className={`${cls.titulo} m-0 text-[32px] font-bold tracking-[-0.01em]`}>Montar treino híbrido</h1>
           <div className={cls.muted}>
@@ -382,8 +386,8 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
         </div>
         <div className="flex flex-wrap gap-2">
           <button onClick={() => setModalDuplicar(true)} disabled={salvando} className={cls.btn}>Duplicar para outra faixa</button>
-          <button onClick={() => salvar('modelo')} disabled={salvando || !r.fecha} className={cls.btn}
-            title={r.fecha ? '' : `A soma precisa dar ${mmss(t.duracao_seg)}`}>Salvar como modelo</button>
+          {!coach && <button onClick={() => salvar('modelo')} disabled={salvando || !r.fecha} className={cls.btn}
+            title={r.fecha ? '' : `A soma precisa dar ${mmss(t.duracao_seg)}`}>Salvar como modelo</button>}
           <button onClick={() => salvar('treino')} disabled={salvando || !r.fecha} className={cls.btnRosa}
             title={r.fecha ? '' : `A soma precisa dar ${mmss(t.duracao_seg)}`}>{salvando ? 'Salvando…' : 'Salvar treino'}</button>
         </div>
@@ -477,13 +481,13 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
               <label className={cls.label}>Nome do treino
                 <input value={t.nome} onChange={e => set('nome', e.target.value)} className={cls.input} />
               </label>
-              <label className={cls.label}>Data das aulas
+              {!coach && <label className={cls.label}>Data das aulas
                 {t.modelo ? (
                   <input value="modelo · sem data" disabled className={`${cls.input} opacity-60`} />
                 ) : (
                   <input type="date" value={data} onChange={e => setData(e.target.value)} className={cls.input} />
                 )}
-              </label>
+              </label>}
               <label className={cls.label}>Duração da aula
                 <TempoInput valor={t.duracao_seg} onChange={v => set('duracao_seg', v)} />
               </label>
@@ -611,7 +615,7 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
             </a>
           )}
 
-          <section className={`${cls.card} p-5 flex flex-col gap-2`}>
+          {!coach && <section className={`${cls.card} p-5 flex flex-col gap-2`}>
             <div className="text-xs text-[#a1a1aa]">Este dia nas outras faixas</div>
             {!data || t.modelo ? (
               <div className="text-[13px] text-[#a1a1aa]">Escolha a data das aulas para ver as outras faixas.</div>
@@ -632,7 +636,7 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial }: {
                 })}
               </div>
             )}
-          </section>
+          </section>}
         </aside>
       </div>
 

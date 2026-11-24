@@ -22,6 +22,7 @@ type Item = {
   estacoes: Estacao[]
   vezes: number
   ultima: string | null
+  autor: string
 }
 
 type FiltroEst = Partial<Record<Estacao, 'com' | 'sem'>>
@@ -45,6 +46,10 @@ export default function BibliotecaHibridoPage() {
       supabase.from('hibrido_programacao').select('treino_id, data').eq('unidade_id', UNIDADE_VO).lte('data', hoje),
     ])
     if (error) setErro(error.message)
+    // Quem montou (coach ou Ju/admin)
+    const ids = Array.from(new Set(data.map((t: any) => t.criado_por).filter(Boolean)))
+    const { data: pf } = ids.length ? await supabase.from('perfis').select('id, nome').in('id', ids) : { data: [] as any[] }
+    const nomes = new Map((pf || []).map((x: any) => [x.id, String(x.nome || '').trim().split(' ')[0]]))
     // Uso = dias já programados até hoje
     const uso = new Map<string, { vezes: number; ultima: string | null }>()
     ;(progs || []).forEach((p: any) => {
@@ -62,6 +67,7 @@ export default function BibliotecaHibridoPage() {
       estacoes: estacoesUsadas((t.hibrido_blocos || []).map((b: any) => ({ estacoes: b.hibrido_estacoes || [] }))),
       vezes: uso.get(t.id)?.vezes || 0,
       ultima: uso.get(t.id)?.ultima || null,
+      autor: nomes.get(t.criado_por) || '—',
     })))
     setLoading(false)
   }
@@ -149,12 +155,12 @@ export default function BibliotecaHibridoPage() {
       </section>
 
       <section className={`${cls.card} overflow-x-auto`}>
-        <div className="min-w-[860px] grid grid-cols-[2fr_0.6fr_0.6fr_1.8fr_0.6fr_0.8fr_auto] text-[13px]">
-          {['Treino', 'Faixa', 'Duração', 'Estações', 'Usado', 'Última vez', ''].map((h, k) => (
+        <div className="min-w-[860px] grid grid-cols-[2fr_0.8fr_0.6fr_0.6fr_1.6fr_0.6fr_0.8fr_auto] text-[13px]">
+          {['Treino', 'Montou', 'Faixa', 'Duração', 'Estações', 'Usado', 'Última vez', ''].map((h, k) => (
             <div key={k} className="px-3 py-2.5 bg-[#222228] text-[#a1a1aa] text-xs">{h}</div>
           ))}
           {lista.length === 0 && (
-            <div className="col-span-7 px-3 py-6 text-[#a1a1aa] border-t border-[#2a2a31]">
+            <div className="col-span-8 px-3 py-6 text-[#a1a1aa] border-t border-[#2a2a31]">
               {itens.length ? 'Nenhum treino com esses filtros.' : 'Nenhum treino montado ainda.'}
             </div>
           )}
@@ -180,6 +186,7 @@ function Linha({ t, ocupado, onAbrir, onDuplicar, onUsar }: { t: Item; ocupado: 
         <Link href={`/ju/hibrido/${t.id}`} className="font-medium hover:text-[#ff6db8] truncate">{t.nome}</Link>
         {t.modelo && <span className="shrink-0 px-2 py-0.5 rounded-full bg-[#2a0f1e] text-[#ffb3d8] text-[11px]">modelo</span>}
       </div>
+      <div className={`${cel} text-[#d4d4d8]`}>{t.autor}</div>
       <div className={cel}>Faixa {t.faixa}</div>
       <div className={cel}>{mmss(t.duracao_seg)}</div>
       <div className={`${cel} text-[#d4d4d8]`}>{t.estacoes.map(labelEstacao).join(', ') || '—'}</div>

@@ -411,7 +411,7 @@ export async function carregarTreino(supabase: any, id: string): Promise<Treino 
 export async function listarTreinos(supabase: any) {
   const { data, error } = await supabase
     .from('hibrido_treinos')
-    .select('id, nome, faixa, duracao_seg, modelo, atualizado_em, hibrido_blocos(hibrido_estacoes(estacao))')
+    .select('id, nome, faixa, duracao_seg, modelo, atualizado_em, criado_por, hibrido_blocos(hibrido_estacoes(estacao))')
     .eq('unidade_id', UNIDADE_VO)
     .order('atualizado_em', { ascending: false })
   return { data: (data || []) as any[], error }

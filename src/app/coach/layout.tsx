@@ -5,6 +5,7 @@ const nav = [
   { label: 'Alunos', href: '/coach/alunos' },
   { label: 'Registrar aula', href: '/coach/treino' },
   { label: 'Treinos do mês', href: '/coach/treinos' },
+  { label: 'Running & Hybrid', href: '/coach/hibrido' },
   { label: 'Trocar senha', href: '/trocar-senha' },
 ]
 
