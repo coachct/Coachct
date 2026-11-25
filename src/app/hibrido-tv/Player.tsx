@@ -298,7 +298,8 @@ export default function Player({ treino: t, onFechar, cabecalho }: {
           <Maximize size={18} /> Tela cheia
         </button>
       )}
-      <div className={`flex justify-center items-center gap-2 transition-opacity duration-500 ${comandosVisiveis ? 'opacity-60 hover:opacity-100' : 'opacity-0 pointer-events-none'}`}>
+      {/* Comandos flutuam por cima (não ocupam altura): a aula usa a tela inteira */}
+      <div className={`fixed bottom-[calc(var(--u)*1.2)] left-1/2 -translate-x-1/2 z-30 flex justify-center items-center gap-2 px-3 py-2 rounded-full bg-black/80 border border-[#2a2a31] transition-opacity duration-500 ${comandosVisiveis ? 'opacity-90 hover:opacity-100' : 'opacity-0 pointer-events-none'}`}>
         <Botao label="Etapa anterior" onClick={() => ir(idx - 1)} disabled={idx === 0}><SkipBack size={20} /></Botao>
         {rodando
           ? <Botao label="Pausar" onClick={pause} grande><Pause size={24} /></Botao>
@@ -307,7 +308,7 @@ export default function Player({ treino: t, onFechar, cabecalho }: {
         <Botao label="Recomeçar" onClick={reiniciar}><RotateCcw size={18} /></Botao>
         <Botao label="Tela cheia" onClick={telaCheia}><Maximize size={18} /></Botao>
         <button onClick={onFechar} aria-label="Fechar" className="w-11 h-11 inline-flex items-center justify-center rounded-full border border-[#3a3a42] text-[#d4d4d8]"><X size={18} /></button>
-        <span className="text-xs text-[#a1a1aa] ml-2 hidden md:inline">espaço: iniciar/pausar · ← →: etapa</span>
+        <span className="text-xs text-[#a1a1aa] ml-2 hidden xl:inline whitespace-nowrap">espaço: iniciar/pausar · ← →: etapa</span>
       </div>
     </div>
   )
@@ -397,7 +398,7 @@ function ConteudoExplicacao({ t, desc }: { t: Treino; desc: string }) {
                     <span className={`${G} text-[calc(var(--u)*2.6)] font-bold text-[#7ff0bd] leading-none`}>{codigos ? codChao(p) : p + 1}</span>
                     <span className={`${G} text-[calc(var(--u)*1.7)] font-bold leading-tight truncate`}>{codigos ? nomeNaSala(e, p) : nomeEstacao(e)}</span>
                   </div>
-                  <div className="text-[calc(var(--u)*1.35)] text-[#d4d4d8] leading-snug">{detalhes(e).join(' · ')}</div>
+                  <div className="text-[calc(var(--u)*1.35)] text-[#d4d4d8] leading-snug">{codigos ? textoChao(e, p) : detalhes(e).join(' · ')}</div>
                   {comEsteira && (
                     <div className="mt-auto rounded-[calc(var(--u)*0.6)] bg-[#2a0f1e] border border-[#ff2d9b] px-[calc(var(--u)*0.7)] py-[calc(var(--u)*0.5)]">
                       <span className="text-[calc(var(--u)*1.2)] uppercase tracking-[0.1em] text-[#ff6db8]">Esteira </span>
