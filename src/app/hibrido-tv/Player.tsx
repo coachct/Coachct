@@ -167,6 +167,29 @@ export default function Player({ treino: t, onFechar, cabecalho }: {
     return () => { window.removeEventListener('resize', ver); window.removeEventListener('orientationchange', ver) }
   }, [])
 
+  // Comandos somem 3 s depois do último toque enquanto a aula roda; tocar na tela traz de volta.
+  // Pausado, ficam sempre à vista.
+  const [cutucado, setCutucado] = useState(true)
+  const timerCmd = useRef<any>(null)
+  useEffect(() => {
+    const cutucar = () => {
+      setCutucado(true)
+      clearTimeout(timerCmd.current)
+      timerCmd.current = setTimeout(() => setCutucado(false), 3000)
+    }
+    cutucar()
+    window.addEventListener('pointerdown', cutucar)
+    window.addEventListener('pointermove', cutucar)
+    window.addEventListener('keydown', cutucar)
+    return () => {
+      clearTimeout(timerCmd.current)
+      window.removeEventListener('pointerdown', cutucar)
+      window.removeEventListener('pointermove', cutucar)
+      window.removeEventListener('keydown', cutucar)
+    }
+  }, [rodando])
+  const comandosVisiveis = !rodando || cutucado
+
   // Tela não apaga enquanto a aula roda
   useEffect(() => {
     if (!rodando) return
@@ -275,7 +298,7 @@ export default function Player({ treino: t, onFechar, cabecalho }: {
           <Maximize size={18} /> Tela cheia
         </button>
       )}
-      <div className="flex justify-center items-center gap-2 opacity-40 hover:opacity-100 transition-opacity">
+      <div className={`flex justify-center items-center gap-2 transition-opacity duration-500 ${comandosVisiveis ? 'opacity-60 hover:opacity-100' : 'opacity-0 pointer-events-none'}`}>
         <Botao label="Etapa anterior" onClick={() => ir(idx - 1)} disabled={idx === 0}><SkipBack size={20} /></Botao>
         {rodando
           ? <Botao label="Pausar" onClick={pause} grande><Pause size={24} /></Botao>
