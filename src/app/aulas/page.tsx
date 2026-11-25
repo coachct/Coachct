@@ -14,7 +14,7 @@ import { enqueteDoHorario } from '@/lib/enquete-horario'
 import { aulaEncerrada, aulaJaComecou, dataHojeSP, hojeSP, filaEncerrada } from '@/lib/tempo'
 import { PINHEIROS_ID, pinheirosNoSite } from '@/lib/pinheiros'
 import AvisoCancelamento from '@/components/AvisoCancelamento'
-import { mensagemTravaApp } from '@/lib/utils'
+import { mensagemTravaApp, MSG_PREFERENCIA_FREQUENTES } from '@/lib/utils'
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(true)
@@ -165,6 +165,15 @@ function AulasPageInner() {
   // (alguém pegou a última vaga durante a decisão) — mostra o aviso amigável.
   const [avisoLotou,     setAvisoLotou]     = useState(false)
   const [modalSemCartao, setModalSemCartao] = useState(false)
+  // Janela preferencial (clientes frequentes): ocorrências que barram quem está logado → até quando
+  const [prefBarradas, setPrefBarradas] = useState<Record<string, string>>({})
+  const [modalPreferencia, setModalPreferencia] = useState(false)
+  function barradoPreferencia(oc: any): boolean {
+    const libera = prefBarradas[oc?.id]
+    if (!libera || Date.now() >= new Date(libera).getTime()) return false
+    setModalPreferencia(true)
+    return true
+  }
   const [tipoCredito,    setTipoCredito]    = useState('')
   const [posicaoSel,     setPosicaoSel]     = useState('')
   const [confirmando,    setConfirmando]    = useState(false)
@@ -309,6 +318,12 @@ function AulasPageInner() {
     if (!perfil) return
     const { data } = await supabase.from('clientes').select('*').eq('user_id', perfil.id).maybeSingle()
     setCliente(data)
+    // Janela preferencial: se a consulta falhar segue sem aviso (a trava do banco barra do mesmo jeito)
+    supabase.rpc('club_preferencia_minhas_barradas').then(({ data: barradas }: any) => {
+      const m: Record<string, string> = {}
+      for (const b of (barradas || [])) m[b.ocorrencia_id] = b.libera_em
+      setPrefBarradas(m)
+    })
     if (data) {
       const { data: cobs } = await supabase.from('cobrancas_pendentes').select('*').eq('cliente_id', data.id).eq('status', 'pendente')
       setCobrancasPend(cobs || [])
@@ -421,6 +436,7 @@ function AulasPageInner() {
   function tentarReservar(oc: any, skipTel: boolean = false) {
     if (!user) { router.push(`/login?redirect=${encodeURIComponent("/aulas?unidade="+unidadeId)}`); return }
     if (cliente?.bloqueado) return
+    if (barradoPreferencia(oc)) return
     if (precisaCartao) { setModalSemCartao(true); return }
     if (!skipTel && precisaTelefone()) { setPendingReserva(() => () => tentarReservar(oc, true)); setModalTelefone(true); return }
     if (oc.club_aulas?.so_mulheres && cliente?.sexo !== "F") { setModalGenero(true); return }
@@ -450,6 +466,7 @@ function AulasPageInner() {
     // A menos de 3h da aula ninguém consegue cancelar, então nenhuma vaga abre:
     // a fila fica fechada e o card mostra só LOTADA.
     if (filaEncerrada(oc.data, oc.club_aulas?.horario)) return
+    if (barradoPreferencia(oc)) return
     if (precisaCartao) { setModalSemCartao(true); return }
     if (!skipTel && precisaTelefone()) { setPendingReserva(() => () => tentarFila(oc, true)); setModalTelefone(true); return }
     setModalFila(oc); setTipoCredito(''); setFilaAceite(false); setErroModal(''); setAvisoLotou(false)
@@ -1354,6 +1371,17 @@ function AulasPageInner() {
             <button onClick={() => setFilaConfirmada(null)} style={{ width:'100%', background:AMARELO, color:'#000', border:'none', borderRadius:12, padding:'0.9rem', fontWeight:700, fontSize:15, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>
               Entendido ✓
             </button>
+          </div>
+        </div>
+      )}
+
+      {modalPreferencia && (
+        <div style={{ position:'fixed', inset:0, background:'#000000dd', zIndex:100, display:'flex', alignItems:'center', justifyContent:'center', padding:'1.5rem' }}>
+          <div style={{ background:'#111', border:`1.5px solid ${ACCENT}55`, borderRadius:20, width:'100%', maxWidth:380, padding:'2rem', textAlign:'center' }}>
+            <div style={{ fontSize:14, color:'#fff', lineHeight:1.7, marginBottom:'1.5rem' }}>
+              {MSG_PREFERENCIA_FREQUENTES}
+            </div>
+            <button onClick={() => setModalPreferencia(false)} style={{ width:'100%', background:'transparent', border:'1px solid #2a2a2a', borderRadius:10, padding:'0.85rem', color:'#555', fontSize:14, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>Fechar</button>
           </div>
         </div>
       )}

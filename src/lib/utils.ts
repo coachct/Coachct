@@ -75,12 +75,15 @@ export function perfLabel(ocupacaoPct: number): { txt: string; color: string } {
 //   APP_1_POR_DIA        — um treino por dia por app (Wellhub/TotalPass)
 //   ILIMITADO_1_POR_AULA — plano ilimitado vale uma posição por aula
 // Aqui só tiramos o prefixo pra mostrar pro aluno.
+// Janela preferencial das aulas inaugurais do Running & Hybrid de 29/11 (texto do Ricardo).
+export const MSG_PREFERENCIA_FREQUENTES = 'Ops, somente clientes Just frequentes, possuem preferencia de agendamento até dia 26/11 às 12:00. Após isso, todos conseguem agendar livremente.'
 const TRAVAS_NEGOCIO: Record<string, string> = {
   APP_1_POR_DIA: 'Você já tem um treino nesse dia com esse app. Cada app permite apenas um treino por dia, em qualquer unidade.',
   CT_1_POR_DIA: 'Você já tem um treino agendado no Coach CT nesse dia. É permitido apenas um agendamento por dia.',
   CT_DIA_NAO_ABERTO: 'Esse dia ainda não abriu para agendamento.',
   CT_HORARIO_LOTADO: 'Esse horário acabou de lotar. Escolha outro horário ou entre na fila de espera.',
   ILIMITADO_1_POR_AULA: 'O plano ilimitado vale só para o titular — uma posição por aula.',
+  PREFERENCIA_FREQUENTES: MSG_PREFERENCIA_FREQUENTES,
   AGENDAMENTO_CT_BLOQUEADO: 'Notamos que você não tem comparecido aos treinos, o que está ocasionando coaches sem atendimentos em horários que temos alunos querendo agendamentos. Favor entrar em contato com a equipe via whatsapp para liberarmos novamente os seus agendamentos.',
 }
 export function mensagemTravaApp(error: any): string | null {
