@@ -45,6 +45,7 @@ function CoachTreinoPageInner() {
   const [treinoSel, setTreinoSel] = useState<any>(null)
   const [aulaId, setAulaId] = useState<string | null>(null)
   const aulaIdRef = useRef<string | null>(null)
+  const selecionandoRef = useRef(false)
 
   const [exercicios, setExercicios] = useState<any[]>([])
   const [cargas, setCargas] = useState<Record<string, string[]>>({})
@@ -299,6 +300,14 @@ function CoachTreinoPageInner() {
   }
 
   async function selecionarTreino(pub: any, alunoAtual: any) {
+    // Evita abrir duas aulas com toque duplo
+    if (selecionandoRef.current) return
+    if (!alunoAtual?.id || !coach?.id) {
+      alert('Não foi possível abrir o treino: cliente ou coach não carregado. Volte e selecione o cliente de novo.')
+      return
+    }
+    selecionandoRef.current = true
+    setTimeout(() => { selecionandoRef.current = false }, 3000)
     const exs = (pub.treinos?.treino_exercicios || [])
       .sort((a: any, b: any) => (a.ordem ?? 0) - (b.ordem ?? 0))
 
@@ -572,20 +581,11 @@ function CoachTreinoPageInner() {
           {alunos.length > 0 && (
             <div className="mt-2 divide-y divide-gray-100 border border-gray-100 rounded-xl overflow-hidden">
               {alunos.map(a => {
-                let touchStartY = 0
                 return (
-                  <div
+                  <button
+                    type="button"
                     key={a.id}
-                    role="button"
-                    tabIndex={0}
-                    onTouchStart={e => { touchStartY = e.touches[0].clientY }}
-                    onTouchEnd={e => {
-                      const delta = Math.abs(e.changedTouches[0].clientY - touchStartY)
-                      if (delta > 10) return
-                      selecionarAluno(a)
-                    }}
                     onClick={() => selecionarAluno(a)}
-                    onKeyDown={e => e.key === 'Enter' && selecionarAluno(a)}
                     className="w-full flex items-center gap-3 px-4 py-3 active:bg-gray-50 text-left cursor-pointer select-none"
                     style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
                   >
@@ -597,7 +597,7 @@ function CoachTreinoPageInner() {
                       {a.cpf && <div className="text-xs text-gray-400">{a.cpf}</div>}
                     </div>
                     <ChevronRight size={14} className="text-gray-300 flex-shrink-0 pointer-events-none" />
-                  </div>
+                  </button>
                 )
               })}
             </div>
@@ -642,21 +642,15 @@ function CoachTreinoPageInner() {
         )}
         {treinos.map(pub => {
           const exs = pub.treinos?.treino_exercicios || []
-          let touchStartY = 0
+          // Botão nativo: o próprio navegador separa toque de rolagem. O controle
+          // manual de toque anterior descartava toques com o dedo levemente
+          // deslizado e o treino não abria.
           return (
-            <div
+            <button
+              type="button"
               key={pub.id}
-              role="button"
-              tabIndex={0}
-              onTouchStart={e => { touchStartY = e.touches[0].clientY }}
-              onTouchEnd={e => {
-                const delta = Math.abs(e.changedTouches[0].clientY - touchStartY)
-                if (delta > 10) return
-                selecionarTreino(pub, alunoSel)
-              }}
               onClick={() => selecionarTreino(pub, alunoSel)}
-              onKeyDown={e => e.key === 'Enter' && selecionarTreino(pub, alunoSel)}
-              className="card w-full text-left border-2 border-transparent active:border-primary-300 active:bg-primary-50 transition-colors cursor-pointer select-none"
+              className="card block w-full text-left border-2 border-transparent active:border-primary-300 active:bg-primary-50 transition-colors cursor-pointer select-none"
               style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
             >
               <div className="flex items-center gap-3 pointer-events-none">
@@ -670,7 +664,7 @@ function CoachTreinoPageInner() {
                 </div>
                 <ChevronRight size={16} className="text-gray-300 flex-shrink-0" />
               </div>
-            </div>
+            </button>
           )
         })}
         <button onClick={() => setEtapa('buscar_aluno')} className="btn w-full text-sm">← Voltar</button>
