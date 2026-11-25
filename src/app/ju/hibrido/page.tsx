@@ -128,7 +128,7 @@ export default function BibliotecaHibridoPage() {
       <section className={`${cls.card} p-5 flex flex-col gap-3`}>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-[#a1a1aa] w-16">Faixa</span>
-          {[null, 1, 2, 3, 4].map(f => (
+          {[null, ...FAIXAS.map(x => x.n)].map(f => (
             <button key={String(f)} onClick={() => setFaixa(f)}
               className={`min-h-[36px] px-3 rounded-full text-[13px] border ${faixa === f ? 'border-[#ff2d9b] bg-[#2a0f1e] text-[#ffd6ea]' : 'border-[#3a3a42] text-[#d4d4d8]'}`}>
               {f === null ? 'Todas' : `Faixa ${f}`}
@@ -155,7 +155,7 @@ export default function BibliotecaHibridoPage() {
       </section>
 
       <section className={`${cls.card} overflow-x-auto`}>
-        <div className="min-w-[860px] grid grid-cols-[2fr_0.8fr_0.6fr_0.6fr_1.6fr_0.6fr_0.8fr_auto] text-[13px]">
+        <div className="min-w-[860px] grid grid-cols-[2.6fr_0.8fr_0.6fr_0.6fr_1.4fr_0.5fr_0.7fr_auto] text-[13px]">
           {['Treino', 'Montou', 'Faixa', 'Duração', 'Estações', 'Usado', 'Última vez', ''].map((h, k) => (
             <div key={k} className="px-3 py-2.5 bg-[#222228] text-[#a1a1aa] text-xs">{h}</div>
           ))}
@@ -183,7 +183,7 @@ function Linha({ t, ocupado, onAbrir, onDuplicar, onUsar }: { t: Item; ocupado: 
   return (
     <>
       <div className={`${cel} gap-2 min-w-0`}>
-        <Link href={`/ju/hibrido/${t.id}`} className="font-medium hover:text-[#ff6db8] truncate">{t.nome}</Link>
+        <Link href={`/ju/hibrido/${t.id}`} className="font-medium hover:text-[#ff6db8] break-words leading-snug min-w-0">{t.nome}</Link>
         {t.modelo && <span className="shrink-0 px-2 py-0.5 rounded-full bg-[#2a0f1e] text-[#ffb3d8] text-[11px]">modelo</span>}
       </div>
       <div className={`${cel} text-[#d4d4d8]`}>{t.autor}</div>
