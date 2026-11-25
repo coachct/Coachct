@@ -83,8 +83,11 @@ function primeiroNomeCoachOc(oc: any): string | null {
   if (escaladoNome) return String(escaladoNome).split(' ')[0]
   const gradeNome = oc?.club_aulas?.coaches?.nome
   if (gradeNome) return String(gradeNome).split(' ')[0]
+  if (AULAS_EQUIPE_JUST.has(oc?.aula_id)) return 'Equipe Just'
   return null
 }
+// Aulas inaugurais do Running & Hybrid de 29/11 (09:15 e 10:30): sem coach escalado, o site mostra "Equipe Just".
+const AULAS_EQUIPE_JUST = new Set(['491a5673-7e9a-4699-9c7c-c5afb37be1f1', '9acef7d5-08dc-48ca-924d-01dd46678987'])
 
 function IconEsteira({ color }: { color: string }) {
   return (
