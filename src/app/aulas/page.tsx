@@ -168,6 +168,20 @@ function AulasPageInner() {
   // Janela preferencial (clientes frequentes): ocorrências que barram quem está logado → até quando
   const [prefBarradas, setPrefBarradas] = useState<Record<string, string>>({})
   const [modalPreferencia, setModalPreferencia] = useState(false)
+  // Aula já no calendário mas com reserva ainda fechada (abre_em): mostra o texto no lugar do botão
+  const [prefAbreEm, setPrefAbreEm] = useState<Record<string, string>>({})
+  useEffect(() => {
+    supabase.from('club_preferencia_janela').select('ocorrencia_id, abre_em').not('abre_em', 'is', null)
+      .then(({ data }: any) => {
+        const m: Record<string, string> = {}
+        for (const j of (data || [])) m[j.ocorrencia_id] = j.abre_em
+        setPrefAbreEm(m)
+      })
+  }, [])
+  function reservaAindaFechada(oc: any): boolean {
+    const abre = prefAbreEm[oc?.id]
+    return !!abre && Date.now() < new Date(abre).getTime()
+  }
   function barradoPreferencia(oc: any): boolean {
     const libera = prefBarradas[oc?.id]
     if (!libera || Date.now() >= new Date(libera).getTime()) return false
@@ -905,6 +919,10 @@ function AulasPageInner() {
                           </>
                         ) : naFila ? (
                           <div style={{ fontSize:10, color:AMARELO, fontWeight:700 }}>⏳ Na fila</div>
+                        ) : reservaAindaFechada(oc) ? (
+                          <div style={{ width:'100%', textAlign:'center', color:AMARELO, fontSize:10, fontWeight:700, border:'1px solid #2a2a2a', borderRadius:8, padding:'5px' }}>
+                            reservas liberadas em 25/11 19hr
+                          </div>
                         ) : (
                           <>
                             {poucasVagas && (
@@ -1011,7 +1029,15 @@ function AulasPageInner() {
                   {/* Botão de ação — full-width, só aparece se não tiver reservado/fila */}
                   {!encerrada && (!minhaRes || cliente?.is_classpass) && !naFila && (
                     <div style={{ padding: isMobile ? '0 1.25rem 1.25rem' : '0 1rem 1rem' }}>
-                      {lotado ? ((semFila || !user) ? (
+                      {reservaAindaFechada(oc) ? (
+                        <div style={{
+                          width:'100%', textAlign:'center', color:AMARELO,
+                          border:'1px solid #222', borderRadius:12,
+                          padding: isMobile ? '0.8rem' : '0.6rem', fontSize: isMobile ? 13 : 12, fontWeight:700,
+                        }}>
+                          reservas liberadas em 25/11 19hr
+                        </div>
+                      ) : lotado ? ((semFila || !user) ? (
                         <div style={{
                           width:'100%', textAlign:'center', color:'#ff4444',
                           border:'1px solid #222', borderRadius:12,

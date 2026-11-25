@@ -145,3 +145,37 @@ select cron.schedule('hibrido-domingo-totalpass-2611', '59 14 26 11 *', $job$
    where id in ('9de328c7-5408-43c4-9b1c-a3fa72c9c4c6','842e89fd-42bf-45c5-af2d-48201b1ea8d2');
   select cron.unschedule('hibrido-domingo-totalpass-2611');
 $job$);
+
+-- ---------------------------------------------------------------------------
+-- 24/11 (noite): as aulas ja aparecem no calendario, mas a reserva so abre em 25/11 19:00 SP.
+-- abre_em: antes dessa hora ninguem reserva nem entra na fila (admin passa) e o site mostra
+-- "reservas liberadas em 25/11 19hr" no lugar do botao. O job hibrido-domingo-abre-2511 saiu.
+alter table public.club_preferencia_janela add column if not exists abre_em timestamptz;
+
+drop policy if exists club_preferencia_janela_leitura on public.club_preferencia_janela;
+create policy club_preferencia_janela_leitura on public.club_preferencia_janela
+  for select to anon, authenticated using (true);
+grant select on public.club_preferencia_janela to anon, authenticated;
+
+create or replace function public.club_preferencia_fechada(p_ocorrencia_id uuid)
+returns boolean
+language sql stable security definer
+set search_path to 'public'
+as $$
+  select exists (select 1 from club_preferencia_janela j
+                  where j.ocorrencia_id = p_ocorrencia_id and j.abre_em is not null and now() < j.abre_em)
+     and not exists (select 1 from perfis where id = (select auth.uid()) and role = 'admin')
+$$;
+revoke all on function public.club_preferencia_fechada(uuid) from public, anon, authenticated;
+
+-- Os dois triggers (club_preferencia_trava_reserva / _fila) passaram a checar antes:
+--   if public.club_preferencia_fechada(new.ocorrencia_id) then
+--     raise exception 'PREFERENCIA_FECHADA: reservas liberadas em 25/11 19hr' using errcode = 'P0001';
+--   end if;
+
+update public.club_preferencia_janela set abre_em = '2026-11-25 19:00:00-03'
+ where ocorrencia_id in ('9de328c7-5408-43c4-9b1c-a3fa72c9c4c6','842e89fd-42bf-45c5-af2d-48201b1ea8d2');
+
+select cron.unschedule('hibrido-domingo-abre-2511');
+update public.club_aulas set ativo = true
+ where id in ('491a5673-7e9a-4699-9c7c-c5afb37be1f1','9acef7d5-08dc-48ca-924d-01dd46678987');
