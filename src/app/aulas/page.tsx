@@ -924,7 +924,7 @@ function AulasPageInner() {
                           <div style={{ fontSize:10, color:AMARELO, fontWeight:700 }}>⏳ Na fila</div>
                         ) : reservaAindaFechada(oc) ? (
                           <div style={{ width:'100%', textAlign:'center', color:AMARELO, fontSize:10, fontWeight:700, border:'1px solid #2a2a2a', borderRadius:8, padding:'5px' }}>
-                            reservas liberadas em 25/11 19hr
+                            reservas liberadas em 26/11 19hr
                           </div>
                         ) : (
                           <>
@@ -1038,7 +1038,7 @@ function AulasPageInner() {
                           border:'1px solid #222', borderRadius:12,
                           padding: isMobile ? '0.8rem' : '0.6rem', fontSize: isMobile ? 13 : 12, fontWeight:700,
                         }}>
-                          reservas liberadas em 25/11 19hr
+                          reservas liberadas em 26/11 19hr
                         </div>
                       ) : lotado ? ((semFila || !user) ? (
                         <div style={{

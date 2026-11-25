@@ -84,7 +84,7 @@ const TRAVAS_NEGOCIO: Record<string, string> = {
   CT_HORARIO_LOTADO: 'Esse horário acabou de lotar. Escolha outro horário ou entre na fila de espera.',
   ILIMITADO_1_POR_AULA: 'O plano ilimitado vale só para o titular — uma posição por aula.',
   PREFERENCIA_FREQUENTES: MSG_PREFERENCIA_FREQUENTES,
-  PREFERENCIA_FECHADA: 'reservas liberadas em 25/11 19hr',
+  PREFERENCIA_FECHADA: 'reservas liberadas em 26/11 19hr',
   AGENDAMENTO_CT_BLOQUEADO: 'Notamos que você não tem comparecido aos treinos, o que está ocasionando coaches sem atendimentos em horários que temos alunos querendo agendamentos. Favor entrar em contato com a equipe via whatsapp para liberarmos novamente os seus agendamentos.',
 }
 export function mensagemTravaApp(error: any): string | null {
