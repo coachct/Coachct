@@ -178,7 +178,7 @@ export default function ComprarPage() {
         <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 3, color: ACCENT, fontFamily: "'DM Mono', monospace", marginBottom: '1rem' }}>// comprar online</div>
         <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(48px,6vw,72px)', color: '#fff', lineHeight: 1.05, marginBottom: '1rem', letterSpacing: 2 }}>PLANOS & PACOTES</div>
         <div style={{ color: '#999', fontSize: 16, maxWidth: 580, lineHeight: 1.7, margin: '0 auto' }}>
-          Coach CT personal training, acesso aos studios, plano ilimitado JustClub ou pacotes de créditos. Pagamento via PIX ou cartão de crédito.
+          Coach CT personal training, acesso aos studios, plano JustClub ou pacotes de créditos. Pagamento via PIX ou cartão de crédito.
         </div>
       </div>
 
