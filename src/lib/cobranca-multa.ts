@@ -176,7 +176,7 @@ async function cobrar(
     headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
     body: JSON.stringify(pagarmePayload),
   })
-  const dataPagarme = await resPagarme.json()
+  const dataPagarme = await resPagarme.json().catch(() => null)
 
   await supabase.from('cartoes_log').insert({
     cliente_id: cliente.id, operacao: p.operacaoLog,
@@ -187,6 +187,17 @@ async function cobrar(
     erro: !resPagarme.ok ? JSON.stringify(dataPagarme) : null,
     request_payload: pagarmePayload, response_payload: dataPagarme, operado_por: operadoPor,
   })
+
+  // Erro do PRÓPRIO Pagar.me (5xx) ou resposta sem pedido não é recusa de cartão: em 25/11/2026
+  // ele devolveu "Internal Server Error" em 14 multas e cobrou 10 delas. Não cria pendência nem
+  // bloqueia — fica como erro pra conferir no painel do Pagar.me antes de cobrar de novo.
+  if (resPagarme.status >= 500 || !dataPagarme) {
+    const detalhe = dataPagarme?.message || `HTTP ${resPagarme.status}`
+    return r(502, {
+      error: `Pagar.me respondeu com erro (${detalhe}). A cobrança pode ter passado mesmo assim: confira o pedido no painel do Pagar.me antes de cobrar de novo.`,
+      conferir_pagarme: true,
+    })
+  }
 
   if (!resPagarme.ok || dataPagarme?.status !== 'paid') {
     const errMsg = dataPagarme?.errors?.[0]?.message || dataPagarme?.message || `Cartão recusado (status: ${dataPagarme?.status || 'desconhecido'})`
