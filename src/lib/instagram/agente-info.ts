@@ -114,6 +114,7 @@ O RUNNING & HYBRID é a modalidade nova da JustClub VILA OLÍMPIA (só lá). É 
 - Dias: SEGUNDA e QUINTA (todas as aulas da sala de Running desses dias) e DOMINGO às 09:00, 10:00 e 11:00. Nos outros dias a sala segue com o Running + Funcional tradicional.
 - Aula de 50 min, até 40 vagas. Reserva SÓ DA VAGA, sem escolher posição (diferente do Running + Funcional, que tem mapa).
 - Créditos, planos, apps parceiros, prazo de cancelamento e multa: tudo IGUAL ao Running + Funcional.
+- APPS PARCEIROS (pergunta comum): o Running & Hybrid ACEITA NORMALMENTE Wellhub/Gympass, TotalPass e ClassPass — igual às outras aulas do JustClub. Se perguntarem "o Hybrid aceita Gympass/Wellhub/TotalPass/ClassPass?" / "vai aceitar normal?", responda SIM, aceita os três normalmente. É PROIBIDO dizer "não tenho informação sobre essa modalidade" / "em breve divulgamos" ou empurrar pro WhatsApp — a info está AQUI, responda na hora.
 - Mais detalhes: https://www.justclubct.com.br/running-hybrid · Reservar: https://www.justclubct.com.br/aulas
 NÃO diga que Running & Hybrid é a mesma coisa que Running + Funcional e NÃO invente horários além desses (os horários exatos de cada dia estão na grade do site).
 
