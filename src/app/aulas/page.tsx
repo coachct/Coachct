@@ -181,6 +181,21 @@ function AulasPageInner() {
         setPrefAbreEm(m)
       })
   }, [])
+  // Na hora da abertura a tela troca sozinha o aviso pelo botão (quem ficou esperando com a página aberta
+  // não precisa recarregar) e recarrega a lista para mostrar as vagas atualizadas.
+  const [, setTique] = useState(0)
+  useEffect(() => {
+    const agora = Date.now()
+    const proximas = Object.values(prefAbreEm).map(s => new Date(s).getTime()).filter(t => t > agora)
+    if (!proximas.length) return
+    const espera = Math.min(...proximas) - agora + 500
+    if (espera > 24 * 3600 * 1000) return
+    const tm = setTimeout(() => {
+      setTique(x => x + 1)
+      try { carregarOcorrencias(dataSelStr) } catch {}
+    }, espera)
+    return () => clearTimeout(tm)
+  })
   function reservaAindaFechada(oc: any): boolean {
     const abre = prefAbreEm[oc?.id]
     return !!abre && Date.now() < new Date(abre).getTime()
