@@ -1120,8 +1120,8 @@ function AdminClientesPageInner() {
     await Promise.all([carregarAvulsos(clienteSel.id), carregarSaldo(clienteSel.id)])
   }
 
-  async function cancelarAgendamento(agId: string) {
-    if (!confirm('Cancelar este agendamento? O crédito será devolvido ao cliente.')) return
+  async function cancelarAgendamento(agId: string, pergunta = 'Cancelar este agendamento? O crédito será devolvido ao cliente.') {
+    if (!confirm(pergunta)) return
     setCancelandoId(agId)
     const { error } = await supabase.from('agendamentos').update({
       status: 'cancelado', cancelado_em: new Date().toISOString(), motivo_cancelamento: 'Cancelado pelo admin',
@@ -2170,6 +2170,17 @@ function AdminClientesPageInner() {
                             </div>
                           )})()}
                         </div>
+                        {/* Treino que já passou também pode ser cancelado pelo admin (ex.: coach faltou):
+                            o crédito volta e, se estava como realizado, sai do pagamento do coach. */}
+                        {ag.status !== 'cancelado' && (
+                          <button
+                            onClick={() => cancelarAgendamento(ag.id, ag.status === 'realizado'
+                              ? 'Cancelar este treino já marcado como realizado? O crédito volta ao cliente e o treino sai do pagamento do coach.'
+                              : 'Cancelar este treino que já passou? O crédito será devolvido ao cliente.')}
+                            disabled={cancelandoId === ag.id} className="btn btn-sm gap-1 text-red-500 hover:bg-red-50 flex-shrink-0">
+                            <X size={12} /> {cancelandoId === ag.id ? 'Cancelando...' : 'Cancelar'}
+                          </button>
+                        )}
                       </div>
                       )
                       }
