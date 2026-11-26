@@ -432,7 +432,7 @@ export default function ComprarPage() {
                       <div key={p.id} className="card-h" style={{ ...card, border: `1.5px solid ${ACCENT}`, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                         <div style={{ position: 'absolute', top: 12, right: -20, background: ACCENT, color: '#fff', fontSize: 10, fontWeight: 700, padding: '0.25rem 2.75rem', transform: 'rotate(15deg)', letterSpacing: 1 }}>MAIS POPULAR</div>
 
-                        <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 2, color: ACCENT, marginBottom: '0.4rem', fontFamily: "'DM Mono', monospace" }}>justclub · ilimitado</div>
+                        <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 2, color: ACCENT, marginBottom: '0.4rem', fontFamily: "'DM Mono', monospace" }}>justclub</div>
                         <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', marginBottom: '1rem' }}>SEMESTRAL</div>
 
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', marginBottom: 4 }}>
