@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
 import { Spinner } from '@/components/ui'
 import { hojeSP } from '@/lib/tempo'
@@ -105,6 +106,23 @@ export default function BibliotecaHibridoPage() {
     carregar()
   }
 
+  // Apagar é definitivo: blocos, estações e os dias programados com ele saem junto (cascade no banco)
+  async function excluir(t: Item) {
+    const { data: futuros } = await supabase.from('hibrido_programacao').select('data')
+      .eq('treino_id', t.id).gte('data', hojeSP()).order('data')
+    const dias = (futuros || []).map((p: any) => fmtDia(p.data).completo)
+    const alerta = dias.length
+      ? `\n\nAtenção: ele está programado em ${dias.join(', ')}. Esse dia fica sem treino na TV até você escolher outro.`
+      : ''
+    if (!confirm(`Excluir o treino "${t.nome}"?${alerta}\n\nNão dá para desfazer.`)) return
+    setOcupado(t.id)
+    const { data, error } = await supabase.from('hibrido_treinos').delete().eq('id', t.id).select('id')
+    setOcupado(null)
+    if (error || !data?.length) { setErro(error?.message || 'Sem permissão para excluir este treino'); return }
+    aviso('Treino excluído')
+    carregar()
+  }
+
   if (loading) return <Spinner />
 
   return (
@@ -164,6 +182,7 @@ export default function BibliotecaHibridoPage() {
         {lista.map(t => (
           <CartaoTreino key={t.id} t={t} ocupado={ocupado === t.id}
             onDuplicar={() => duplicar(t)}
+            onExcluir={() => excluir(t)}
             onUsar={() => setUsar(t)} />
         ))}
       </section>
@@ -182,6 +201,7 @@ export default function BibliotecaHibridoPage() {
             <Linha key={t.id} t={t} ocupado={ocupado === t.id}
               onAbrir={() => router.push(`/ju/hibrido/${t.id}`)}
               onDuplicar={() => duplicar(t)}
+              onExcluir={() => excluir(t)}
               onUsar={() => setUsar(t)} />
           ))}
         </div>
@@ -192,7 +212,7 @@ export default function BibliotecaHibridoPage() {
   )
 }
 
-function Linha({ t, ocupado, onAbrir, onDuplicar, onUsar }: { t: Item; ocupado: boolean; onAbrir: () => void; onDuplicar: () => void; onUsar: () => void }) {
+function Linha({ t, ocupado, onAbrir, onDuplicar, onExcluir, onUsar }: { t: Item; ocupado: boolean; onAbrir: () => void; onDuplicar: () => void; onExcluir: () => void; onUsar: () => void }) {
   const cel = 'px-3 py-2.5 border-t border-[#2a2a31] flex items-center'
   return (
     <>
@@ -210,12 +230,14 @@ function Linha({ t, ocupado, onAbrir, onDuplicar, onUsar }: { t: Item; ocupado: 
         <button onClick={onAbrir} className={`${cls.btn} !min-h-[36px] !px-3 text-[13px]`}>Abrir</button>
         <button onClick={onDuplicar} disabled={ocupado} className={`${cls.btn} !min-h-[36px] !px-3 text-[13px]`}>{ocupado ? 'Duplicando…' : 'Duplicar'}</button>
         <button onClick={onUsar} className={`${cls.btn} !min-h-[36px] !px-3 text-[13px] !border-[#ff2d9b] text-[#ffb3d8]`}>Usar neste dia</button>
+        <button onClick={onExcluir} disabled={ocupado} aria-label="Excluir treino" title="Excluir treino"
+          className={`${cls.btnIcone} !w-9 !h-9 hover:!border-[#ff8a9a] hover:text-[#ff8a9a]`}><Trash2 size={15} /></button>
       </div>
     </>
   )
 }
 
-function CartaoTreino({ t, ocupado, onDuplicar, onUsar }: { t: Item; ocupado: boolean; onDuplicar: () => void; onUsar: () => void }) {
+function CartaoTreino({ t, ocupado, onDuplicar, onExcluir, onUsar }: { t: Item; ocupado: boolean; onDuplicar: () => void; onExcluir: () => void; onUsar: () => void }) {
   return (
     <div className={`${cls.card} p-4 flex flex-col gap-3`}>
       <Link href={`/ju/hibrido/${t.id}`} className="flex flex-col gap-1.5">
@@ -231,9 +253,11 @@ function CartaoTreino({ t, ocupado, onDuplicar, onUsar }: { t: Item; ocupado: bo
           {t.vezes ? `Usado ${t.vezes}x · última vez ${fmtData(t.ultima)}` : 'Ainda não usado'}
         </div>
       </Link>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
         <button onClick={onUsar} className={`${cls.btn} !px-2 text-[13px] !border-[#ff2d9b] text-[#ffb3d8]`}>Usar neste dia</button>
-        <button onClick={onDuplicar} disabled={ocupado} className={`${cls.btn} !px-2 text-[13px]`}>{ocupado ? 'Duplicando…' : 'Duplicar'}</button>
+        <button onClick={onDuplicar} disabled={ocupado} className={`${cls.btn} !px-2 text-[13px]`}>{ocupado ? 'Aguarde…' : 'Duplicar'}</button>
+        <button onClick={onExcluir} disabled={ocupado} aria-label="Excluir treino"
+          className={`${cls.btn} !px-3 text-[#ff8a9a] inline-flex items-center justify-center`}><Trash2 size={16} /></button>
       </div>
     </div>
   )
