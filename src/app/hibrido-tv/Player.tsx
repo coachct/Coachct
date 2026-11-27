@@ -6,11 +6,20 @@ import { SkipBack, SkipForward, Play, Pause, RotateCcw, Maximize, X } from 'luci
 import {
   Treino, Bloco, EstacaoRow, Segmento,
   linhaDoTempo, mmss, estacoesChao, rodizioChaoLigado, ordemCircuito, codChao, SALA_CHAO, circuitoPorCodigo, nomeNaSala,
-  nomeEstacao, labelEstacao, MODOS_DUPLA,
+  nomeEstacao, labelEstacao, MODOS_DUPLA, temTransicaoVariada,
 } from '@/lib/hibrido'
 import { Pictograma, itensAquecimento } from './Pictogramas'
 
 const G = 'font-[family-name:var(--font-grotesk)]'
+
+// "troca 00:25" ou, com as primeiras mais longas, "2 primeiras trocas 00:45, depois 00:25"
+function textoTrocas(b: Bloco) {
+  if (!temTransicaoVariada(b)) return `troca ${mmss(b.transicao_seg)}`
+  const n = b.rodizio.trans_longas || 0
+  return n > 0 && typeof b.rodizio.trans_longa_seg === 'number'
+    ? `${n === 1 ? '1ª troca' : `${n} primeiras trocas`} ${mmss(b.rodizio.trans_longa_seg)}, depois ${mmss(b.transicao_seg)}`
+    : `trocas variadas (padrão ${mmss(b.transicao_seg)})`
+}
 
 function detalhes(e?: EstacaoRow) {
   if (!e) return [] as string[]
@@ -419,12 +428,12 @@ function ConteudoExplicacao({ t, desc }: { t: Treino; desc: string }) {
         const codigos = ab || porCod
         const corrida = b.estacoes.find(e => e.estacao === 'corrida')
         const titulo = ab
-          ? `${b.rounds} ${b.rounds === 1 ? 'passagem' : 'passagens'} · ${mmss(b.etapa_seg)} no chão + ${mmss(b.etapa_seg)} na esteira · troca ${mmss(b.transicao_seg)}`
+          ? `${b.rounds} ${b.rounds === 1 ? 'passagem' : 'passagens'} · ${mmss(b.etapa_seg)} no chão + ${mmss(b.etapa_seg)} na esteira · ${textoTrocas(b)}`
           : porCod
-            ? `${linhas.length} passagens · ${mmss(b.etapa_seg)} por código · troca ${mmss(b.transicao_seg)}`
+            ? `${linhas.length} passagens · ${mmss(b.etapa_seg)} por código · ${textoTrocas(b)}`
             : b.formato === 'todos'
-              ? `Todos juntos · ${mmss(b.etapa_seg)} por estação · troca ${mmss(b.transicao_seg)}`
-              : `Circuito · ${b.rounds} ${b.rounds === 1 ? 'volta' : 'voltas'} · ${mmss(b.etapa_seg)} por estação · troca ${mmss(b.transicao_seg)}`
+              ? `Todos juntos · ${mmss(b.etapa_seg)} por estação · ${textoTrocas(b)}`
+              : `Circuito · ${b.rounds} ${b.rounds === 1 ? 'volta' : 'voltas'} · ${mmss(b.etapa_seg)} por estação · ${textoTrocas(b)}`
         const regra = ab
           ? (rodizioChaoLigado(b)
             ? 'Cada um faz o chão e a esteira do mesmo código. Depois gira para o código seguinte, sentido horário (E5 → E1).'

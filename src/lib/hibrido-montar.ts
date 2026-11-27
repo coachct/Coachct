@@ -28,12 +28,18 @@ const ESQUEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['nome', 'formato', 'etapa_seg', 'transicao_seg', 'rounds', 'a_comeca', 'rodizio_chao', 'ordem', 'alunos_corrida', 'corrida_em_dupla', 'estacoes'],
+        required: ['nome', 'formato', 'etapa_seg', 'transicao_seg', 'trans_longas', 'trans_longa_seg', 'trans_ajuste', 'rounds', 'a_comeca', 'rodizio_chao', 'ordem', 'alunos_corrida', 'corrida_em_dupla', 'estacoes'],
         properties: {
           nome: str,
           formato: { type: 'string', enum: ['grupos_ab', 'circuito', 'todos'] },
           etapa_seg: int,
           transicao_seg: int,
+          trans_longas: int,
+          trans_longa_seg: int,
+          trans_ajuste: {
+            type: 'array',
+            items: { type: 'object', additionalProperties: false, required: ['troca', 'seg'], properties: { troca: int, seg: int } },
+          },
           rounds: int,
           a_comeca: { type: 'string', enum: ['corrida', 'estacoes'] },
           rodizio_chao: { type: 'boolean' },
@@ -92,7 +98,15 @@ Formatos de bloco:
 Conta do tempo (a aula tem duracao_seg, padrão 3000 = 50:00):
 - Etapas do bloco = rounds × (2 em grupos_ab; tamanho da ordem em circuito/todos, ou o número de estações se a ordem estiver vazia).
 - Cada etapa é seguida de uma transição, MENOS a última etapa do último bloco da aula (a aula acaba ali).
-- Total = aquecimento_seg + explicacao_seg + soma dos blocos (etapas × etapa_seg + transições × transicao_seg).
+- Total = aquecimento_seg + explicacao_seg + soma dos blocos (etapas × etapa_seg + soma do tempo de cada transição).
+
+Transições com tempos diferentes (os coaches agora fazem as PRIMEIRAS trocas mais longas, porque no começo a sala ainda se organiza):
+- transicao_seg = tempo das trocas normais (o padrão do bloco).
+- trans_longas = quantas trocas do COMEÇO do bloco são mais longas; trans_longa_seg = o tempo delas. Ex.: "1ª e 2ª transição 45'', as demais 25''" → transicao_seg = 25, trans_longas = 2, trans_longa_seg = 45. "Primeiras 3 trocas de 40s, depois 20s" → 20, 3, 40.
+- Se todas as trocas têm o mesmo tempo: trans_longas = 0 e trans_longa_seg = 0.
+- trans_ajuste = trocas avulsas com tempo próprio que não seguem essa regra, com troca numerada a partir de 1 (ex.: "a 5ª troca 60s" → [{troca: 5, seg: 60}]). Normalmente vazio [].
+- A contagem de trocas é dentro do bloco: a 1ª troca é a que vem depois da 1ª etapa do bloco.
+- Se o texto der tempos diferentes de um jeito que não dá para encaixar nisso com certeza, monte o mais literal possível e diga em duvidas.
 
 REGRA PRINCIPAL: você NÃO decide nada pelo coach. Você só transcreve o que o texto diz para o formato.
 - Nunca ajuste tempos para fechar a soma. Se o que o texto diz não fecha em duracao_seg, monte exatamente como está: o sistema mostra a diferença e o coach corrige.
@@ -125,6 +139,9 @@ function paraEsquema(t: Treino) {
         formato: b.formato,
         etapa_seg: b.etapa_seg,
         transicao_seg: b.transicao_seg,
+        trans_longas: b.rodizio?.trans_longas || 0,
+        trans_longa_seg: b.rodizio?.trans_longa_seg || 0,
+        trans_ajuste: Object.entries(b.rodizio?.trans_ajuste || {}).map(([k, s]) => ({ troca: Number(k) + 1, seg: s })),
         rounds: b.rounds,
         a_comeca: b.rodizio?.a_comeca || 'corrida',
         rodizio_chao: b.formato === 'grupos_ab' ? b.rodizio?.rodizio_chao !== false : false,
@@ -165,6 +182,15 @@ function paraTreino(o: any, padrao: { faixa: number; duracao_seg: number }): Tre
       esteira: b.formato !== 'todos' && e.estacao !== 'corrida' ? e.esteira || '' : '',
     }))
     const ab = b.formato === 'grupos_ab'
+    // Trocas do começo mais longas + trocas avulsas (troca numerada a partir de 1 → índice 0)
+    const longas = n(b.trans_longas)
+    const longaSeg = n(b.trans_longa_seg)
+    const ajuste: Record<string, number> = {}
+    ;(b.trans_ajuste || []).forEach((a: any) => { const k = n(a?.troca) - 1; if (k >= 0) ajuste[String(k)] = n(a?.seg) })
+    const trocas = {
+      ...(longas > 0 && longaSeg > 0 ? { trans_longas: longas, trans_longa_seg: longaSeg } : {}),
+      ...(Object.keys(ajuste).length ? { trans_ajuste: ajuste } : {}),
+    }
     return {
       id: novoId(),
       nome: b.nome || '',
@@ -172,9 +198,12 @@ function paraTreino(o: any, padrao: { faixa: number; duracao_seg: number }): Tre
       etapa_seg: n(b.etapa_seg),
       transicao_seg: n(b.transicao_seg),
       rounds: Math.max(1, n(b.rounds, 1)),
-      rodizio: ab
-        ? { a_comeca: b.a_comeca === 'estacoes' ? 'estacoes' : 'corrida', rodizio_chao: b.rodizio_chao !== false }
-        : { ordem: (b.ordem || []).map((i: any) => estacoes[Number(i)]?.id).filter(Boolean) },
+      rodizio: {
+        ...(ab
+          ? { a_comeca: b.a_comeca === 'estacoes' ? 'estacoes' : 'corrida', rodizio_chao: b.rodizio_chao !== false }
+          : { ordem: (b.ordem || []).map((i: any) => estacoes[Number(i)]?.id).filter(Boolean) }),
+        ...trocas,
+      },
       alunos_corrida: n(b.alunos_corrida),
       corrida_em_dupla: !!b.corrida_em_dupla,
       estacoes,

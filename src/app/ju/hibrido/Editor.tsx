@@ -14,6 +14,7 @@ import {
   carregarTreino, salvarTreino, programar, carregarMedias, faixasProvaveis, fmtDia,
   estacoesChao, rodizioChaoLigado, roteiroAB, estacaoNaVolta, inconsistencias,
   SALA_CHAO, codChao, ordenarComoSala, foraDaSala, circuitoPorCodigo, CHAVE_PREVIA_TV,
+  qtdTransicoes, transicoesBloco, transicaoDe, temTransicaoVariada,
 } from '@/lib/hibrido'
 import { cls, Modal } from './ui'
 import { hojeSP } from '@/lib/tempo'
@@ -804,7 +805,7 @@ function BlocoCard(p: {
             <label className={cls.label}>{labelTempo}
               <TempoInput valor={b.etapa_seg} onChange={v => p.setBloco({ etapa_seg: v })} />
             </label>
-            <label className={cls.label}>Transição
+            <label className={cls.label}>Transição padrão
               <TempoInput valor={b.transicao_seg} onChange={v => p.setBloco({ transicao_seg: v })} />
             </label>
             <label className={cls.label}>Rounds
@@ -812,6 +813,7 @@ function BlocoCard(p: {
               {ab && <span className="text-[#d4d4d8]">= {b.rounds * 2} etapas (A e B trocam)</span>}
             </label>
           </div>
+          <TransicoesEditor b={b} ultimo={p.ultimo} setBloco={p.setBloco} />
 
           {ab ? (
             <>
@@ -894,7 +896,7 @@ function BlocoCard(p: {
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {[['Formato', formatoLabel], [labelTempo, mmss(b.etapa_seg)], ['Transição', mmss(b.transicao_seg)], ['Rounds', String(b.rounds)]].map(([k, v]) => (
+            {[['Formato', formatoLabel], [labelTempo, mmss(b.etapa_seg)], ['Transição', temTransicaoVariada(b) ? `${mmss(b.transicao_seg)} · ${b.rodizio.trans_longas || 0} mais longas` : mmss(b.transicao_seg)], ['Rounds', String(b.rounds)]].map(([k, v]) => (
               <div key={k} className="rounded-xl bg-[#0e0e11] border border-[#2a2a31] px-3.5 py-2.5">
                 <div className="text-xs text-[#a1a1aa]">{k}</div>
                 <div className="font-medium">{v}</div>
@@ -915,6 +917,94 @@ function BlocoCard(p: {
         <button onClick={p.onAddBloco} className={cls.btnTracejado}>+ Adicionar bloco</button>
       )}
     </section>
+  )
+}
+
+// Botões − / + grandes (o coach mexe pelo celular)
+function Passo({ valor, onMenos, onMais, ariaLabel }: { valor: string; onMenos: () => void; onMais: () => void; ariaLabel: string }) {
+  const bt = 'w-11 h-11 shrink-0 rounded-[10px] border border-[#3a3a42] bg-[#0e0e11] text-[#f2f2f4] text-xl leading-none active:bg-[#222228]'
+  return (
+    <div className="flex items-center gap-2">
+      <button type="button" onClick={onMenos} className={bt} aria-label={`${ariaLabel}: menos`}>−</button>
+      <span className="flex-1 min-w-[72px] text-center text-[17px] font-semibold">{valor}</span>
+      <button type="button" onClick={onMais} className={bt} aria-label={`${ariaLabel}: mais`}>+</button>
+    </div>
+  )
+}
+
+// Trocas do começo mais longas (a sala ainda se organiza) e ajuste de uma troca só.
+function TransicoesEditor({ b, ultimo, setBloco }: { b: Bloco; ultimo: boolean; setBloco: (patch: Partial<Bloco>) => void }) {
+  const [sel, setSel] = useState<number | null>(null)
+  const qtd = qtdTransicoes(b, ultimo)
+  const n = Math.min(b.rodizio.trans_longas || 0, qtd)
+  const longa = b.rodizio.trans_longa_seg ?? Math.max(b.transicao_seg + 20, 45)
+  const tempos = transicoesBloco(b, ultimo)
+  const ajuste = b.rodizio.trans_ajuste || {}
+  // Mudar a regra geral zera os ajustes de uma troca só (a regra nova vale para todas)
+  const setRegra = (nn: number, seg: number) => {
+    setSel(null)
+    setBloco({ rodizio: { ...b.rodizio, trans_longas: nn, trans_longa_seg: seg, trans_ajuste: undefined } })
+  }
+  const setUma = (k: number, seg: number) => {
+    const novo = { ...ajuste, [String(k)]: Math.max(0, seg) }
+    setBloco({ rodizio: { ...b.rodizio, trans_ajuste: novo } })
+  }
+  const voltarUma = (k: number) => {
+    const novo = { ...ajuste }
+    delete novo[String(k)]
+    setBloco({ rodizio: { ...b.rodizio, trans_ajuste: Object.keys(novo).length ? novo : undefined } })
+  }
+  if (qtd === 0) return null
+  const soma = tempos.reduce((a, x) => a + x, 0)
+  return (
+    <div className="rounded-xl bg-[#0e0e11] border border-[#2a2a31] p-3 md:p-3.5 flex flex-col gap-3">
+      <div className="flex items-baseline justify-between gap-2">
+        <div className="text-xs text-[#ff6db8] font-medium">Trocas do bloco ({qtd})</div>
+        <div className="text-xs text-[#a1a1aa]">soma das trocas {mmss(soma)}</div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1.5">
+          <div className="text-xs text-[#a1a1aa]">Primeiras trocas mais longas</div>
+          <Passo ariaLabel="Quantas trocas mais longas" valor={n === 0 ? 'nenhuma' : `${n} ${n === 1 ? 'troca' : 'trocas'}`}
+            onMenos={() => setRegra(Math.max(0, n - 1), longa)} onMais={() => setRegra(Math.min(qtd, n + 1), longa)} />
+        </div>
+        <div className={`flex flex-col gap-1.5 ${n === 0 ? 'opacity-40' : ''}`}>
+          <div className="text-xs text-[#a1a1aa]">com quanto tempo</div>
+          <Passo ariaLabel="Tempo das trocas mais longas" valor={`${longa}s`}
+            onMenos={() => setRegra(n, Math.max(5, longa - 5))} onMais={() => setRegra(n, longa + 5)} />
+        </div>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <div className="text-xs text-[#a1a1aa]">Cada troca · toque numa para ajustar só ela</div>
+        <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 gap-1.5">
+          {tempos.map((s, k) => {
+            const longaK = s > b.transicao_seg
+            const ajustada = ajuste[String(k)] !== undefined
+            return (
+              <button key={k} type="button" onClick={() => setSel(sel === k ? null : k)}
+                className={`min-h-[48px] rounded-[10px] border flex flex-col items-center justify-center leading-tight ${
+                  longaK ? 'border-[#ff2d9b] bg-[#2a0f1e] text-[#ffb3d8]' : 'border-[#3a3a42] text-[#d4d4d8]'
+                } ${sel === k ? 'ring-2 ring-[#ffd27a]' : ''}`}>
+                <span className="text-[11px] text-[#a1a1aa]">{k + 1}ª{ajustada ? ' *' : ''}</span>
+                <span className="text-[14px] font-semibold">{s}s</span>
+              </button>
+            )
+          })}
+        </div>
+        {sel !== null && sel < qtd && (
+          <div className="flex flex-col gap-1.5 mt-1">
+            <div className="flex items-baseline justify-between">
+              <div className="text-xs text-[#ffd27a]">{sel + 1}ª troca</div>
+              {ajuste[String(sel)] !== undefined && (
+                <button type="button" onClick={() => voltarUma(sel)} className="text-xs text-[#ff6db8] min-h-[32px]">voltar para a regra</button>
+              )}
+            </div>
+            <Passo ariaLabel={`Tempo da ${sel + 1}ª troca`} valor={`${tempos[sel]}s`}
+              onMenos={() => setUma(sel, tempos[sel] - 5)} onMais={() => setUma(sel, tempos[sel] + 5)} />
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -1043,7 +1133,9 @@ function RoteiroAB({ b, setBloco, ultimo }: { b: Bloco; setBloco: (patch: Partia
                   <span className="text-[#a1a1aa]">Chão:</span> Grupo {grupoChao(e)}
                   {n > 0 ? (rod ? ` · ${e.voltaChao + 1}ª volta (${e.voltaChao === 0 ? 'cada dupla numa posição' : 'próxima estação'})` : ' · mesma estação') : ''}
                 </span>
-                {b.transicao_seg > 0 && !(ultimo && e.n === etapas.length) && <span className="text-[#a1a1aa]">+ transição {mmss(b.transicao_seg)}</span>}
+                {transicaoDe(b, e.n - 1) > 0 && !(ultimo && e.n === etapas.length) && (
+                  <span className={transicaoDe(b, e.n - 1) > b.transicao_seg ? 'text-[#ff6db8]' : 'text-[#a1a1aa]'}>+ transição {mmss(transicaoDe(b, e.n - 1))}</span>
+                )}
                 {ultimo && e.n === etapas.length && <span className="text-[#ff6db8]">fim da aula</span>}
               </div>
             ))}
@@ -1205,7 +1297,7 @@ function PreviaTV({ t }: { t: Treino }) {
         { k: 'Grupo A', v: aCorre ? txtCorrida : txtChao },
         { k: 'Grupo B', v: aCorre ? txtChao : txtCorrida },
       ]
-      proximo = `Próximo: transição ${mmss(b.transicao_seg)} → troca de lado`
+      proximo = `Próximo: transição ${mmss(transicaoDe(b, 0))} → troca de lado`
     } else {
       const o = ordemCircuito(b)
       const agora = o[0], depois = o[1] || o[0]
@@ -1213,7 +1305,7 @@ function PreviaTV({ t }: { t: Treino }) {
         { k: 'Agora', v: agora ? nomeEstacao(agora) : '—' },
         { k: 'A seguir', v: depois ? nomeEstacao(depois) : '—' },
       ]
-      proximo = `Próximo: transição ${mmss(b.transicao_seg)} → ${depois ? nomeEstacao(depois) : 'próxima estação'}`
+      proximo = `Próximo: transição ${mmss(transicaoDe(b, 0))} → ${depois ? nomeEstacao(depois) : 'próxima estação'}`
     }
   }
   return (

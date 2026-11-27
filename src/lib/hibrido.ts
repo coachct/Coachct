@@ -112,6 +112,12 @@ export interface Rodizio {
   // Grupos A/B: a cada volta ao chão, a dupla vai para a próxima estação (padrão: sim)
   rodizio_chao?: boolean
   ordem?: string[]
+  // Transições do começo mais longas (a sala ainda se organiza): as N primeiras trocas
+  // do bloco usam trans_longa_seg; as demais, o transicao_seg do bloco (27/11, Ricardo).
+  trans_longas?: number
+  trans_longa_seg?: number
+  // Ajuste de uma troca só: índice da troca (0 = 1ª) → segundos
+  trans_ajuste?: Record<string, number>
 }
 
 export interface Bloco {
@@ -182,12 +188,45 @@ export function etapasPorRound(b: Bloco) {
   return Math.max(1, ordemCircuito(b).length)
 }
 
+// Tempo da troca k do bloco (0 = 1ª troca, depois da 1ª etapa).
+export function transicaoDe(b: Bloco, k: number) {
+  const aj = b.rodizio?.trans_ajuste?.[String(k)]
+  if (typeof aj === 'number') return aj
+  if (k < (b.rodizio?.trans_longas || 0) && typeof b.rodizio?.trans_longa_seg === 'number') return b.rodizio.trans_longa_seg
+  return b.transicao_seg
+}
+
+// Quantas trocas o bloco tem: uma depois de cada etapa, menos a última se o bloco encerra a aula.
+export function qtdTransicoes(b: Bloco, ultimoDaAula = false) {
+  const etapas = b.rounds * etapasPorRound(b)
+  return ultimoDaAula ? Math.max(0, etapas - 1) : etapas
+}
+
+export const transicoesBloco = (b: Bloco, ultimoDaAula = false) =>
+  Array.from({ length: qtdTransicoes(b, ultimoDaAula) }, (_, k) => transicaoDe(b, k))
+
+// Algum tempo de troca diferente do padrão?
+export const temTransicaoVariada = (b: Bloco) =>
+  ((b.rodizio?.trans_longas || 0) > 0 && b.rodizio?.trans_longa_seg !== b.transicao_seg) ||
+  Object.keys(b.rodizio?.trans_ajuste || {}).length > 0
+
+// Só grava os campos de troca quando usados (treinos antigos ficam iguais)
+function transicoesSalvar(b: Bloco): Partial<Rodizio> {
+  const r = b.rodizio || {}
+  const out: Partial<Rodizio> = {}
+  if ((r.trans_longas || 0) > 0 && typeof r.trans_longa_seg === 'number') {
+    out.trans_longas = r.trans_longas
+    out.trans_longa_seg = r.trans_longa_seg
+  }
+  if (r.trans_ajuste && Object.keys(r.trans_ajuste).length) out.trans_ajuste = r.trans_ajuste
+  return out
+}
+
 // Cada etapa é seguida de uma transição; rounds repetem o bloco inteiro.
 // O último bloco da aula não tem a transição depois da última etapa: a aula acaba ali.
 export function totalBloco(b: Bloco, ultimoDaAula = false) {
   const etapas = b.rounds * etapasPorRound(b)
-  const transicoes = ultimoDaAula ? Math.max(0, etapas - 1) : etapas
-  return etapas * b.etapa_seg + transicoes * b.transicao_seg
+  return etapas * b.etapa_seg + transicoesBloco(b, ultimoDaAula).reduce((a, x) => a + x, 0)
 }
 
 // Tempo que cada aluno/dupla passa na corrida dentro do bloco.
@@ -223,7 +262,7 @@ export function roteiroAB(b: Bloco): EtapaAB[] {
       const aEsteira = (k === 0) === aComecaEsteira
       const voltaChao = aEsteira ? voltaB++ : voltaA++
       out.push({ n: out.length + 1, round: r + 1, inicio: t, fim: t + b.etapa_seg, aEsteira, voltaChao })
-      t += b.etapa_seg + b.transicao_seg
+      t += b.etapa_seg + transicaoDe(b, out.length - 1)
     }
   }
   return out
@@ -272,13 +311,14 @@ export function linhaDoTempo(t: Treino): Segmento[] {
       const extra = ab ? { aEsteira: ab[k].aEsteira, voltaChao: ab[k].voltaChao } : { pos: k % porRound }
       if (b.etapa_seg > 0) out.push({ tipo: 'etapa', dur: b.etapa_seg, ...base, ...extra })
       const fimDaAula = ultimoBloco && k === total - 1
-      if (b.transicao_seg > 0 && !fimDaAula) {
+      const durTrans = transicaoDe(b, k)
+      if (durTrans > 0 && !fimDaAula) {
         // Na transição o que importa é para onde cada um vai: guarda a etapa seguinte
         const fimBloco = k === total - 1
         const destino = fimBloco
           ? extra
           : ab ? { aEsteira: ab[k + 1].aEsteira, voltaChao: ab[k + 1].voltaChao } : { pos: (k + 1) % porRound }
-        out.push({ tipo: 'transicao', dur: b.transicao_seg, ...base, ...destino, fimBloco })
+        out.push({ tipo: 'transicao', dur: durTrans, ...base, ...destino, fimBloco })
       }
     }
   })
@@ -564,9 +604,12 @@ export async function salvarTreino(supabase: any, t: Treino): Promise<{ id: stri
       etapa_seg: b.etapa_seg,
       transicao_seg: b.transicao_seg,
       rounds: b.rounds,
-      rodizio: b.formato === 'grupos_ab'
-        ? { a_comeca: b.rodizio.a_comeca || 'corrida', rodizio_chao: b.rodizio.rodizio_chao !== false }
-        : { ordem: (b.rodizio.ordem || []).filter(oid => b.estacoes.some(e => e.id === oid)) },
+      rodizio: {
+        ...(b.formato === 'grupos_ab'
+          ? { a_comeca: b.rodizio.a_comeca || 'corrida', rodizio_chao: b.rodizio.rodizio_chao !== false }
+          : { ordem: (b.rodizio.ordem || []).filter(oid => b.estacoes.some(e => e.id === oid)) }),
+        ...transicoesSalvar(b),
+      },
       alunos_corrida: b.alunos_corrida,
       corrida_em_dupla: b.corrida_em_dupla,
     }))
