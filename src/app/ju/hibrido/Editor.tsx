@@ -874,7 +874,7 @@ function BlocoCard(p: {
           )}
           {codigos && foraDaSala(linhas).length > 0 && (
             <div className="flex flex-wrap items-center gap-3 px-3.5 py-2.5 rounded-xl bg-[#2a210b] text-[#f3dfb2] text-[13px]">
-              <span>A ordem do chão não bate com a sala (E1 Grama, E2 Ski, E3 Funcional, E4 Remo, E5 Wall Ball).</span>
+              <span>A ordem do chão não bate com a sala (E1 Grama, E2 Ski, E3 Funcional, E4 Remo, E5 Parede).</span>
               <button onClick={() => p.setBloco({ estacoes: ordenarComoSala(b) })} className="min-h-[36px] px-3 rounded-lg bg-[#ffd27a] text-[#2a1d00] font-semibold">
                 Ordenar como a sala
               </button>

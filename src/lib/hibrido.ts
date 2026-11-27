@@ -59,7 +59,7 @@ export const SALA_CHAO: { cod: string; nome: string; tipo: Estacao | null }[] = 
   { cod: 'E2', nome: 'Ski', tipo: 'ski' },
   { cod: 'E3', nome: 'Funcional', tipo: 'funcional' },
   { cod: 'E4', nome: 'Remo', tipo: 'remo' },
-  { cod: 'E5', nome: 'Wall Ball', tipo: 'wall_ball' },
+  { cod: 'E5', nome: 'Parede', tipo: 'wall_ball' }, // era "Wall Ball" (Ricardo, 27/11)
 ]
 export const codChao = (p: number) => SALA_CHAO[p]?.cod || `E${p + 1}`
 /** Nome que aparece ao lado do código: sempre o nome da estação na sala (E1 Grama, E2 Ski…), não o tipo. */
