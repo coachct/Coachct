@@ -408,7 +408,7 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial, mod
       </div>
 
       {/* Celular: soma e salvar sempre à mão, presos no rodapé */}
-      <div className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#0e0e11]/95 backdrop-blur border-t border-[#2a2a31] px-4 pt-2.5 pb-[calc(10px+env(safe-area-inset-bottom))] flex items-center gap-3">
+      <div className="md:hidden fixed bottom-[var(--abas-rodape,0px)] inset-x-0 z-[35] bg-[#0e0e11]/95 backdrop-blur border-t border-[#2a2a31] px-4 pt-2.5 pb-[calc(10px+env(safe-area-inset-bottom))] flex items-center gap-3">
         <div className="flex-1 min-w-0">
           <div className={`${cls.titulo} text-[20px] font-bold leading-tight`}>
             {mmss(r.soma)} <span className="text-[13px] text-[#a1a1aa] font-medium">/ {mmss(t.duracao_seg)}</span>

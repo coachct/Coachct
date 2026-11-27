@@ -264,7 +264,9 @@ export default function SidebarLayout({ children, navItems, role, rolesPermitido
         </div>
       )}
 
-      <main className="flex-1 overflow-y-auto pt-14 md:pt-0">
+      {/* --abas-rodape: altura das abas do rodapé (admin no celular), p/ barras fixas da página ficarem acima delas */}
+      <main className="flex-1 overflow-y-auto pt-14 md:pt-0"
+        style={role === 'admin' ? ({ '--abas-rodape': 'calc(56px + env(safe-area-inset-bottom))' } as React.CSSProperties) : undefined}>
         <div className="max-w-5xl mx-auto p-4 md:p-6 pb-24 md:pb-6">
           {children}
         </div>
