@@ -138,7 +138,7 @@ function fechamento(d: DadosEmailEstreia): string[] {
         'Mesmo horário. Outra sala. E um gasto calórico que o Lift, com todo respeito, não entrega. Quem faz as duas coisas treina três vezes mais que quem fica só numa. Faça disso o que quiser.',
       ]
     : [
-        'Uma dica: no próximo fim de semana, antes do Lift, rola o Running — 09:00, 10:00 e 11:00.',
+        'Uma dica: no próximo fim de semana, antes do Lift, rola o Running — sábado 08:30, 09:30, 10:30 e 11:30, domingo 09:30, 10:30 e 11:30.',
         'Outra sala, e um gasto calórico que o Lift, com todo respeito, não entrega. Quem faz as duas coisas treina três vezes mais que quem fica só numa.',
       ]
 }
