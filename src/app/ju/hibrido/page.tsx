@@ -112,10 +112,10 @@ export default function BibliotecaHibridoPage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1">
           <div className="text-xs text-[#a1a1aa] tracking-[0.04em]">Área da Ju › Treinos híbridos</div>
-          <h1 className={`${cls.titulo} m-0 text-[32px] font-bold tracking-[-0.01em]`}>Treinos híbridos</h1>
+          <h1 className={`${cls.titulo} m-0 text-[26px] md:text-[32px] font-bold tracking-[-0.01em]`}>Treinos híbridos</h1>
           <div className={cls.muted}>JustClub Vila Olímpia · sala de Running (dias híbridos)</div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-2 md:flex md:flex-wrap gap-2 w-full md:w-auto [&>*:last-child]:col-span-2 [&>*]:justify-center">
           <a href="/hibrido-tv" target="_blank" rel="noreferrer" className={`${cls.btn} inline-flex items-center`} title="Abre a TV da sala (PIN dos coaches, o mesmo da playlist)">TV da sala</a>
           <Link href="/ju/hibrido/calendario" className={`${cls.btn} inline-flex items-center`}>Calendário híbrido</Link>
           <Link href="/ju/hibrido/novo" className={`${cls.btnRosa} inline-flex items-center`}>Novo treino</Link>
@@ -125,9 +125,9 @@ export default function BibliotecaHibridoPage() {
       {msg && <div className="px-4 py-3 rounded-xl bg-[#0f2a1e] text-[#7ff0bd] font-medium">{msg}</div>}
       {erro && <div className="px-4 py-3 rounded-xl bg-[#3a0f16] text-[#ff8a9a] font-medium">{erro}</div>}
 
-      <section className={`${cls.card} p-5 flex flex-col gap-3`}>
+      <section className={`${cls.card} p-4 md:p-5 flex flex-col gap-3`}>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-[#a1a1aa] w-16">Faixa</span>
+          <span className="text-xs text-[#a1a1aa] w-full md:w-16">Faixa</span>
           {[null, ...FAIXAS.map(x => x.n)].map(f => (
             <button key={String(f)} onClick={() => setFaixa(f)}
               className={`min-h-[36px] px-3 rounded-full text-[13px] border ${faixa === f ? 'border-[#ff2d9b] bg-[#2a0f1e] text-[#ffd6ea]' : 'border-[#3a3a42] text-[#d4d4d8]'}`}>
@@ -136,7 +136,7 @@ export default function BibliotecaHibridoPage() {
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-[#a1a1aa] w-16">Estações</span>
+          <span className="text-xs text-[#a1a1aa] w-full md:w-16">Estações</span>
           {ESTACOES.map(e => {
             const f = filtroEst[e.key]
             return (
@@ -150,11 +150,25 @@ export default function BibliotecaHibridoPage() {
               </button>
             )
           })}
-          <span className="text-xs text-[#a1a1aa]">toque: com → sem → tanto faz</span>
+          <span className="text-xs text-[#a1a1aa] w-full md:w-auto">toque: com → sem → tanto faz</span>
         </div>
       </section>
 
-      <section className={`${cls.card} overflow-x-auto`}>
+      {/* Celular: um cartão por treino */}
+      <section className="md:hidden flex flex-col gap-3">
+        {lista.length === 0 && (
+          <div className={`${cls.card} px-4 py-6 text-[#a1a1aa]`}>
+            {itens.length ? 'Nenhum treino com esses filtros.' : 'Nenhum treino montado ainda.'}
+          </div>
+        )}
+        {lista.map(t => (
+          <CartaoTreino key={t.id} t={t} ocupado={ocupado === t.id}
+            onDuplicar={() => duplicar(t)}
+            onUsar={() => setUsar(t)} />
+        ))}
+      </section>
+
+      <section className={`${cls.card} overflow-x-auto hidden md:block`}>
         <div className="min-w-[860px] grid grid-cols-[2.6fr_0.8fr_0.6fr_0.6fr_1.4fr_0.5fr_0.7fr_auto] text-[13px]">
           {['Treino', 'Montou', 'Faixa', 'Duração', 'Estações', 'Usado', 'Última vez', ''].map((h, k) => (
             <div key={k} className="px-3 py-2.5 bg-[#222228] text-[#a1a1aa] text-xs">{h}</div>
@@ -198,6 +212,30 @@ function Linha({ t, ocupado, onAbrir, onDuplicar, onUsar }: { t: Item; ocupado: 
         <button onClick={onUsar} className={`${cls.btn} !min-h-[36px] !px-3 text-[13px] !border-[#ff2d9b] text-[#ffb3d8]`}>Usar neste dia</button>
       </div>
     </>
+  )
+}
+
+function CartaoTreino({ t, ocupado, onDuplicar, onUsar }: { t: Item; ocupado: boolean; onDuplicar: () => void; onUsar: () => void }) {
+  return (
+    <div className={`${cls.card} p-4 flex flex-col gap-3`}>
+      <Link href={`/ju/hibrido/${t.id}`} className="flex flex-col gap-1.5">
+        <div className="flex items-start gap-2">
+          <span className="font-semibold text-[15px] leading-snug break-words min-w-0 flex-1">{t.nome}</span>
+          {t.modelo && <span className="shrink-0 px-2 py-0.5 rounded-full bg-[#2a0f1e] text-[#ffb3d8] text-[11px]">modelo</span>}
+        </div>
+        <div className="text-[13px] text-[#a1a1aa]">
+          {t.autor} · Faixa {t.faixa} · {mmss(t.duracao_seg)}
+        </div>
+        <div className="text-[13px] text-[#d4d4d8]">{t.estacoes.map(labelEstacao).join(', ') || 'sem estações'}</div>
+        <div className="text-[13px] text-[#a1a1aa]">
+          {t.vezes ? `Usado ${t.vezes}x · última vez ${fmtData(t.ultima)}` : 'Ainda não usado'}
+        </div>
+      </Link>
+      <div className="grid grid-cols-2 gap-2">
+        <button onClick={onUsar} className={`${cls.btn} !px-2 text-[13px] !border-[#ff2d9b] text-[#ffb3d8]`}>Usar neste dia</button>
+        <button onClick={onDuplicar} disabled={ocupado} className={`${cls.btn} !px-2 text-[13px]`}>{ocupado ? 'Duplicando…' : 'Duplicar'}</button>
+      </div>
+    </div>
   )
 }
 

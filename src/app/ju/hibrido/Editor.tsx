@@ -385,27 +385,42 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial, mod
   const ultimo = t.blocos.length - 1
 
   return (
-    <div className="max-w-[1380px] mx-auto flex flex-col gap-6">
+    <div className="max-w-[1380px] mx-auto flex flex-col gap-5 md:gap-6 pb-20 md:pb-0">
       {/* Cabeçalho */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1">
           <div className="text-xs text-[#a1a1aa] tracking-[0.04em]">
             {coach ? 'Área do coach' : 'Área da Ju'} › <Link href={base} className="hover:text-[#ff6db8]">{coach ? 'Meus treinos' : 'Treinos híbridos'}</Link> › {t.id ? (t.nome || 'Treino') : 'Novo treino'}
           </div>
-          <h1 className={`${cls.titulo} m-0 text-[32px] font-bold tracking-[-0.01em]`}>Montar treino híbrido</h1>
+          <h1 className={`${cls.titulo} m-0 text-[26px] md:text-[32px] font-bold tracking-[-0.01em]`}>Montar treino híbrido</h1>
           <div className={cls.muted}>
             JustClub Vila Olímpia · sala de Running (dias híbridos){t.modelo ? ' · modelo' : ''}
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button onClick={verNaTv} disabled={!t.blocos.length} className={cls.btn}
+        <div className="grid grid-cols-2 md:flex md:flex-wrap gap-2 w-full md:w-auto [&>button]:!px-2 md:[&>button]:!px-4">          <button onClick={verNaTv} disabled={!t.blocos.length} className={cls.btn}
             title="Abre a TV numa aba nova com o treino como está na tela, sem salvar">Ver na TV</button>
           <button onClick={() => setModalDuplicar(true)} disabled={salvando} className={cls.btn}>Duplicar para outra faixa</button>
           {!coach && <button onClick={() => salvar('modelo')} disabled={salvando || !r.fecha} className={cls.btn}
             title={r.fecha ? '' : `A soma precisa dar ${mmss(t.duracao_seg)}`}>Salvar como modelo</button>}
-          <button onClick={() => salvar('treino')} disabled={salvando || !r.fecha} className={cls.btnRosa}
+          <button onClick={() => salvar('treino')} disabled={salvando || !r.fecha} className={`${cls.btnRosa} hidden md:block`}
             title={r.fecha ? '' : `A soma precisa dar ${mmss(t.duracao_seg)}`}>{salvando ? 'Salvando…' : 'Salvar treino'}</button>
         </div>
+      </div>
+
+      {/* Celular: soma e salvar sempre à mão, presos no rodapé */}
+      <div className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#0e0e11]/95 backdrop-blur border-t border-[#2a2a31] px-4 pt-2.5 pb-[calc(10px+env(safe-area-inset-bottom))] flex items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <div className={`${cls.titulo} text-[20px] font-bold leading-tight`}>
+            {mmss(r.soma)} <span className="text-[13px] text-[#a1a1aa] font-medium">/ {mmss(t.duracao_seg)}</span>
+          </div>
+          <div className={`text-[11px] font-medium ${r.fecha ? 'text-[#7ff0bd]' : r.diff > 0 ? 'text-[#ffd27a]' : 'text-[#ff8a9a]'}`}>
+            {r.fecha ? 'fecha certinho' : r.diff > 0 ? `faltam ${mmss(r.diff)}` : `passou ${mmss(-r.diff)}`}
+            {pontos.length > 0 && <span className="text-[#ffd27a]"> · {pontos.length} {pontos.length === 1 ? 'ponto' : 'pontos'} p/ conferir</span>}
+          </div>
+        </div>
+        <button onClick={() => salvar('treino')} disabled={salvando || !r.fecha} className={`${cls.btnRosa} shrink-0`}>
+          {salvando ? 'Salvando…' : 'Salvar treino'}
+        </button>
       </div>
 
       {msg && <div className="px-4 py-3 rounded-xl bg-[#0f2a1e] text-[#7ff0bd] font-medium">{msg}</div>}
@@ -414,7 +429,7 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial, mod
       <div className="flex flex-wrap gap-6 items-start">
         {/* Coluna principal */}
         <div ref={blocosRef} className="flex-[999_1_560px] min-w-0 flex flex-col gap-5">
-          <section className={`${cls.card} p-6 flex flex-col gap-3`}>
+          <section className={`${cls.card} p-4 md:p-6 flex flex-col gap-3`}>
             <h2 className={`${cls.titulo} m-0 text-lg font-semibold`}>Descrever o treino</h2>
             <div className="text-xs text-[#a1a1aa]">
               Escreva ou cole o treino (pode ser do Notes do celular): alunos, estações, quem corre, tempos, rounds, repetições e cargas. O sistema monta o esqueleto aqui embaixo para você conferir e salvar.
@@ -490,7 +505,7 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial, mod
             )}
           </section>
 
-          <section className={`${cls.card} p-6 flex flex-col gap-5`}>
+          <section className={`${cls.card} p-4 md:p-6 flex flex-col gap-5`}>
             <h2 className={`${cls.titulo} m-0 text-lg font-semibold`}>1 · Dados do treino</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <label className={cls.label}>Nome do treino
@@ -532,13 +547,13 @@ export default function EditorHibrido({ treinoId, dataInicial, faixaInicial, mod
             </div>
           </section>
 
-          <section className={`${cls.card} p-6 flex flex-col gap-3.5`}>
+          <section className={`${cls.card} p-4 md:p-6 flex flex-col gap-3.5`}>
             <h2 className={`${cls.titulo} m-0 text-lg font-semibold`}>2 · Abertura</h2>
-            <div className="grid grid-cols-[minmax(0,1fr)_170px] md:grid-cols-[220px_minmax(0,1fr)_170px] gap-3 items-center">
+            <div className="grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)_170px] gap-2 md:gap-3 md:items-center">
               <div className="font-medium col-span-2 md:col-span-1">Aquecimento</div>
               <input value={t.aquecimento_desc} onChange={e => set('aquecimento_desc', e.target.value)} aria-label="Descrição do aquecimento" className={cls.input} />
               <TempoInput valor={t.aquecimento_seg} onChange={v => set('aquecimento_seg', v)} className="text-center" ariaLabel="Tempo do aquecimento" />
-              <div className="font-medium col-span-2 md:col-span-1">Explicação e arrumação</div>
+              <div className="font-medium col-span-2 md:col-span-1 mt-3 md:mt-0">Explicação e arrumação</div>
               <input value={t.explicacao_desc} onChange={e => set('explicacao_desc', e.target.value)} aria-label="Descrição da explicação e arrumação"
                 placeholder="Opcional: a TV já mostra o mapa do treino (códigos, chão, esteira e tempos)" className={cls.input} />
               <TempoInput valor={t.explicacao_seg} onChange={v => set('explicacao_seg', v)} className="text-center" ariaLabel="Tempo da explicação e arrumação" />
@@ -736,7 +751,7 @@ function BlocoCard(p: {
   const codigos = ab || circuitoPorCodigo(b)
 
   return (
-    <section className={`${cls.card} p-6 flex flex-col gap-4`}>
+    <section className={`${cls.card} p-4 md:p-6 flex flex-col gap-4`}>
       <div className="flex flex-wrap justify-between items-center gap-3">
         <h2 className={`${cls.titulo} m-0 text-lg font-semibold`}>{i + 3} · Bloco {i + 1} — {b.nome || 'sem nome'}</h2>
         <div className="flex flex-wrap gap-2 items-center">
@@ -825,7 +840,18 @@ function BlocoCard(p: {
             <OrdemEditor b={b} setBloco={p.setBloco} />
           )}
 
-          <div className="overflow-x-auto border border-[#2a2a31] rounded-xl">
+          {/* Celular: um cartão por estação, com os campos empilhados */}
+          <div className="md:hidden flex flex-col gap-2.5">
+            {linhas.length === 0 && (
+              <div className="px-3.5 py-4 border border-[#2a2a31] rounded-xl text-[#a1a1aa]">{ab ? 'Nenhuma estação no chão ainda.' : 'Nenhuma estação ainda.'}</div>
+            )}
+            {linhas.map((e, k) => (
+              <CartaoEstacao key={e.id} e={e} ab={codigos} cod={codigos ? `${codChao(k)}${SALA_CHAO[k] ? ` · ${SALA_CHAO[k].nome}` : ''}` : undefined}
+                set={patch => p.setEstacao(e.id, patch)} remover={() => p.removerEstacao(e.id)} />
+            ))}
+          </div>
+
+          <div className="hidden md:block overflow-x-auto border border-[#2a2a31] rounded-xl">
             <div className={`grid text-[13px] ${codigos
               ? 'min-w-[1120px] grid-cols-[1.3fr_0.55fr_0.65fr_1fr_2.1fr_1.2fr_0.9fr_1.4fr_40px]'
               : 'min-w-[960px] grid-cols-[1.3fr_0.55fr_0.65fr_1fr_2.1fr_1.2fr_0.9fr_40px]'}`}>
@@ -1011,7 +1037,7 @@ function RoteiroAB({ b, setBloco, ultimo }: { b: Bloco; setBloco: (patch: Partia
           <div className="border border-[#2a2a31] rounded-xl divide-y divide-[#2a2a31] text-[13px]">
             {etapas.map(e => (
               <div key={e.n} className="px-3 py-2 flex flex-wrap gap-x-3 gap-y-0.5 items-baseline">
-                <span className="text-[#a1a1aa] w-[150px] shrink-0">Etapa {e.n} · {mmss(e.inicio)}–{mmss(e.fim)}</span>
+                <span className="text-[#a1a1aa] w-full md:w-[150px] shrink-0">Etapa {e.n} · {mmss(e.inicio)}–{mmss(e.fim)}</span>
                 <span><span className="text-[#ff6db8]">Esteira:</span> Grupo {e.aEsteira ? 'A' : 'B'}</span>
                 <span>
                   <span className="text-[#a1a1aa]">Chão:</span> Grupo {grupoChao(e)}
@@ -1102,6 +1128,64 @@ function LinhaEstacao({ e, cod, ab, set, remover }: { e: EstacaoRow; cod?: strin
         <button onClick={remover} aria-label="Remover estação" className="w-8 h-8 inline-flex items-center justify-center text-[#a1a1aa] hover:text-[#ff8a9a]"><X size={14} /></button>
       </div>
     </>
+  )
+}
+
+function CartaoEstacao({ e, cod, ab, set, remover }: { e: EstacaoRow; cod?: string; ab?: boolean; set: (patch: Partial<EstacaoRow>) => void; remover: () => void }) {
+  return (
+    <div className="rounded-xl bg-[#0e0e11] border border-[#2a2a31] p-3 flex flex-col gap-2.5">
+      <div className="flex items-start gap-2">
+        <div className="flex-1 min-w-0 flex flex-col gap-1">
+          {cod && <span className="text-[11px] font-semibold text-[#7ff0bd] tracking-[0.04em]">{cod}</span>}
+          <select
+            value={e.estacao}
+            onChange={ev => set({ estacao: ev.target.value as Estacao })}
+            aria-label="Estação"
+            className={`${cls.input} font-medium ${e.estacao === 'corrida' ? '!text-[#ff6db8]' : ''}`}
+          >
+            {ESTACOES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+          </select>
+        </div>
+        <button onClick={remover} aria-label="Remover estação" className="w-11 h-11 shrink-0 inline-flex items-center justify-center rounded-lg border border-[#3a3a42] text-[#a1a1aa] hover:text-[#ff8a9a] self-end"><X size={16} /></button>
+      </div>
+      {e.estacao === 'funcional' && (
+        <label className={cls.label}>Rótulo
+          <input value={e.rotulo} onChange={ev => set({ rotulo: ev.target.value })} placeholder="Funcional A" className={cls.input} />
+        </label>
+      )}
+      <label className={cls.label}>O que fazer
+        <input value={e.instrucao} onChange={ev => set({ instrucao: ev.target.value })} className={cls.input} />
+      </label>
+      {ab && (
+        <label className={`${cls.label} !text-[#ff6db8]`}>Esteira do mesmo código
+          <input value={e.esteira} onChange={ev => set({ esteira: ev.target.value })} placeholder="ex.: Tiro 45'' cada" className={cls.input} />
+        </label>
+      )}
+      <div className="grid grid-cols-2 gap-2">
+        <label className={cls.label}>Meta
+          <input value={e.meta} onChange={ev => set({ meta: ev.target.value })} className={cls.input} />
+        </label>
+        <div className={cls.label}>Carga F / M
+          <div className="grid grid-cols-2 gap-1.5">
+            <input value={e.carga_f} onChange={ev => set({ carga_f: ev.target.value })} placeholder="F" aria-label="Carga F" className={cls.input} />
+            <input value={e.carga_m} onChange={ev => set({ carga_m: ev.target.value })} placeholder="M" aria-label="Carga M" className={cls.input} />
+          </div>
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <label className={cls.label}>Postos
+          <input value={e.postos} inputMode="numeric" onChange={ev => set({ postos: ev.target.value.replace(/\D/g, '') })} className={cls.input} />
+        </label>
+        <label className={cls.label}>Pessoas
+          <input value={e.pessoas} inputMode="numeric" onChange={ev => set({ pessoas: ev.target.value.replace(/\D/g, '') })} className={cls.input} />
+        </label>
+        <label className={cls.label}>Dupla
+          <select value={e.modo_dupla} onChange={ev => set({ modo_dupla: ev.target.value as ModoDupla })} className={`${cls.input} !px-2`}>
+            {MODOS_DUPLA.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+          </select>
+        </label>
+      </div>
+    </div>
   )
 }
 
