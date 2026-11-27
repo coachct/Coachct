@@ -8,6 +8,7 @@ import AvisoUnidade from '@/components/AvisoUnidade'
 import SummerBanner from '@/components/SummerBanner'
 import BlackNovemberBanner from '@/components/BlackNovemberBanner'
 import { pinheirosNoSite } from '@/lib/pinheiros'
+import { hojeSP } from '@/lib/tempo'
 
 const ACCENT = '#ff2d9b'
 
@@ -122,6 +123,12 @@ export default function LandingPage() {
         /* Running & Hybrid: botão "Saiba mais" sobre a imagem */
         .hybrid-saiba { position: absolute; left: 50%; bottom: 7%; transform: translateX(-50%); z-index: 1; background: #d4f53c; color: #0b0b0b; font-weight: 700; font-size: 16px; padding: .85rem 2rem; border-radius: 999px; white-space: nowrap; transition: opacity .2s; box-shadow: 0 8px 30px #0009; }
         .hybrid-breve-link:hover .hybrid-saiba { opacity: .85; }
+        .hybrid-breve-link { container-type: inline-size; }
+        .hybrid-selo { position: absolute; left: 16%; right: 16%; top: 26.6%; height: 11.2%; background: #0a0a0e; display: flex; align-items: center; justify-content: center; gap: 1.2cqw; pointer-events: none;
+          -webkit-mask-image: linear-gradient(to right, transparent, #000 7%, #000 93%, transparent), linear-gradient(to bottom, transparent, #000 18%, #000 82%, transparent); -webkit-mask-composite: source-in;
+          mask-image: linear-gradient(to right, transparent, #000 7%, #000 93%, transparent), linear-gradient(to bottom, transparent, #000 18%, #000 82%, transparent); mask-composite: intersect; }
+        .hybrid-selo i { display: block; width: 9cqw; height: .28cqw; background: #d4f53c; }
+        .hybrid-selo b { border: .3cqw solid #d4f53c; padding: .7cqw 1.8cqw; color: #d4f53c; font: italic 900 2.5cqw/1 'Arial Black', 'Segoe UI Black', Arial, sans-serif; letter-spacing: .3cqw; white-space: nowrap; }
 
         /* Popup go-live */
         .popup-overlay { position: fixed; inset: 0; background: #000000d9; backdrop-filter: blur(6px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1rem; animation: fadeInUp .25s ease-out both; }
@@ -166,9 +173,11 @@ export default function LandingPage() {
         <div style={{ maxWidth: 1100, margin: '0 auto', padding: '2rem 2.5rem 1rem' }} className="hybrid-breve-wrap">
           <a href="/running-hybrid" style={{ position: 'relative', display: 'block' }} className="hybrid-breve-link">
           <span className="hybrid-saiba">Saiba mais →</span>
+          {/* Selo por cima do "EM BREVE" que está desenhado na imagem (27/11, pedido do Ricardo) */}
+          <span className="hybrid-selo" aria-hidden="true"><i /><b>{hojeSP() <= '2026-11-29' ? 'INAUGURAÇÃO ESTE DOMINGO' : 'SAIBA MAIS'}</b><i /></span>
           <img
             src="/running-hybrid-em-breve-v2.webp"
-            alt="Running & Hybrid — em breve"
+            alt="Running & Hybrid — inauguração"
             width={1448}
             height={1086}
             style={{ display: 'block', width: '100%', height: 'auto', borderRadius: 18, border: '1px solid #222' }}
