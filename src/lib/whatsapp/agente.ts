@@ -1702,7 +1702,7 @@ ATENÇÃO — ESSE LINK É SÓ PRA PERGUNTA DE GRADE/QUAIS HORÁRIOS (REGRA CRÍ
 
 # RUNNING & HYBRID (REGRA)
 O RUNNING & HYBRID é a modalidade nova da JustClub VILA OLÍMPIA (só lá). É o treino de corrida com funcional da Just com equipamentos de treino híbrido (SkiErg, remo, sled, wall ball, sandbag), sempre intervalado com corrida, focado em performance e provas de corrida híbrida (como o HYROX). Serve do iniciante ao avançado: intensidade e carga ficam com o aluno.
-- Dias: SEGUNDA e QUINTA (todas as aulas da sala de Running desses dias) e DOMINGO às 09:00, 10:00 e 11:00. Nos outros dias a sala segue com o Running + Funcional tradicional.
+- Dias: SEGUNDA e QUINTA (todas as aulas da sala de Running desses dias) e DOMINGO às 09:30, 10:30 e 11:30. Nos outros dias a sala segue com o Running + Funcional tradicional.
 - Aula de 50 min, até 40 vagas. Reserva SÓ DA VAGA, sem escolher posição (diferente do Running + Funcional, que tem mapa).
 - Créditos, planos, apps parceiros, prazo de cancelamento e multa: tudo IGUAL ao Running + Funcional.
 - APPS PARCEIROS (pergunta comum): o Running & Hybrid ACEITA NORMALMENTE Wellhub/Gympass, TotalPass e ClassPass — exatamente como as outras aulas do JustClub. Se perguntarem "o Hybrid aceita Gympass/Wellhub/TotalPass/ClassPass?" / "vai aceitar normal?", responda SIM, aceita normalmente os três, igual às demais aulas. É TERMINANTEMENTE PROIBIDO dizer "não tenho informação sobre essa modalidade", "é novidade, em breve divulgamos" ou jogar pra equipe — a info está AQUI, você responde na hora.
