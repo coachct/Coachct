@@ -251,7 +251,12 @@ export default function Player({ treino: t, onFechar, cabecalho }: {
   const blocoAtual = !fim && (seg.tipo === 'etapa' || seg.tipo === 'transicao') ? t.blocos[seg.bloco] : null
   const mapaCodigos = !!blocoAtual && blocoAtual.formato === 'grupos_ab' && estacoesChao(blocoAtual).some(e => e.esteira?.trim())
   // Sala com os 5 códigos: relógio no meio da tela, E1/E2 à esquerda, E3 embaixo do relógio, E4/E5 à direita
-  const salaEmVolta = mapaCodigos && estacoesChao(blocoAtual!).length === 5 && !(seg.tipo === 'transicao' && seg.fimBloco)
+  const salaEmVoltaBloco = mapaCodigos && estacoesChao(blocoAtual!).length === 5 && !(seg.tipo === 'transicao' && seg.fimBloco)
+  // Explicação: mesmo mapa da sala, com o primeiro bloco que tem os 5 códigos e a esteira de cada um
+  const blocoExplicacao = !fim && seg.tipo === 'explicacao'
+    ? t.blocos.find(b => b.formato === 'grupos_ab' && estacoesChao(b).length === 5 && estacoesChao(b).some(e => e.esteira?.trim())) || null
+    : null
+  const salaEmVolta = salaEmVoltaBloco || !!blocoExplicacao
   const relogioCentro = salaEmVolta ? (
     <div className={`${G} font-bold leading-none tabular-nums text-[calc(var(--u)*11.5)] ${seg1 <= 3 && rodando ? 'text-[#ff8a9a] animate-pulse' : corRelogio(seg)}`}>
       {mmss(seg1)}
@@ -290,7 +295,7 @@ export default function Player({ treino: t, onFechar, cabecalho }: {
       ) : (
         <>
           {/* cronômetro (na explicação fica compacto numa linha: o mapa do treino precisa da tela) */}
-          {seg.tipo === 'explicacao' && t.blocos.length ? (
+          {salaEmVolta ? null : seg.tipo === 'explicacao' && t.blocos.length ? (
             <div className="flex items-baseline justify-center gap-[calc(var(--u)*1.6)]">
               <div className={`text-[calc(var(--u)*2.2)] font-semibold tracking-[0.12em] uppercase ${corRotulo(seg)}`}>{rotuloSeg(seg, t)}</div>
               <div className={`${G} font-bold leading-none tabular-nums text-[calc(var(--u)*6)] ${seg1 <= 3 && rodando ? 'text-[#ff8a9a] animate-pulse' : corRelogio(seg)}`}>
@@ -308,7 +313,9 @@ export default function Player({ treino: t, onFechar, cabecalho }: {
 
           {/* conteúdo */}
           <div className="flex-1 min-h-0">
-            <Conteudo seg={seg} t={t} relogio={relogioCentro} aSeguir={aSeguir} />
+            {blocoExplicacao
+              ? <SalaEmVolta b={blocoExplicacao} relogio={relogioCentro} />
+              : <Conteudo seg={seg} t={t} relogio={relogioCentro} aSeguir={aSeguir} />}
           </div>
 
           {proximo && !salaEmVolta && (
@@ -491,6 +498,41 @@ function Conteudo({ seg, t, relogio, aSeguir }: { seg: Segmento; t: Treino; relo
   return <ConteudoCircuito seg={seg} b={b} />
 }
 
+// Opção A (aprovada 27/11): relógio no meio; E1/E2 à esquerda, E3 embaixo do relógio, E4/E5 à direita.
+// Usada nas etapas do bloco e, igual, na explicação (o coach mostra as estações com o mesmo mapa).
+function SalaEmVolta({ b, relogio }: { b: Bloco; relogio: React.ReactNode }) {
+  const chao = estacoesChao(b)
+  const card = (p: number) => {
+    const e = chao[p]
+    return (
+      <div className="h-full rounded-[calc(var(--u)*1.2)] border-2 border-[#3a3550] bg-[#1c1a2c] p-[calc(var(--u)*1)] flex flex-col gap-[calc(var(--u)*0.6)] min-w-0 min-h-0">
+        <div className="flex items-baseline gap-[calc(var(--u)*0.8)] shrink-0">
+          <span className={`${G} text-[calc(var(--u)*4.2)] font-bold text-[#7ff0bd] leading-none`}>{codChao(p)}</span>
+          <span className={`${G} text-[calc(var(--u)*2.6)] font-bold leading-tight truncate`}>{nomeNaSala(e, p)}</span>
+        </div>
+        <TextoQueEnche texto={textoChao(e, p) || '—'} className="text-[#f2f2f4] font-semibold" max={0.16} />
+        <div className="basis-[36%] shrink-0 min-h-0 rounded-[calc(var(--u)*0.8)] bg-[#2a0f1e] border border-[#ff2d9b] px-[calc(var(--u)*0.9)] py-[calc(var(--u)*0.5)] flex flex-col">
+          <div className="text-[calc(var(--u)*1.3)] uppercase tracking-[0.1em] text-[#ff6db8] font-semibold shrink-0">Esteira</div>
+          <TextoQueEnche texto={e.esteira || '—'} className="text-white font-bold" max={0.16} />
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className="h-full grid grid-cols-[1fr_1.2fr_1fr] grid-rows-2 gap-[calc(var(--u)*1)]">
+      {card(0)}
+      <div className="flex flex-col items-center justify-center gap-[calc(var(--u)*0.6)] text-center min-h-0">
+        {/* Só o tempo (27/11, pedido do Ricardo): grupos, chão e "a seguir" saíram deste centro */}
+        {relogio}
+      </div>
+      {card(4)}
+      {card(1)}
+      {card(2)}
+      {card(3)}
+    </div>
+  )
+}
+
 function ConteudoAB({ seg, b, relogio, aSeguir }: { seg: Extract<Segmento, { tipo: 'etapa' | 'transicao' }>; b: Bloco; relogio?: React.ReactNode; aSeguir?: string }) {
   if (seg.tipo === 'transicao' && seg.fimBloco) return <FimBloco />
   // Na transição, aEsteira/voltaChao já são da etapa seguinte: mostra para onde cada um vai
@@ -515,38 +557,7 @@ function ConteudoAB({ seg, b, relogio, aSeguir }: { seg: Extract<Segmento, { tip
     const grupoEsteira = aEsteira ? 'A' : 'B'
     const grupoChao = aEsteira ? 'B' : 'A'
     const vai = seg.tipo === 'transicao' ? 'vai para ' : ''
-    if (relogio && chao.length === 5) {
-      // Opção A (aprovada 27/11): relógio no meio; E1/E2 à esquerda, E3 embaixo do relógio, E4/E5 à direita
-      const card = (p: number) => {
-        const e = chao[p]
-        return (
-          <div className="h-full rounded-[calc(var(--u)*1.2)] border-2 border-[#3a3550] bg-[#1c1a2c] p-[calc(var(--u)*1)] flex flex-col gap-[calc(var(--u)*0.6)] min-w-0 min-h-0">
-            <div className="flex items-baseline gap-[calc(var(--u)*0.8)] shrink-0">
-              <span className={`${G} text-[calc(var(--u)*4.2)] font-bold text-[#7ff0bd] leading-none`}>{codChao(p)}</span>
-              <span className={`${G} text-[calc(var(--u)*2.6)] font-bold leading-tight truncate`}>{nomeNaSala(e, p)}</span>
-            </div>
-            <TextoQueEnche texto={textoChao(e, p) || '—'} className="text-[#f2f2f4] font-semibold" max={0.16} />
-            <div className="basis-[36%] shrink-0 min-h-0 rounded-[calc(var(--u)*0.8)] bg-[#2a0f1e] border border-[#ff2d9b] px-[calc(var(--u)*0.9)] py-[calc(var(--u)*0.5)] flex flex-col">
-              <div className="text-[calc(var(--u)*1.3)] uppercase tracking-[0.1em] text-[#ff6db8] font-semibold shrink-0">Esteira</div>
-              <TextoQueEnche texto={e.esteira || '—'} className="text-white font-bold" max={0.16} />
-            </div>
-          </div>
-        )
-      }
-      return (
-        <div className="h-full grid grid-cols-[1fr_1.2fr_1fr] grid-rows-2 gap-[calc(var(--u)*1)]">
-          {card(0)}
-          <div className="flex flex-col items-center justify-center gap-[calc(var(--u)*0.6)] text-center min-h-0">
-            {/* Só o tempo (27/11, pedido do Ricardo): grupos, chão e "a seguir" saíram deste centro */}
-            {relogio}
-          </div>
-          {card(4)}
-          {card(1)}
-          {card(2)}
-          {card(3)}
-        </div>
-      )
-    }
+    if (relogio && chao.length === 5) return <SalaEmVolta b={b} relogio={relogio} />
     return (
       <div className="h-full flex flex-col gap-[calc(var(--u)*0.9)]">
         {seg.tipo === 'transicao'
