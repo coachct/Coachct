@@ -148,6 +148,9 @@ export default function RecepcaoClubDetalhe() {
 
   // NOVO: bloqueio de vagas (Lift / Lift for Girls)
   const [vagasBloqueadas, setVagasBloqueadas] = useState(0)
+  // NOVO: quantas pessoas estão na fila desta aula (status 'aguardando') + nomes sob demanda
+  const [filaEspera, setFilaEspera] = useState<{ id: string; nome: string }[]>([])
+  const [verFila,    setVerFila]    = useState(false)
   const [salvandoVagas,   setSalvandoVagas]   = useState(false)
 
   // Navegação entre aulas do dia (‹ anterior / próxima ›)
@@ -227,6 +230,15 @@ export default function RecepcaoClubDetalhe() {
     if (oc?.club_aulas && (oc as any).capacidade != null) (oc as any).club_aulas.capacidade = (oc as any).capacidade
     setOcorrencia(oc)
     setVagasBloqueadas(oc?.vagas_bloqueadas || 0)
+
+    // NOVO: fila de espera desta aula (ordem de entrada). Blindado — nunca afeta a tela.
+    try {
+      const { data: fe } = await supabase.from('fila_espera')
+        .select('id, criado_em, clientes(nome)')
+        .eq('ocorrencia_id', ocId).eq('status', 'aguardando')
+        .order('criado_em')
+      setFilaEspera((fe || []).map((f: any) => ({ id: f.id, nome: f.clientes?.nome || '—' })))
+    } catch { setFilaEspera([]) }
 
     const { data: res } = await supabase
       .from('club_reservas')
@@ -918,6 +930,29 @@ export default function RecepcaoClubDetalhe() {
           </div>
         ))}
       </div>
+
+      {/* NOVO: Fila de espera — só aparece quando há gente na fila; toque para ver os nomes */}
+      {filaEspera.length > 0 && (
+        <div style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:12, marginBottom:'0.75rem' }}>
+          <div style={{ padding:'0.55rem 1rem', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
+            <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>Fila de espera</div>
+            <button onClick={() => setVerFila(v => !v)}
+              style={{ padding:'0.2rem 0.6rem', borderRadius:999, fontSize:12, fontWeight:700, cursor:'pointer',
+                fontFamily:"'DM Sans', sans-serif", border:`1px solid ${AMARELO}`, background:`${AMARELO}1a`, color:'#b45309' }}>
+              {filaEspera.length} na fila {verFila ? '▴' : '▾'}
+            </button>
+          </div>
+          {verFila && (
+            <div style={{ borderTop:'1px solid #f3f4f6', padding:'0.5rem 1rem 0.75rem' }}>
+              {filaEspera.map((f, i) => (
+                <div key={f.id} style={{ fontSize:13, color:'#333', padding:'0.25rem 0' }}>
+                  <span style={{ color:'#aaa', marginRight:8 }}>{i + 1}º</span>{f.nome}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* NOVO: Bloquear vagas — só Lift / Lift for Girls, em aula de hoje/futuro */}
       {!isRunning && !isPassado && aula && (

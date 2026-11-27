@@ -169,6 +169,9 @@ export default function RecepcaoClubDetalhe() {
 
   // NOVO: pausa da fila de espera (por ocorrência)
   const [filaPausada,   setFilaPausada]   = useState(false)
+  // NOVO: quantas pessoas estão na fila desta aula (status 'aguardando') + nomes sob demanda
+  const [filaEspera,    setFilaEspera]    = useState<{ id: string; nome: string }[]>([])
+  const [verFila,       setVerFila]       = useState(false)
   const [salvandoPausa, setSalvandoPausa] = useState(false)
 
   // NOVO: correção de coach SÓ desta ocorrência (não toca na grade recorrente)
@@ -222,6 +225,15 @@ export default function RecepcaoClubDetalhe() {
       const { data: tpCfg } = await supabase.from('totalpass_booking_config').select('vagas_default').maybeSingle()
       if (tpCfg?.vagas_default != null) setVagasDefaultTp(tpCfg.vagas_default)
     } catch { /* ignora: a tela segue normal mesmo se a config TotalPass falhar */ }
+
+    // NOVO: fila de espera desta aula (ordem de entrada). Blindado — nunca afeta a tela.
+    try {
+      const { data: fe } = await supabase.from('fila_espera')
+        .select('id, criado_em, clientes(nome)')
+        .eq('ocorrencia_id', ocId).eq('status', 'aguardando')
+        .order('criado_em')
+      setFilaEspera((fe || []).map((f: any) => ({ id: f.id, nome: f.clientes?.nome || '—' })))
+    } catch { setFilaEspera([]) }
 
     // NOVO: ocupacao atual no app (para o card "X/N ocupadas"). Blindado.
     try {
@@ -1169,8 +1181,15 @@ export default function RecepcaoClubDetalhe() {
       {!isPassado && aula && (
         <div style={{ background:'#fff', border:`1px solid ${filaPausada ? VERMELHO : '#e5e7eb'}`, borderRadius:12, marginBottom:'0.75rem' }}>
           <div style={{ padding:'0.55rem 1rem', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
-            <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>
-              Fila de espera{filaPausada && <span style={{ color:VERMELHO, fontWeight:500 }}> · pausada</span>}
+            <div style={{ fontSize:13, fontWeight:600, color:'#111', display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+              <span>Fila de espera{filaPausada && <span style={{ color:VERMELHO, fontWeight:500 }}> · pausada</span>}</span>
+              {filaEspera.length > 0 && (
+                <button onClick={() => setVerFila(v => !v)}
+                  style={{ padding:'0.2rem 0.6rem', borderRadius:999, fontSize:12, fontWeight:700, cursor:'pointer',
+                    fontFamily:"'DM Sans', sans-serif", border:`1px solid ${AMARELO}`, background:`${AMARELO}1a`, color:'#b45309' }}>
+                  {filaEspera.length} na fila {verFila ? '▴' : '▾'}
+                </button>
+              )}
             </div>
             <button onClick={toggleFilaPausada} disabled={salvandoPausa}
               style={{ flexShrink:0, padding:'0.4rem 0.9rem', borderRadius:8, fontSize:12, fontWeight:700,
@@ -1181,6 +1200,15 @@ export default function RecepcaoClubDetalhe() {
               {salvandoPausa ? '...' : filaPausada ? '▶ Reativar fila' : '⏸ Pausar fila'}
             </button>
           </div>
+          {verFila && filaEspera.length > 0 && (
+            <div style={{ borderTop:'1px solid #f3f4f6', padding:'0.5rem 1rem 0.75rem' }}>
+              {filaEspera.map((f, i) => (
+                <div key={f.id} style={{ fontSize:13, color:'#333', padding:'0.25rem 0' }}>
+                  <span style={{ color:'#aaa', marginRight:8 }}>{i + 1}º</span>{f.nome}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
