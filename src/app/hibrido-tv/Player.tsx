@@ -1,7 +1,7 @@
 'use client'
 // Player da TV do Running & Hybrid: roda o treino com cronômetro, etapa por etapa.
 // Usado pelo teste da Ju (/hibrido-tv/[id], logado) e pela TV da sala (/hibrido-tv, com PIN).
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { SkipBack, SkipForward, Play, Pause, RotateCcw, Maximize, X } from 'lucide-react'
 import {
   Treino, Bloco, EstacaoRow, Segmento,
@@ -28,6 +28,39 @@ function textoChao(e: EstacaoRow, p: number) {
   const instr = e.instrucao.replace(inicio, '').trim()
   const carga = [e.carga_f, e.carga_m].some(Boolean) ? `F ${e.carga_f || '—'} / M ${e.carga_m || '—'}` : ''
   return [instr, e.meta, carga].filter(Boolean).join(' · ')
+}
+
+// Texto que cresce até preencher a caixa (sem cortar): busca o maior tamanho de fonte que cabe.
+// Usado nos cards da TV para quem está longe enxergar.
+function TextoQueEnche({ texto, className = '', max = 0.22 }: { texto: string; className?: string; max?: number }) {
+  const caixa = useRef<HTMLDivElement>(null)
+  const dentro = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const cx = caixa.current, el = dentro.current
+    if (!cx || !el) return
+    const ajustar = () => {
+      const H = cx.clientHeight, W = cx.clientWidth
+      if (!H || !W) return
+      // teto: fração da largura (texto curto não fica gigante demais)
+      let lo = 8, hi = Math.max(8, Math.min(H, W * max))
+      for (let i = 0; i < 16; i++) {
+        const mid = (lo + hi) / 2
+        el.style.fontSize = `${mid}px`
+        if (el.offsetHeight <= H && el.scrollWidth <= W) lo = mid
+        else hi = mid
+      }
+      el.style.fontSize = `${Math.floor(lo)}px`
+    }
+    ajustar()
+    const ro = new ResizeObserver(ajustar)
+    ro.observe(cx)
+    return () => ro.disconnect()
+  }, [texto, max])
+  return (
+    <div ref={caixa} className={`flex-1 min-h-0 overflow-hidden ${className}`}>
+      <div ref={dentro} className="leading-[1.15] break-words">{texto}</div>
+    </div>
+  )
 }
 
 // Bip curto (WebAudio). Só toca depois do primeiro "iniciar" (o navegador exige um clique).
@@ -217,6 +250,17 @@ export default function Player({ treino: t, onFechar, cabecalho }: {
   // Esteira × chão com corrida por código: as 5 colunas precisam de altura, o relógio encolhe um pouco
   const blocoAtual = !fim && (seg.tipo === 'etapa' || seg.tipo === 'transicao') ? t.blocos[seg.bloco] : null
   const mapaCodigos = !!blocoAtual && blocoAtual.formato === 'grupos_ab' && estacoesChao(blocoAtual).some(e => e.esteira?.trim())
+  // Sala com os 5 códigos: relógio no meio da tela, E1/E2 à esquerda, E3 embaixo do relógio, E4/E5 à direita
+  const salaEmVolta = mapaCodigos && estacoesChao(blocoAtual!).length === 5 && !(seg.tipo === 'transicao' && seg.fimBloco)
+  const relogioCentro = salaEmVolta ? (
+    <>
+      <div className={`text-[calc(var(--u)*2.2)] font-semibold tracking-[0.12em] uppercase ${corRotulo(seg)}`}>{rotuloSeg(seg, t)}</div>
+      <div className={`${G} font-bold leading-none tabular-nums text-[calc(var(--u)*10)] ${seg1 <= 3 && rodando ? 'text-[#ff8a9a] animate-pulse' : corRelogio(seg)}`}>
+        {mmss(seg1)}
+      </div>
+    </>
+  ) : null
+  const aSeguir = proximo ? `A seguir: ${resumoProximo(proximo, t)}` : ''
 
   return (
     // --u = 1% da largura de uma tela 16:9 que cabe na tela atual (celular deitado espelhado, TV ou notebook):
@@ -256,7 +300,7 @@ export default function Player({ treino: t, onFechar, cabecalho }: {
                 {mmss(seg1)}
               </div>
             </div>
-          ) : (
+          ) : salaEmVolta ? null : (
             <div className="flex flex-col items-center gap-[calc(var(--u)*0.4)]">
               <div className={`text-[calc(var(--u)*2.2)] font-semibold tracking-[0.12em] uppercase ${corRotulo(seg)}`}>{rotuloSeg(seg, t)}</div>
               <div className={`${G} font-bold leading-none tabular-nums ${mapaCodigos ? 'text-[calc(var(--u)*8.5)]' : 'text-[calc(var(--u)*14)]'} ${seg1 <= 3 && rodando ? 'text-[#ff8a9a] animate-pulse' : corRelogio(seg)}`}>
@@ -267,10 +311,10 @@ export default function Player({ treino: t, onFechar, cabecalho }: {
 
           {/* conteúdo */}
           <div className="flex-1 min-h-0">
-            <Conteudo seg={seg} t={t} />
+            <Conteudo seg={seg} t={t} relogio={relogioCentro} aSeguir={aSeguir} />
           </div>
 
-          {proximo && (
+          {proximo && !salaEmVolta && (
             <div className="text-center text-[calc(var(--u)*1.6)] text-[#a1a1aa]">A seguir: {resumoProximo(proximo, t)}</div>
           )}
         </>
@@ -435,7 +479,7 @@ function ConteudoAquecimento({ desc }: { desc: string }) {
   )
 }
 
-function Conteudo({ seg, t }: { seg: Segmento; t: Treino }) {
+function Conteudo({ seg, t, relogio, aSeguir }: { seg: Segmento; t: Treino; relogio?: React.ReactNode; aSeguir?: string }) {
   if (seg.tipo === 'explicacao' && t.blocos.length) return <ConteudoExplicacao t={t} desc={seg.desc} />
   if (seg.tipo === 'aquecimento' && itensAquecimento(seg.desc).length >= 2) return <ConteudoAquecimento desc={seg.desc} />
   if (seg.tipo === 'aquecimento' || seg.tipo === 'explicacao') {
@@ -446,11 +490,11 @@ function Conteudo({ seg, t }: { seg: Segmento; t: Treino }) {
     )
   }
   const b = blocoDe(seg, t)!
-  if (b.formato === 'grupos_ab') return <ConteudoAB seg={seg} b={b} />
+  if (b.formato === 'grupos_ab') return <ConteudoAB seg={seg} b={b} relogio={relogio} aSeguir={aSeguir} />
   return <ConteudoCircuito seg={seg} b={b} />
 }
 
-function ConteudoAB({ seg, b }: { seg: Extract<Segmento, { tipo: 'etapa' | 'transicao' }>; b: Bloco }) {
+function ConteudoAB({ seg, b, relogio, aSeguir }: { seg: Extract<Segmento, { tipo: 'etapa' | 'transicao' }>; b: Bloco; relogio?: React.ReactNode; aSeguir?: string }) {
   if (seg.tipo === 'transicao' && seg.fimBloco) return <FimBloco />
   // Na transição, aEsteira/voltaChao já são da etapa seguinte: mostra para onde cada um vai
   const aEsteira = !!seg.aEsteira
@@ -474,6 +518,46 @@ function ConteudoAB({ seg, b }: { seg: Extract<Segmento, { tipo: 'etapa' | 'tran
     const grupoEsteira = aEsteira ? 'A' : 'B'
     const grupoChao = aEsteira ? 'B' : 'A'
     const vai = seg.tipo === 'transicao' ? 'vai para ' : ''
+    if (relogio && chao.length === 5) {
+      // Opção A (aprovada 27/11): relógio no meio; E1/E2 à esquerda, E3 embaixo do relógio, E4/E5 à direita
+      const card = (p: number) => {
+        const e = chao[p]
+        return (
+          <div className="h-full rounded-[calc(var(--u)*1.2)] border-2 border-[#3a3550] bg-[#1c1a2c] p-[calc(var(--u)*1)] flex flex-col gap-[calc(var(--u)*0.6)] min-w-0 min-h-0">
+            <div className="flex items-baseline gap-[calc(var(--u)*0.8)] shrink-0">
+              <span className={`${G} text-[calc(var(--u)*4.2)] font-bold text-[#7ff0bd] leading-none`}>{codChao(p)}</span>
+              <span className={`${G} text-[calc(var(--u)*2.6)] font-bold leading-tight truncate`}>{nomeNaSala(e, p)}</span>
+            </div>
+            <TextoQueEnche texto={textoChao(e, p) || '—'} className="text-[#f2f2f4] font-semibold" max={0.16} />
+            <div className="basis-[36%] shrink-0 min-h-0 rounded-[calc(var(--u)*0.8)] bg-[#2a0f1e] border border-[#ff2d9b] px-[calc(var(--u)*0.9)] py-[calc(var(--u)*0.5)] flex flex-col">
+              <div className="text-[calc(var(--u)*1.3)] uppercase tracking-[0.1em] text-[#ff6db8] font-semibold shrink-0">Esteira</div>
+              <TextoQueEnche texto={e.esteira || '—'} className="text-white font-bold" max={0.16} />
+            </div>
+          </div>
+        )
+      }
+      return (
+        <div className="h-full grid grid-cols-[1fr_1.2fr_1fr] grid-rows-2 gap-[calc(var(--u)*1)]">
+          {card(0)}
+          <div className="flex flex-col items-center justify-center gap-[calc(var(--u)*0.6)] text-center min-h-0">
+            {relogio}
+            {seg.tipo === 'transicao'
+              ? <div className="text-[calc(var(--u)*1.8)] font-semibold text-[#ffd27a] leading-tight">{regraTroca}</div>
+              : (
+                <div className="flex flex-col items-center gap-[calc(var(--u)*0.5)] text-[calc(var(--u)*1.9)] font-semibold">
+                  <span className="px-[calc(var(--u)*1.2)] py-[calc(var(--u)*0.3)] rounded-full bg-[#2a0f1e] border border-[#ff2d9b] text-[#ff6db8]">Grupo {grupoEsteira} {vai}na esteira</span>
+                  <span className="px-[calc(var(--u)*1.2)] py-[calc(var(--u)*0.3)] rounded-full bg-[#0d2a1f] border border-[#1f5a43] text-[#7ff0bd]">Grupo {grupoChao} {vai}no chão{rod ? ` · ${voltaChao + 1}ª volta` : ''}</span>
+                </div>
+              )}
+            {aSeguir && <div className="text-[calc(var(--u)*1.6)] text-[#a1a1aa]">{aSeguir}</div>}
+          </div>
+          {card(4)}
+          {card(1)}
+          {card(2)}
+          {card(3)}
+        </div>
+      )
+    }
     return (
       <div className="h-full flex flex-col gap-[calc(var(--u)*0.9)]">
         {seg.tipo === 'transicao'
