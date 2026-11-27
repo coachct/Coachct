@@ -253,12 +253,9 @@ export default function Player({ treino: t, onFechar, cabecalho }: {
   // Sala com os 5 códigos: relógio no meio da tela, E1/E2 à esquerda, E3 embaixo do relógio, E4/E5 à direita
   const salaEmVolta = mapaCodigos && estacoesChao(blocoAtual!).length === 5 && !(seg.tipo === 'transicao' && seg.fimBloco)
   const relogioCentro = salaEmVolta ? (
-    <>
-      <div className={`text-[calc(var(--u)*2.2)] font-semibold tracking-[0.12em] uppercase ${corRotulo(seg)}`}>{rotuloSeg(seg, t)}</div>
-      <div className={`${G} font-bold leading-none tabular-nums text-[calc(var(--u)*10)] ${seg1 <= 3 && rodando ? 'text-[#ff8a9a] animate-pulse' : corRelogio(seg)}`}>
-        {mmss(seg1)}
-      </div>
-    </>
+    <div className={`${G} font-bold leading-none tabular-nums text-[calc(var(--u)*11.5)] ${seg1 <= 3 && rodando ? 'text-[#ff8a9a] animate-pulse' : corRelogio(seg)}`}>
+      {mmss(seg1)}
+    </div>
   ) : null
   const aSeguir = proximo ? `A seguir: ${resumoProximo(proximo, t)}` : ''
 
@@ -540,16 +537,8 @@ function ConteudoAB({ seg, b, relogio, aSeguir }: { seg: Extract<Segmento, { tip
         <div className="h-full grid grid-cols-[1fr_1.2fr_1fr] grid-rows-2 gap-[calc(var(--u)*1)]">
           {card(0)}
           <div className="flex flex-col items-center justify-center gap-[calc(var(--u)*0.6)] text-center min-h-0">
+            {/* Só o tempo (27/11, pedido do Ricardo): grupos, chão e "a seguir" saíram deste centro */}
             {relogio}
-            {seg.tipo === 'transicao'
-              ? <div className="text-[calc(var(--u)*1.8)] font-semibold text-[#ffd27a] leading-tight">{regraTroca}</div>
-              : (
-                <div className="flex flex-col items-center gap-[calc(var(--u)*0.5)] text-[calc(var(--u)*1.9)] font-semibold">
-                  <span className="px-[calc(var(--u)*1.2)] py-[calc(var(--u)*0.3)] rounded-full bg-[#2a0f1e] border border-[#ff2d9b] text-[#ff6db8]">Grupo {grupoEsteira} {vai}na esteira</span>
-                  <span className="px-[calc(var(--u)*1.2)] py-[calc(var(--u)*0.3)] rounded-full bg-[#0d2a1f] border border-[#1f5a43] text-[#7ff0bd]">Grupo {grupoChao} {vai}no chão{rod ? ` · ${voltaChao + 1}ª volta` : ''}</span>
-                </div>
-              )}
-            {aSeguir && <div className="text-[calc(var(--u)*1.6)] text-[#a1a1aa]">{aSeguir}</div>}
           </div>
           {card(4)}
           {card(1)}
