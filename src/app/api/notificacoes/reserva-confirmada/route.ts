@@ -6,7 +6,7 @@ import { emailReservaConfirmada, enderecoUnidade } from '@/lib/email/templates'
 export const runtime = 'nodejs'
 
 const REMETENTE = 'Just Club & CT <nao-responda@justct.com.br>'
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://coach-ct.vercel.app'
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.justclubct.com.br'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,

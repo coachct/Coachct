@@ -4,7 +4,7 @@ import { Resend } from 'resend'
 import { pinheirosNoSite } from '@/lib/pinheiros'
 
 const REMETENTE = 'Just CT <nao-responda@justct.com.br>'
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://coach-ct.vercel.app'
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.justclubct.com.br'
 
 function gerarSenhaAleatoria(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'

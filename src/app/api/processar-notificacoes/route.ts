@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
 
 const REMETENTE = 'Just Club & CT <nao-responda@justct.com.br>'
-const BASE_URL  = process.env.NEXT_PUBLIC_BASE_URL || 'https://coach-ct.vercel.app'
+const BASE_URL  = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.justclubct.com.br'
 
 // Protege a rota com um segredo para evitar chamadas externas
 const CRON_SECRET = process.env.CRON_SECRET || ''
